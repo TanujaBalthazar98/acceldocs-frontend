@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Shield, Zap } from "lucide-react";
-
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 const GoogleIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -11,6 +12,9 @@ const GoogleIcon = () => (
 );
 
 const Hero = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
       {/* Background Effects */}
@@ -48,14 +52,23 @@ const Hero = () => {
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16 animate-fade-in opacity-0" style={{ animationDelay: '0.4s' }}>
-            <Button variant="google" size="xl">
-              <GoogleIcon />
-              Sign in with Google
-            </Button>
-            <Button variant="glass" size="xl">
-              See how it works
-              <ArrowRight className="w-4 h-4" />
-            </Button>
+            {user ? (
+              <Button variant="hero" size="xl" onClick={() => navigate("/dashboard")}>
+                Go to Dashboard
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            ) : (
+              <>
+                <Button variant="google" size="xl" onClick={() => navigate("/auth")}>
+                  <GoogleIcon />
+                  Sign in with Google
+                </Button>
+                <Button variant="glass" size="xl" onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}>
+                  See how it works
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Trust Signals */}

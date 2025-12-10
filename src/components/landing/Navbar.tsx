@@ -1,8 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { FileText, Menu, X } from "lucide-react";
 import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Navbar = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
@@ -32,12 +36,20 @@ const Navbar = () => {
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" size="sm">
-              Sign in
-            </Button>
-            <Button variant="hero" size="sm">
-              Get Started
-            </Button>
+            {user ? (
+              <Button variant="hero" size="sm" onClick={() => navigate("/dashboard")}>
+                Go to Dashboard
+              </Button>
+            ) : (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => navigate("/auth")}>
+                  Sign in
+                </Button>
+                <Button variant="hero" size="sm" onClick={() => navigate("/auth")}>
+                  Get Started
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -64,12 +76,20 @@ const Navbar = () => {
               Pricing
             </a>
             <div className="flex flex-col gap-2 pt-4 border-t border-border/50">
-              <Button variant="ghost" className="w-full justify-center">
-                Sign in
-              </Button>
-              <Button variant="hero" className="w-full justify-center">
-                Get Started
-              </Button>
+              {user ? (
+                <Button variant="hero" className="w-full justify-center" onClick={() => navigate("/dashboard")}>
+                  Go to Dashboard
+                </Button>
+              ) : (
+                <>
+                  <Button variant="ghost" className="w-full justify-center" onClick={() => navigate("/auth")}>
+                    Sign in
+                  </Button>
+                  <Button variant="hero" className="w-full justify-center" onClick={() => navigate("/auth")}>
+                    Get Started
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
