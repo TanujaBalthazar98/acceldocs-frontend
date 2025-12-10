@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -11,6 +13,9 @@ const GoogleIcon = () => (
 );
 
 const CTA = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   return (
     <section className="py-24 relative overflow-hidden">
       {/* Background Effects */}
@@ -29,14 +34,23 @@ const CTA = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button variant="google" size="xl">
-              <GoogleIcon />
-              Sign in with Google
-            </Button>
-            <Button variant="glass" size="xl">
-              Book a demo
-              <ArrowRight className="w-4 h-4" />
-            </Button>
+            {user ? (
+              <Button variant="hero" size="xl" onClick={() => navigate("/dashboard")}>
+                Go to Dashboard
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            ) : (
+              <>
+                <Button variant="google" size="xl" onClick={() => navigate("/auth")}>
+                  <GoogleIcon />
+                  Sign in with Google
+                </Button>
+                <Button variant="glass" size="xl" onClick={() => navigate("/auth")}>
+                  Book a demo
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </>
+            )}
           </div>
 
           <p className="mt-8 text-sm text-muted-foreground">
