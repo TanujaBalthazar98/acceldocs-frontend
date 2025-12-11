@@ -58,10 +58,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       provider: "google",
       options: {
         redirectTo: redirectUrl,
-        queryParams: {
-          access_type: "offline",
-        },
-        scopes: "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.metadata.readonly",
       },
     });
 
