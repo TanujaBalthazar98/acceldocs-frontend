@@ -132,29 +132,40 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         throw new Error("Could not create or find organization.");
       }
 
-      // Create root folder in Google Drive
+      // Try to create root folder in Google Drive (optional - can be done later)
       const folderName = `DocLayer - ${workspaceName}`;
       const folder = await createFolder(folderName, "root");
 
-      if (!folder?.id) {
-        throw new Error("Failed to create Google Drive folder. Make sure you've connected your Drive.");
+      if (folder?.id) {
+        // Update organization with root folder ID
+        const { error } = await supabase
+          .from("organizations")
+          .update({ 
+            drive_folder_id: folder.id,
+            name: workspaceName 
+          })
+          .eq("id", orgId);
+
+        if (error) throw error;
+
+        toast({
+          title: "Workspace created!",
+          description: "Your Google Drive folder is ready.",
+        });
+      } else {
+        // No Drive folder created - update just the name
+        const { error } = await supabase
+          .from("organizations")
+          .update({ name: workspaceName })
+          .eq("id", orgId);
+
+        if (error) throw error;
+
+        toast({
+          title: "Workspace created!",
+          description: "Drive folder wasn't created. You can connect Google Drive later in settings.",
+        });
       }
-
-      // Update organization with root folder ID
-      const { error } = await supabase
-        .from("organizations")
-        .update({ 
-          drive_folder_id: folder.id,
-          name: workspaceName 
-        })
-        .eq("id", orgId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Workspace created!",
-        description: "Your Google Drive folder is ready.",
-      });
 
       onComplete();
     } catch (error: any) {
