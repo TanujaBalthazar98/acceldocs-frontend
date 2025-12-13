@@ -7,32 +7,27 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { FilePlus } from "lucide-react";
+import { Folder } from "lucide-react";
 
-interface AddPageDialogProps {
+interface AddTopicDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  projectName?: string | null;
-  topicName?: string | null;
+  projectName: string | null;
 }
 
-export const AddPageDialog = ({ open, onOpenChange, projectName, topicName }: AddPageDialogProps) => {
-  const [pageTitle, setPageTitle] = useState("");
+export const AddTopicDialog = ({ open, onOpenChange, projectName }: AddTopicDialogProps) => {
+  const [topicName, setTopicName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
-  const locationText = topicName 
-    ? `${projectName} / ${topicName}` 
-    : projectName || "current project";
-
   const handleCreate = async () => {
-    if (!pageTitle.trim()) return;
+    if (!topicName.trim()) return;
     
     setIsCreating(true);
-    // TODO: Create new Google Doc in the project/topic folder via Google Drive API
-    console.log("Creating Google Doc:", pageTitle, "in:", locationText);
+    // TODO: Create subfolder within project folder via Google Drive API
+    console.log("Creating topic folder:", topicName, "in project:", projectName);
     
     // Reset and close
-    setPageTitle("");
+    setTopicName("");
     setIsCreating(false);
     onOpenChange(false);
   };
@@ -42,31 +37,28 @@ export const AddPageDialog = ({ open, onOpenChange, projectName, topicName }: Ad
       <DialogContent className="sm:max-w-md bg-card border-border">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-foreground">
-            Create Page
+            Create Topic
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Create a new Google Doc in {locationText}.
+            Create a subfolder within "{projectName}" to organize related pages.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
-              Page Title
+              Topic Name
             </label>
             <div className="relative">
-              <FilePlus className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Folder className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="e.g., Getting Started Guide"
-                value={pageTitle}
-                onChange={(e) => setPageTitle(e.target.value)}
+                placeholder="e.g., Getting Started"
+                value={topicName}
+                onChange={(e) => setTopicName(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              A new Google Doc with this title will be created.
-            </p>
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
@@ -75,9 +67,9 @@ export const AddPageDialog = ({ open, onOpenChange, projectName, topicName }: Ad
             </Button>
             <Button 
               onClick={handleCreate} 
-              disabled={!pageTitle.trim() || isCreating}
+              disabled={!topicName.trim() || isCreating}
             >
-              {isCreating ? "Creating..." : "Create Page"}
+              {isCreating ? "Creating..." : "Create Topic"}
             </Button>
           </div>
         </div>
