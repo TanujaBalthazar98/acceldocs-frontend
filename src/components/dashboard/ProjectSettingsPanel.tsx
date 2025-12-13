@@ -24,22 +24,20 @@ import {
 interface ProjectSettingsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  projectName: string;
+  projectName: string | null;
 }
-
-const mockMembers = [
-  { name: "Sarah Kim", email: "sarah@company.com", role: "Owner", avatar: "S" },
-  { name: "Mike Rodriguez", email: "mike@company.com", role: "Admin", avatar: "M" },
-  { name: "Alex Morgan", email: "alex@company.com", role: "Editor", avatar: "A" },
-  { name: "Jordan Lee", email: "jordan@company.com", role: "Viewer", avatar: "J" },
-];
 
 export const ProjectSettingsPanel = ({
   open,
   onOpenChange,
   projectName,
 }: ProjectSettingsProps) => {
-  const [name, setName] = useState(projectName);
+  const [name, setName] = useState(projectName || "");
+  
+  // TODO: Replace with real data from database
+  const members: { name: string; email: string; role: string; avatar: string }[] = [];
+
+  if (!projectName) return null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -112,45 +110,51 @@ export const ProjectSettingsPanel = ({
               </Button>
             </div>
             <div className="space-y-2">
-              {mockMembers.slice(0, 3).map((member) => (
-                <div
-                  key={member.email}
-                  className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                      <span className="text-sm font-medium text-primary">
-                        {member.avatar}
-                      </span>
+              {members.length === 0 ? (
+                <p className="text-sm text-muted-foreground px-3 py-2">
+                  No members yet
+                </p>
+              ) : (
+                members.map((member) => (
+                  <div
+                    key={member.email}
+                    className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                        <span className="text-sm font-medium text-primary">
+                          {member.avatar}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {member.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {member.email}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {member.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {member.email}
-                      </p>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1">
+                          {member.role}
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem>Owner</DropdownMenuItem>
+                        <DropdownMenuItem>Admin</DropdownMenuItem>
+                        <DropdownMenuItem>Editor</DropdownMenuItem>
+                        <DropdownMenuItem>Viewer</DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive">
+                          Remove
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1">
-                        {member.role}
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Owner</DropdownMenuItem>
-                      <DropdownMenuItem>Admin</DropdownMenuItem>
-                      <DropdownMenuItem>Editor</DropdownMenuItem>
-                      <DropdownMenuItem>Viewer</DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
-                        Remove
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
