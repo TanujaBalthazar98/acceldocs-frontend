@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface DriveFile {
   id: string;
@@ -9,18 +10,21 @@ export interface DriveFile {
   createdTime?: string;
 }
 
+const GOOGLE_TOKEN_KEY = "google_access_token";
+
 export const useGoogleDrive = () => {
   const { toast } = useToast();
+  const { googleAccessToken } = useAuth();
 
-  const getGoogleToken = async (): Promise<string | null> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    console.log("Session provider_token exists:", !!session?.provider_token);
-    console.log("Session provider_refresh_token exists:", !!session?.provider_refresh_token);
-    return session?.provider_token || null;
+  const getGoogleToken = (): string | null => {
+    // First try from context, then from localStorage
+    const token = googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
+    console.log("Google token available:", !!token);
+    return token;
   };
 
   const listFolder = async (folderId: string): Promise<{ files: DriveFile[] | null; needsDriveAccess?: boolean }> => {
-    const token = await getGoogleToken();
+    const token = getGoogleToken();
     if (!token) {
       toast({
         title: "Authentication required",
@@ -59,7 +63,7 @@ export const useGoogleDrive = () => {
   };
 
   const createFolder = async (name: string, parentFolderId: string) => {
-    const token = await getGoogleToken();
+    const token = getGoogleToken();
     if (!token) {
       toast({
         title: "Authentication required",
@@ -103,7 +107,7 @@ export const useGoogleDrive = () => {
   };
 
   const createDoc = async (title: string, parentFolderId: string) => {
-    const token = await getGoogleToken();
+    const token = getGoogleToken();
     if (!token) {
       toast({
         title: "Authentication required",

@@ -8,6 +8,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  googleAccessToken: string | null;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   requestDriveAccess: () => Promise<{ error: Error | null }>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -16,6 +17,8 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const GOOGLE_TOKEN_KEY = "google_access_token";
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -33,14 +36,32 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(() => {
+    // Initialize from localStorage
+    return localStorage.getItem(GOOGLE_TOKEN_KEY);
+  });
 
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log("Auth state changed:", event);
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        
+        // Store provider_token when available (only on sign in)
+        if (session?.provider_token) {
+          console.log("Storing Google access token");
+          localStorage.setItem(GOOGLE_TOKEN_KEY, session.provider_token);
+          setGoogleAccessToken(session.provider_token);
+        }
+        
+        // Clear token on sign out
+        if (event === "SIGNED_OUT") {
+          localStorage.removeItem(GOOGLE_TOKEN_KEY);
+          setGoogleAccessToken(null);
+        }
       }
     );
 
@@ -49,6 +70,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      
+      // Also check for provider_token on initial load
+      if (session?.provider_token) {
+        console.log("Initial session has provider_token, storing it");
+        localStorage.setItem(GOOGLE_TOKEN_KEY, session.provider_token);
+        setGoogleAccessToken(session.provider_token);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -128,6 +156,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         user,
         session,
         loading,
+        googleAccessToken,
         signInWithGoogle,
         requestDriveAccess,
         signInWithEmail,
