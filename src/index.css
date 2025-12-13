@@ -77,6 +77,73 @@
   .dark {
     /* Same as root - dark by default */
   }
+
+  .light {
+    /* Light enterprise theme */
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Teal accent for knowledge/trust */
+    --primary: 174 72% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 20% 93%;
+    --secondary-foreground: 222 47% 20%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 20% 45%;
+
+    --accent: 174 72% 40%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 88%;
+    --input: 210 20% 88%;
+    --ring: 174 72% 40%;
+
+    /* Custom tokens */
+    --glow-primary: 174 72% 40%;
+    --surface-elevated: 0 0% 100%;
+    --surface-glass: 210 20% 96%;
+    --text-tertiary: 215 15% 55%;
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(174 72% 40%), hsl(190 80% 36%));
+    --gradient-surface: linear-gradient(180deg, hsl(0 0% 100%), hsl(210 20% 98%));
+    --gradient-glow: radial-gradient(ellipse at center, hsl(174 72% 40% / 0.1), transparent 70%);
+    --gradient-hero: linear-gradient(135deg, hsl(210 20% 98%), hsl(210 25% 95%), hsl(210 20% 98%));
+
+    /* Shadows */
+    --shadow-sm: 0 2px 8px hsl(220 20% 85% / 0.5);
+    --shadow-md: 0 8px 24px hsl(220 20% 85% / 0.4);
+    --shadow-lg: 0 16px 48px hsl(220 20% 85% / 0.5);
+    --shadow-glow: 0 0 40px hsl(174 72% 40% / 0.15);
+    --shadow-glow-intense: 0 0 60px hsl(174 72% 40% / 0.25);
+
+    /* State colors */
+    --state-draft: 45 93% 40%;
+    --state-active: 142 71% 35%;
+    --state-deprecated: 25 95% 45%;
+    --state-archived: 215 20% 50%;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 20%;
+    --sidebar-primary: 174 72% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 20% 93%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 210 20% 90%;
+    --sidebar-ring: 174 72% 40%;
+  }
 }
 
 @layer base {

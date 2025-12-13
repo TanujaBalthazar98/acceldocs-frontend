@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { 
   FileText, 
@@ -15,7 +16,9 @@ import {
   Clock,
   Circle,
   Share2,
-  MoreHorizontal
+  MoreHorizontal,
+  Sun,
+  Moon
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -24,49 +27,6 @@ import { SharePanel } from "@/components/dashboard/SharePanel";
 import { AddPageDialog } from "@/components/dashboard/AddPageDialog";
 import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
-const mockProjects = [
-  { id: "1", name: "Developer Docs", topics: 4, pages: 12 },
-  { id: "2", name: "Product Documentation", topics: 3, pages: 8 },
-  { id: "3", name: "Internal Wiki", topics: 6, pages: 24 },
-];
-
-const mockPages = [
-  { 
-    title: "API Authentication Guide", 
-    state: "active" as const, 
-    owner: "Sarah K.", 
-    verified: "2 days ago",
-    visibility: "internal" as const
-  },
-  { 
-    title: "Getting Started", 
-    state: "active" as const, 
-    owner: "Mike R.", 
-    verified: "1 week ago",
-    visibility: "public" as const
-  },
-  { 
-    title: "Legacy Integration (v1)", 
-    state: "deprecated" as const, 
-    owner: "—", 
-    verified: "45 days ago",
-    visibility: "internal" as const
-  },
-  { 
-    title: "Webhook Setup Draft", 
-    state: "draft" as const, 
-    owner: "Alex M.", 
-    verified: "—",
-    visibility: "internal" as const
-  },
-];
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -77,6 +37,7 @@ const stateConfig = {
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
@@ -84,8 +45,12 @@ const Dashboard = () => {
   const [sharePageTitle, setSharePageTitle] = useState("");
   const [addPageOpen, setAddPageOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState("Developer Docs");
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
+  
+  // TODO: Replace with real data from database
+  const projects: { id: string; name: string; topics: number; pages: number }[] = [];
+  const pages: { title: string; state: "active" | "draft" | "deprecated" | "archived"; owner: string; verified: string; visibility: "internal" | "public" | "external" }[] = [];
 
   const handleSignOut = async () => {
     await signOut();
@@ -155,29 +120,33 @@ const Dashboard = () => {
           </div>
 
           <div className="space-y-1">
-            {mockProjects.map((project, index) => (
-              <div
-                key={project.id}
-                className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  index === 0
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                }`}
-              >
-                <FolderTree className="w-4 h-4" />
-                <span className="flex-1 text-left truncate">{project.name}</span>
-                <span className="text-xs text-muted-foreground">{project.pages}</span>
-                <button
-                  onClick={() => {
-                    setSelectedProject(project.name);
-                    setProjectSettingsOpen(true);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+            {projects.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">No projects yet</p>
+            ) : (
+              projects.map((project, index) => (
+                <div
+                  key={project.id}
+                  className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    index === 0
+                      ? "bg-secondary text-foreground"
+                      : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                  }`}
                 >
-                  <MoreHorizontal className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
+                  <FolderTree className="w-4 h-4" />
+                  <span className="flex-1 text-left truncate">{project.name}</span>
+                  <span className="text-xs text-muted-foreground">{project.pages}</span>
+                  <button
+                    onClick={() => {
+                      setSelectedProject(project.name);
+                      setProjectSettingsOpen(true);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                  >
+                    <MoreHorizontal className="w-3 h-3" />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -199,6 +168,14 @@ const Dashboard = () => {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleTheme}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
             <Button 
               variant="ghost" 
               size="sm" 
@@ -240,30 +217,38 @@ const Dashboard = () => {
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-foreground">12</p>
+              <p className="text-2xl font-bold text-foreground">{pages.length}</p>
               <p className="text-sm text-muted-foreground">Total Pages</p>
             </div>
             <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-state-active">9</p>
+              <p className="text-2xl font-bold text-state-active">
+                {pages.filter(p => p.state === "active").length}
+              </p>
               <p className="text-sm text-muted-foreground">Active</p>
             </div>
             <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-state-draft">2</p>
+              <p className="text-2xl font-bold text-state-draft">
+                {pages.filter(p => p.state === "draft").length}
+              </p>
               <p className="text-sm text-muted-foreground">Drafts</p>
             </div>
             <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-state-deprecated">1</p>
+              <p className="text-2xl font-bold text-state-deprecated">
+                {pages.filter(p => p.state === "deprecated" || p.owner === "—").length}
+              </p>
               <p className="text-sm text-muted-foreground">Needs Attention</p>
             </div>
           </div>
 
-          {/* Alert */}
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-state-deprecated/10 border border-state-deprecated/20 mb-6">
-            <AlertTriangle className="w-4 h-4 text-state-deprecated" />
-            <span className="text-sm text-state-deprecated">
-              1 page needs attention: missing owner, not verified in 45+ days
-            </span>
-          </div>
+          {/* Alert - only show if there are issues */}
+          {pages.some(p => p.state === "deprecated" || p.owner === "—") && (
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-state-deprecated/10 border border-state-deprecated/20 mb-6">
+              <AlertTriangle className="w-4 h-4 text-state-deprecated" />
+              <span className="text-sm text-state-deprecated">
+                Some pages need attention: missing owner or deprecated
+              </span>
+            </div>
+          )}
 
           {/* Topics */}
           <div className="mb-6">
@@ -303,73 +288,81 @@ const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {mockPages.map((page) => (
-                    <tr
-                      key={page.title}
-                      className="hover:bg-secondary/30 transition-colors cursor-pointer group"
-                      onClick={() => handleOpenPage(page.title)}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <FileText className="w-4 h-4 text-muted-foreground" />
-                          <div className="flex-1">
-                            <span className="text-sm font-medium text-foreground">
-                              {page.title}
-                            </span>
-                            {page.visibility === "public" && (
-                              <span className="ml-2 px-1.5 py-0.5 text-xs bg-primary/10 text-primary rounded">
-                                Public
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            onClick={(e) => handleSharePage(e, page.title)}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
-                          >
-                            <Share2 className="w-4 h-4 text-muted-foreground" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="flex items-center gap-2">
-                          <Circle
-                            className={`w-2 h-2 ${stateConfig[page.state].color} rounded-full`}
-                          />
-                          <span className="text-sm text-muted-foreground">
-                            {stateConfig[page.state].label}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="flex items-center gap-2">
-                          <User className="w-3 h-3 text-muted-foreground" />
-                          <span
-                            className={`text-sm ${
-                              page.owner === "—"
-                                ? "text-state-deprecated"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {page.owner}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 hidden lg:table-cell">
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-3 h-3 text-muted-foreground" />
-                          <span
-                            className={`text-sm ${
-                              page.verified === "45 days ago"
-                                ? "text-state-deprecated"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {page.verified}
-                          </span>
-                        </div>
+                  {pages.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                        No pages yet. Add a page to get started.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    pages.map((page) => (
+                      <tr
+                        key={page.title}
+                        className="hover:bg-secondary/30 transition-colors cursor-pointer group"
+                        onClick={() => handleOpenPage(page.title)}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <FileText className="w-4 h-4 text-muted-foreground" />
+                            <div className="flex-1">
+                              <span className="text-sm font-medium text-foreground">
+                                {page.title}
+                              </span>
+                              {page.visibility === "public" && (
+                                <span className="ml-2 px-1.5 py-0.5 text-xs bg-primary/10 text-primary rounded">
+                                  Public
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={(e) => handleSharePage(e, page.title)}
+                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
+                            >
+                              <Share2 className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 hidden sm:table-cell">
+                          <div className="flex items-center gap-2">
+                            <Circle
+                              className={`w-2 h-2 ${stateConfig[page.state].color} rounded-full`}
+                            />
+                            <span className="text-sm text-muted-foreground">
+                              {stateConfig[page.state].label}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          <div className="flex items-center gap-2">
+                            <User className="w-3 h-3 text-muted-foreground" />
+                            <span
+                              className={`text-sm ${
+                                page.owner === "—"
+                                  ? "text-state-deprecated"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {page.owner}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 hidden lg:table-cell">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-3 h-3 text-muted-foreground" />
+                            <span
+                              className={`text-sm ${
+                                page.verified === "45 days ago"
+                                  ? "text-state-deprecated"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {page.verified}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
