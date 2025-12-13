@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, FolderOpen, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
+import { FileText, FolderOpen, CheckCircle2, ArrowRight, Loader2, Link2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
@@ -14,12 +14,36 @@ interface OnboardingProps {
 }
 
 export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
-  const { user } = useAuth();
+  const { user, requestDriveAccess } = useAuth();
   const { toast } = useToast();
   const { createFolder } = useGoogleDrive();
   const [step, setStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [workspaceName, setWorkspaceName] = useState("");
+  const [driveConnected, setDriveConnected] = useState(false);
+
+  const handleConnectDrive = async () => {
+    setIsConnecting(true);
+    try {
+      const { error } = await requestDriveAccess();
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to connect Google Drive. Please try again.",
+          variant: "destructive",
+        });
+      }
+      // The page will redirect to Google for authorization
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to connect Google Drive.",
+        variant: "destructive",
+      });
+      setIsConnecting(false);
+    }
+  };
 
   const handleCreateRootFolder = async () => {
     if (!organizationId || !workspaceName.trim()) {
@@ -39,7 +63,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       const folder = await createFolder(folderName, "root");
 
       if (!folder?.id) {
-        throw new Error("Failed to create Google Drive folder");
+        throw new Error("Failed to create Google Drive folder. Make sure you've connected your Drive.");
       }
 
       // Update organization with root folder ID
@@ -89,11 +113,17 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           }`}>
             {step > 1 ? <CheckCircle2 className="w-5 h-5" /> : "1"}
           </div>
-          <div className={`w-16 h-0.5 ${step > 1 ? "bg-primary" : "bg-border"}`} />
+          <div className={`w-12 h-0.5 ${step > 1 ? "bg-primary" : "bg-border"}`} />
           <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
             step >= 2 ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
           }`}>
             {step > 2 ? <CheckCircle2 className="w-5 h-5" /> : "2"}
+          </div>
+          <div className={`w-12 h-0.5 ${step > 2 ? "bg-primary" : "bg-border"}`} />
+          <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
+            step >= 3 ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
+          }`}>
+            {step > 3 ? <CheckCircle2 className="w-5 h-5" /> : "3"}
           </div>
         </div>
 
@@ -106,7 +136,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               </div>
               <h2 className="text-2xl font-bold mb-3">Welcome to DocLayer!</h2>
               <p className="text-muted-foreground mb-6">
-                You're signed in with Google and we have access to your Drive. Let's set up your workspace.
+                You're signed in. Next, let's connect your Google Drive to manage your documentation.
               </p>
               <div className="text-sm text-muted-foreground mb-6 p-4 rounded-lg bg-secondary/50">
                 <p className="font-medium text-foreground mb-1">Signed in as:</p>
@@ -125,6 +155,71 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           )}
 
           {step === 2 && (
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                <Link2 className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold mb-3">Connect Google Drive</h2>
+              <p className="text-muted-foreground mb-6">
+                DocLayer needs access to create and manage folders in your Google Drive. Your files stay in your Drive.
+              </p>
+
+              {driveConnected ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center gap-2 text-primary">
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span className="font-medium">Google Drive connected!</span>
+                  </div>
+                  <Button 
+                    variant="hero" 
+                    size="lg" 
+                    onClick={() => setStep(3)}
+                    className="gap-2"
+                  >
+                    Continue
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <Button 
+                    variant="hero" 
+                    size="lg" 
+                    onClick={handleConnectDrive}
+                    disabled={isConnecting}
+                    className="w-full gap-3"
+                  >
+                    {isConnecting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                          <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                          <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                          <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 13.25z" fill="#ea4335"/>
+                          <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                          <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                          <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                        </svg>
+                        Connect Google Drive
+                      </>
+                    )}
+                  </Button>
+                  <button
+                    onClick={() => setStep(3)}
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Skip for now (you can connect later)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 3 && (
             <div>
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <FolderOpen className="w-8 h-8 text-primary" />

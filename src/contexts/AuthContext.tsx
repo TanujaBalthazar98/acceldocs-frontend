@@ -9,6 +9,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
+  requestDriveAccess: () => Promise<{ error: Error | null }>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUpWithEmail: (email: string, password: string, accountType?: AccountType) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -56,10 +57,26 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signInWithGoogle = async () => {
     const redirectUrl = `${window.location.origin}/dashboard`;
     
+    // Basic sign-in without Drive scopes (no verification needed)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: redirectUrl,
+      },
+    });
+
+    return { error };
+  };
+
+  // Separate function to request Drive access after sign-in
+  const requestDriveAccess = async () => {
+    const redirectUrl = `${window.location.origin}/dashboard`;
+    
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: redirectUrl,
+        scopes: "https://www.googleapis.com/auth/drive.file",
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',
@@ -107,6 +124,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         session,
         loading,
         signInWithGoogle,
+        requestDriveAccess,
         signInWithEmail,
         signUpWithEmail,
         signOut,
