@@ -83,6 +83,7 @@ const Dashboard = () => {
   };
 
   const handleOpenPage = (title: string) => {
+    console.log("Opening page:", title);
     setSelectedPage(title);
   };
 
