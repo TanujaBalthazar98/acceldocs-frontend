@@ -48,7 +48,7 @@ interface Project {
 }
 
 const Dashboard = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, requestDriveAccess } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -253,6 +253,19 @@ const Dashboard = () => {
       
     } catch (error: any) {
       console.error("Sync error:", error);
+      
+      // Check if it's a scope/permission error
+      const errorMessage = error.message || "";
+      if (errorMessage.includes("insufficient") || errorMessage.includes("scope") || errorMessage.includes("re-authenticate")) {
+        toast({
+          title: "Drive access required",
+          description: "Please grant Google Drive access to sync your folders.",
+        });
+        // Request Drive access
+        await requestDriveAccess();
+        return;
+      }
+      
       toast({
         title: "Sync failed",
         description: error.message || "Failed to sync from Google Drive.",
