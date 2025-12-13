@@ -68,7 +68,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   };
 
   const handleCreateRootFolder = async () => {
-    if (!organizationId || !workspaceName.trim()) {
+    if (!workspaceName.trim()) {
       toast({
         title: "Error",
         description: "Please enter a workspace name.",
@@ -80,6 +80,50 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     setIsCreating(true);
 
     try {
+      let orgId = organizationId;
+
+      // If no organization exists (individual user), create one
+      if (!orgId && user) {
+        const emailDomain = user.email?.split("@")[1] || "personal";
+        
+        const { data: newOrg, error: orgError } = await supabase
+          .from("organizations")
+          .insert({
+            domain: emailDomain,
+            name: workspaceName,
+            owner_id: user.id,
+          })
+          .select("id")
+          .single();
+
+        if (orgError) throw orgError;
+        orgId = newOrg.id;
+
+        // Update user's profile with the new organization
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({ 
+            organization_id: orgId,
+            account_type: selectedPlan === "enterprise" ? "enterprise" : selectedPlan === "pro" ? "team" : "individual"
+          })
+          .eq("id", user.id);
+
+        if (profileError) throw profileError;
+
+        // Add owner role
+        await supabase
+          .from("user_roles")
+          .insert({
+            user_id: user.id,
+            organization_id: orgId,
+            role: "owner",
+          });
+      }
+
+      if (!orgId) {
+        throw new Error("Could not create or find organization.");
+      }
+
       // Create root folder in Google Drive
       const folderName = `DocLayer - ${workspaceName}`;
       const folder = await createFolder(folderName, "root");
@@ -95,7 +139,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           drive_folder_id: folder.id,
           name: workspaceName 
         })
-        .eq("id", organizationId);
+        .eq("id", orgId);
 
       if (error) throw error;
 
