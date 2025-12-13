@@ -93,6 +93,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          account_type: Database["public"]["Enums"]["account_type"]
           avatar_url: string | null
           created_at: string
           email: string
@@ -102,6 +103,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_type?: Database["public"]["Enums"]["account_type"]
           avatar_url?: string | null
           created_at?: string
           email: string
@@ -111,6 +113,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_type?: Database["public"]["Enums"]["account_type"]
           avatar_url?: string | null
           created_at?: string
           email?: string
@@ -219,8 +222,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_personal_email_domain: {
+        Args: { email_domain: string }
+        Returns: boolean
+      }
     }
     Enums: {
+      account_type: "individual" | "team" | "enterprise"
       app_role: "owner" | "admin" | "editor" | "viewer"
     }
     CompositeTypes: {
@@ -349,6 +357,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      account_type: ["individual", "team", "enterprise"],
       app_role: ["owner", "admin", "editor", "viewer"],
     },
   },
