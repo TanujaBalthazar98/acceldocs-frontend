@@ -74,12 +74,12 @@ const Dashboard = () => {
     
     setIsLoading(true);
     
-    // Get user's profile and organization
+    // Get user's profile and organization (use maybeSingle since profile might not exist)
     const { data: profile } = await supabase
       .from("profiles")
       .select("organization_id")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
     
     if (profile?.organization_id) {
       setOrganizationId(profile.organization_id);
