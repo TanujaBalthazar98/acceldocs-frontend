@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Building2,
   RefreshCw,
+  Check,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -18,21 +19,111 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface GeneralSettingsProps {
   onBack: () => void;
 }
 
-const mockMembers = [
-  { name: "Sarah Kim", email: "sarah@company.com", role: "Owner", avatar: "S" },
-  { name: "Mike Rodriguez", email: "mike@company.com", role: "Admin", avatar: "M" },
-  { name: "Alex Morgan", email: "alex@company.com", role: "Editor", avatar: "A" },
-  { name: "Jordan Lee", email: "jordan@company.com", role: "Viewer", avatar: "J" },
-];
+interface Member {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+}
 
 export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
-  const [orgName, setOrgName] = useState("Acme Corp");
-  const [rootFolderUrl] = useState("https://drive.google.com/drive/folders/1abc...");
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [orgName, setOrgName] = useState("");
+  const [domain, setDomain] = useState("");
+  const [rootFolderId, setRootFolderId] = useState("");
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [isSavingFolder, setIsSavingFolder] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+
+  useEffect(() => {
+    const fetchOrgData = async () => {
+      if (!user) return;
+
+      // Get user's profile and organization
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.organization_id) {
+        setOrganizationId(profile.organization_id);
+
+        // Get organization details
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("name, domain, drive_folder_id")
+          .eq("id", profile.organization_id)
+          .single();
+
+        if (org) {
+          setOrgName(org.name);
+          setDomain(org.domain);
+          if (org.drive_folder_id) {
+            setRootFolderId(org.drive_folder_id);
+          }
+        }
+
+        // Get team members
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, email, full_name")
+          .eq("organization_id", profile.organization_id);
+
+        const { data: roles } = await supabase
+          .from("user_roles")
+          .select("user_id, role")
+          .eq("organization_id", profile.organization_id);
+
+        if (profiles && roles) {
+          const memberList = profiles.map((p) => ({
+            id: p.id,
+            email: p.email,
+            full_name: p.full_name,
+            role: roles.find((r) => r.user_id === p.id)?.role || "viewer",
+          }));
+          setMembers(memberList);
+        }
+      }
+    };
+
+    fetchOrgData();
+  }, [user]);
+
+  const handleSaveRootFolder = async () => {
+    if (!organizationId || !rootFolderId.trim()) return;
+
+    setIsSavingFolder(true);
+
+    const { error } = await supabase
+      .from("organizations")
+      .update({ drive_folder_id: rootFolderId.trim() })
+      .eq("id", organizationId);
+
+    if (error) {
+      toast({
+        title: "Error saving root folder",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Root folder saved",
+        description: "Your Google Drive root folder has been configured.",
+      });
+    }
+
+    setIsSavingFolder(false);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -84,7 +175,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                   Domain
                 </label>
                 <div className="px-4 py-2.5 rounded-lg bg-secondary/50 border border-border text-sm text-muted-foreground">
-                  company.com
+                  {domain}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Users with this email domain automatically join your organization.
@@ -102,42 +193,53 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
             <div className="p-4 rounded-xl border border-border bg-card space-y-4">
               <p className="text-sm text-muted-foreground">
-                All projects and pages are organized within this folder. Documents outside this folder cannot be added to DocLayer.
+                Enter your Google Drive folder ID. All projects and pages will be created within this folder.
               </p>
 
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary">
-                <FolderOpen className="w-5 h-5 text-primary" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    DocLayer Root
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {rootFolderUrl}
-                  </p>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  Root Folder ID
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={rootFolderId}
+                    onChange={(e) => setRootFolderId(e.target.value)}
+                    placeholder="e.g., 1abc123XYZ..."
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                  <Button 
+                    onClick={handleSaveRootFolder}
+                    disabled={isSavingFolder || !rootFolderId.trim()}
+                  >
+                    {isSavingFolder ? "Saving..." : "Save"}
+                  </Button>
                 </div>
-                <Button variant="ghost" size="icon">
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Find this in your Google Drive folder URL: drive.google.com/drive/folders/<strong>FOLDER_ID</strong>
+                </p>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Last synced 5 minutes ago
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    3 projects, 44 documents
-                  </p>
+              {rootFolderId && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary">
+                  <FolderOpen className="w-5 h-5 text-primary" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      Root folder configured
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {rootFolderId}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => window.open(`https://drive.google.com/drive/folders/${rootFolderId}`, "_blank")}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
                 </div>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <RefreshCw className="w-3 h-3" />
-                  Sync Now
-                </Button>
-              </div>
-
-              <Button variant="outline" className="w-full">
-                Change Root Folder
-              </Button>
+              )}
             </div>
           </section>
 
@@ -155,79 +257,37 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               <div className="divide-y divide-border">
-                {mockMembers.map((member) => (
-                  <div
-                    key={member.email}
-                    className="flex items-center justify-between px-4 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
-                        <span className="text-sm font-medium text-primary">
-                          {member.avatar}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {member.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {member.email}
-                        </p>
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-secondary transition-colors flex items-center gap-1">
-                          {member.role}
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Owner</DropdownMenuItem>
-                        <DropdownMenuItem>Admin</DropdownMenuItem>
-                        <DropdownMenuItem>Editor</DropdownMenuItem>
-                        <DropdownMenuItem>Viewer</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
-                          Remove
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                {members.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-muted-foreground">
+                    No team members yet
                   </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Permissions */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">Default Permissions</h2>
-            </div>
-
-            <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    New member default role
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Role assigned when users join via domain
-                  </p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="px-3 py-1.5 rounded-md text-sm font-medium bg-secondary hover:bg-secondary/80 transition-colors flex items-center gap-2">
-                      Viewer
-                      <ChevronDown className="w-3 h-3" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Admin</DropdownMenuItem>
-                    <DropdownMenuItem>Editor</DropdownMenuItem>
-                    <DropdownMenuItem>Viewer</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                ) : (
+                  members.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between px-4 py-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
+                          <span className="text-sm font-medium text-primary">
+                            {(member.full_name || member.email).charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {member.full_name || member.email.split("@")[0]}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {member.email}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground bg-secondary capitalize">
+                        {member.role}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </section>

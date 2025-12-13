@@ -77,9 +77,13 @@ const Dashboard = () => {
         // Get organization's root folder
         const { data: org } = await supabase
           .from("organizations")
-          .select("id")
+          .select("id, drive_folder_id")
           .eq("id", profile.organization_id)
           .single();
+        
+        if (org?.drive_folder_id) {
+          setRootFolderId(org.drive_folder_id);
+        }
         
         // Get projects
         const { data: projectsData } = await supabase
@@ -90,9 +94,6 @@ const Dashboard = () => {
         if (projectsData) {
           setProjects(projectsData);
         }
-        
-        // For now, we'll need the user to set root folder in settings
-        // Check if org has a root folder configured (we may need to add this column)
       }
     };
     

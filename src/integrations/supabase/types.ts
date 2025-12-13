@@ -65,6 +65,7 @@ export type Database = {
         Row: {
           created_at: string
           domain: string
+          drive_folder_id: string | null
           id: string
           name: string
           owner_id: string
@@ -73,6 +74,7 @@ export type Database = {
         Insert: {
           created_at?: string
           domain: string
+          drive_folder_id?: string | null
           id?: string
           name: string
           owner_id: string
@@ -81,6 +83,7 @@ export type Database = {
         Update: {
           created_at?: string
           domain?: string
+          drive_folder_id?: string | null
           id?: string
           name?: string
           owner_id?: string
