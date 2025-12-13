@@ -14,6 +14,8 @@ export const useGoogleDrive = () => {
 
   const getGoogleToken = async (): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession();
+    console.log("Session provider_token exists:", !!session?.provider_token);
+    console.log("Session provider_refresh_token exists:", !!session?.provider_refresh_token);
     return session?.provider_token || null;
   };
 
