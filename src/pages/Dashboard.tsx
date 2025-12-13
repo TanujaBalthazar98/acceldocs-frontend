@@ -171,7 +171,10 @@ const Dashboard = () => {
 
   // If showing general settings
   if (showGeneralSettings) {
-    return <GeneralSettings onBack={() => setShowGeneralSettings(false)} />;
+    return <GeneralSettings onBack={() => {
+      setShowGeneralSettings(false);
+      fetchData(); // Refresh data when returning from settings
+    }} />;
   }
 
   // If a page is selected, show the PageView
