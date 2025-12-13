@@ -138,21 +138,47 @@ export const SharePanel = ({ open, onOpenChange, pageTitle }: SharePanelProps) =
             <label className="text-sm font-medium text-muted-foreground">
               Invite people
             </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="email"
-                  placeholder="Enter email address..."
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="email"
+                    placeholder="Enter email address..."
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
               </div>
-              <Button variant="default" size="default" className="gap-2">
-                <UserPlus className="w-4 h-4" />
-                Invite
-              </Button>
+              <div className="flex gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex-1 flex items-center justify-between px-4 py-2.5 rounded-lg bg-secondary border border-border hover:border-primary/30 transition-colors">
+                      <span className="text-sm text-foreground">Viewer</span>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    <DropdownMenuItem className="flex flex-col items-start">
+                      <span className="font-medium">Viewer</span>
+                      <span className="text-xs text-muted-foreground">Can view only</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="flex flex-col items-start">
+                      <span className="font-medium">Editor</span>
+                      <span className="text-xs text-muted-foreground">Can edit pages</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="flex flex-col items-start">
+                      <span className="font-medium">Admin</span>
+                      <span className="text-xs text-muted-foreground">Can manage settings</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="default" className="gap-2">
+                  <UserPlus className="w-4 h-4" />
+                  Invite
+                </Button>
+              </div>
             </div>
           </div>
 

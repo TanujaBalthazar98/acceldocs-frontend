@@ -14,12 +14,21 @@ import {
   User,
   Clock,
   Circle,
-  Share2
+  Share2,
+  MoreHorizontal
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { PageView } from "@/components/dashboard/PageView";
 import { SharePanel } from "@/components/dashboard/SharePanel";
+import { AddPageDialog } from "@/components/dashboard/AddPageDialog";
+import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const mockProjects = [
   { id: "1", name: "Developer Docs", topics: 4, pages: 12 },
@@ -72,6 +81,9 @@ const Dashboard = () => {
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [sharePageTitle, setSharePageTitle] = useState("");
+  const [addPageOpen, setAddPageOpen] = useState(false);
+  const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState("Developer Docs");
 
   const handleSignOut = async () => {
     await signOut();
@@ -137,9 +149,9 @@ const Dashboard = () => {
 
           <div className="space-y-1">
             {mockProjects.map((project, index) => (
-              <button
+              <div
                 key={project.id}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
                   index === 0
                     ? "bg-secondary text-foreground"
                     : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
@@ -148,7 +160,16 @@ const Dashboard = () => {
                 <FolderTree className="w-4 h-4" />
                 <span className="flex-1 text-left truncate">{project.name}</span>
                 <span className="text-xs text-muted-foreground">{project.pages}</span>
-              </button>
+                <button
+                  onClick={() => {
+                    setSelectedProject(project.name);
+                    setProjectSettingsOpen(true);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                >
+                  <MoreHorizontal className="w-3 h-3" />
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -196,7 +217,7 @@ const Dashboard = () => {
             <ChevronRight className="w-3 h-3" />
             <span className="text-foreground">Developer Docs</span>
           </div>
-          <Button variant="hero" size="sm" className="gap-2">
+          <Button variant="hero" size="sm" className="gap-2" onClick={() => setAddPageOpen(true)}>
             <Plus className="w-4 h-4" />
             Add Page
           </Button>
@@ -348,6 +369,17 @@ const Dashboard = () => {
         open={shareOpen}
         onOpenChange={setShareOpen}
         pageTitle={sharePageTitle}
+      />
+      
+      <AddPageDialog
+        open={addPageOpen}
+        onOpenChange={setAddPageOpen}
+      />
+      
+      <ProjectSettingsPanel
+        open={projectSettingsOpen}
+        onOpenChange={setProjectSettingsOpen}
+        projectName={selectedProject}
       />
     </div>
   );
