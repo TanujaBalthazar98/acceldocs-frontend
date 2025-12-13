@@ -99,6 +99,15 @@ Deno.serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
+        
+        // Check if it's a scope/permission error
+        if (errorText.includes("SCOPE_INSUFFICIENT") || errorText.includes("insufficientPermissions")) {
+          return new Response(
+            JSON.stringify({ error: "Insufficient scopes", needsDriveAccess: true }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
         return new Response(
           JSON.stringify({ error: "Failed to list folder", details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
