@@ -1,0 +1,183 @@
+import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { FileText, FolderOpen, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+
+interface OnboardingProps {
+  onComplete: () => void;
+  organizationId: string | null;
+}
+
+export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const { createFolder } = useGoogleDrive();
+  const [step, setStep] = useState(1);
+  const [isCreating, setIsCreating] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState("");
+
+  const handleCreateRootFolder = async () => {
+    if (!organizationId || !workspaceName.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a workspace name.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCreating(true);
+
+    try {
+      // Create root folder in Google Drive
+      const folderName = `DocLayer - ${workspaceName}`;
+      const folder = await createFolder(folderName, "root");
+
+      if (!folder?.id) {
+        throw new Error("Failed to create Google Drive folder");
+      }
+
+      // Update organization with root folder ID
+      const { error } = await supabase
+        .from("organizations")
+        .update({ 
+          drive_folder_id: folder.id,
+          name: workspaceName 
+        })
+        .eq("id", organizationId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Workspace created!",
+        description: "Your Google Drive folder is ready.",
+      });
+
+      onComplete();
+    } catch (error: any) {
+      console.error("Error creating root folder:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create workspace. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="w-full max-w-lg">
+        {/* Logo */}
+        <div className="flex items-center gap-3 mb-8 justify-center">
+          <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
+            <FileText className="w-6 h-6 text-primary-foreground" />
+          </div>
+          <span className="text-2xl font-bold text-foreground">DocLayer</span>
+        </div>
+
+        {/* Progress Steps */}
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
+            step >= 1 ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
+          }`}>
+            {step > 1 ? <CheckCircle2 className="w-5 h-5" /> : "1"}
+          </div>
+          <div className={`w-16 h-0.5 ${step > 1 ? "bg-primary" : "bg-border"}`} />
+          <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
+            step >= 2 ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
+          }`}>
+            {step > 2 ? <CheckCircle2 className="w-5 h-5" /> : "2"}
+          </div>
+        </div>
+
+        {/* Step Content */}
+        <div className="glass rounded-2xl p-8">
+          {step === 1 && (
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                <CheckCircle2 className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold mb-3">Welcome to DocLayer!</h2>
+              <p className="text-muted-foreground mb-6">
+                You're signed in with Google and we have access to your Drive. Let's set up your workspace.
+              </p>
+              <div className="text-sm text-muted-foreground mb-6 p-4 rounded-lg bg-secondary/50">
+                <p className="font-medium text-foreground mb-1">Signed in as:</p>
+                <p>{user?.email}</p>
+              </div>
+              <Button 
+                variant="hero" 
+                size="lg" 
+                onClick={() => setStep(2)}
+                className="gap-2"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div>
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                <FolderOpen className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold mb-3 text-center">Create Your Workspace</h2>
+              <p className="text-muted-foreground mb-6 text-center">
+                We'll create a root folder in your Google Drive to store all your documentation.
+              </p>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="workspace-name">Workspace Name</Label>
+                  <Input
+                    id="workspace-name"
+                    placeholder="My Company"
+                    value={workspaceName}
+                    onChange={(e) => setWorkspaceName(e.target.value)}
+                    disabled={isCreating}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    A folder named "DocLayer - {workspaceName || 'Your Name'}" will be created in your Google Drive.
+                  </p>
+                </div>
+
+                <Button 
+                  variant="hero" 
+                  size="lg" 
+                  onClick={handleCreateRootFolder}
+                  disabled={isCreating || !workspaceName.trim()}
+                  className="w-full gap-2"
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <FolderOpen className="w-4 h-4" />
+                      Create Workspace
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <p className="text-center text-xs text-muted-foreground mt-6">
+          Your documents stay in Google Drive. DocLayer adds structure and governance on top.
+        </p>
+      </div>
+    </div>
+  );
+};
