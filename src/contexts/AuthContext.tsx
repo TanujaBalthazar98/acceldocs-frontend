@@ -57,11 +57,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signInWithGoogle = async () => {
     const redirectUrl = `${window.location.origin}/dashboard`;
     
-    // Basic sign-in without Drive scopes (no verification needed)
+    // Request Drive scope during sign-in to ensure token is available
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: redirectUrl,
+        scopes: "https://www.googleapis.com/auth/drive.file",
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
       },
     });
 
