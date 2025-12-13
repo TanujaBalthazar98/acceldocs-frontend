@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-google-token",
 };
 
 interface CreateFolderRequest {
@@ -17,7 +17,17 @@ interface CreateDocRequest {
   parentFolderId: string;
 }
 
-type RequestBody = CreateFolderRequest | CreateDocRequest;
+interface ListFolderRequest {
+  action: "list_folder";
+  folderId: string;
+}
+
+interface GetDocContentRequest {
+  action: "get_doc_content";
+  docId: string;
+}
+
+type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | GetDocContentRequest;
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -53,26 +63,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get the user's Google provider token from their identities
-    const googleIdentity = user.identities?.find(i => i.provider === "google");
-    if (!googleIdentity) {
-      console.error("No Google identity found for user:", user.id);
-      return new Response(
-        JSON.stringify({ error: "No Google account linked" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get fresh session to access provider token
-    const { data: sessionData, error: sessionError } = await supabase.auth.admin.getUserById(user.id);
-    
-    // The provider_token is only available during the auth callback
-    // We need to get it from the session passed by the client
     const body: RequestBody = await req.json();
     console.log("Request body:", JSON.stringify(body));
 
-    // For now, we'll need the client to pass the provider token
-    // This is a limitation - we need to store the token during OAuth callback
+    // Get the provider token from header
     const providerToken = req.headers.get("x-google-token");
     
     if (!providerToken) {
@@ -83,6 +77,71 @@ Deno.serve(async (req) => {
           needsReauth: true 
         }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // List folder contents
+    if (body.action === "list_folder") {
+      console.log("Listing folder:", body.folderId);
+      
+      const query = encodeURIComponent(`'${body.folderId}' in parents and trashed = false`);
+      const fields = encodeURIComponent("files(id,name,mimeType,modifiedTime,createdTime)");
+      
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=name`,
+        {
+          headers: {
+            Authorization: `Bearer ${providerToken}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Google Drive API error:", errorText);
+        return new Response(
+          JSON.stringify({ error: "Failed to list folder", details: errorText }),
+          { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const data = await response.json();
+      console.log("Folder contents:", data.files?.length, "items");
+
+      return new Response(
+        JSON.stringify({ success: true, files: data.files || [] }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get document content
+    if (body.action === "get_doc_content") {
+      console.log("Getting doc content:", body.docId);
+      
+      const response = await fetch(
+        `https://docs.googleapis.com/v1/documents/${body.docId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${providerToken}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Google Docs API error:", errorText);
+        return new Response(
+          JSON.stringify({ error: "Failed to get document", details: errorText }),
+          { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const doc = await response.json();
+      console.log("Document retrieved:", doc.title);
+
+      return new Response(
+        JSON.stringify({ success: true, doc }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
