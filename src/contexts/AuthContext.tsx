@@ -85,16 +85,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signInWithGoogle = async () => {
     const redirectUrl = `${window.location.origin}/dashboard`;
     
-    // Request Drive scope during sign-in to ensure token is available
+    // Basic sign-in with default scopes only (openid, email, profile)
+    // Drive access is requested separately during onboarding via requestDriveAccess
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: redirectUrl,
-        scopes: "https://www.googleapis.com/auth/drive.file",
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
       },
     });
 
