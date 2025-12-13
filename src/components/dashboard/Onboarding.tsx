@@ -99,14 +99,15 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         if (orgError) throw orgError;
         orgId = newOrg.id;
 
-        // Update user's profile with the new organization
+        // Upsert user's profile with the new organization (create if doesn't exist)
         const { error: profileError } = await supabase
           .from("profiles")
-          .update({ 
+          .upsert({ 
+            id: user.id,
+            email: user.email || "",
             organization_id: orgId,
             account_type: selectedPlan === "enterprise" ? "enterprise" : selectedPlan === "pro" ? "team" : "individual"
-          })
-          .eq("id", user.id);
+          }, { onConflict: "id" });
 
         if (profileError) throw profileError;
 
