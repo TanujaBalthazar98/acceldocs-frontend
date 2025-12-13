@@ -2,13 +2,15 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+type AccountType = "individual" | "team" | "enterprise";
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUpWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUpWithEmail: (email: string, password: string, accountType?: AccountType) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -74,7 +76,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return { error };
   };
 
-  const signUpWithEmail = async (email: string, password: string) => {
+  const signUpWithEmail = async (email: string, password: string, accountType: AccountType = "individual") => {
     const redirectUrl = `${window.location.origin}/`;
     
     const { error } = await supabase.auth.signUp({
@@ -82,6 +84,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       password,
       options: {
         emailRedirectTo: redirectUrl,
+        data: {
+          account_type: accountType,
+        },
       },
     });
 
