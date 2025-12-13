@@ -29,6 +29,7 @@ import { AddProjectDialog } from "@/components/dashboard/AddProjectDialog";
 import { AddTopicDialog } from "@/components/dashboard/AddTopicDialog";
 import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
+import { Onboarding } from "@/components/dashboard/Onboarding";
 import { supabase } from "@/integrations/supabase/client";
 
 const stateConfig = {
@@ -60,43 +61,62 @@ const Dashboard = () => {
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
   const [rootFolderId, setRootFolderId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
   
   // Fetch organization's root folder ID and projects
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user) return;
+  const fetchData = async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    // Get user's profile and organization
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+    
+    if (profile?.organization_id) {
+      setOrganizationId(profile.organization_id);
       
-      // Get user's organization
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
+      // Get organization's root folder
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("id, drive_folder_id")
+        .eq("id", profile.organization_id)
         .single();
       
-      if (profile?.organization_id) {
-        // Get organization's root folder
-        const { data: org } = await supabase
-          .from("organizations")
-          .select("id, drive_folder_id")
-          .eq("id", profile.organization_id)
-          .single();
-        
-        if (org?.drive_folder_id) {
-          setRootFolderId(org.drive_folder_id);
-        }
-        
-        // Get projects
-        const { data: projectsData } = await supabase
-          .from("projects")
-          .select("id, name, drive_folder_id")
-          .eq("organization_id", profile.organization_id);
-        
-        if (projectsData) {
-          setProjects(projectsData);
-        }
+      if (org?.drive_folder_id) {
+        setRootFolderId(org.drive_folder_id);
+        setNeedsOnboarding(false);
+      } else {
+        // Organization exists but no root folder - needs onboarding
+        setNeedsOnboarding(true);
       }
-    };
+      
+      // Get projects
+      const { data: projectsData } = await supabase
+        .from("projects")
+        .select("id, name, drive_folder_id")
+        .eq("organization_id", profile.organization_id);
+      
+      if (projectsData) {
+        setProjects(projectsData);
+      }
+    } else {
+      // No organization - individual user or needs setup
+      setNeedsOnboarding(false);
+    }
     
+    setIsLoading(false);
+  };
+  
+  useEffect(() => {
     fetchData();
   }, [user]);
   
@@ -121,6 +141,33 @@ const Dashboard = () => {
     setSharePageTitle(title);
     setShareOpen(true);
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow animate-pulse">
+            <FileText className="w-6 h-6 text-primary-foreground" />
+          </div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Onboarding flow for new users with organization but no root folder
+  if (needsOnboarding && organizationId) {
+    return (
+      <Onboarding 
+        onComplete={() => {
+          setNeedsOnboarding(false);
+          fetchData();
+        }} 
+        organizationId={organizationId}
+      />
+    );
+  }
 
   // If showing general settings
   if (showGeneralSettings) {
