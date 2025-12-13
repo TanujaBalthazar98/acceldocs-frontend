@@ -25,6 +25,8 @@ import { useToast } from "@/hooks/use-toast";
 import { PageView } from "@/components/dashboard/PageView";
 import { SharePanel } from "@/components/dashboard/SharePanel";
 import { AddPageDialog } from "@/components/dashboard/AddPageDialog";
+import { AddProjectDialog } from "@/components/dashboard/AddProjectDialog";
+import { AddTopicDialog } from "@/components/dashboard/AddTopicDialog";
 import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 
@@ -44,6 +46,8 @@ const Dashboard = () => {
   const [shareOpen, setShareOpen] = useState(false);
   const [sharePageTitle, setSharePageTitle] = useState("");
   const [addPageOpen, setAddPageOpen] = useState(false);
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
+  const [addTopicOpen, setAddTopicOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
@@ -114,7 +118,10 @@ const Dashboard = () => {
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Projects
             </span>
-            <button className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+            <button 
+              onClick={() => setAddProjectOpen(true)}
+              className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+            >
               <Plus className="w-4 h-4" />
             </button>
           </div>
@@ -252,17 +259,18 @@ const Dashboard = () => {
 
           {/* Topics */}
           <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-4">Topics</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Topics</h2>
+              <button 
+                onClick={() => setAddTopicOpen(true)}
+                className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
             <div className="flex flex-wrap gap-3">
-              {["API Reference", "Guides", "Tutorials", "Changelog"].map((topic) => (
-                <button
-                  key={topic}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
-                >
-                  <Folder className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium">{topic}</span>
-                </button>
-              ))}
+              {/* TODO: Replace with real topics from database */}
+              <p className="text-sm text-muted-foreground">No topics yet. Create one to organize pages.</p>
             </div>
           </div>
 
@@ -379,6 +387,18 @@ const Dashboard = () => {
       <AddPageDialog
         open={addPageOpen}
         onOpenChange={setAddPageOpen}
+        projectName={selectedProject}
+      />
+      
+      <AddProjectDialog
+        open={addProjectOpen}
+        onOpenChange={setAddProjectOpen}
+      />
+      
+      <AddTopicDialog
+        open={addTopicOpen}
+        onOpenChange={setAddTopicOpen}
+        projectName={selectedProject}
       />
       
       <ProjectSettingsPanel
