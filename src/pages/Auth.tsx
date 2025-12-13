@@ -4,20 +4,34 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, ArrowLeft, Mail, Lock, AlertCircle } from "lucide-react";
+import { FileText, ArrowLeft, Mail, Lock, AlertCircle, User, Users, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 
+type AccountType = "individual" | "team" | "enterprise";
 
 const authSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
+const PERSONAL_DOMAINS = [
+  'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com',
+  'msn.com', 'yahoo.com', 'yahoo.co.uk', 'ymail.com', 'aol.com',
+  'icloud.com', 'me.com', 'mac.com', 'protonmail.com', 'proton.me',
+  'tutanota.com', 'zoho.com', 'mail.com', 'gmx.com', 'gmx.net'
+];
+
+const isPersonalEmail = (email: string): boolean => {
+  const domain = email.split('@')[1]?.toLowerCase();
+  return PERSONAL_DOMAINS.includes(domain);
+};
+
 const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [accountType, setAccountType] = useState<AccountType>("individual");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -26,6 +40,8 @@ const Auth = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  
+  const showAccountTypeSelector = isSignUp && email && !isPersonalEmail(email);
 
   const from = (location.state as { from?: Location })?.from?.pathname || "/dashboard";
 
@@ -64,7 +80,7 @@ const Auth = () => {
     setIsLoading(true);
 
     if (isSignUp) {
-      const { error } = await signUpWithEmail(email, password);
+      const { error } = await signUpWithEmail(email, password, accountType);
       if (error) {
         const errorMessage = error.message.includes("already registered")
           ? "This email is already registered. Please sign in instead."
@@ -240,6 +256,58 @@ const Auth = () => {
                   <p className="text-sm text-destructive">{errors.password}</p>
                 )}
               </div>
+
+              {/* Account Type Selector - Only show for signup with business email */}
+              {showAccountTypeSelector && (
+                <div className="space-y-3">
+                  <Label>Account type</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAccountType("individual")}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-lg border transition-all ${
+                        accountType === "individual"
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-muted-foreground/50"
+                      }`}
+                    >
+                      <User className="w-5 h-5" />
+                      <span className="text-xs font-medium">Individual</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountType("team")}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-lg border transition-all ${
+                        accountType === "team"
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-muted-foreground/50"
+                      }`}
+                    >
+                      <Users className="w-5 h-5" />
+                      <span className="text-xs font-medium">Team</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountType("enterprise")}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-lg border transition-all ${
+                        accountType === "enterprise"
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-muted-foreground/50"
+                      }`}
+                    >
+                      <Building2 className="w-5 h-5" />
+                      <span className="text-xs font-medium">Enterprise</span>
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {accountType === "individual" 
+                      ? "Personal workspace, no team features"
+                      : accountType === "team"
+                      ? "Create an organization and invite your team"
+                  : "Enterprise features with advanced controls"}
+                  </p>
+                </div>
+              )}
 
               <Button
                 type="submit"
