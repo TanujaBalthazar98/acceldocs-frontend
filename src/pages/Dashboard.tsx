@@ -68,6 +68,8 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [needsDriveAccess, setNeedsDriveAccess] = useState(false);
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -146,6 +148,23 @@ const Dashboard = () => {
     setShareOpen(true);
   };
 
+  // Connect to Google Drive (request access)
+  const handleConnectDrive = async () => {
+    setIsConnectingDrive(true);
+    try {
+      await requestDriveAccess();
+    } catch (error) {
+      console.error("Failed to connect Drive:", error);
+      toast({
+        title: "Failed to connect",
+        description: "Could not connect to Google Drive. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConnectingDrive(false);
+    }
+  };
+
   // Sync projects from Google Drive
   const handleSyncFromDrive = async () => {
     if (!rootFolderId || !organizationId || !user) {
@@ -165,13 +184,16 @@ const Dashboard = () => {
       
       // Check if we need Drive access
       if (rootResult.needsDriveAccess) {
+        setNeedsDriveAccess(true);
+        setIsSyncing(false);
         toast({
           title: "Drive access required",
-          description: "Please grant Google Drive access to sync your folders.",
+          description: "Click 'Connect Google Drive' to grant access.",
         });
-        await requestDriveAccess();
         return;
       }
+      
+      setNeedsDriveAccess(false);
       
       if (!rootResult.files) {
         throw new Error("Failed to access Google Drive.");
@@ -384,6 +406,23 @@ const Dashboard = () => {
               </button>
             </div>
           </div>
+
+          {/* Connect Drive Banner */}
+          {needsDriveAccess && rootFolderId && (
+            <div className="mx-2 mb-2 p-3 rounded-lg bg-primary/10 border border-primary/20">
+              <p className="text-xs text-muted-foreground mb-2">
+                Connect Google Drive to sync your folders
+              </p>
+              <Button
+                size="sm"
+                onClick={handleConnectDrive}
+                disabled={isConnectingDrive}
+                className="w-full"
+              >
+                {isConnectingDrive ? "Connecting..." : "Connect Google Drive"}
+              </Button>
+            </div>
+          )}
 
           <div className="space-y-1">
             {projects.length === 0 ? (
