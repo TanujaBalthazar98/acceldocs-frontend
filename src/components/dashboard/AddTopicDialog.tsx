@@ -8,28 +8,41 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Folder } from "lucide-react";
+import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { useToast } from "@/hooks/use-toast";
 
 interface AddTopicDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectName: string | null;
+  projectFolderId: string | null;
+  onCreated?: (folder: { id: string; name: string }) => void;
 }
 
-export const AddTopicDialog = ({ open, onOpenChange, projectName }: AddTopicDialogProps) => {
+export const AddTopicDialog = ({ open, onOpenChange, projectName, projectFolderId, onCreated }: AddTopicDialogProps) => {
   const [topicName, setTopicName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const { createFolder } = useGoogleDrive();
+  const { toast } = useToast();
 
   const handleCreate = async () => {
-    if (!topicName.trim()) return;
+    if (!topicName.trim() || !projectFolderId) return;
     
     setIsCreating(true);
-    // TODO: Create subfolder within project folder via Google Drive API
-    console.log("Creating topic folder:", topicName, "in project:", projectName);
     
-    // Reset and close
-    setTopicName("");
+    const folder = await createFolder(topicName.trim(), projectFolderId);
+    
+    if (folder) {
+      toast({
+        title: "Topic created",
+        description: `"${topicName}" folder created in ${projectName}.`,
+      });
+      onCreated?.({ id: folder.id, name: folder.name });
+      setTopicName("");
+      onOpenChange(false);
+    }
+    
     setIsCreating(false);
-    onOpenChange(false);
   };
 
   return (
@@ -45,6 +58,14 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName }: AddTopicDial
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
+          {!projectFolderId && (
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+              <p className="text-sm text-destructive">
+                No project selected. Please select a project first.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
               Topic Name
@@ -56,7 +77,8 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName }: AddTopicDial
                 placeholder="e.g., Getting Started"
                 value={topicName}
                 onChange={(e) => setTopicName(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                disabled={!projectFolderId}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
               />
             </div>
           </div>
@@ -67,7 +89,7 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName }: AddTopicDial
             </Button>
             <Button 
               onClick={handleCreate} 
-              disabled={!topicName.trim() || isCreating}
+              disabled={!topicName.trim() || isCreating || !projectFolderId}
             >
               {isCreating ? "Creating..." : "Create Topic"}
             </Button>

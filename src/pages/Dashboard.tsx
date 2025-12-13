@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import { AddProjectDialog } from "@/components/dashboard/AddProjectDialog";
 import { AddTopicDialog } from "@/components/dashboard/AddTopicDialog";
 import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
+import { supabase } from "@/integrations/supabase/client";
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -36,6 +37,12 @@ const stateConfig = {
   deprecated: { color: "bg-state-deprecated", label: "Deprecated" },
   archived: { color: "bg-state-archived", label: "Archived" },
 };
+
+interface Project {
+  id: string;
+  name: string;
+  drive_folder_id: string | null;
+}
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
@@ -49,11 +56,49 @@ const Dashboard = () => {
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addTopicOpen, setAddTopicOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
+  const [rootFolderId, setRootFolderId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   
-  // TODO: Replace with real data from database
-  const projects: { id: string; name: string; topics: number; pages: number }[] = [];
+  // Fetch organization's root folder ID and projects
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user) return;
+      
+      // Get user's organization
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", user.id)
+        .single();
+      
+      if (profile?.organization_id) {
+        // Get organization's root folder
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("id")
+          .eq("id", profile.organization_id)
+          .single();
+        
+        // Get projects
+        const { data: projectsData } = await supabase
+          .from("projects")
+          .select("id, name, drive_folder_id")
+          .eq("organization_id", profile.organization_id);
+        
+        if (projectsData) {
+          setProjects(projectsData);
+        }
+        
+        // For now, we'll need the user to set root folder in settings
+        // Check if org has a root folder configured (we may need to add this column)
+      }
+    };
+    
+    fetchData();
+  }, [user]);
+  
   const pages: { title: string; state: "active" | "draft" | "deprecated" | "archived"; owner: string; verified: string; visibility: "internal" | "public" | "external" }[] = [];
 
   const handleSignOut = async () => {
@@ -141,10 +186,9 @@ const Dashboard = () => {
                 >
                   <FolderTree className="w-4 h-4" />
                   <span className="flex-1 text-left truncate">{project.name}</span>
-                  <span className="text-xs text-muted-foreground">{project.pages}</span>
                   <button
                     onClick={() => {
-                      setSelectedProject(project.name);
+                      setSelectedProject(project);
                       setProjectSettingsOpen(true);
                     }}
                     className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
@@ -387,24 +431,30 @@ const Dashboard = () => {
       <AddPageDialog
         open={addPageOpen}
         onOpenChange={setAddPageOpen}
-        projectName={selectedProject}
+        projectName={selectedProject?.name}
+        parentFolderId={selectedProject?.drive_folder_id || null}
       />
       
       <AddProjectDialog
         open={addProjectOpen}
         onOpenChange={setAddProjectOpen}
+        rootFolderId={rootFolderId}
+        onCreated={(folder) => {
+          setProjects(prev => [...prev, { id: folder.id, name: folder.name, drive_folder_id: folder.id }]);
+        }}
       />
       
       <AddTopicDialog
         open={addTopicOpen}
         onOpenChange={setAddTopicOpen}
-        projectName={selectedProject}
+        projectName={selectedProject?.name || null}
+        projectFolderId={selectedProject?.drive_folder_id || null}
       />
       
       <ProjectSettingsPanel
         open={projectSettingsOpen}
         onOpenChange={setProjectSettingsOpen}
-        projectName={selectedProject}
+        projectName={selectedProject?.name || null}
       />
     </div>
   );

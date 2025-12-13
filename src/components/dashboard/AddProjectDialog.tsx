@@ -8,27 +8,40 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { FolderPlus } from "lucide-react";
+import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { useToast } from "@/hooks/use-toast";
 
 interface AddProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  rootFolderId: string | null;
+  onCreated?: (folder: { id: string; name: string }) => void;
 }
 
-export const AddProjectDialog = ({ open, onOpenChange }: AddProjectDialogProps) => {
+export const AddProjectDialog = ({ open, onOpenChange, rootFolderId, onCreated }: AddProjectDialogProps) => {
   const [projectName, setProjectName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const { createFolder } = useGoogleDrive();
+  const { toast } = useToast();
 
   const handleCreate = async () => {
-    if (!projectName.trim()) return;
+    if (!projectName.trim() || !rootFolderId) return;
     
     setIsCreating(true);
-    // TODO: Create subfolder in root Google Drive folder via API
-    console.log("Creating project folder:", projectName);
     
-    // Reset and close
-    setProjectName("");
+    const folder = await createFolder(projectName.trim(), rootFolderId);
+    
+    if (folder) {
+      toast({
+        title: "Project created",
+        description: `"${projectName}" folder created in Drive.`,
+      });
+      onCreated?.({ id: folder.id, name: folder.name });
+      setProjectName("");
+      onOpenChange(false);
+    }
+    
     setIsCreating(false);
-    onOpenChange(false);
   };
 
   return (
@@ -44,6 +57,14 @@ export const AddProjectDialog = ({ open, onOpenChange }: AddProjectDialogProps) 
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
+          {!rootFolderId && (
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+              <p className="text-sm text-destructive">
+                No root folder configured. Please set your root folder in Settings first.
+              </p>
+            </div>
+          )}
+          
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
               Project Name
@@ -55,7 +76,8 @@ export const AddProjectDialog = ({ open, onOpenChange }: AddProjectDialogProps) 
                 placeholder="e.g., API Documentation"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                disabled={!rootFolderId}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -69,7 +91,7 @@ export const AddProjectDialog = ({ open, onOpenChange }: AddProjectDialogProps) 
             </Button>
             <Button 
               onClick={handleCreate} 
-              disabled={!projectName.trim() || isCreating}
+              disabled={!projectName.trim() || isCreating || !rootFolderId}
             >
               {isCreating ? "Creating..." : "Create Project"}
             </Button>
