@@ -40,18 +40,6 @@ export const useGoogleDrive = () => {
 
     if (error) {
       console.error("List folder error:", error);
-      // Check if it's a scope error from the response
-      const errorContext = error.context as { body?: string } | undefined;
-      if (errorContext?.body) {
-        try {
-          const body = JSON.parse(errorContext.body);
-          if (body.details?.includes("insufficient") || body.details?.includes("SCOPE_INSUFFICIENT")) {
-            return { files: null, needsDriveAccess: true };
-          }
-        } catch (e) {
-          // Ignore parse error
-        }
-      }
       toast({
         title: "Failed to list folder",
         description: error.message,
@@ -60,12 +48,8 @@ export const useGoogleDrive = () => {
       return { files: null };
     }
 
-    // Also check the data for scope errors
-    if (data?.error && (data.details?.includes("insufficient") || data.details?.includes("SCOPE_INSUFFICIENT"))) {
-      return { files: null, needsDriveAccess: true };
-    }
-
-    if (data?.needsReauth) {
+    // Check for scope/drive access needed
+    if (data?.needsDriveAccess) {
       return { files: null, needsDriveAccess: true };
     }
 
