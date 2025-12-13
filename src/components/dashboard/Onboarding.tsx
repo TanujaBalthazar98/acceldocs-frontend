@@ -85,11 +85,18 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       // If no organization exists (individual user), create one
       if (!orgId && user) {
         const emailDomain = user.email?.split("@")[1] || "personal";
+        // For personal email domains, use a unique domain per user to avoid conflicts
+        const isPersonalEmail = ["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", 
+          "msn.com", "yahoo.com", "yahoo.co.uk", "ymail.com", "aol.com", 
+          "icloud.com", "me.com", "mac.com", "protonmail.com", "proton.me",
+          "tutanota.com", "zoho.com", "mail.com", "gmx.com", "gmx.net"].includes(emailDomain.toLowerCase());
+        
+        const domain = isPersonalEmail ? `personal-${user.id}` : emailDomain;
         
         const { data: newOrg, error: orgError } = await supabase
           .from("organizations")
           .insert({
-            domain: emailDomain,
+            domain: domain,
             name: workspaceName,
             owner_id: user.id,
           })
