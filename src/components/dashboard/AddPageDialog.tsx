@@ -8,33 +8,46 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { FilePlus } from "lucide-react";
+import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { useToast } from "@/hooks/use-toast";
 
 interface AddPageDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectName?: string | null;
   topicName?: string | null;
+  parentFolderId: string | null;
+  onCreated?: (doc: { id: string; name: string }) => void;
 }
 
-export const AddPageDialog = ({ open, onOpenChange, projectName, topicName }: AddPageDialogProps) => {
+export const AddPageDialog = ({ open, onOpenChange, projectName, topicName, parentFolderId, onCreated }: AddPageDialogProps) => {
   const [pageTitle, setPageTitle] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const { createDoc } = useGoogleDrive();
+  const { toast } = useToast();
 
   const locationText = topicName 
     ? `${projectName} / ${topicName}` 
     : projectName || "current project";
 
   const handleCreate = async () => {
-    if (!pageTitle.trim()) return;
+    if (!pageTitle.trim() || !parentFolderId) return;
     
     setIsCreating(true);
-    // TODO: Create new Google Doc in the project/topic folder via Google Drive API
-    console.log("Creating Google Doc:", pageTitle, "in:", locationText);
     
-    // Reset and close
-    setPageTitle("");
+    const doc = await createDoc(pageTitle.trim(), parentFolderId);
+    
+    if (doc) {
+      toast({
+        title: "Page created",
+        description: `"${pageTitle}" document created.`,
+      });
+      onCreated?.({ id: doc.id, name: doc.name });
+      setPageTitle("");
+      onOpenChange(false);
+    }
+    
     setIsCreating(false);
-    onOpenChange(false);
   };
 
   return (
@@ -50,6 +63,14 @@ export const AddPageDialog = ({ open, onOpenChange, projectName, topicName }: Ad
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
+          {!parentFolderId && (
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+              <p className="text-sm text-destructive">
+                No folder selected. Please select a project or topic first.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
               Page Title
@@ -61,7 +82,8 @@ export const AddPageDialog = ({ open, onOpenChange, projectName, topicName }: Ad
                 placeholder="e.g., Getting Started Guide"
                 value={pageTitle}
                 onChange={(e) => setPageTitle(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                disabled={!parentFolderId}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -75,7 +97,7 @@ export const AddPageDialog = ({ open, onOpenChange, projectName, topicName }: Ad
             </Button>
             <Button 
               onClick={handleCreate} 
-              disabled={!pageTitle.trim() || isCreating}
+              disabled={!pageTitle.trim() || isCreating || !parentFolderId}
             >
               {isCreating ? "Creating..." : "Create Page"}
             </Button>

@@ -58,6 +58,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       provider: "google",
       options: {
         redirectTo: redirectUrl,
+        scopes: "https://www.googleapis.com/auth/drive.file",
       },
     });
 
