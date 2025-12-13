@@ -23,6 +23,7 @@ import { PageView } from "@/components/dashboard/PageView";
 import { SharePanel } from "@/components/dashboard/SharePanel";
 import { AddPageDialog } from "@/components/dashboard/AddPageDialog";
 import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
+import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -84,6 +85,7 @@ const Dashboard = () => {
   const [addPageOpen, setAddPageOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState("Developer Docs");
+  const [showGeneralSettings, setShowGeneralSettings] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
@@ -104,6 +106,11 @@ const Dashboard = () => {
     setSharePageTitle(title);
     setShareOpen(true);
   };
+
+  // If showing general settings
+  if (showGeneralSettings) {
+    return <GeneralSettings onBack={() => setShowGeneralSettings(false)} />;
+  }
 
   // If a page is selected, show the PageView
   if (selectedPage) {
@@ -192,7 +199,12 @@ const Dashboard = () => {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="ghost" size="sm" className="flex-1 justify-start gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="flex-1 justify-start gap-2"
+              onClick={() => setShowGeneralSettings(true)}
+            >
               <Settings className="w-4 h-4" />
               Settings
             </Button>

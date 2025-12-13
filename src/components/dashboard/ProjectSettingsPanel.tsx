@@ -8,11 +8,8 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import {
-  FolderOpen,
-  User,
   Users,
   Trash2,
-  ExternalLink,
   ChevronDown,
   AlertTriangle,
   RefreshCw,
@@ -42,9 +39,7 @@ export const ProjectSettingsPanel = ({
   onOpenChange,
   projectName,
 }: ProjectSettingsProps) => {
-  const [folderUrl, setFolderUrl] = useState(
-    "https://drive.google.com/drive/folders/1abc..."
-  );
+  const [name, setName] = useState(projectName);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -66,7 +61,8 @@ export const ProjectSettingsPanel = ({
             </label>
             <input
               type="text"
-              defaultValue={projectName}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
@@ -81,30 +77,6 @@ export const ProjectSettingsPanel = ({
               placeholder="Add a description for this project..."
               className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
             />
-          </div>
-
-          {/* Root Folder */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground">
-              Google Drive Root Folder
-            </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <FolderOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={folderUrl}
-                  onChange={(e) => setFolderUrl(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-              </div>
-              <Button variant="outline" size="icon">
-                <ExternalLink className="w-4 h-4" />
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Documents in this folder can be added to this project.
-            </p>
           </div>
 
           {/* Sync Status */}
@@ -128,11 +100,11 @@ export const ProjectSettingsPanel = ({
             </div>
           </div>
 
-          {/* Team Members */}
+          {/* Project Members */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium text-foreground">
-                Team Members
+                Project Members
               </label>
               <Button variant="ghost" size="sm" className="gap-2 text-primary">
                 <Users className="w-3 h-3" />
@@ -140,7 +112,7 @@ export const ProjectSettingsPanel = ({
               </Button>
             </div>
             <div className="space-y-2">
-              {mockMembers.map((member) => (
+              {mockMembers.slice(0, 3).map((member) => (
                 <div
                   key={member.email}
                   className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/50"
@@ -179,29 +151,6 @@ export const ProjectSettingsPanel = ({
                   </DropdownMenu>
                 </div>
               ))}
-            </div>
-          </div>
-
-          {/* Transfer Ownership */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground">
-              Transfer Ownership
-            </label>
-            <div className="p-4 rounded-lg border border-border bg-secondary/30">
-              <div className="flex items-start gap-3">
-                <User className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-sm text-foreground">
-                    Transfer this project to another team member
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    The new owner will have full control over this project.
-                  </p>
-                  <Button variant="outline" size="sm" className="mt-3">
-                    Transfer Ownership
-                  </Button>
-                </div>
-              </div>
             </div>
           </div>
 
