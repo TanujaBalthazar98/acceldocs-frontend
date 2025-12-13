@@ -161,15 +161,25 @@ const Dashboard = () => {
     
     try {
       // List all items in root folder
-      const rootItems = await listFolder(rootFolderId);
+      const rootResult = await listFolder(rootFolderId);
       
-      if (!rootItems) {
-        throw new Error("Failed to access Google Drive. Please re-authenticate.");
+      // Check if we need Drive access
+      if (rootResult.needsDriveAccess) {
+        toast({
+          title: "Drive access required",
+          description: "Please grant Google Drive access to sync your folders.",
+        });
+        await requestDriveAccess();
+        return;
+      }
+      
+      if (!rootResult.files) {
+        throw new Error("Failed to access Google Drive.");
       }
 
       // Filter for folders (projects)
       const folderMimeType = "application/vnd.google-apps.folder";
-      const projectFolders = rootItems.filter(item => item.mimeType === folderMimeType);
+      const projectFolders = rootResult.files.filter(item => item.mimeType === folderMimeType);
       
       let syncedProjects = 0;
       let syncedDocs = 0;
@@ -210,11 +220,20 @@ const Dashboard = () => {
         }
 
         // List docs in this project folder
-        const projectItems = await listFolder(folder.id);
+        const projectResult = await listFolder(folder.id);
         
-        if (projectItems) {
+        if (projectResult.needsDriveAccess) {
+          toast({
+            title: "Drive access required",
+            description: "Please grant Google Drive access to sync your folders.",
+          });
+          await requestDriveAccess();
+          return;
+        }
+        
+        if (projectResult.files) {
           const docMimeType = "application/vnd.google-apps.document";
-          const docs = projectItems.filter(item => item.mimeType === docMimeType);
+          const docs = projectResult.files.filter(item => item.mimeType === docMimeType);
           
           for (const doc of docs) {
             // Check if document already exists
