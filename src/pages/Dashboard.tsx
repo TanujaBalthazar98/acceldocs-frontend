@@ -84,20 +84,19 @@ const Dashboard = () => {
     if (profile?.organization_id) {
       setOrganizationId(profile.organization_id);
       
-      // Get organization's root folder
+      // Get organization details
       const { data: org } = await supabase
         .from("organizations")
-        .select("id, drive_folder_id")
+        .select("id, drive_folder_id, name")
         .eq("id", profile.organization_id)
         .single();
       
       if (org?.drive_folder_id) {
         setRootFolderId(org.drive_folder_id);
-        setNeedsOnboarding(false);
-      } else {
-        // Organization exists but no root folder - needs onboarding
-        setNeedsOnboarding(true);
       }
+      
+      // Onboarding is complete if the organization has a name set (not just the default domain)
+      setNeedsOnboarding(false);
       
       // Get projects
       const { data: projectsData } = await supabase
