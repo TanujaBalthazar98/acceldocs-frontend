@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,14 +7,17 @@ import { FileText, FolderOpen, CheckCircle2, ArrowRight, Loader2, Link2 } from "
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { PlanSelection } from "./PlanSelection";
 
 interface OnboardingProps {
   onComplete: () => void;
   organizationId: string | null;
 }
 
+type Plan = "free" | "pro" | "enterprise";
+
 export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
-  const { user, requestDriveAccess } = useAuth();
+  const { user, session, requestDriveAccess } = useAuth();
   const { toast } = useToast();
   const { createFolder } = useGoogleDrive();
   const [step, setStep] = useState(1);
@@ -22,6 +25,24 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [workspaceName, setWorkspaceName] = useState("");
   const [driveConnected, setDriveConnected] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<Plan>("free");
+
+  // Check if Drive is already connected (has provider_token with drive scope)
+  useEffect(() => {
+    const checkDriveConnection = async () => {
+      if (session?.provider_token) {
+        // If we have a provider token, Drive might be connected
+        // We can verify by checking if we can make a simple API call
+        setDriveConnected(true);
+      }
+    };
+    checkDriveConnection();
+  }, [session]);
+
+  const handlePlanSelect = (plan: Plan) => {
+    setSelectedPlan(plan);
+    setStep(2);
+  };
 
   const handleConnectDrive = async () => {
     setIsConnecting(true);
@@ -33,6 +54,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           description: "Failed to connect Google Drive. Please try again.",
           variant: "destructive",
         });
+        setIsConnecting(false);
       }
       // The page will redirect to Google for authorization
     } catch (error: any) {
@@ -95,9 +117,11 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     }
   };
 
+  const totalSteps = 4;
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-3xl">
         {/* Logo */}
         <div className="flex items-center gap-3 mb-8 justify-center">
           <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
@@ -107,36 +131,44 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         </div>
 
         {/* Progress Steps */}
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-            step >= 1 ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
-          }`}>
-            {step > 1 ? <CheckCircle2 className="w-5 h-5" /> : "1"}
-          </div>
-          <div className={`w-12 h-0.5 ${step > 1 ? "bg-primary" : "bg-border"}`} />
-          <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-            step >= 2 ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
-          }`}>
-            {step > 2 ? <CheckCircle2 className="w-5 h-5" /> : "2"}
-          </div>
-          <div className={`w-12 h-0.5 ${step > 2 ? "bg-primary" : "bg-border"}`} />
-          <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-            step >= 3 ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
-          }`}>
-            {step > 3 ? <CheckCircle2 className="w-5 h-5" /> : "3"}
-          </div>
+        <div className="flex items-center justify-center gap-2 mb-8">
+          {[1, 2, 3, 4].map((s, i) => (
+            <div key={s} className="flex items-center">
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
+                step >= s ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
+              }`}>
+                {step > s ? <CheckCircle2 className="w-5 h-5" /> : s}
+              </div>
+              {i < totalSteps - 1 && (
+                <div className={`w-8 h-0.5 mx-1 ${step > s ? "bg-primary" : "bg-border"}`} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Step Labels */}
+        <div className="flex justify-center gap-4 mb-8 text-xs text-muted-foreground">
+          <span className={step >= 1 ? "text-primary" : ""}>Plan</span>
+          <span className={step >= 2 ? "text-primary" : ""}>Welcome</span>
+          <span className={step >= 3 ? "text-primary" : ""}>Connect Drive</span>
+          <span className={step >= 4 ? "text-primary" : ""}>Workspace</span>
         </div>
 
         {/* Step Content */}
         <div className="glass rounded-2xl p-8">
           {step === 1 && (
-            <div className="text-center">
+            <PlanSelection onSelect={handlePlanSelect} />
+          )}
+
+          {step === 2 && (
+            <div className="text-center max-w-md mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <CheckCircle2 className="w-8 h-8 text-primary" />
               </div>
               <h2 className="text-2xl font-bold mb-3">Welcome to DocLayer!</h2>
               <p className="text-muted-foreground mb-6">
-                You're signed in. Next, let's connect your Google Drive to manage your documentation.
+                You're on the <span className="text-primary font-medium capitalize">{selectedPlan}</span> plan. 
+                Next, let's connect your Google Drive to manage your documentation.
               </p>
               <div className="text-sm text-muted-foreground mb-6 p-4 rounded-lg bg-secondary/50">
                 <p className="font-medium text-foreground mb-1">Signed in as:</p>
@@ -145,7 +177,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               <Button 
                 variant="hero" 
                 size="lg" 
-                onClick={() => setStep(2)}
+                onClick={() => setStep(3)}
                 className="gap-2"
               >
                 Continue
@@ -154,8 +186,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
             </div>
           )}
 
-          {step === 2 && (
-            <div className="text-center">
+          {step === 3 && (
+            <div className="text-center max-w-md mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <Link2 className="w-8 h-8 text-primary" />
               </div>
@@ -173,7 +205,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                   <Button 
                     variant="hero" 
                     size="lg" 
-                    onClick={() => setStep(3)}
+                    onClick={() => setStep(4)}
                     className="gap-2"
                   >
                     Continue
@@ -209,7 +241,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                     )}
                   </Button>
                   <button
-                    onClick={() => setStep(3)}
+                    onClick={() => setStep(4)}
                     className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Skip for now (you can connect later)
@@ -219,8 +251,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
             </div>
           )}
 
-          {step === 3 && (
-            <div>
+          {step === 4 && (
+            <div className="max-w-md mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <FolderOpen className="w-8 h-8 text-primary" />
               </div>

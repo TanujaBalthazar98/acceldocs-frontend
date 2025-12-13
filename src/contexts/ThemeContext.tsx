@@ -24,14 +24,25 @@ interface ThemeProviderProps {
 
 export const ThemeProvider = ({ children }: ThemeProviderProps) => {
   const [theme, setThemeState] = useState<Theme>(() => {
+    // Check localStorage first
     const saved = localStorage.getItem("theme");
-    return (saved as Theme) || "dark";
+    if (saved === "light" || saved === "dark") {
+      return saved;
+    }
+    // Check system preference
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: light)").matches) {
+      return "light";
+    }
+    return "dark";
   });
 
   useEffect(() => {
     const root = document.documentElement;
+    // Remove both classes first to ensure clean state
     root.classList.remove("light", "dark");
+    // Add the current theme class
     root.classList.add(theme);
+    // Persist to localStorage
     localStorage.setItem("theme", theme);
   }, [theme]);
 
