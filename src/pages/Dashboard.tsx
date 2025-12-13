@@ -109,8 +109,9 @@ const Dashboard = () => {
         setProjects(projectsData);
       }
     } else {
-      // No organization - individual user or needs setup
-      setNeedsOnboarding(false);
+      // No organization - individual user needs onboarding to create one
+      setNeedsOnboarding(true);
+      setOrganizationId(null);
     }
     
     setIsLoading(false);
@@ -156,8 +157,8 @@ const Dashboard = () => {
     );
   }
 
-  // Onboarding flow for new users with organization but no root folder
-  if (needsOnboarding && organizationId) {
+  // Onboarding flow for new users (with or without organization)
+  if (needsOnboarding) {
     return (
       <Onboarding 
         onComplete={() => {
