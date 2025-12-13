@@ -18,7 +18,8 @@ import {
   Share2,
   MoreHorizontal,
   Sun,
-  Moon
+  Moon,
+  RefreshCw
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +32,7 @@ import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPane
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { supabase } from "@/integrations/supabase/client";
+import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -50,6 +52,7 @@ const Dashboard = () => {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { listFolder } = useGoogleDrive();
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [sharePageTitle, setSharePageTitle] = useState("");
@@ -64,6 +67,7 @@ const Dashboard = () => {
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -142,6 +146,123 @@ const Dashboard = () => {
     setShareOpen(true);
   };
 
+  // Sync projects from Google Drive
+  const handleSyncFromDrive = async () => {
+    if (!rootFolderId || !organizationId || !user) {
+      toast({
+        title: "Cannot sync",
+        description: "Please configure your root folder in Settings first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    
+    try {
+      // List all items in root folder
+      const rootItems = await listFolder(rootFolderId);
+      
+      if (!rootItems) {
+        throw new Error("Failed to access Google Drive. Please re-authenticate.");
+      }
+
+      // Filter for folders (projects)
+      const folderMimeType = "application/vnd.google-apps.folder";
+      const projectFolders = rootItems.filter(item => item.mimeType === folderMimeType);
+      
+      let syncedProjects = 0;
+      let syncedDocs = 0;
+
+      for (const folder of projectFolders) {
+        // Check if project already exists
+        const { data: existingProject } = await supabase
+          .from("projects")
+          .select("id")
+          .eq("drive_folder_id", folder.id)
+          .maybeSingle();
+
+        let projectId: string;
+
+        if (existingProject) {
+          projectId = existingProject.id;
+        } else {
+          // Create new project
+          const { data: newProject, error: projectError } = await supabase
+            .from("projects")
+            .insert({
+              name: folder.name,
+              drive_folder_id: folder.id,
+              organization_id: organizationId,
+              created_by: user.id,
+              is_connected: true,
+            })
+            .select("id")
+            .single();
+
+          if (projectError) {
+            console.error("Error creating project:", projectError);
+            continue;
+          }
+          
+          projectId = newProject.id;
+          syncedProjects++;
+        }
+
+        // List docs in this project folder
+        const projectItems = await listFolder(folder.id);
+        
+        if (projectItems) {
+          const docMimeType = "application/vnd.google-apps.document";
+          const docs = projectItems.filter(item => item.mimeType === docMimeType);
+          
+          for (const doc of docs) {
+            // Check if document already exists
+            const { data: existingDoc } = await supabase
+              .from("documents")
+              .select("id")
+              .eq("google_doc_id", doc.id)
+              .maybeSingle();
+
+            if (!existingDoc) {
+              // Create new document
+              const { error: docError } = await supabase
+                .from("documents")
+                .insert({
+                  title: doc.name,
+                  google_doc_id: doc.id,
+                  project_id: projectId,
+                  google_modified_at: doc.modifiedTime,
+                });
+
+              if (!docError) {
+                syncedDocs++;
+              }
+            }
+          }
+        }
+      }
+
+      toast({
+        title: "Sync complete",
+        description: `Synced ${syncedProjects} new projects and ${syncedDocs} new documents.`,
+      });
+
+      // Refresh the projects list
+      fetchData();
+      
+    } catch (error: any) {
+      console.error("Sync error:", error);
+      toast({
+        title: "Sync failed",
+        description: error.message || "Failed to sync from Google Drive.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Loading state
   if (isLoading) {
     return (
@@ -214,12 +335,22 @@ const Dashboard = () => {
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Projects
             </span>
-            <button 
-              onClick={() => setAddProjectOpen(true)}
-              className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={handleSyncFromDrive}
+                disabled={isSyncing || !rootFolderId}
+                className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                title="Sync from Google Drive"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              </button>
+              <button 
+                onClick={() => setAddProjectOpen(true)}
+                className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <div className="space-y-1">
