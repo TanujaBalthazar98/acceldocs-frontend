@@ -82,7 +82,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     try {
       let orgId = organizationId;
 
-      // If no organization exists (individual user), create one
+      // If no organization exists (individual user), check if one was already created or create new
       if (!orgId && user) {
         const emailDomain = user.email?.split("@")[1] || "personal";
         // For personal email domains, use a unique domain per user to avoid conflicts
@@ -93,20 +93,31 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         
         const domain = isPersonalEmail ? `personal-${user.id}` : emailDomain;
         
-        const { data: newOrg, error: orgError } = await supabase
+        // Check if org already exists for this user
+        const { data: existingOrg } = await supabase
           .from("organizations")
-          .insert({
-            domain: domain,
-            name: workspaceName,
-            owner_id: user.id,
-          })
           .select("id")
-          .single();
+          .eq("owner_id", user.id)
+          .maybeSingle();
+        
+        if (existingOrg) {
+          orgId = existingOrg.id;
+        } else {
+          const { data: newOrg, error: orgError } = await supabase
+            .from("organizations")
+            .insert({
+              domain: domain,
+              name: workspaceName,
+              owner_id: user.id,
+            })
+            .select("id")
+            .single();
 
-        if (orgError) throw orgError;
-        orgId = newOrg.id;
+          if (orgError) throw orgError;
+          orgId = newOrg.id;
+        }
 
-        // Upsert user's profile with the new organization (create if doesn't exist)
+        // Upsert user's profile with the organization (create if doesn't exist)
         const { error: profileError } = await supabase
           .from("profiles")
           .upsert({ 
@@ -118,14 +129,15 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
         if (profileError) throw profileError;
 
-        // Add owner role
+        // Add owner role (ignore if already exists)
         await supabase
           .from("user_roles")
-          .insert({
+          .upsert({
             user_id: user.id,
             organization_id: orgId,
             role: "owner",
-          });
+          }, { onConflict: "user_id,organization_id" })
+          .select();
       }
 
       if (!orgId) {
