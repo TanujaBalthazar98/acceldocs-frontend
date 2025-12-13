@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { 
@@ -12,10 +13,13 @@ import {
   AlertTriangle,
   User,
   Clock,
-  Circle
+  Circle,
+  Share2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { PageView } from "@/components/dashboard/PageView";
+import { SharePanel } from "@/components/dashboard/SharePanel";
 
 const mockProjects = [
   { id: "1", name: "Developer Docs", topics: 4, pages: 12 },
@@ -65,6 +69,9 @@ const Dashboard = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [selectedPage, setSelectedPage] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [sharePageTitle, setSharePageTitle] = useState("");
 
   const handleSignOut = async () => {
     await signOut();
@@ -74,6 +81,21 @@ const Dashboard = () => {
     });
     navigate("/");
   };
+
+  const handleOpenPage = (title: string) => {
+    setSelectedPage(title);
+  };
+
+  const handleSharePage = (e: React.MouseEvent, title: string) => {
+    e.stopPropagation();
+    setSharePageTitle(title);
+    setShareOpen(true);
+  };
+
+  // If a page is selected, show the PageView
+  if (selectedPage) {
+    return <PageView onBack={() => setSelectedPage(null)} />;
+  }
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -250,12 +272,13 @@ const Dashboard = () => {
                   {mockPages.map((page) => (
                     <tr
                       key={page.title}
-                      className="hover:bg-secondary/30 transition-colors cursor-pointer"
+                      className="hover:bg-secondary/30 transition-colors cursor-pointer group"
+                      onClick={() => handleOpenPage(page.title)}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <FileText className="w-4 h-4 text-muted-foreground" />
-                          <div>
+                          <div className="flex-1">
                             <span className="text-sm font-medium text-foreground">
                               {page.title}
                             </span>
@@ -265,6 +288,12 @@ const Dashboard = () => {
                               </span>
                             )}
                           </div>
+                          <button
+                            onClick={(e) => handleSharePage(e, page.title)}
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
+                          >
+                            <Share2 className="w-4 h-4 text-muted-foreground" />
+                          </button>
                         </div>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
@@ -313,6 +342,12 @@ const Dashboard = () => {
           </div>
         </div>
       </main>
+
+      <SharePanel
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        pageTitle={sharePageTitle}
+      />
     </div>
   );
 };
