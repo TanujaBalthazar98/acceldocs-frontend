@@ -88,13 +88,18 @@ export default function Docs() {
   const [documentHtml, setDocumentHtml] = useState<string | null>(null);
   const [isOrgUser, setIsOrgUser] = useState(false);
 
+  // Track if we've already fetched to avoid double fetching
+  const [hasFetched, setHasFetched] = useState(false);
+
   // Fetch accessible projects, topics, and documents
   useEffect(() => {
     // Wait for auth to finish loading before fetching content
-    if (!authLoading) {
+    // Only fetch once after auth is resolved
+    if (!authLoading && !hasFetched) {
+      setHasFetched(true);
       fetchContent();
     }
-  }, [user, authLoading]);
+  }, [authLoading, hasFetched]);
 
   // Auto-sync content when document is selected
   const autoSyncContent = async (doc: Document) => {
@@ -137,14 +142,18 @@ export default function Docs() {
   const fetchContent = async () => {
     setLoading(true);
     try {
+      // Get fresh session to avoid stale closures
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUser = session?.user;
+      
       // Check if user is authenticated and has organization access
       let userOrgId: string | null = null;
       
-      if (user) {
+      if (currentUser) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("organization_id")
-          .eq("id", user.id)
+          .eq("id", currentUser.id)
           .single();
         
         userOrgId = profile?.organization_id || null;
