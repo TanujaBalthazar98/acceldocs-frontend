@@ -44,10 +44,11 @@ const App = () => (
                     </ProtectedRoute>
                   }
                 />
-                {/* Public documentation routes - access controlled via RLS */}
+                {/* Public documentation routes - slug-based URLs with redirect support */}
                 <Route path="/docs" element={<Docs />} />
-                <Route path="/docs/:projectId" element={<Docs />} />
-                <Route path="/docs/:projectId/:pageId" element={<Docs />} />
+                <Route path="/docs/:orgSlug" element={<Docs />} />
+                <Route path="/docs/:orgSlug/:projectSlug" element={<Docs />} />
+                <Route path="/docs/:orgSlug/:projectSlug/:pageSlug" element={<Docs />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

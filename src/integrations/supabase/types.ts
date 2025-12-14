@@ -26,6 +26,7 @@ export type Database = {
           last_synced_at: string | null
           owner_id: string | null
           project_id: string
+          slug: string | null
           title: string
           topic_id: string | null
           updated_at: string
@@ -42,6 +43,7 @@ export type Database = {
           last_synced_at?: string | null
           owner_id?: string | null
           project_id: string
+          slug?: string | null
           title: string
           topic_id?: string | null
           updated_at?: string
@@ -58,6 +60,7 @@ export type Database = {
           last_synced_at?: string | null
           owner_id?: string | null
           project_id?: string
+          slug?: string | null
           title?: string
           topic_id?: string | null
           updated_at?: string
@@ -139,6 +142,7 @@ export type Database = {
           id: string
           name: string
           owner_id: string
+          slug: string | null
           updated_at: string
         }
         Insert: {
@@ -148,6 +152,7 @@ export type Database = {
           id?: string
           name: string
           owner_id: string
+          slug?: string | null
           updated_at?: string
         }
         Update: {
@@ -157,6 +162,7 @@ export type Database = {
           id?: string
           name?: string
           owner_id?: string
+          slug?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -298,6 +304,7 @@ export type Database = {
           is_published: boolean
           name: string
           organization_id: string
+          slug: string | null
           updated_at: string
           visibility: Database["public"]["Enums"]["visibility_level"]
         }
@@ -311,6 +318,7 @@ export type Database = {
           is_published?: boolean
           name: string
           organization_id: string
+          slug?: string | null
           updated_at?: string
           visibility?: Database["public"]["Enums"]["visibility_level"]
         }
@@ -324,6 +332,7 @@ export type Database = {
           is_published?: boolean
           name?: string
           organization_id?: string
+          slug?: string | null
           updated_at?: string
           visibility?: Database["public"]["Enums"]["visibility_level"]
         }
@@ -336,6 +345,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      slug_history: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          old_slug: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          old_slug: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          old_slug?: string
+        }
+        Relationships: []
       }
       topics: {
         Row: {
@@ -421,6 +454,17 @@ export type Database = {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
       }
+      ensure_unique_slug: {
+        Args: {
+          base_slug: string
+          exclude_id?: string
+          scope_column: string
+          scope_value: string
+          table_name: string
+        }
+        Returns: string
+      }
+      generate_slug: { Args: { title: string }; Returns: string }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       has_org_role: {
         Args: {
