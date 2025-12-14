@@ -1038,41 +1038,43 @@ const Dashboard = () => {
                                   {doc.title}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1 mr-3">
                                 {doc.is_published ? (
                                   <CheckCircle className="w-3.5 h-3.5 text-green-500" />
                                 ) : null}
                                 <VisIcon className={`w-3 h-3 ${visibilityConfig[doc.visibility || 'internal'].color}`} />
                               </div>
-                              <button
-                                onClick={(e) => handleTogglePublishPage(e, doc.id, doc.is_published)}
-                                className={`p-1.5 rounded-md hover:bg-secondary transition-all ${
-                                  doc.is_published ? 'text-green-500' : 'text-muted-foreground'
-                                }`}
-                                title={doc.is_published ? "Unpublish" : "Publish"}
-                              >
-                                <Send className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenInDrive(doc.google_doc_id);
-                                }}
-                                className="p-1.5 rounded-md hover:bg-secondary transition-all text-muted-foreground"
-                                title="Open in Google Docs"
-                              >
-                                <ExternalLink className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
-                                  setDeleteDialogOpen(true);
-                                }}
-                                className="p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => handleTogglePublishPage(e, doc.id, doc.is_published)}
+                                  className={`p-1.5 rounded-md hover:bg-secondary transition-all ${
+                                    doc.is_published ? 'text-green-500' : 'text-muted-foreground'
+                                  }`}
+                                  title={doc.is_published ? "Unpublish" : "Publish"}
+                                >
+                                  <Send className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenInDrive(doc.google_doc_id);
+                                  }}
+                                  className="p-1.5 rounded-md hover:bg-secondary transition-all text-muted-foreground"
+                                  title="Open in Google Docs"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                  className="p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3 hidden sm:table-cell">
