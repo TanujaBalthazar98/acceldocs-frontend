@@ -27,7 +27,13 @@ interface GetDocContentRequest {
   docId: string;
 }
 
-type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | GetDocContentRequest;
+interface SyncDocContentRequest {
+  action: "sync_doc_content";
+  documentId: string;  // Our database document ID
+  googleDocId: string;
+}
+
+type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | GetDocContentRequest | SyncDocContentRequest;
 
 // Refresh Google access token using refresh token
 async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
@@ -271,6 +277,68 @@ Deno.serve(async (req) => {
       const htmlContent = await response.text();
       console.log("Document exported as HTML, length:", htmlContent.length);
 
+      return new Response(
+        JSON.stringify({ success: true, html: htmlContent }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Sync document content - fetches from Google and saves to database
+    if (body.action === "sync_doc_content") {
+      console.log("Syncing doc content:", body.googleDocId, "to document:", body.documentId);
+      
+      // Use Drive API to export as HTML
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}/export?mimeType=text/html`,
+        {
+          headers: {
+            Authorization: `Bearer ${googleToken}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Google Drive export error:", errorText);
+        
+        if (response.status === 401 || response.status === 403) {
+          return new Response(
+            JSON.stringify({ 
+              error: "Google authentication expired", 
+              needsReauth: true,
+              details: errorText 
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        return new Response(
+          JSON.stringify({ error: "Failed to get document", details: errorText }),
+          { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const htmlContent = await response.text();
+      console.log("Document exported as HTML, length:", htmlContent.length);
+
+      // Save to database
+      const { error: updateError } = await supabase
+        .from("documents")
+        .update({ 
+          content_html: htmlContent,
+          last_synced_at: new Date().toISOString()
+        })
+        .eq("id", body.documentId);
+
+      if (updateError) {
+        console.error("Database update error:", updateError);
+        return new Response(
+          JSON.stringify({ error: "Failed to save content", details: updateError.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log("Content synced successfully");
       return new Response(
         JSON.stringify({ success: true, html: htmlContent }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
