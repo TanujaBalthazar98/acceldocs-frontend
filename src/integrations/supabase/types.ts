@@ -168,6 +168,8 @@ export type Database = {
           created_at: string
           email: string
           full_name: string | null
+          google_refresh_token: string | null
+          google_token_refreshed_at: string | null
           id: string
           organization_id: string | null
           updated_at: string
@@ -178,6 +180,8 @@ export type Database = {
           created_at?: string
           email: string
           full_name?: string | null
+          google_refresh_token?: string | null
+          google_token_refreshed_at?: string | null
           id: string
           organization_id?: string | null
           updated_at?: string
@@ -188,6 +192,8 @@ export type Database = {
           created_at?: string
           email?: string
           full_name?: string | null
+          google_refresh_token?: string | null
+          google_token_refreshed_at?: string | null
           id?: string
           organization_id?: string | null
           updated_at?: string
