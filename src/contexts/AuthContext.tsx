@@ -41,21 +41,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return localStorage.getItem(GOOGLE_TOKEN_KEY);
   });
 
-  // Store refresh token in database
-  const storeRefreshToken = async (userId: string, refreshToken: string) => {
+  // Store refresh token by calling edge function that uses admin API
+  const storeRefreshToken = async () => {
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ 
-          google_refresh_token: refreshToken,
-          google_token_refreshed_at: new Date().toISOString()
-        })
-        .eq("id", userId);
+      console.log("Calling store-refresh-token edge function...");
+      const { data, error } = await supabase.functions.invoke('store-refresh-token');
       
       if (error) {
         console.error("Failed to store refresh token:", error);
       } else {
-        console.log("Refresh token stored successfully");
+        console.log("Store refresh token result:", data);
       }
     } catch (err) {
       console.error("Error storing refresh token:", err);
@@ -78,22 +73,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           setGoogleAccessToken(session.provider_token);
         }
         
-        // Store refresh token when available (on sign in with Google)
-        // Google only provides refresh token on initial consent
-        if (session?.provider_refresh_token && session?.user?.id) {
-          console.log("Provider refresh token found, storing...");
+        // Try to store refresh token via edge function on sign in
+        if (event === 'SIGNED_IN' && session?.user?.id) {
+          console.log("User signed in, attempting to store refresh token via edge function...");
           // Use setTimeout to avoid Supabase auth state change deadlock
           setTimeout(() => {
-            storeRefreshToken(session.user.id, session.provider_refresh_token!);
-          }, 100);
-        } else if (event === 'SIGNED_IN' && session?.user?.id) {
-          // Check if we got the refresh token in the URL hash (Supabase passes it this way)
-          const hashParams = new URLSearchParams(window.location.hash.substring(1));
-          const refreshToken = hashParams.get('provider_refresh_token');
-          if (refreshToken) {
-            console.log("Found provider refresh token in URL hash, storing...");
-            storeRefreshToken(session.user.id, refreshToken);
-          }
+            storeRefreshToken();
+          }, 500);
         }
         
         // Clear token on sign out
@@ -117,10 +103,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setGoogleAccessToken(session.provider_token);
       }
       
-      // Store refresh token if available on initial load
-      if (session?.provider_refresh_token && session?.user?.id) {
-        console.log("Initial session has refresh token, storing it");
-        storeRefreshToken(session.user.id, session.provider_refresh_token);
+      // Try to store refresh token on initial load if user is signed in
+      if (session?.user?.id) {
+        console.log("Initial session found, attempting to store refresh token...");
+        storeRefreshToken();
       }
     });
 
