@@ -22,6 +22,8 @@ import {
   RefreshCw,
   ExternalLink,
   Trash2,
+  Send,
+  CheckCircle,
   Lock,
   Eye,
   Globe
@@ -67,6 +69,8 @@ interface Project {
   id: string;
   name: string;
   drive_folder_id: string | null;
+  visibility: VisibilityLevel;
+  is_published: boolean;
 }
 
 interface Topic {
@@ -164,11 +168,11 @@ const Dashboard = () => {
       // Get projects
       const { data: projectsData } = await supabase
         .from("projects")
-        .select("id, name, drive_folder_id")
+        .select("id, name, drive_folder_id, visibility, is_published")
         .eq("organization_id", profile.organization_id);
-      
+
       if (projectsData) {
-        setProjects(projectsData);
+        setProjects(projectsData as Project[]);
         
         // Get topics for all projects
         const projectIds = projectsData.map(p => p.id);
@@ -306,6 +310,26 @@ const Dashboard = () => {
   
   const handleOpenInDrive = (googleDocId: string) => {
     window.open(`https://docs.google.com/document/d/${googleDocId}/edit`, '_blank');
+  };
+
+  const handleTogglePublishPage = async (e: React.MouseEvent, docId: string, currentState: boolean) => {
+    e.stopPropagation();
+    const newState = !currentState;
+    
+    const { error } = await supabase
+      .from("documents")
+      .update({ is_published: newState })
+      .eq("id", docId);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to update publish state.", variant: "destructive" });
+    } else {
+      toast({
+        title: newState ? "Published" : "Unpublished",
+        description: newState ? "Page is now live." : "Page is no longer published.",
+      });
+      setDocuments(prev => prev.map(d => d.id === docId ? { ...d, is_published: newState } : d));
+    }
   };
 
   const handleSignOut = async () => {
@@ -982,7 +1006,21 @@ const Dashboard = () => {
                                   {doc.title}
                                 </span>
                               </div>
-                              <VisIcon className={`w-3 h-3 ${visibilityConfig[doc.visibility || 'internal'].color}`} />
+                              <div className="flex items-center gap-1">
+                                {doc.is_published ? (
+                                  <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                                ) : null}
+                                <VisIcon className={`w-3 h-3 ${visibilityConfig[doc.visibility || 'internal'].color}`} />
+                              </div>
+                              <button
+                                onClick={(e) => handleTogglePublishPage(e, doc.id, doc.is_published)}
+                                className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all ${
+                                  doc.is_published ? 'text-green-500' : 'text-muted-foreground'
+                                }`}
+                                title={doc.is_published ? "Unpublish" : "Publish"}
+                              >
+                                <Send className="w-4 h-4" />
+                              </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1066,7 +1104,7 @@ const Dashboard = () => {
         onOpenChange={setAddProjectOpen}
         rootFolderId={rootFolderId}
         onCreated={(folder) => {
-          setProjects(prev => [...prev, { id: folder.id, name: folder.name, drive_folder_id: folder.id }]);
+          fetchData(); // Refetch to get full project data with all fields
         }}
       />
       
@@ -1082,7 +1120,9 @@ const Dashboard = () => {
       <ProjectSettingsPanel
         open={projectSettingsOpen}
         onOpenChange={setProjectSettingsOpen}
+        projectId={selectedProject?.id || null}
         projectName={selectedProject?.name || null}
+        onUpdate={() => fetchData()}
       />
       
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
