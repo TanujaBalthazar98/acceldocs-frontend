@@ -1000,13 +1000,13 @@ const Dashboard = () => {
                       Page
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden sm:table-cell">
-                      State
+                      Published
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden md:table-cell">
                       Owner
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden lg:table-cell">
-                      Verified
+                      Last Modified
                     </th>
                   </tr>
                 </thead>
@@ -1046,7 +1046,7 @@ const Dashboard = () => {
                               </div>
                               <button
                                 onClick={(e) => handleTogglePublishPage(e, doc.id, doc.is_published)}
-                                className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all ${
+                                className={`p-1.5 rounded-md hover:bg-secondary transition-all ${
                                   doc.is_published ? 'text-green-500' : 'text-muted-foreground'
                                 }`}
                                 title={doc.is_published ? "Unpublish" : "Publish"}
@@ -1058,10 +1058,10 @@ const Dashboard = () => {
                                   e.stopPropagation();
                                   handleOpenInDrive(doc.google_doc_id);
                                 }}
-                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
+                                className="p-1.5 rounded-md hover:bg-secondary transition-all text-muted-foreground"
                                 title="Open in Google Docs"
                               >
-                                <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                                <ExternalLink className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={(e) => {
@@ -1069,7 +1069,7 @@ const Dashboard = () => {
                                   setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
                                   setDeleteDialogOpen(true);
                                 }}
-                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
+                                className="p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -1077,8 +1077,17 @@ const Dashboard = () => {
                           </td>
                           <td className="px-4 py-3 hidden sm:table-cell">
                             <div className="flex items-center gap-2">
-                              <Circle className="w-2 h-2 bg-state-active rounded-full" />
-                              <span className="text-sm text-muted-foreground">Active</span>
+                              {doc.is_published ? (
+                                <>
+                                  <Circle className="w-2 h-2 bg-green-500 rounded-full" />
+                                  <span className="text-sm text-green-600">Published</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Circle className="w-2 h-2 bg-muted-foreground rounded-full" />
+                                  <span className="text-sm text-muted-foreground">Draft</span>
+                                </>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 hidden md:table-cell">
