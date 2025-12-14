@@ -10,34 +10,58 @@ import { Button } from "@/components/ui/button";
 import { Folder } from "lucide-react";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AddTopicDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectName: string | null;
+  projectId: string | null;
   projectFolderId: string | null;
-  onCreated?: (folder: { id: string; name: string }) => void;
+  onCreated?: (topic: { id: string; name: string; drive_folder_id: string }) => void;
 }
 
-export const AddTopicDialog = ({ open, onOpenChange, projectName, projectFolderId, onCreated }: AddTopicDialogProps) => {
+export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, projectFolderId, onCreated }: AddTopicDialogProps) => {
   const [topicName, setTopicName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const { createFolder } = useGoogleDrive();
   const { toast } = useToast();
 
   const handleCreate = async () => {
-    if (!topicName.trim() || !projectFolderId) return;
+    if (!topicName.trim() || !projectFolderId || !projectId) return;
     
     setIsCreating(true);
     
+    // Create folder in Google Drive
     const folder = await createFolder(topicName.trim(), projectFolderId);
     
     if (folder) {
-      toast({
-        title: "Topic created",
-        description: `"${topicName}" folder created in ${projectName}.`,
-      });
-      onCreated?.({ id: folder.id, name: folder.name });
+      // Save topic to database
+      const { data: topic, error } = await supabase
+        .from("topics")
+        .insert({
+          name: folder.name,
+          drive_folder_id: folder.id,
+          project_id: projectId,
+        })
+        .select("id, name, drive_folder_id")
+        .single();
+
+      if (error) {
+        console.error("Error saving topic:", error);
+        toast({
+          title: "Error",
+          description: "Folder created in Drive but failed to save to database.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Topic created",
+          description: `"${topicName}" created in ${projectName}.`,
+        });
+        onCreated?.(topic);
+      }
+      
       setTopicName("");
       onOpenChange(false);
     }
@@ -89,7 +113,7 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName, projectFolderI
             </Button>
             <Button 
               onClick={handleCreate} 
-              disabled={!topicName.trim() || isCreating || !projectFolderId}
+              disabled={!topicName.trim() || isCreating || !projectFolderId || !projectId}
             >
               {isCreating ? "Creating..." : "Create Topic"}
             </Button>

@@ -47,6 +47,13 @@ interface Project {
   drive_folder_id: string | null;
 }
 
+interface Topic {
+  id: string;
+  name: string;
+  drive_folder_id: string;
+  project_id: string;
+}
+
 const Dashboard = () => {
   const { user, signOut, requestDriveAccess } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -61,9 +68,12 @@ const Dashboard = () => {
   const [addTopicOpen, setAddTopicOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
   const [rootFolderId, setRootFolderId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
@@ -112,6 +122,19 @@ const Dashboard = () => {
       
       if (projectsData) {
         setProjects(projectsData);
+        
+        // Get topics for all projects
+        const projectIds = projectsData.map(p => p.id);
+        if (projectIds.length > 0) {
+          const { data: topicsData } = await supabase
+            .from("topics")
+            .select("id, name, drive_folder_id, project_id")
+            .in("project_id", projectIds);
+          
+          if (topicsData) {
+            setTopics(topicsData);
+          }
+        }
       }
     } else {
       // No organization - individual user needs onboarding to create one
@@ -241,7 +264,7 @@ const Dashboard = () => {
           syncedProjects++;
         }
 
-        // List docs in this project folder
+        // List items in this project folder (topics = subfolders, docs = pages)
         const projectResult = await listFolder(folder.id);
         
         if (projectResult.needsDriveAccess) {
@@ -253,31 +276,78 @@ const Dashboard = () => {
           return;
         }
         
+        let syncedTopics = 0;
+        
         if (projectResult.files) {
+          const folderMimeType = "application/vnd.google-apps.folder";
           const docMimeType = "application/vnd.google-apps.document";
-          const docs = projectResult.files.filter(item => item.mimeType === docMimeType);
           
-          for (const doc of docs) {
-            // Check if document already exists
-            const { data: existingDoc } = await supabase
-              .from("documents")
+          // Sync topic folders within the project
+          const topicFolders = projectResult.files.filter(item => item.mimeType === folderMimeType);
+          
+          for (const topicFolder of topicFolders) {
+            // Check if topic already exists
+            const { data: existingTopic } = await supabase
+              .from("topics")
               .select("id")
-              .eq("google_doc_id", doc.id)
+              .eq("drive_folder_id", topicFolder.id)
               .maybeSingle();
 
-            if (!existingDoc) {
-              // Create new document
-              const { error: docError } = await supabase
-                .from("documents")
-                .insert({
-                  title: doc.name,
-                  google_doc_id: doc.id,
-                  project_id: projectId,
-                  google_modified_at: doc.modifiedTime,
-                });
+            let topicId: string;
 
-              if (!docError) {
-                syncedDocs++;
+            if (existingTopic) {
+              topicId = existingTopic.id;
+            } else {
+              // Create new topic
+              const { data: newTopic, error: topicError } = await supabase
+                .from("topics")
+                .insert({
+                  name: topicFolder.name,
+                  drive_folder_id: topicFolder.id,
+                  project_id: projectId,
+                })
+                .select("id")
+                .single();
+
+              if (topicError) {
+                console.error("Error creating topic:", topicError);
+                continue;
+              }
+              
+              topicId = newTopic.id;
+              syncedTopics++;
+            }
+            
+            // List docs within this topic folder
+            const topicResult = await listFolder(topicFolder.id);
+            
+            if (topicResult.files) {
+              const docs = topicResult.files.filter(item => item.mimeType === docMimeType);
+              
+              for (const doc of docs) {
+                // Check if document already exists
+                const { data: existingDoc } = await supabase
+                  .from("documents")
+                  .select("id")
+                  .eq("google_doc_id", doc.id)
+                  .maybeSingle();
+
+                if (!existingDoc) {
+                  // Create new document with topic_id
+                  const { error: docError } = await supabase
+                    .from("documents")
+                    .insert({
+                      title: doc.name,
+                      google_doc_id: doc.id,
+                      project_id: projectId,
+                      topic_id: topicId,
+                      google_modified_at: doc.modifiedTime,
+                    });
+
+                  if (!docError) {
+                    syncedDocs++;
+                  }
+                }
               }
             }
           }
@@ -428,28 +498,96 @@ const Dashboard = () => {
             {projects.length === 0 ? (
               <p className="px-3 py-2 text-sm text-muted-foreground">No projects yet</p>
             ) : (
-              projects.map((project, index) => (
-                <div
-                  key={project.id}
-                  className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    index === 0
-                      ? "bg-secondary text-foreground"
-                      : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                  }`}
-                >
-                  <FolderTree className="w-4 h-4" />
-                  <span className="flex-1 text-left truncate">{project.name}</span>
-                  <button
-                    onClick={() => {
-                      setSelectedProject(project);
-                      setProjectSettingsOpen(true);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
-                  >
-                    <MoreHorizontal className="w-3 h-3" />
-                  </button>
-                </div>
-              ))
+              projects.map((project) => {
+                const projectTopics = topics.filter(t => t.project_id === project.id);
+                const isExpanded = expandedProjects.has(project.id);
+                
+                return (
+                  <div key={project.id}>
+                    <div
+                      className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                        selectedProject?.id === project.id
+                          ? "bg-secondary text-foreground"
+                          : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                      }`}
+                      onClick={() => {
+                        setSelectedProject(project);
+                        setExpandedProjects(prev => {
+                          const next = new Set(prev);
+                          if (next.has(project.id)) {
+                            next.delete(project.id);
+                          } else {
+                            next.add(project.id);
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      <FolderTree className="w-4 h-4" />
+                      <span className="flex-1 text-left truncate">{project.name}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProject(project);
+                          setAddTopicOpen(true);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                        title="Add topic"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProject(project);
+                          setProjectSettingsOpen(true);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                      >
+                        <MoreHorizontal className="w-3 h-3" />
+                      </button>
+                    </div>
+                    
+                    {/* Topics under this project */}
+                    {isExpanded && projectTopics.length > 0 && (
+                      <div className="ml-4 mt-1 space-y-1">
+                        {projectTopics.map((topic) => (
+                          <div
+                            key={topic.id}
+                            className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors cursor-pointer ${
+                              selectedTopic?.id === topic.id
+                                ? "bg-primary/10 text-foreground"
+                                : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                            }`}
+                            onClick={() => setSelectedTopic(topic)}
+                          >
+                            <Folder className="w-3.5 h-3.5" />
+                            <span className="flex-1 text-left truncate">{topic.name}</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedTopic(topic);
+                                setAddPageOpen(true);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                              title="Add page"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {isExpanded && projectTopics.length === 0 && (
+                      <div className="ml-6 mt-1">
+                        <p className="text-xs text-muted-foreground py-1">No topics yet</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -685,7 +823,9 @@ const Dashboard = () => {
         open={addPageOpen}
         onOpenChange={setAddPageOpen}
         projectName={selectedProject?.name}
-        parentFolderId={selectedProject?.drive_folder_id || null}
+        topicName={selectedTopic?.name}
+        parentFolderId={selectedTopic?.drive_folder_id || null}
+        onCreated={() => fetchData()}
       />
       
       <AddProjectDialog
@@ -701,7 +841,9 @@ const Dashboard = () => {
         open={addTopicOpen}
         onOpenChange={setAddTopicOpen}
         projectName={selectedProject?.name || null}
+        projectId={selectedProject?.id || null}
         projectFolderId={selectedProject?.drive_folder_id || null}
+        onCreated={() => fetchData()}
       />
       
       <ProjectSettingsPanel
