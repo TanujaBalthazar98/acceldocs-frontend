@@ -20,8 +20,26 @@ import {
   Sun,
   Moon,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Trash2
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { PageView } from "@/components/dashboard/PageView";
@@ -92,6 +110,9 @@ const Dashboard = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [needsDriveAccess, setNeedsDriveAccess] = useState(false);
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ type: 'project' | 'topic' | 'document'; id: string; name: string } | null>(null);
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -172,8 +193,17 @@ const Dashboard = () => {
     fetchData();
   }, [user]);
   
-  // Filter documents based on selected project/topic
+  // Filter documents based on selected project/topic and search query
   const filteredDocuments = documents.filter(doc => {
+    // Filter by search query first
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      if (!doc.title.toLowerCase().includes(query)) {
+        return false;
+      }
+    }
+    
+    // Then filter by project/topic
     if (selectedTopic) {
       return doc.topic_id === selectedTopic.id;
     }
@@ -182,6 +212,83 @@ const Dashboard = () => {
     }
     return true;
   });
+  
+  // Filter projects and topics by search
+  const filteredProjects = projects.filter(p => 
+    !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  const filteredTopics = topics.filter(t => 
+    !searchQuery.trim() || t.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  // Delete handlers
+  const handleDeleteProject = async (projectId: string) => {
+    // Delete all documents in the project first
+    await supabase.from("documents").delete().eq("project_id", projectId);
+    // Delete all topics in the project
+    await supabase.from("topics").delete().eq("project_id", projectId);
+    // Delete the project
+    const { error } = await supabase.from("projects").delete().eq("id", projectId);
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to delete project.", variant: "destructive" });
+    } else {
+      toast({ title: "Deleted", description: "Project deleted successfully." });
+      if (selectedProject?.id === projectId) {
+        setSelectedProject(null);
+        setSelectedTopic(null);
+      }
+      fetchData();
+    }
+  };
+  
+  const handleDeleteTopic = async (topicId: string) => {
+    // Delete all documents in the topic first
+    await supabase.from("documents").delete().eq("topic_id", topicId);
+    // Delete the topic
+    const { error } = await supabase.from("topics").delete().eq("id", topicId);
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to delete topic.", variant: "destructive" });
+    } else {
+      toast({ title: "Deleted", description: "Topic deleted successfully." });
+      if (selectedTopic?.id === topicId) {
+        setSelectedTopic(null);
+      }
+      fetchData();
+    }
+  };
+  
+  const handleDeleteDocument = async (docId: string) => {
+    const { error } = await supabase.from("documents").delete().eq("id", docId);
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to delete page.", variant: "destructive" });
+    } else {
+      toast({ title: "Deleted", description: "Page deleted successfully." });
+      fetchData();
+    }
+  };
+  
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    
+    switch (itemToDelete.type) {
+      case 'project':
+        await handleDeleteProject(itemToDelete.id);
+        break;
+      case 'topic':
+        await handleDeleteTopic(itemToDelete.id);
+        break;
+      case 'document':
+        await handleDeleteDocument(itemToDelete.id);
+        break;
+    }
+    
+    setDeleteDialogOpen(false);
+    setItemToDelete(null);
+  };
   
   const handleOpenInDrive = (googleDocId: string) => {
     window.open(`https://docs.google.com/document/d/${googleDocId}/edit`, '_blank');
@@ -484,6 +591,8 @@ const Dashboard = () => {
             <input
               type="text"
               placeholder="Search docs..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 rounded-lg bg-secondary text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
@@ -504,12 +613,14 @@ const Dashboard = () => {
               >
                 <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
               </button>
-              <button 
+              <Button 
+                variant="ghost"
+                size="icon"
                 onClick={() => setAddProjectOpen(true)}
-                className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground"
               >
                 <Plus className="w-4 h-4" />
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -531,12 +642,14 @@ const Dashboard = () => {
           )}
 
           <div className="space-y-1">
-            {projects.length === 0 ? (
-              <p className="px-3 py-2 text-sm text-muted-foreground">No projects yet</p>
+            {filteredProjects.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">
+                {searchQuery ? "No matching projects" : "No projects yet"}
+              </p>
             ) : (
-              projects.map((project) => {
-                const projectTopics = topics.filter(t => t.project_id === project.id);
-                const isExpanded = expandedProjects.has(project.id);
+              filteredProjects.map((project) => {
+                const projectTopics = filteredTopics.filter(t => t.project_id === project.id);
+                const isExpanded = expandedProjects.has(project.id) || !!searchQuery;
                 
                 return (
                   <div key={project.id}>
@@ -573,16 +686,36 @@ const Dashboard = () => {
                       >
                         <Plus className="w-3 h-3" />
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedProject(project);
-                          setProjectSettingsOpen(true);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
-                      >
-                        <MoreHorizontal className="w-3 h-3" />
-                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            onClick={(e) => e.stopPropagation()}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                          >
+                            <MoreHorizontal className="w-3 h-3" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedProject(project);
+                            setProjectSettingsOpen(true);
+                          }}>
+                            <Settings className="w-3 h-3 mr-2" />
+                            Settings
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => {
+                              setItemToDelete({ type: 'project', id: project.id, name: project.name });
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="w-3 h-3 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                     
                     {/* Topics under this project */}
@@ -611,6 +744,28 @@ const Dashboard = () => {
                             >
                               <Plus className="w-3 h-3" />
                             </button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                                >
+                                  <MoreHorizontal className="w-3 h-3" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-40">
+                                <DropdownMenuItem 
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => {
+                                    setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                >
+                                  <Trash2 className="w-3 h-3 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         ))}
                       </div>
@@ -827,6 +982,16 @@ const Dashboard = () => {
                             >
                               <Share2 className="w-4 h-4 text-muted-foreground" />
                             </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
+                                setDeleteDialogOpen(true);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </td>
                         <td className="px-4 py-3 hidden sm:table-cell">
@@ -901,6 +1066,29 @@ const Dashboard = () => {
         onOpenChange={setProjectSettingsOpen}
         projectName={selectedProject?.name || null}
       />
+      
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {itemToDelete?.type}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{itemToDelete?.name}"? 
+              {itemToDelete?.type === 'project' && " This will also delete all topics and pages within it."}
+              {itemToDelete?.type === 'topic' && " This will also delete all pages within it."}
+              {" This action cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
