@@ -19,7 +19,8 @@ import {
   MoreHorizontal,
   Sun,
   Moon,
-  RefreshCw
+  RefreshCw,
+  ExternalLink
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -54,6 +55,16 @@ interface Topic {
   project_id: string;
 }
 
+interface Document {
+  id: string;
+  title: string;
+  google_doc_id: string;
+  project_id: string;
+  topic_id: string | null;
+  google_modified_at: string | null;
+  created_at: string;
+}
+
 const Dashboard = () => {
   const { user, signOut, requestDriveAccess } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -73,6 +84,7 @@ const Dashboard = () => {
   const [rootFolderId, setRootFolderId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -134,6 +146,17 @@ const Dashboard = () => {
           if (topicsData) {
             setTopics(topicsData);
           }
+          
+          // Get documents for all projects
+          const { data: docsData } = await supabase
+            .from("documents")
+            .select("id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at")
+            .in("project_id", projectIds)
+            .order("created_at", { ascending: false });
+          
+          if (docsData) {
+            setDocuments(docsData);
+          }
         }
       }
     } else {
@@ -149,7 +172,20 @@ const Dashboard = () => {
     fetchData();
   }, [user]);
   
-  const pages: { title: string; state: "active" | "draft" | "deprecated" | "archived"; owner: string; verified: string; visibility: "internal" | "public" | "external" }[] = [];
+  // Filter documents based on selected project/topic
+  const filteredDocuments = documents.filter(doc => {
+    if (selectedTopic) {
+      return doc.topic_id === selectedTopic.id;
+    }
+    if (selectedProject) {
+      return doc.project_id === selectedProject.id;
+    }
+    return true;
+  });
+  
+  const handleOpenInDrive = (googleDocId: string) => {
+    window.open(`https://docs.google.com/document/d/${googleDocId}/edit`, '_blank');
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -672,38 +708,24 @@ const Dashboard = () => {
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-foreground">{pages.length}</p>
+              <p className="text-2xl font-bold text-foreground">{filteredDocuments.length}</p>
               <p className="text-sm text-muted-foreground">Total Pages</p>
             </div>
             <div className="p-4 rounded-xl glass">
               <p className="text-2xl font-bold text-state-active">
-                {pages.filter(p => p.state === "active").length}
+                {filteredDocuments.length}
               </p>
               <p className="text-sm text-muted-foreground">Active</p>
             </div>
             <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-state-draft">
-                {pages.filter(p => p.state === "draft").length}
-              </p>
+              <p className="text-2xl font-bold text-state-draft">0</p>
               <p className="text-sm text-muted-foreground">Drafts</p>
             </div>
             <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-state-deprecated">
-                {pages.filter(p => p.state === "deprecated" || p.owner === "—").length}
-              </p>
+              <p className="text-2xl font-bold text-state-deprecated">0</p>
               <p className="text-sm text-muted-foreground">Needs Attention</p>
             </div>
           </div>
-
-          {/* Alert - only show if there are issues */}
-          {pages.some(p => p.state === "deprecated" || p.owner === "—") && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-state-deprecated/10 border border-state-deprecated/20 mb-6">
-              <AlertTriangle className="w-4 h-4 text-state-deprecated" />
-              <span className="text-sm text-state-deprecated">
-                Some pages need attention: missing owner or deprecated
-              </span>
-            </div>
-          )}
 
           {/* Topics */}
           <div className="mb-6">
@@ -764,34 +786,43 @@ const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {pages.length === 0 ? (
+                  {filteredDocuments.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                        No pages yet. Add a page to get started.
+                        {selectedTopic 
+                          ? "No pages in this topic yet. Add a page to get started."
+                          : selectedProject
+                            ? "Select a topic to view pages."
+                            : "Select a project to view pages."}
                       </td>
                     </tr>
                   ) : (
-                    pages.map((page) => (
+                    filteredDocuments.map((doc) => (
                       <tr
-                        key={page.title}
+                        key={doc.id}
                         className="hover:bg-secondary/30 transition-colors cursor-pointer group"
-                        onClick={() => handleOpenPage(page.title)}
+                        onClick={() => handleOpenInDrive(doc.google_doc_id)}
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <FileText className="w-4 h-4 text-muted-foreground" />
                             <div className="flex-1">
                               <span className="text-sm font-medium text-foreground">
-                                {page.title}
+                                {doc.title}
                               </span>
-                              {page.visibility === "public" && (
-                                <span className="ml-2 px-1.5 py-0.5 text-xs bg-primary/10 text-primary rounded">
-                                  Public
-                                </span>
-                              )}
                             </div>
                             <button
-                              onClick={(e) => handleSharePage(e, page.title)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenInDrive(doc.google_doc_id);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
+                              title="Open in Google Docs"
+                            >
+                              <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                            <button
+                              onClick={(e) => handleSharePage(e, doc.title)}
                               className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
                             >
                               <Share2 className="w-4 h-4 text-muted-foreground" />
@@ -800,39 +831,23 @@ const Dashboard = () => {
                         </td>
                         <td className="px-4 py-3 hidden sm:table-cell">
                           <div className="flex items-center gap-2">
-                            <Circle
-                              className={`w-2 h-2 ${stateConfig[page.state].color} rounded-full`}
-                            />
-                            <span className="text-sm text-muted-foreground">
-                              {stateConfig[page.state].label}
-                            </span>
+                            <Circle className="w-2 h-2 bg-state-active rounded-full" />
+                            <span className="text-sm text-muted-foreground">Active</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
                           <div className="flex items-center gap-2">
                             <User className="w-3 h-3 text-muted-foreground" />
-                            <span
-                              className={`text-sm ${
-                                page.owner === "—"
-                                  ? "text-state-deprecated"
-                                  : "text-muted-foreground"
-                              }`}
-                            >
-                              {page.owner}
-                            </span>
+                            <span className="text-sm text-muted-foreground">—</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 hidden lg:table-cell">
                           <div className="flex items-center gap-2">
                             <Clock className="w-3 h-3 text-muted-foreground" />
-                            <span
-                              className={`text-sm ${
-                                page.verified === "45 days ago"
-                                  ? "text-state-deprecated"
-                                  : "text-muted-foreground"
-                              }`}
-                            >
-                              {page.verified}
+                            <span className="text-sm text-muted-foreground">
+                              {doc.google_modified_at 
+                                ? new Date(doc.google_modified_at).toLocaleDateString()
+                                : "—"}
                             </span>
                           </div>
                         </td>
