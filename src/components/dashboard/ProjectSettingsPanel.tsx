@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Sheet,
   SheetContent,
@@ -13,6 +13,11 @@ import {
   ChevronDown,
   AlertTriangle,
   RefreshCw,
+  Globe,
+  Lock,
+  Eye,
+  Send,
+  CheckCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -20,24 +25,127 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+
+type VisibilityLevel = "internal" | "external" | "public";
 
 interface ProjectSettingsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projectId: string | null;
   projectName: string | null;
+  onUpdate?: () => void;
 }
+
+const visibilityOptions: { value: VisibilityLevel; label: string; description: string; icon: typeof Lock }[] = [
+  { value: "internal", label: "Internal", description: "Only organization members", icon: Lock },
+  { value: "external", label: "External", description: "Authenticated external users", icon: Eye },
+  { value: "public", label: "Public", description: "Anyone on the internet", icon: Globe },
+];
 
 export const ProjectSettingsPanel = ({
   open,
   onOpenChange,
+  projectId,
   projectName,
+  onUpdate,
 }: ProjectSettingsProps) => {
+  const { toast } = useToast();
   const [name, setName] = useState(projectName || "");
-  
+  const [description, setDescription] = useState("");
+  const [visibility, setVisibility] = useState<VisibilityLevel>("internal");
+  const [isPublished, setIsPublished] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  // Fetch project data when opened
+  useEffect(() => {
+    if (open && projectId) {
+      fetchProjectData();
+    }
+  }, [open, projectId]);
+
+  const fetchProjectData = async () => {
+    if (!projectId) return;
+
+    const { data } = await supabase
+      .from("projects")
+      .select("name, description, visibility, is_published")
+      .eq("id", projectId)
+      .single();
+
+    if (data) {
+      setName(data.name);
+      setDescription(data.description || "");
+      setVisibility(data.visibility as VisibilityLevel);
+      setIsPublished(data.is_published);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!projectId) return;
+    setIsSaving(true);
+
+    const { error } = await supabase
+      .from("projects")
+      .update({
+        name,
+        description: description || null,
+        visibility,
+      })
+      .eq("id", projectId);
+
+    setIsSaving(false);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+    } else {
+      toast({ title: "Saved", description: "Project settings updated." });
+      onUpdate?.();
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!projectId) return;
+    setIsPublishing(true);
+
+    const newPublishedState = !isPublished;
+
+    const { error } = await supabase
+      .from("projects")
+      .update({ is_published: newPublishedState })
+      .eq("id", projectId);
+
+    setIsPublishing(false);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to update publish state.", variant: "destructive" });
+    } else {
+      setIsPublished(newPublishedState);
+      toast({
+        title: newPublishedState ? "Published" : "Unpublished",
+        description: newPublishedState
+          ? "Project is now live based on visibility settings."
+          : "Project is no longer publicly accessible.",
+      });
+      onUpdate?.();
+    }
+  };
+
   // TODO: Replace with real data from database
   const members: { name: string; email: string; role: string; avatar: string }[] = [];
 
-  if (!projectName) return null;
+  if (!projectId) return null;
+
+  const currentVisibility = visibilityOptions.find(v => v.value === visibility);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -52,6 +160,79 @@ export const ProjectSettingsPanel = ({
         </SheetHeader>
 
         <div className="space-y-8 mt-6">
+          {/* Publish Status */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">
+              Publish Status
+            </label>
+            <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
+              <div className="flex items-center gap-3">
+                {isPublished ? (
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                ) : (
+                  <Globe className="w-5 h-5 text-muted-foreground" />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {isPublished ? "Published" : "Not Published"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {isPublished 
+                      ? `Visible to ${visibility === "public" ? "everyone" : visibility === "external" ? "external users" : "internal users"}`
+                      : "Only visible in dashboard"}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant={isPublished ? "outline" : "hero"}
+                size="sm"
+                onClick={handlePublish}
+                disabled={isPublishing}
+                className="gap-2"
+              >
+                <Send className="w-3 h-3" />
+                {isPublishing ? "..." : isPublished ? "Unpublish" : "Publish"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Visibility */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">
+              Visibility
+            </label>
+            <Select value={visibility} onValueChange={(v) => setVisibility(v as VisibilityLevel)}>
+              <SelectTrigger className="w-full bg-secondary border-border">
+                <SelectValue>
+                  {currentVisibility && (
+                    <div className="flex items-center gap-2">
+                      <currentVisibility.icon className="w-4 h-4" />
+                      <span>{currentVisibility.label}</span>
+                    </div>
+                  )}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {visibilityOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div className="flex items-center gap-2">
+                      <option.icon className="w-4 h-4" />
+                      <div>
+                        <span className="font-medium">{option.label}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">
+                          {option.description}
+                        </span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Controls who can view this project when published.
+            </p>
+          </div>
+
           {/* Project Name */}
           <div className="space-y-3">
             <label className="text-sm font-medium text-foreground">
@@ -72,10 +253,21 @@ export const ProjectSettingsPanel = ({
             </label>
             <textarea
               rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="Add a description for this project..."
               className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
             />
           </div>
+
+          {/* Save Button */}
+          <Button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="w-full"
+          >
+            {isSaving ? "Saving..." : "Save Changes"}
+          </Button>
 
           {/* Sync Status */}
           <div className="space-y-3">
