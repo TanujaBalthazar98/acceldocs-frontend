@@ -41,10 +41,31 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return localStorage.getItem(GOOGLE_TOKEN_KEY);
   });
 
+  // Store refresh token in database
+  const storeRefreshToken = async (userId: string, refreshToken: string) => {
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ 
+          google_refresh_token: refreshToken,
+          google_token_refreshed_at: new Date().toISOString()
+        })
+        .eq("id", userId);
+      
+      if (error) {
+        console.error("Failed to store refresh token:", error);
+      } else {
+        console.log("Refresh token stored successfully");
+      }
+    } catch (err) {
+      console.error("Error storing refresh token:", err);
+    }
+  };
+
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
         console.log("Auth state changed:", event);
         setSession(session);
         setUser(session?.user ?? null);
@@ -57,6 +78,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           setGoogleAccessToken(session.provider_token);
         }
         
+        // Store refresh token when available (on sign in with Google)
+        if (session?.provider_refresh_token && session?.user?.id) {
+          console.log("Storing Google refresh token");
+          // Use setTimeout to avoid Supabase auth state change deadlock
+          setTimeout(() => {
+            storeRefreshToken(session.user.id, session.provider_refresh_token!);
+          }, 0);
+        }
+        
         // Clear token on sign out
         if (event === "SIGNED_OUT") {
           localStorage.removeItem(GOOGLE_TOKEN_KEY);
@@ -66,7 +96,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -76,6 +106,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         console.log("Initial session has provider_token, storing it");
         localStorage.setItem(GOOGLE_TOKEN_KEY, session.provider_token);
         setGoogleAccessToken(session.provider_token);
+      }
+      
+      // Store refresh token if available on initial load
+      if (session?.provider_refresh_token && session?.user?.id) {
+        console.log("Initial session has refresh token, storing it");
+        storeRefreshToken(session.user.id, session.provider_refresh_token);
       }
     });
 

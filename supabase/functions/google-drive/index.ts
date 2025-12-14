@@ -29,6 +29,98 @@ interface GetDocContentRequest {
 
 type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | GetDocContentRequest;
 
+// Refresh Google access token using refresh token
+async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  
+  if (!clientId || !clientSecret) {
+    console.error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET");
+    return null;
+  }
+
+  try {
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Token refresh failed:", errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    console.log("Token refreshed successfully");
+    return {
+      accessToken: data.access_token,
+      expiresIn: data.expires_in,
+    };
+  } catch (error) {
+    console.error("Error refreshing token:", error);
+    return null;
+  }
+}
+
+// Get valid access token - either from header or by refreshing
+async function getValidAccessToken(
+  providerToken: string | null,
+  userId: string,
+  supabaseUrl: string,
+  supabaseKey: string
+): Promise<{ token: string | null; needsReauth: boolean }> {
+  // Create a fresh client for this operation
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  
+  // First, try to use the provided token
+  if (providerToken) {
+    // Test if the token is valid with a simple API call
+    const testResponse = await fetch("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=" + providerToken);
+    if (testResponse.ok) {
+      console.log("Provided token is valid");
+      return { token: providerToken, needsReauth: false };
+    }
+    console.log("Provided token is invalid/expired, attempting refresh");
+  }
+
+  // Token is invalid or missing, try to refresh using stored refresh token
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("google_refresh_token")
+    .eq("id", userId)
+    .single();
+
+  const profileData = profile as { google_refresh_token: string | null } | null;
+
+  if (profileError || !profileData?.google_refresh_token) {
+    console.log("No refresh token available for user");
+    return { token: null, needsReauth: true };
+  }
+
+  const refreshResult = await refreshGoogleToken(profileData.google_refresh_token);
+  if (!refreshResult) {
+    console.log("Token refresh failed");
+    return { token: null, needsReauth: true };
+  }
+
+  // Update the last refresh timestamp
+  await supabase
+    .from("profiles")
+    .update({ google_token_refreshed_at: new Date().toISOString() } as Record<string, unknown>)
+    .eq("id", userId);
+
+  return { token: refreshResult.accessToken, needsReauth: false };
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -67,16 +159,24 @@ Deno.serve(async (req) => {
     console.log("Request body:", JSON.stringify(body));
 
     // Get the provider token from header
-    const providerToken = req.headers.get("x-google-token");
+    const providerTokenFromHeader = req.headers.get("x-google-token");
     
-    if (!providerToken) {
-      console.error("No Google provider token available");
+    // Get valid access token (with automatic refresh if needed)
+    const { token: googleToken, needsReauth } = await getValidAccessToken(
+      providerTokenFromHeader,
+      user.id,
+      supabaseUrl,
+      supabaseKey
+    );
+
+    if (!googleToken || needsReauth) {
+      console.error("No valid Google token available");
       return new Response(
         JSON.stringify({ 
           error: "Google access token not available. Please re-authenticate with Google.",
           needsReauth: true 
         }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -91,7 +191,7 @@ Deno.serve(async (req) => {
         `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=name`,
         {
           headers: {
-            Authorization: `Bearer ${providerToken}`,
+            Authorization: `Bearer ${googleToken}`,
           },
         }
       );
@@ -143,7 +243,7 @@ Deno.serve(async (req) => {
         `https://docs.googleapis.com/v1/documents/${body.docId}`,
         {
           headers: {
-            Authorization: `Bearer ${providerToken}`,
+            Authorization: `Bearer ${googleToken}`,
           },
         }
       );
@@ -191,7 +291,7 @@ Deno.serve(async (req) => {
       const response = await fetch("https://www.googleapis.com/drive/v3/files", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${providerToken}`,
+          Authorization: `Bearer ${googleToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(folderMetadata),
@@ -227,7 +327,7 @@ Deno.serve(async (req) => {
       const response = await fetch("https://www.googleapis.com/drive/v3/files", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${providerToken}`,
+          Authorization: `Bearer ${googleToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(docMetadata),
