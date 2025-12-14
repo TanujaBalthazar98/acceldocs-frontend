@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
-import { SharePanel } from "@/components/dashboard/SharePanel";
+import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -337,11 +337,12 @@ export default function PagePreview() {
         </div>
       </main>
 
-      {/* Share Panel */}
-      <SharePanel
+      {/* Share Panel - at project level */}
+      <ProjectSharePanel
         open={showSharePanel}
         onOpenChange={setShowSharePanel}
-        pageTitle={document.title}
+        projectId={document.project?.id || ""}
+        projectName={document.project?.name || ""}
       />
     </div>
   );

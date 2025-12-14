@@ -94,6 +94,7 @@ interface Document {
   visibility: VisibilityLevel;
   is_published: boolean;
   owner_id: string | null;
+  owner_name?: string;
 }
 
 const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: string; color: string }> = {
@@ -186,15 +187,23 @@ const Dashboard = () => {
             setTopics(topicsData);
           }
           
-          // Get documents for all projects
+          // Get documents for all projects with owner info
           const { data: docsData } = await supabase
             .from("documents")
-            .select("id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at, visibility, is_published, owner_id")
+            .select(`
+              id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at, visibility, is_published, owner_id,
+              owner:profiles!documents_owner_id_fkey(full_name, email)
+            `)
             .in("project_id", projectIds)
             .order("created_at", { ascending: false });
           
           if (docsData) {
-            setDocuments(docsData as Document[]);
+            // Map the owner data to a flat owner_name field
+            const docsWithOwnerName = docsData.map(doc => ({
+              ...doc,
+              owner_name: doc.owner?.full_name || doc.owner?.email?.split('@')[0] || null,
+            }));
+            setDocuments(docsWithOwnerName as Document[]);
           }
         }
       }
@@ -1063,16 +1072,6 @@ const Dashboard = () => {
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
-                                  setDeleteDialogOpen(true);
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
                             </div>
                           </td>
                           <td className="px-4 py-3 hidden sm:table-cell">
@@ -1084,7 +1083,7 @@ const Dashboard = () => {
                           <td className="px-4 py-3 hidden md:table-cell">
                             <div className="flex items-center gap-2">
                               <User className="w-3 h-3 text-muted-foreground" />
-                              <span className="text-sm text-muted-foreground">{doc.owner_id ? "—" : "—"}</span>
+                              <span className="text-sm text-muted-foreground">{doc.owner_name || "—"}</span>
                             </div>
                           </td>
                         <td className="px-4 py-3 hidden lg:table-cell">
