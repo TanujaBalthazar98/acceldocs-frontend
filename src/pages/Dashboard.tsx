@@ -931,26 +931,37 @@ const Dashboard = () => {
         {/* Content */}
         <div className="flex-1 p-6 overflow-y-auto">
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-foreground">{filteredDocuments.length}</p>
-              <p className="text-sm text-muted-foreground">Total Pages</p>
-            </div>
-            <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-state-active">
-                {filteredDocuments.length}
-              </p>
-              <p className="text-sm text-muted-foreground">Active</p>
-            </div>
-            <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-state-draft">0</p>
-              <p className="text-sm text-muted-foreground">Drafts</p>
-            </div>
-            <div className="p-4 rounded-xl glass">
-              <p className="text-2xl font-bold text-state-deprecated">0</p>
-              <p className="text-sm text-muted-foreground">Needs Attention</p>
-            </div>
-          </div>
+          {(() => {
+            const publishedCount = filteredDocuments.filter(d => d.is_published).length;
+            const draftCount = filteredDocuments.filter(d => !d.is_published).length;
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const staleCount = filteredDocuments.filter(d => {
+              if (!d.google_modified_at) return true;
+              return new Date(d.google_modified_at) < thirtyDaysAgo;
+            }).length;
+            
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="p-4 rounded-xl glass">
+                  <p className="text-2xl font-bold text-foreground">{filteredDocuments.length}</p>
+                  <p className="text-sm text-muted-foreground">Total Pages</p>
+                </div>
+                <div className="p-4 rounded-xl glass">
+                  <p className="text-2xl font-bold text-state-active">{publishedCount}</p>
+                  <p className="text-sm text-muted-foreground">Published</p>
+                </div>
+                <div className="p-4 rounded-xl glass">
+                  <p className="text-2xl font-bold text-state-draft">{draftCount}</p>
+                  <p className="text-sm text-muted-foreground">Drafts</p>
+                </div>
+                <div className="p-4 rounded-xl glass">
+                  <p className="text-2xl font-bold text-state-deprecated">{staleCount}</p>
+                  <p className="text-sm text-muted-foreground" title="Pages not modified in 30+ days">Needs Attention</p>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Topics */}
           <div className="mb-6">
