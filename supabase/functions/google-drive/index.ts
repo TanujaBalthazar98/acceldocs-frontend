@@ -136,8 +136,8 @@ Deno.serve(async (req) => {
     if (!authHeader) {
       console.error("No authorization header provided");
       return new Response(
-        JSON.stringify({ error: "No authorization header" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "No authorization header", needsReauth: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -151,10 +151,15 @@ Deno.serve(async (req) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     
     if (userError || !user) {
-      console.error("User authentication failed:", userError);
+      // Return 200 with needsReauth flag instead of 401 to prevent app crashes
+      console.log("User session not valid, returning soft error:", userError?.message);
       return new Response(
-        JSON.stringify({ error: "Invalid user token" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          error: "Session expired", 
+          needsReauth: true,
+          message: "Please sign in again to continue" 
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
