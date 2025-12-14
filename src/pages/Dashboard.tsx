@@ -1071,47 +1071,40 @@ const Dashboard = () => {
                                 ) : null}
                                 <VisIcon className={`w-3 h-3 ${visibilityConfig[doc.visibility || 'internal'].color}`} />
                               </div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={(e) => handleTogglePublishPage(e, doc.id, doc.is_published)}
-                                  className={`p-1.5 rounded-md hover:bg-secondary transition-all ${
-                                    doc.is_published ? 'text-green-500' : 'text-muted-foreground'
-                                  }`}
-                                  title={doc.is_published ? "Unpublish" : "Publish"}
-                                >
-                                  <Send className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenInDrive(doc.google_doc_id);
-                                  }}
-                                  className="p-1.5 rounded-md hover:bg-secondary transition-all text-muted-foreground"
-                                  title="Open in Google Docs"
-                                >
-                                  <ExternalLink className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedDocument(doc);
-                                    setPageSettingsOpen(true);
-                                  }}
-                                  className="p-1.5 rounded-md hover:bg-secondary transition-all text-muted-foreground"
-                                  title="Page settings"
-                                >
-                                  <Settings className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                  className="p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                              <div className="flex items-center gap-1">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1.5 rounded-md hover:bg-secondary transition-all text-muted-foreground"
+                                      title="Page options"
+                                    >
+                                      <MoreHorizontal className="w-4 h-4" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedDocument(doc);
+                                        setPageSettingsOpen(true);
+                                      }}
+                                    >
+                                      <Settings className="w-4 h-4 mr-2" />
+                                      Settings
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenInDrive(doc.google_doc_id);
+                                      }}
+                                    >
+                                      <ExternalLink className="w-4 h-4 mr-2" />
+                                      Open in Google Docs
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </div>
                             </div>
                           </td>
@@ -1207,7 +1200,9 @@ const Dashboard = () => {
         documentId={selectedDocument?.id || null}
         documentTitle={selectedDocument?.title || null}
         projectId={selectedDocument?.project_id || null}
+        googleDocId={selectedDocument?.google_doc_id || null}
         onUpdate={() => fetchData()}
+        onDelete={handleDeleteDocument}
       />
       
       <TopicSettingsDialog
