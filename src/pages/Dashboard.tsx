@@ -57,6 +57,7 @@ import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
+import { useSyncContent } from "@/hooks/useSyncContent";
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -107,6 +108,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { listFolder } = useGoogleDrive();
+  const { syncDocument, syncing: syncingContent } = useSyncContent();
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [sharePageTitle, setSharePageTitle] = useState("");
@@ -1030,6 +1032,17 @@ const Dashboard = () => {
                                 title="Open in Google Docs"
                               >
                                 <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                              </button>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  await syncDocument(doc.id, doc.google_doc_id);
+                                }}
+                                disabled={syncingContent}
+                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all disabled:opacity-50"
+                                title="Sync content from Google Docs"
+                              >
+                                <RefreshCw className={`w-4 h-4 text-muted-foreground ${syncingContent ? 'animate-spin' : ''}`} />
                               </button>
                               <button
                                 onClick={(e) => handleSharePage(e, doc.title)}

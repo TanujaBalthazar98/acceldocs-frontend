@@ -6,12 +6,11 @@ import {
   FileText, 
   FolderTree, 
   Menu, 
-  X,
   Search,
   Lock,
   Eye,
   Globe,
-  ExternalLink
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +21,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useSyncContent } from "@/hooks/useSyncContent";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -74,6 +74,7 @@ export default function Docs() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { theme } = useTheme();
+  const { syncDocument, syncing } = useSyncContent();
   
   const [projects, setProjects] = useState<Project[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -84,6 +85,7 @@ export default function Docs() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [documentHtml, setDocumentHtml] = useState<string | null>(null);
 
   // Fetch accessible projects, topics, and documents
   useEffect(() => {
@@ -95,6 +97,7 @@ export default function Docs() {
       const doc = documents.find(d => d.id === pageId);
       if (doc) {
         setSelectedDocument(doc);
+        setDocumentHtml(doc.content_html);
         // Auto-expand the project and topic
         setExpandedProjects(prev => new Set([...prev, doc.project_id]));
         if (doc.topic_id) {
@@ -109,6 +112,19 @@ export default function Docs() {
       }
     }
   }, [pageId, documents, navigate]);
+
+  const handleSyncContent = async () => {
+    if (!selectedDocument) return;
+    
+    const html = await syncDocument(selectedDocument.id, selectedDocument.google_doc_id);
+    if (html) {
+      setDocumentHtml(html);
+      // Update the document in state
+      setDocuments(prev => 
+        prev.map(d => d.id === selectedDocument.id ? { ...d, content_html: html } : d)
+      );
+    }
+  };
 
   const fetchContent = async () => {
     setLoading(true);
@@ -429,20 +445,38 @@ export default function Docs() {
               <Badge variant="outline" className="text-xs">
                 {visibilityConfig[selectedDocument.visibility].label}
               </Badge>
+              {user && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSyncContent}
+                  disabled={syncing}
+                  className="ml-auto"
+                >
+                  <RefreshCw className={cn("h-4 w-4 mr-2", syncing && "animate-spin")} />
+                  {syncing ? "Syncing..." : "Sync Content"}
+                </Button>
+              )}
             </div>
 
             {/* Content */}
             <div className="bg-card border border-border rounded-lg p-6 lg:p-8">
-              {selectedDocument.content_html ? (
+              {documentHtml ? (
                 <div 
                   className="prose prose-neutral dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: cleanGoogleDocsHtml(selectedDocument.content_html) }}
+                  dangerouslySetInnerHTML={{ __html: cleanGoogleDocsHtml(documentHtml) }}
                 />
               ) : (
                 <div className="text-center py-12 text-muted-foreground">
                   <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Content not available</p>
-                  <p className="text-sm mt-2">This document's content has not been synced yet.</p>
+                  <p className="font-medium">Content not available</p>
+                  <p className="text-sm mt-2 mb-4">This document's content has not been synced yet.</p>
+                  {user && (
+                    <Button onClick={handleSyncContent} disabled={syncing}>
+                      <RefreshCw className={cn("h-4 w-4 mr-2", syncing && "animate-spin")} />
+                      {syncing ? "Syncing..." : "Sync Now"}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

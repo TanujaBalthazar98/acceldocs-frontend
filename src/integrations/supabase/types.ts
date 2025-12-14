@@ -208,6 +208,41 @@ export type Database = {
           },
         ]
       }
+      project_members: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          role: Database["public"]["Enums"]["project_role"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          role?: Database["public"]["Enums"]["project_role"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          role?: Database["public"]["Enums"]["project_role"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string
@@ -334,11 +369,23 @@ export type Database = {
         Args: { invitation_token: string }
         Returns: boolean
       }
+      can_edit_project: {
+        Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       has_org_role: {
         Args: {
           _org_id: string
           _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      has_project_role: {
+        Args: {
+          _project_id: string
+          _roles: Database["public"]["Enums"]["project_role"][]
           _user_id: string
         }
         Returns: boolean
@@ -351,6 +398,7 @@ export type Database = {
     Enums: {
       account_type: "individual" | "team" | "enterprise"
       app_role: "owner" | "admin" | "editor" | "viewer"
+      project_role: "admin" | "editor" | "reviewer" | "viewer"
       visibility_level: "internal" | "external" | "public"
     }
     CompositeTypes: {
@@ -481,6 +529,7 @@ export const Constants = {
     Enums: {
       account_type: ["individual", "team", "enterprise"],
       app_role: ["owner", "admin", "editor", "viewer"],
+      project_role: ["admin", "editor", "reviewer", "viewer"],
       visibility_level: ["internal", "external", "public"],
     },
   },
