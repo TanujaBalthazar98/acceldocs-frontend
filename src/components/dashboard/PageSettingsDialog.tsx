@@ -19,20 +19,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Link2, Globe, Lock, Eye, ExternalLink, Trash2 } from "lucide-react";
-
-type VisibilityLevel = "internal" | "external" | "public";
+import { Link2, ExternalLink, Trash2 } from "lucide-react";
 
 interface PageSettingsDialogProps {
   open: boolean;
@@ -44,12 +35,6 @@ interface PageSettingsDialogProps {
   onUpdate?: () => void;
   onDelete?: (docId: string) => void;
 }
-
-const visibilityOptions: { value: VisibilityLevel; label: string; icon: typeof Lock }[] = [
-  { value: "internal", label: "Internal", icon: Lock },
-  { value: "external", label: "External", icon: Eye },
-  { value: "public", label: "Public", icon: Globe },
-];
 
 export const PageSettingsDialog = ({
   open,
@@ -66,7 +51,6 @@ export const PageSettingsDialog = ({
   const [title, setTitle] = useState(documentTitle || "");
   const [slug, setSlug] = useState("");
   const [slugError, setSlugError] = useState("");
-  const [visibility, setVisibility] = useState<VisibilityLevel>("internal");
   const [isPublished, setIsPublished] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -83,14 +67,13 @@ export const PageSettingsDialog = ({
 
     const { data } = await supabase
       .from("documents")
-      .select("title, slug, visibility, is_published")
+      .select("title, slug, is_published")
       .eq("id", documentId)
       .single();
 
     if (data) {
       setTitle(data.title);
       setSlug(data.slug || "");
-      setVisibility(data.visibility as VisibilityLevel);
       setIsPublished(data.is_published);
     }
   };
@@ -145,7 +128,6 @@ export const PageSettingsDialog = ({
 
     const updateData: Record<string, any> = {
       title,
-      visibility,
       is_published: isPublished,
     };
     
@@ -171,8 +153,6 @@ export const PageSettingsDialog = ({
   };
 
   if (!documentId) return null;
-
-  const currentVisibility = visibilityOptions.find(v => v.value === visibility);
 
   const handleOpenInDrive = () => {
     if (googleDocId) {
@@ -247,33 +227,6 @@ export const PageSettingsDialog = ({
               </div>
             </div>
 
-            {/* Visibility */}
-            <div className="space-y-2">
-              <Label>Visibility</Label>
-              <Select value={visibility} onValueChange={(v) => setVisibility(v as VisibilityLevel)}>
-                <SelectTrigger className="bg-secondary">
-                  <SelectValue>
-                    {currentVisibility && (
-                      <div className="flex items-center gap-2">
-                        <currentVisibility.icon className="w-4 h-4" />
-                        <span>{currentVisibility.label}</span>
-                      </div>
-                    )}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {visibilityOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex items-center gap-2">
-                        <option.icon className="w-4 h-4" />
-                        <span>{option.label}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Published */}
             <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
               <div className="space-y-0.5">
@@ -281,7 +234,7 @@ export const PageSettingsDialog = ({
                   Published
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Make this page visible based on visibility settings
+                  Make this page visible based on project visibility
                 </p>
               </div>
               <Switch
