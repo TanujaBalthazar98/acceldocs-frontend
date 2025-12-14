@@ -72,7 +72,7 @@ function cleanGoogleDocsHtml(html: string): string {
 export default function Docs() {
   const { projectId, pageId } = useParams<{ projectId?: string; pageId?: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { theme } = useTheme();
   const { syncDocument, syncing } = useSyncContent();
   
@@ -86,11 +86,15 @@ export default function Docs() {
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [documentHtml, setDocumentHtml] = useState<string | null>(null);
+  const [isOrgUser, setIsOrgUser] = useState(false);
 
   // Fetch accessible projects, topics, and documents
   useEffect(() => {
-    fetchContent();
-  }, [user]);
+    // Wait for auth to finish loading before fetching content
+    if (!authLoading) {
+      fetchContent();
+    }
+  }, [user, authLoading]);
 
   // Auto-sync content when document is selected
   const autoSyncContent = async (doc: Document) => {
@@ -144,6 +148,9 @@ export default function Docs() {
           .single();
         
         userOrgId = profile?.organization_id || null;
+        setIsOrgUser(!!userOrgId);
+      } else {
+        setIsOrgUser(false);
       }
 
       // For authenticated users with org access, show all org projects (published or not)
@@ -376,7 +383,12 @@ export default function Docs() {
                                     )}
                                   >
                                     <FileText className="h-3 w-3 shrink-0" />
-                                    <span className="truncate">{doc.title}</span>
+                                    <span className="truncate flex-1 text-left">{doc.title}</span>
+                                    {isOrgUser && !doc.is_published && (
+                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
+                                        Draft
+                                      </Badge>
+                                    )}
                                   </button>
                                 ))}
                               </div>
@@ -397,7 +409,12 @@ export default function Docs() {
                           )}
                         >
                           <FileText className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{doc.title}</span>
+                          <span className="truncate flex-1 text-left">{doc.title}</span>
+                          {isOrgUser && !doc.is_published && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
+                              Draft
+                            </Badge>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -411,7 +428,9 @@ export default function Docs() {
 
       {/* Footer */}
       <div className="p-4 border-t border-border">
-        {user ? (
+        {authLoading ? (
+          <Skeleton className="h-9 w-full" />
+        ) : user ? (
           <Link to="/dashboard">
             <Button variant="outline" size="sm" className="w-full">
               Go to Dashboard
@@ -478,9 +497,16 @@ export default function Docs() {
             </nav>
 
             {/* Title */}
-            <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
-              {selectedDocument.title}
-            </h1>
+            <div className="flex items-start gap-3 mb-4">
+              <h1 className="text-3xl lg:text-4xl font-bold text-foreground">
+                {selectedDocument.title}
+              </h1>
+              {isOrgUser && !selectedDocument.is_published && (
+                <Badge className="mt-2 text-xs bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800">
+                  Draft
+                </Badge>
+              )}
+            </div>
 
             {/* Meta */}
             <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
@@ -488,6 +514,11 @@ export default function Docs() {
               <Badge variant="outline" className="text-xs">
                 {visibilityConfig[selectedDocument.visibility].label}
               </Badge>
+              {isOrgUser && selectedDocument.is_published && (
+                <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-800 dark:text-green-400">
+                  Published
+                </Badge>
+              )}
               {syncing && (
                 <div className="flex items-center gap-2 ml-auto text-primary">
                   <RefreshCw className="h-4 w-4 animate-spin" />
