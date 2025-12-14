@@ -72,27 +72,24 @@ async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: 
 }
 
 // Get valid access token - either from header or by refreshing
+// Get access token - use provided token directly, only refresh if we have a stored refresh token
 async function getValidAccessToken(
   providerToken: string | null,
   userId: string,
   supabaseUrl: string,
   supabaseKey: string
 ): Promise<{ token: string | null; needsReauth: boolean }> {
-  // Create a fresh client for this operation
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  
-  // First, try to use the provided token
+  // If we have a provider token, just use it directly
+  // Don't pre-validate - let the actual API call fail if the token is bad
   if (providerToken) {
-    // Test if the token is valid with a simple API call
-    const testResponse = await fetch("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=" + providerToken);
-    if (testResponse.ok) {
-      console.log("Provided token is valid");
-      return { token: providerToken, needsReauth: false };
-    }
-    console.log("Provided token is invalid/expired, attempting refresh");
+    console.log("Using provided access token");
+    return { token: providerToken, needsReauth: false };
   }
 
-  // Token is invalid or missing, try to refresh using stored refresh token
+  console.log("No provider token provided, checking for stored refresh token");
+  
+  // No token provided - try to refresh using stored refresh token
+  const supabase = createClient(supabaseUrl, supabaseKey);
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("google_refresh_token")
