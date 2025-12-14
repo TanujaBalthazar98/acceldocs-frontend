@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, ExternalLink, Share2, User, Calendar, Eye, Lock, Globe } from "lucide-react";
+import { ArrowLeft, ExternalLink, Share2, User, Calendar, Eye, Lock, Globe, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { SharePanel } from "@/components/dashboard/SharePanel";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 type VisibilityLevel = "internal" | "external" | "public";
 
@@ -48,14 +49,16 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
 export default function PagePreview() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, googleAccessToken } = useAuth();
+  const { user, googleAccessToken, requestDriveAccess } = useAuth();
   const { getGoogleToken } = useGoogleDrive();
+  const { toast } = useToast();
   
   const [document, setDocument] = useState<DocumentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [docContent, setDocContent] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(false);
   const [showSharePanel, setShowSharePanel] = useState(false);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -104,9 +107,13 @@ export default function PagePreview() {
 
   const fetchDocContent = async () => {
     const token = getGoogleToken();
-    if (!token || !document?.google_doc_id) return;
+    if (!token || !document?.google_doc_id) {
+      setNeedsReconnect(true);
+      return;
+    }
 
     setLoadingContent(true);
+    setNeedsReconnect(false);
     try {
       const { data, error } = await supabase.functions.invoke("google-drive", {
         body: {
@@ -118,14 +125,35 @@ export default function PagePreview() {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Check if it's an auth error (401)
+        console.error("Error fetching doc content:", error);
+        setNeedsReconnect(true);
+        return;
+      }
+      
       if (data?.content) {
         setDocContent(data.content);
+      } else if (data?.error) {
+        // Handle API error response
+        setNeedsReconnect(true);
       }
     } catch (error) {
       console.error("Error fetching doc content:", error);
+      setNeedsReconnect(true);
     } finally {
       setLoadingContent(false);
+    }
+  };
+
+  const handleReconnectDrive = async () => {
+    const { error } = await requestDriveAccess();
+    if (error) {
+      toast({
+        title: "Connection failed",
+        description: "Failed to connect to Google Drive. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -249,13 +277,31 @@ export default function PagePreview() {
         <div className="bg-card border border-border rounded-lg p-8">
           {loadingContent ? (
             <div className="space-y-4">
-              <Skeleton className="h-6 w-3/4" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-6 w-1/2 mt-6" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
+              <div className="h-6 w-3/4 bg-muted animate-pulse rounded" />
+              <div className="h-4 w-full bg-muted animate-pulse rounded" />
+              <div className="h-4 w-full bg-muted animate-pulse rounded" />
+              <div className="h-4 w-2/3 bg-muted animate-pulse rounded" />
+              <div className="h-6 w-1/2 mt-6 bg-muted animate-pulse rounded" />
+              <div className="h-4 w-full bg-muted animate-pulse rounded" />
+              <div className="h-4 w-5/6 bg-muted animate-pulse rounded" />
+            </div>
+          ) : needsReconnect ? (
+            <div className="text-center py-12">
+              <RefreshCw className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-medium text-foreground mb-2">Google Drive Access Expired</h3>
+              <p className="text-muted-foreground mb-4">
+                Your Google Drive access has expired. Please reconnect to view this document.
+              </p>
+              <div className="flex justify-center gap-3">
+                <Button onClick={handleReconnectDrive}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Reconnect to Google Drive
+                </Button>
+                <Button variant="outline" onClick={handleOpenInDrive}>
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open in Google Docs
+                </Button>
+              </div>
             </div>
           ) : docContent ? (
             <div className="prose prose-invert max-w-none">
