@@ -54,6 +54,7 @@ import { AddPageDialog } from "@/components/dashboard/AddPageDialog";
 import { AddProjectDialog } from "@/components/dashboard/AddProjectDialog";
 import { AddTopicDialog } from "@/components/dashboard/AddTopicDialog";
 import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
+import { PageSettingsDialog } from "@/components/dashboard/PageSettingsDialog";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { supabase } from "@/integrations/supabase/client";
@@ -115,6 +116,8 @@ const Dashboard = () => {
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addTopicOpen, setAddTopicOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
+  const [pageSettingsOpen, setPageSettingsOpen] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
@@ -1078,6 +1081,17 @@ const Dashboard = () => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    setSelectedDocument(doc);
+                                    setPageSettingsOpen(true);
+                                  }}
+                                  className="p-1.5 rounded-md hover:bg-secondary transition-all text-muted-foreground"
+                                  title="Page settings"
+                                >
+                                  <Settings className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
                                     setDeleteDialogOpen(true);
                                   }}
@@ -1171,6 +1185,15 @@ const Dashboard = () => {
         onOpenChange={setProjectSettingsOpen}
         projectId={selectedProject?.id || null}
         projectName={selectedProject?.name || null}
+        onUpdate={() => fetchData()}
+      />
+      
+      <PageSettingsDialog
+        open={pageSettingsOpen}
+        onOpenChange={setPageSettingsOpen}
+        documentId={selectedDocument?.id || null}
+        documentTitle={selectedDocument?.title || null}
+        projectId={selectedDocument?.project_id || null}
         onUpdate={() => fetchData()}
       />
       
