@@ -34,8 +34,23 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatDistanceToNow } from "date-fns";
 
 type VisibilityLevel = "internal" | "external" | "public";
+type ProjectRole = "admin" | "editor" | "reviewer" | "viewer";
+
+interface ProjectMember {
+  id: string;
+  user_id: string;
+  role: ProjectRole;
+  profile?: {
+    full_name: string | null;
+    email: string;
+    avatar_url: string | null;
+  };
+}
 
 interface ProjectSettingsProps {
   open: boolean;
@@ -51,6 +66,13 @@ const visibilityOptions: { value: VisibilityLevel; label: string; description: s
   { value: "public", label: "Public", description: "Anyone on the internet", icon: Globe },
 ];
 
+const roleOptions: { value: ProjectRole; label: string }[] = [
+  { value: "admin", label: "Admin" },
+  { value: "editor", label: "Editor" },
+  { value: "reviewer", label: "Reviewer" },
+  { value: "viewer", label: "Viewer" },
+];
+
 export const ProjectSettingsPanel = ({
   open,
   onOpenChange,
@@ -59,17 +81,32 @@ export const ProjectSettingsPanel = ({
   onUpdate,
 }: ProjectSettingsProps) => {
   const { toast } = useToast();
+  const { listFolder } = useGoogleDrive();
+  const { user, googleAccessToken } = useAuth();
+  
   const [name, setName] = useState(projectName || "");
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<VisibilityLevel>("internal");
   const [isPublished, setIsPublished] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Members state
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  
+  // Sync status
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [syncedDocsCount, setSyncedDocsCount] = useState(0);
+  const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
 
   // Fetch project data when opened
   useEffect(() => {
     if (open && projectId) {
       fetchProjectData();
+      fetchMembers();
+      fetchSyncStatus();
     }
   }, [open, projectId]);
 
@@ -78,7 +115,7 @@ export const ProjectSettingsPanel = ({
 
     const { data } = await supabase
       .from("projects")
-      .select("name, description, visibility, is_published")
+      .select("name, description, visibility, is_published, drive_folder_id")
       .eq("id", projectId)
       .single();
 
@@ -87,7 +124,63 @@ export const ProjectSettingsPanel = ({
       setDescription(data.description || "");
       setVisibility(data.visibility as VisibilityLevel);
       setIsPublished(data.is_published);
+      setDriveFolderId(data.drive_folder_id);
     }
+  };
+
+  const fetchMembers = async () => {
+    if (!projectId) return;
+    setLoadingMembers(true);
+
+    try {
+      // Fetch project members
+      const { data: membersData, error } = await supabase
+        .from("project_members")
+        .select("id, user_id, role")
+        .eq("project_id", projectId);
+
+      if (error) throw error;
+
+      // Fetch profile info for each member
+      if (membersData && membersData.length > 0) {
+        const userIds = membersData.map(m => m.user_id);
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, email, avatar_url")
+          .in("id", userIds);
+
+        const membersWithProfiles = membersData.map(member => ({
+          ...member,
+          role: member.role as ProjectRole,
+          profile: profiles?.find(p => p.id === member.user_id) || undefined,
+        }));
+
+        setMembers(membersWithProfiles);
+      } else {
+        setMembers([]);
+      }
+    } catch (err) {
+      console.error("Error fetching members:", err);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const fetchSyncStatus = async () => {
+    if (!projectId) return;
+
+    // Get latest synced document for this project
+    const { data, count } = await supabase
+      .from("documents")
+      .select("last_synced_at", { count: "exact" })
+      .eq("project_id", projectId)
+      .order("last_synced_at", { ascending: false, nullsFirst: false })
+      .limit(1);
+
+    if (data && data.length > 0 && data[0].last_synced_at) {
+      setLastSyncedAt(data[0].last_synced_at);
+    }
+    setSyncedDocsCount(count || 0);
   };
 
   const handleSave = async () => {
@@ -140,8 +233,133 @@ export const ProjectSettingsPanel = ({
     }
   };
 
-  // TODO: Replace with real data from database
-  const members: { name: string; email: string; role: string; avatar: string }[] = [];
+  const handleSyncNow = async () => {
+    if (!projectId || !driveFolderId) {
+      toast({ 
+        title: "Cannot sync", 
+        description: "Project is not connected to Google Drive.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    if (!googleAccessToken) {
+      toast({ 
+        title: "Authentication required", 
+        description: "Please reconnect to Google Drive.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+
+    try {
+      // Fetch documents from Google Drive
+      const result = await listFolder(driveFolderId);
+      
+      if (result.needsDriveAccess) {
+        toast({ 
+          title: "Drive access required", 
+          description: "Please grant Google Drive access.", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      if (!result.files) {
+        toast({ title: "Sync complete", description: "No files found in folder." });
+        return;
+      }
+
+      // Filter for Google Docs
+      const googleDocs = result.files.filter(
+        f => f.mimeType === "application/vnd.google-apps.document"
+      );
+
+      // Sync each document
+      let syncedCount = 0;
+      for (const doc of googleDocs) {
+        // Check if document already exists
+        const { data: existing } = await supabase
+          .from("documents")
+          .select("id")
+          .eq("google_doc_id", doc.id)
+          .eq("project_id", projectId)
+          .single();
+
+        if (existing) {
+          // Update existing document
+          await supabase
+            .from("documents")
+            .update({
+              title: doc.name,
+              last_synced_at: new Date().toISOString(),
+              google_modified_at: doc.modifiedTime || null,
+            })
+            .eq("id", existing.id);
+        } else {
+          // Create new document
+          await supabase
+            .from("documents")
+            .insert({
+              google_doc_id: doc.id,
+              project_id: projectId,
+              title: doc.name,
+              owner_id: user?.id,
+              last_synced_at: new Date().toISOString(),
+              google_modified_at: doc.modifiedTime || null,
+            });
+        }
+        syncedCount++;
+      }
+
+      toast({ 
+        title: "Sync complete", 
+        description: `${syncedCount} document(s) synced from Google Drive.` 
+      });
+      
+      fetchSyncStatus();
+      onUpdate?.();
+    } catch (err) {
+      console.error("Sync error:", err);
+      toast({ 
+        title: "Sync failed", 
+        description: "An error occurred while syncing.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleUpdateRole = async (memberId: string, newRole: ProjectRole) => {
+    const { error } = await supabase
+      .from("project_members")
+      .update({ role: newRole })
+      .eq("id", memberId);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to update role.", variant: "destructive" });
+    } else {
+      toast({ title: "Role updated", description: "Member role has been changed." });
+      fetchMembers();
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    const { error } = await supabase
+      .from("project_members")
+      .delete()
+      .eq("id", memberId);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to remove member.", variant: "destructive" });
+    } else {
+      toast({ title: "Member removed", description: "User has been removed from the project." });
+      fetchMembers();
+    }
+  };
 
   if (!projectId) return null;
 
@@ -277,15 +495,23 @@ export const ProjectSettingsPanel = ({
             <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
               <div>
                 <p className="text-sm font-medium text-foreground">
-                  Last synced 5 minutes ago
+                  {lastSyncedAt 
+                    ? `Last synced ${formatDistanceToNow(new Date(lastSyncedAt), { addSuffix: true })}`
+                    : "Never synced"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  12 documents synced
+                  {syncedDocsCount} document{syncedDocsCount !== 1 ? "s" : ""} synced
                 </p>
               </div>
-              <Button variant="outline" size="sm" className="gap-2">
-                <RefreshCw className="w-3 h-3" />
-                Sync Now
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2"
+                onClick={handleSyncNow}
+                disabled={isSyncing || !driveFolderId}
+              >
+                <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
+                {isSyncing ? "Syncing..." : "Sync Now"}
               </Button>
             </div>
           </div>
@@ -302,44 +528,64 @@ export const ProjectSettingsPanel = ({
               </Button>
             </div>
             <div className="space-y-2">
-              {members.length === 0 ? (
+              {loadingMembers ? (
+                <p className="text-sm text-muted-foreground px-3 py-2">
+                  Loading members...
+                </p>
+              ) : members.length === 0 ? (
                 <p className="text-sm text-muted-foreground px-3 py-2">
                   No members yet
                 </p>
               ) : (
                 members.map((member) => (
                   <div
-                    key={member.email}
+                    key={member.id}
                     className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/50"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                        <span className="text-sm font-medium text-primary">
-                          {member.avatar}
-                        </span>
+                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+                        {member.profile?.avatar_url ? (
+                          <img 
+                            src={member.profile.avatar_url} 
+                            alt="" 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-sm font-medium text-primary">
+                            {(member.profile?.full_name || member.profile?.email || "?")[0].toUpperCase()}
+                          </span>
+                        )}
                       </div>
                       <div>
                         <p className="text-sm font-medium text-foreground">
-                          {member.name}
+                          {member.profile?.full_name || "Unknown User"}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {member.email}
+                          {member.profile?.email || "No email"}
                         </p>
                       </div>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1">
+                        <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1 capitalize">
                           {member.role}
                           <ChevronDown className="w-3 h-3" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Owner</DropdownMenuItem>
-                        <DropdownMenuItem>Admin</DropdownMenuItem>
-                        <DropdownMenuItem>Editor</DropdownMenuItem>
-                        <DropdownMenuItem>Viewer</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        {roleOptions.map((role) => (
+                          <DropdownMenuItem 
+                            key={role.value}
+                            onClick={() => handleUpdateRole(member.id, role.value)}
+                            className={member.role === role.value ? "bg-accent" : ""}
+                          >
+                            {role.label}
+                          </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuItem 
+                          className="text-destructive"
+                          onClick={() => handleRemoveMember(member.id)}
+                        >
                           Remove
                         </DropdownMenuItem>
                       </DropdownMenuContent>
