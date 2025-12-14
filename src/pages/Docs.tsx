@@ -45,6 +45,7 @@ interface Organization {
 interface Topic {
   id: string;
   name: string;
+  slug: string | null;
   project_id: string;
 }
 
@@ -79,11 +80,21 @@ function cleanGoogleDocsHtml(html: string): string {
 }
 
 export default function Docs() {
-  const { orgSlug, projectSlug, pageSlug } = useParams<{ 
+  // URL can be: /docs/:orgSlug/:projectSlug/:pageSlug OR /docs/:orgSlug/:projectSlug/:topicSlug/:pageSlug
+  const params = useParams<{ 
     orgSlug?: string; 
     projectSlug?: string; 
+    topicSlug?: string;
     pageSlug?: string;
   }>();
+  
+  // Destructure with fallback - if only 3 segments, topicSlug is actually pageSlug
+  const orgSlug = params.orgSlug;
+  const projectSlug = params.projectSlug;
+  // If we have 4 segments (topicSlug and pageSlug both present), use them
+  // Otherwise, the third segment is the pageSlug (no topic)
+  const topicSlug = params.pageSlug ? params.topicSlug : undefined;
+  const pageSlug = params.pageSlug || params.topicSlug;
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { theme } = useTheme();
@@ -132,15 +143,47 @@ export default function Docs() {
     }
   };
 
+  // Helper to build document URL with topic if applicable
+  const buildDocUrl = (doc: Document, project: Project, org: Organization) => {
+    const orgIdentifier = org.slug || org.domain;
+    const topic = doc.topic_id ? topics.find(t => t.id === doc.topic_id) : null;
+    
+    if (topic?.slug) {
+      return `/docs/${orgIdentifier}/${project.slug}/${topic.slug}/${doc.slug}`;
+    }
+    return `/docs/${orgIdentifier}/${project.slug}/${doc.slug}`;
+  };
+
   // Handle URL-based document selection using slugs
   useEffect(() => {
     if (documents.length === 0 || projects.length === 0) return;
 
     if (pageSlug && projectSlug) {
-      // Find document by slug
       const project = projects.find(p => p.slug === projectSlug);
       if (project) {
-        const doc = documents.find(d => d.slug === pageSlug && d.project_id === project.id);
+        let doc: Document | undefined;
+        
+        if (topicSlug) {
+          // URL has topic: /docs/org/project/topic/page
+          const topic = topics.find(t => t.slug === topicSlug && t.project_id === project.id);
+          if (topic) {
+            doc = documents.find(d => d.slug === pageSlug && d.topic_id === topic.id);
+          }
+        } else {
+          // URL without topic: /docs/org/project/page (page directly under project)
+          doc = documents.find(d => d.slug === pageSlug && d.project_id === project.id && !d.topic_id);
+          
+          // If not found without topic, maybe the URL is missing the topic - try to find and redirect
+          if (!doc) {
+            doc = documents.find(d => d.slug === pageSlug && d.project_id === project.id);
+            if (doc?.topic_id && currentOrg) {
+              // Redirect to include topic in URL
+              navigate(buildDocUrl(doc, project, currentOrg), { replace: true });
+              return;
+            }
+          }
+        }
+        
         if (doc) {
           setSelectedDocument(doc);
           autoSyncContent(doc);
@@ -151,27 +194,25 @@ export default function Docs() {
         }
       }
     } else if (projectSlug && !pageSlug) {
-      // Project selected but no page - select first document in project
+      // Project selected but no page - select first document
       const project = projects.find(p => p.slug === projectSlug);
-      if (project) {
+      if (project && currentOrg) {
         const firstDoc = documents.find(d => d.project_id === project.id);
-        if (firstDoc && currentOrg) {
-          const orgIdentifier = currentOrg.slug || currentOrg.domain;
-          navigate(`/docs/${orgIdentifier}/${project.slug}/${firstDoc.slug}`, { replace: true });
+        if (firstDoc) {
+          navigate(buildDocUrl(firstDoc, project, currentOrg), { replace: true });
         }
       }
     } else if (orgSlug && !projectSlug && !pageSlug) {
       // Only org selected - select first project's first document
       const firstProject = projects[0];
-      if (firstProject) {
+      if (firstProject && currentOrg) {
         const firstDoc = documents.find(d => d.project_id === firstProject.id);
-        if (firstDoc && currentOrg) {
-          const orgIdentifier = currentOrg.slug || currentOrg.domain;
-          navigate(`/docs/${orgIdentifier}/${firstProject.slug}/${firstDoc.slug}`, { replace: true });
+        if (firstDoc) {
+          navigate(buildDocUrl(firstDoc, firstProject, currentOrg), { replace: true });
         }
       }
     }
-  }, [pageSlug, projectSlug, orgSlug, documents, projects, currentOrg, navigate]);
+  }, [pageSlug, topicSlug, projectSlug, orgSlug, documents, projects, topics, currentOrg, navigate]);
 
 
   const fetchContent = async () => {
@@ -265,7 +306,7 @@ export default function Docs() {
     // Fetch topics for accessible projects
     const { data: topicsData } = await supabase
       .from("topics")
-      .select("id, name, project_id")
+      .select("id, name, slug, project_id")
       .in("project_id", projectIds)
       .order("name");
     
@@ -321,11 +362,10 @@ export default function Docs() {
 
   const selectDocument = (doc: Document) => {
     setSelectedDocument(doc);
-    // Navigate using slugs
+    // Navigate using slugs with topic if applicable
     const project = projects.find(p => p.id === doc.project_id);
     if (project && currentOrg) {
-      const orgIdentifier = currentOrg.slug || currentOrg.domain;
-      navigate(`/docs/${orgIdentifier}/${project.slug}/${doc.slug}`);
+      navigate(buildDocUrl(doc, project, currentOrg));
     }
     setMobileMenuOpen(false);
   };
