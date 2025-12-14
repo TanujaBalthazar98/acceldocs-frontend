@@ -26,7 +26,8 @@ import {
   CheckCircle,
   Lock,
   Eye,
-  Globe
+  Globe,
+  BookOpen,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -48,7 +49,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { PageView } from "@/components/dashboard/PageView";
-import { SharePanel } from "@/components/dashboard/SharePanel";
+import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
 import { AddPageDialog } from "@/components/dashboard/AddPageDialog";
 import { AddProjectDialog } from "@/components/dashboard/AddProjectDialog";
 import { AddTopicDialog } from "@/components/dashboard/AddTopicDialog";
@@ -57,7 +58,6 @@ import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
-import { useSyncContent } from "@/hooks/useSyncContent";
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -108,10 +108,8 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { listFolder } = useGoogleDrive();
-  const { syncDocument, syncing: syncingContent } = useSyncContent();
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
-  const [sharePageTitle, setSharePageTitle] = useState("");
   const [addPageOpen, setAddPageOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addTopicOpen, setAddTopicOpen] = useState(false);
@@ -348,9 +346,9 @@ const Dashboard = () => {
     setSelectedPage(title);
   };
 
-  const handleSharePage = (e: React.MouseEvent, title: string) => {
+  const handleShareProject = (e: React.MouseEvent, project: Project) => {
     e.stopPropagation();
-    setSharePageTitle(title);
+    setSelectedProject(project);
     setShareOpen(true);
   };
 
@@ -735,7 +733,29 @@ const Dashboard = () => {
                             <MoreHorizontal className="w-3 h-3" />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation();
+                            handleShareProject(e as unknown as React.MouseEvent, project);
+                          }}>
+                            <Share2 className="w-3 h-3 mr-2" />
+                            Share
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            window.open(`/docs/${project.id}`, '_blank');
+                          }}>
+                            <Eye className="w-3 h-3 mr-2" />
+                            Preview Docs
+                          </DropdownMenuItem>
+                          {project.is_published && (
+                            <DropdownMenuItem onClick={() => {
+                              window.open(`/docs/${project.id}`, '_blank');
+                            }}>
+                              <BookOpen className="w-3 h-3 mr-2" />
+                              Published Docs
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => {
                             setSelectedProject(project);
                             setProjectSettingsOpen(true);
@@ -1034,21 +1054,14 @@ const Dashboard = () => {
                                 <ExternalLink className="w-4 h-4 text-muted-foreground" />
                               </button>
                               <button
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                   e.stopPropagation();
-                                  await syncDocument(doc.id, doc.google_doc_id);
+                                  setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
+                                  setDeleteDialogOpen(true);
                                 }}
-                                disabled={syncingContent}
-                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all disabled:opacity-50"
-                                title="Sync content from Google Docs"
+                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
                               >
-                                <RefreshCw className={`w-4 h-4 text-muted-foreground ${syncingContent ? 'animate-spin' : ''}`} />
-                              </button>
-                              <button
-                                onClick={(e) => handleSharePage(e, doc.title)}
-                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
-                              >
-                                <Share2 className="w-4 h-4 text-muted-foreground" />
+                                <Trash2 className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={(e) => {
@@ -1095,10 +1108,11 @@ const Dashboard = () => {
         </div>
       </main>
 
-      <SharePanel
+      <ProjectSharePanel
         open={shareOpen}
         onOpenChange={setShareOpen}
-        pageTitle={sharePageTitle}
+        projectId={selectedProject?.id || ""}
+        projectName={selectedProject?.name || ""}
       />
       
       <AddPageDialog

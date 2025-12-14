@@ -92,12 +92,28 @@ export default function Docs() {
     fetchContent();
   }, [user]);
 
+  // Auto-sync content when document is selected
+  const autoSyncContent = async (doc: Document) => {
+    // Only sync if content_html is empty or missing
+    if (!doc.content_html) {
+      const html = await syncDocument(doc.id, doc.google_doc_id);
+      if (html) {
+        setDocumentHtml(html);
+        setDocuments(prev => 
+          prev.map(d => d.id === doc.id ? { ...d, content_html: html } : d)
+        );
+      }
+    } else {
+      setDocumentHtml(doc.content_html);
+    }
+  };
+
   useEffect(() => {
     if (pageId && documents.length > 0) {
       const doc = documents.find(d => d.id === pageId);
       if (doc) {
         setSelectedDocument(doc);
-        setDocumentHtml(doc.content_html);
+        autoSyncContent(doc);
         // Auto-expand the project and topic
         setExpandedProjects(prev => new Set([...prev, doc.project_id]));
         if (doc.topic_id) {
@@ -113,18 +129,6 @@ export default function Docs() {
     }
   }, [pageId, documents, navigate]);
 
-  const handleSyncContent = async () => {
-    if (!selectedDocument) return;
-    
-    const html = await syncDocument(selectedDocument.id, selectedDocument.google_doc_id);
-    if (html) {
-      setDocumentHtml(html);
-      // Update the document in state
-      setDocuments(prev => 
-        prev.map(d => d.id === selectedDocument.id ? { ...d, content_html: html } : d)
-      );
-    }
-  };
 
   const fetchContent = async () => {
     setLoading(true);
@@ -445,17 +449,11 @@ export default function Docs() {
               <Badge variant="outline" className="text-xs">
                 {visibilityConfig[selectedDocument.visibility].label}
               </Badge>
-              {user && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleSyncContent}
-                  disabled={syncing}
-                  className="ml-auto"
-                >
-                  <RefreshCw className={cn("h-4 w-4 mr-2", syncing && "animate-spin")} />
-                  {syncing ? "Syncing..." : "Sync Content"}
-                </Button>
+              {syncing && (
+                <div className="flex items-center gap-2 ml-auto text-primary">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span className="text-xs">Syncing...</span>
+                </div>
               )}
             </div>
 
@@ -468,15 +466,9 @@ export default function Docs() {
                 />
               ) : (
                 <div className="text-center py-12 text-muted-foreground">
-                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="font-medium">Content not available</p>
-                  <p className="text-sm mt-2 mb-4">This document's content has not been synced yet.</p>
-                  {user && (
-                    <Button onClick={handleSyncContent} disabled={syncing}>
-                      <RefreshCw className={cn("h-4 w-4 mr-2", syncing && "animate-spin")} />
-                      {syncing ? "Syncing..." : "Sync Now"}
-                    </Button>
-                  )}
+                  <RefreshCw className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
+                  <p className="font-medium">Loading content...</p>
+                  <p className="text-sm mt-2">Syncing document from Google Docs</p>
                 </div>
               )}
             </div>
