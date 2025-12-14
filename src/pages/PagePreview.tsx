@@ -46,6 +46,51 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
   public: { icon: Globe, label: "Public", color: "bg-green-500/20 text-green-400" },
 };
 
+// Helper function to convert Google Docs JSON to simple HTML
+function convertDocToHtml(doc: any): string {
+  if (!doc?.body?.content) return "";
+  
+  let html = "";
+  
+  for (const element of doc.body.content) {
+    if (element.paragraph) {
+      const para = element.paragraph;
+      let paraHtml = "";
+      
+      if (para.elements) {
+        for (const el of para.elements) {
+          if (el.textRun) {
+            let text = el.textRun.content || "";
+            const style = el.textRun.textStyle || {};
+            
+            // Apply text styling
+            if (style.bold) text = `<strong>${text}</strong>`;
+            if (style.italic) text = `<em>${text}</em>`;
+            if (style.underline) text = `<u>${text}</u>`;
+            if (style.link?.url) text = `<a href="${style.link.url}" target="_blank" rel="noopener">${text}</a>`;
+            
+            paraHtml += text;
+          }
+        }
+      }
+      
+      // Check for heading styles
+      const namedStyle = para.paragraphStyle?.namedStyleType;
+      if (namedStyle === "HEADING_1") {
+        html += `<h1>${paraHtml}</h1>`;
+      } else if (namedStyle === "HEADING_2") {
+        html += `<h2>${paraHtml}</h2>`;
+      } else if (namedStyle === "HEADING_3") {
+        html += `<h3>${paraHtml}</h3>`;
+      } else {
+        html += `<p>${paraHtml}</p>`;
+      }
+    }
+  }
+  
+  return html;
+}
+
 export default function PagePreview() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -126,16 +171,24 @@ export default function PagePreview() {
       });
 
       if (error) {
-        // Check if it's an auth error (401)
         console.error("Error fetching doc content:", error);
         setNeedsReconnect(true);
         return;
       }
       
-      if (data?.content) {
-        setDocContent(data.content);
+      // Check if the response indicates need for re-authentication
+      if (data?.needsReauth) {
+        console.log("Google token expired, needs re-authentication");
+        setNeedsReconnect(true);
+        return;
+      }
+      
+      // The edge function returns the doc object, convert to HTML content
+      if (data?.doc) {
+        const htmlContent = convertDocToHtml(data.doc);
+        setDocContent(htmlContent);
       } else if (data?.error) {
-        // Handle API error response
+        console.error("API error:", data.error);
         setNeedsReconnect(true);
       }
     } catch (error) {
