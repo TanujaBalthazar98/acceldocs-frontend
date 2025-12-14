@@ -22,11 +22,14 @@ export type Database = {
           google_doc_id: string
           google_modified_at: string | null
           id: string
+          is_published: boolean
           last_synced_at: string | null
+          owner_id: string | null
           project_id: string
           title: string
           topic_id: string | null
           updated_at: string
+          visibility: Database["public"]["Enums"]["visibility_level"]
         }
         Insert: {
           content?: string | null
@@ -35,11 +38,14 @@ export type Database = {
           google_doc_id: string
           google_modified_at?: string | null
           id?: string
+          is_published?: boolean
           last_synced_at?: string | null
+          owner_id?: string | null
           project_id: string
           title: string
           topic_id?: string | null
           updated_at?: string
+          visibility?: Database["public"]["Enums"]["visibility_level"]
         }
         Update: {
           content?: string | null
@@ -48,13 +54,23 @@ export type Database = {
           google_doc_id?: string
           google_modified_at?: string | null
           id?: string
+          is_published?: boolean
           last_synced_at?: string | null
+          owner_id?: string | null
           project_id?: string
           title?: string
           topic_id?: string | null
           updated_at?: string
+          visibility?: Database["public"]["Enums"]["visibility_level"]
         }
         Relationships: [
+          {
+            foreignKeyName: "documents_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "documents_project_id_fkey"
             columns: ["project_id"]
@@ -194,9 +210,11 @@ export type Database = {
           drive_folder_id: string | null
           id: string
           is_connected: boolean | null
+          is_published: boolean
           name: string
           organization_id: string
           updated_at: string
+          visibility: Database["public"]["Enums"]["visibility_level"]
         }
         Insert: {
           created_at?: string
@@ -205,9 +223,11 @@ export type Database = {
           drive_folder_id?: string | null
           id?: string
           is_connected?: boolean | null
+          is_published?: boolean
           name: string
           organization_id: string
           updated_at?: string
+          visibility?: Database["public"]["Enums"]["visibility_level"]
         }
         Update: {
           created_at?: string
@@ -216,9 +236,11 @@ export type Database = {
           drive_folder_id?: string | null
           id?: string
           is_connected?: boolean | null
+          is_published?: boolean
           name?: string
           organization_id?: string
           updated_at?: string
+          visibility?: Database["public"]["Enums"]["visibility_level"]
         }
         Relationships: [
           {
@@ -323,6 +345,7 @@ export type Database = {
     Enums: {
       account_type: "individual" | "team" | "enterprise"
       app_role: "owner" | "admin" | "editor" | "viewer"
+      visibility_level: "internal" | "external" | "public"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -452,6 +475,7 @@ export const Constants = {
     Enums: {
       account_type: ["individual", "team", "enterprise"],
       app_role: ["owner", "admin", "editor", "viewer"],
+      visibility_level: ["internal", "external", "public"],
     },
   },
 } as const

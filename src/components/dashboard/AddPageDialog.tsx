@@ -11,6 +11,7 @@ import { FilePlus } from "lucide-react";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AddPageDialogProps {
   open: boolean;
@@ -37,6 +38,7 @@ export const AddPageDialog = ({
   const [isCreating, setIsCreating] = useState(false);
   const { createDoc } = useGoogleDrive();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const locationText = topicName 
     ? `${projectName} / ${topicName}` 
@@ -51,7 +53,7 @@ export const AddPageDialog = ({
     const doc = await createDoc(pageTitle.trim(), parentFolderId);
     
     if (doc) {
-      // Save document to database
+      // Save document to database with owner_id
       const { data: savedDoc, error } = await supabase
         .from("documents")
         .insert({
@@ -59,6 +61,7 @@ export const AddPageDialog = ({
           google_doc_id: doc.id,
           project_id: projectId,
           topic_id: topicId || null,
+          owner_id: user?.id || null,
         })
         .select("id, title, google_doc_id")
         .single();
