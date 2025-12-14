@@ -14,7 +14,7 @@ const GOOGLE_TOKEN_KEY = "google_access_token";
 
 export const useGoogleDrive = () => {
   const { toast } = useToast();
-  const { googleAccessToken } = useAuth();
+  const { googleAccessToken, requestDriveAccess } = useAuth();
 
   const getGoogleToken = (): string | null => {
     // First try from context, then from localStorage
@@ -23,12 +23,37 @@ export const useGoogleDrive = () => {
     return token;
   };
 
+  // Ensure session is fresh before making edge function calls
+  const ensureFreshSession = async (): Promise<boolean> => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error || !session) {
+      // Try to refresh
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.log("Session refresh failed:", refreshError.message);
+        return false;
+      }
+    }
+    return true;
+  };
+
   const listFolder = async (folderId: string): Promise<{ files: DriveFile[] | null; needsDriveAccess?: boolean }> => {
     const token = getGoogleToken();
     if (!token) {
       toast({
         title: "Authentication required",
         description: "Please sign in with Google again to access Drive.",
+        variant: "destructive",
+      });
+      return { files: null };
+    }
+
+    // Ensure session is fresh
+    const sessionValid = await ensureFreshSession();
+    if (!sessionValid) {
+      toast({
+        title: "Session expired",
+        description: "Please sign in again.",
         variant: "destructive",
       });
       return { files: null };
@@ -54,6 +79,16 @@ export const useGoogleDrive = () => {
       return { files: null };
     }
 
+    // Check for reauth needed
+    if (data?.needsReauth) {
+      toast({
+        title: "Session expired",
+        description: "Please sign in again to continue.",
+        variant: "destructive",
+      });
+      return { files: null };
+    }
+
     // Check for scope/drive access needed
     if (data?.needsDriveAccess) {
       return { files: null, needsDriveAccess: true };
@@ -72,6 +107,9 @@ export const useGoogleDrive = () => {
       });
       return null;
     }
+
+    // Ensure session is fresh
+    await ensureFreshSession();
 
     const { data, error } = await supabase.functions.invoke("google-drive", {
       body: {
@@ -116,6 +154,9 @@ export const useGoogleDrive = () => {
       });
       return null;
     }
+
+    // Ensure session is fresh
+    await ensureFreshSession();
 
     const { data, error } = await supabase.functions.invoke("google-drive", {
       body: {
