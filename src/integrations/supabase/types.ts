@@ -25,6 +25,7 @@ export type Database = {
           last_synced_at: string | null
           project_id: string
           title: string
+          topic_id: string | null
           updated_at: string
         }
         Insert: {
@@ -37,6 +38,7 @@ export type Database = {
           last_synced_at?: string | null
           project_id: string
           title: string
+          topic_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -49,6 +51,7 @@ export type Database = {
           last_synced_at?: string | null
           project_id?: string
           title?: string
+          topic_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -57,6 +60,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
             referencedColumns: ["id"]
           },
         ]
@@ -216,6 +226,41 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topics: {
+        Row: {
+          created_at: string
+          drive_folder_id: string
+          id: string
+          name: string
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          drive_folder_id: string
+          id?: string
+          name: string
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          drive_folder_id?: string
+          id?: string
+          name?: string
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topics_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
