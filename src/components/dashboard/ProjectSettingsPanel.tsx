@@ -85,6 +85,8 @@ export const ProjectSettingsPanel = ({
   const { user, googleAccessToken } = useAuth();
   
   const [name, setName] = useState(projectName || "");
+  const [slug, setSlug] = useState("");
+  const [slugError, setSlugError] = useState("");
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<VisibilityLevel>("internal");
   const [isPublished, setIsPublished] = useState(false);
@@ -100,6 +102,7 @@ export const ProjectSettingsPanel = ({
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncedDocsCount, setSyncedDocsCount] = useState(0);
   const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
 
   // Fetch project data when opened
   useEffect(() => {
@@ -115,16 +118,18 @@ export const ProjectSettingsPanel = ({
 
     const { data } = await supabase
       .from("projects")
-      .select("name, description, visibility, is_published, drive_folder_id")
+      .select("name, slug, description, visibility, is_published, drive_folder_id, organization_id")
       .eq("id", projectId)
       .single();
 
     if (data) {
       setName(data.name);
+      setSlug(data.slug || "");
       setDescription(data.description || "");
       setVisibility(data.visibility as VisibilityLevel);
       setIsPublished(data.is_published);
       setDriveFolderId(data.drive_folder_id);
+      setOrganizationId(data.organization_id);
     }
   };
 
@@ -183,17 +188,68 @@ export const ProjectSettingsPanel = ({
     setSyncedDocsCount(count || 0);
   };
 
+  // Validate slug format
+  const validateSlug = (value: string): boolean => {
+    if (!value) return true; // Empty is okay, will use auto-generated
+    if (!/^[a-z0-9-]+$/.test(value)) {
+      setSlugError("Only lowercase letters, numbers, and hyphens allowed");
+      return false;
+    }
+    if (value.startsWith("-") || value.endsWith("-")) {
+      setSlugError("Cannot start or end with a hyphen");
+      return false;
+    }
+    if (value.includes("--")) {
+      setSlugError("Cannot have consecutive hyphens");
+      return false;
+    }
+    setSlugError("");
+    return true;
+  };
+
+  const checkSlugAvailability = async (slugValue: string): Promise<boolean> => {
+    if (!slugValue || !organizationId) return true;
+    
+    const { data } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("slug", slugValue)
+      .neq("id", projectId)
+      .maybeSingle();
+    
+    if (data) {
+      setSlugError("This URL slug is already in use");
+      return false;
+    }
+    return true;
+  };
+
   const handleSave = async () => {
     if (!projectId) return;
+    
+    // Validate slug
+    if (slug && !validateSlug(slug)) return;
+    
+    // Check availability
+    if (slug && !(await checkSlugAvailability(slug))) return;
+    
     setIsSaving(true);
+
+    const updateData: Record<string, any> = {
+      name,
+      description: description || null,
+      visibility,
+    };
+    
+    // Only update slug if explicitly set (otherwise let trigger handle it)
+    if (slug) {
+      updateData.slug = slug;
+    }
 
     const { error } = await supabase
       .from("projects")
-      .update({
-        name,
-        description: description || null,
-        visibility,
-      })
+      .update(updateData)
       .eq("id", projectId);
 
     setIsSaving(false);
@@ -462,6 +518,37 @@ export const ProjectSettingsPanel = ({
               onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
+          </div>
+
+          {/* URL Slug */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">
+              URL Slug
+            </label>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground shrink-0">/docs/.../</span>
+                <input
+                  type="text"
+                  value={slug}
+                  onChange={(e) => {
+                    const value = e.target.value.toLowerCase().replace(/\s+/g, "-");
+                    setSlug(value);
+                    validateSlug(value);
+                  }}
+                  placeholder="auto-generated"
+                  className={`flex-1 px-4 py-2.5 rounded-lg bg-secondary border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ${
+                    slugError ? "border-destructive" : "border-border"
+                  }`}
+                />
+              </div>
+              {slugError && (
+                <p className="text-xs text-destructive">{slugError}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Customize the URL for this project. Leave empty to auto-generate from name.
+              </p>
+            </div>
           </div>
 
           {/* Description */}
