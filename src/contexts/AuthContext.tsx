@@ -129,6 +129,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   // Separate function to request Drive access after sign-in
+  // Using drive.readonly to read existing files + drive.file to create new ones
   const requestDriveAccess = async () => {
     const redirectUrl = `${window.location.origin}/dashboard`;
     
@@ -136,7 +137,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       provider: "google",
       options: {
         redirectTo: redirectUrl,
-        scopes: "https://www.googleapis.com/auth/drive.file",
+        scopes: "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file",
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',
