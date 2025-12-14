@@ -45,6 +45,13 @@ interface ProjectMember {
   full_name?: string;
 }
 
+interface PendingInvitation {
+  id: string;
+  email: string;
+  role: ProjectRole;
+  expires_at: string;
+}
+
 const roleConfig: Record<ProjectRole, { label: string; description: string }> = {
   admin: { label: "Admin", description: "Full access and can manage members" },
   editor: { label: "Editor", description: "Can edit and publish pages" },
@@ -64,6 +71,7 @@ export const ProjectSharePanel = ({
   const [email, setEmail] = useState("");
   const [selectedRole, setSelectedRole] = useState<ProjectRole>("viewer");
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
   const [loading, setLoading] = useState(false);
   const [inviting, setInviting] = useState(false);
 
@@ -76,6 +84,7 @@ export const ProjectSharePanel = ({
   const fetchMembers = async () => {
     setLoading(true);
     try {
+      // Fetch project members
       const { data, error } = await supabase
         .from("project_members")
         .select("id, user_id, role")
@@ -103,6 +112,18 @@ export const ProjectSharePanel = ({
       } else {
         setMembers([]);
       }
+
+      // Fetch pending invitations
+      const { data: invitations, error: invError } = await supabase
+        .from("project_invitations")
+        .select("id, email, role, expires_at")
+        .eq("project_id", projectId)
+        .is("accepted_at", null)
+        .gt("expires_at", new Date().toISOString());
+
+      if (!invError && invitations) {
+        setPendingInvitations(invitations as PendingInvitation[]);
+      }
     } catch (error) {
       console.error("Error fetching members:", error);
     } finally {
@@ -127,38 +148,66 @@ export const ProjectSharePanel = ({
 
       if (profileError) throw profileError;
 
-      if (!profile) {
-        toast({ title: "User not found", description: "No user with that email exists.", variant: "destructive" });
-        setInviting(false);
-        return;
+      if (profile) {
+        // User exists - add directly as member
+        // Check if already a member
+        const { data: existing } = await supabase
+          .from("project_members")
+          .select("id")
+          .eq("project_id", projectId)
+          .eq("user_id", profile.id)
+          .maybeSingle();
+
+        if (existing) {
+          toast({ title: "Already a member", description: "This user is already a project member.", variant: "destructive" });
+          setInviting(false);
+          return;
+        }
+
+        // Add member
+        const { error: insertError } = await supabase
+          .from("project_members")
+          .insert({
+            project_id: projectId,
+            user_id: profile.id,
+            role: selectedRole,
+          });
+
+        if (insertError) throw insertError;
+
+        toast({ title: "Member added", description: `${email} has been added as ${selectedRole}.` });
+      } else {
+        // User doesn't exist - create pending invitation
+        // Check if already invited
+        const { data: existingInvite } = await supabase
+          .from("project_invitations")
+          .select("id")
+          .eq("project_id", projectId)
+          .eq("email", email.trim().toLowerCase())
+          .is("accepted_at", null)
+          .maybeSingle();
+
+        if (existingInvite) {
+          toast({ title: "Already invited", description: "An invitation has already been sent to this email.", variant: "destructive" });
+          setInviting(false);
+          return;
+        }
+
+        // Create invitation
+        const { error: inviteError } = await supabase
+          .from("project_invitations")
+          .insert({
+            project_id: projectId,
+            email: email.trim().toLowerCase(),
+            role: selectedRole,
+            invited_by: user?.id,
+          });
+
+        if (inviteError) throw inviteError;
+
+        toast({ title: "Invitation sent", description: `${email} has been invited as ${selectedRole}. They'll get access when they sign up.` });
       }
-
-      // Check if already a member
-      const { data: existing } = await supabase
-        .from("project_members")
-        .select("id")
-        .eq("project_id", projectId)
-        .eq("user_id", profile.id)
-        .maybeSingle();
-
-      if (existing) {
-        toast({ title: "Already a member", description: "This user is already a project member.", variant: "destructive" });
-        setInviting(false);
-        return;
-      }
-
-      // Add member
-      const { error: insertError } = await supabase
-        .from("project_members")
-        .insert({
-          project_id: projectId,
-          user_id: profile.id,
-          role: selectedRole,
-        });
-
-      if (insertError) throw insertError;
-
-      toast({ title: "Member added", description: `${email} has been added as ${selectedRole}.` });
+      
       setEmail("");
       fetchMembers();
     } catch (error) {
@@ -200,6 +249,23 @@ export const ProjectSharePanel = ({
     } catch (error) {
       console.error("Error removing member:", error);
       toast({ title: "Error", description: "Failed to remove member.", variant: "destructive" });
+    }
+  };
+
+  const handleCancelInvitation = async (invitationId: string) => {
+    try {
+      const { error } = await supabase
+        .from("project_invitations")
+        .delete()
+        .eq("id", invitationId);
+
+      if (error) throw error;
+
+      setPendingInvitations(prev => prev.filter(i => i.id !== invitationId));
+      toast({ title: "Invitation cancelled" });
+    } catch (error) {
+      console.error("Error cancelling invitation:", error);
+      toast({ title: "Error", description: "Failed to cancel invitation.", variant: "destructive" });
     }
   };
 
@@ -303,59 +369,94 @@ export const ProjectSharePanel = ({
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {loading ? (
                 <p className="text-sm text-muted-foreground py-2">Loading...</p>
-              ) : members.length === 0 ? (
+              ) : members.length === 0 && pendingInvitations.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-2">No members added yet.</p>
               ) : (
-                members.map((member) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/50"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                        <span className="text-sm font-medium text-primary">
-                          {member.email?.charAt(0).toUpperCase() || "?"}
-                        </span>
+                <>
+                  {members.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                          <span className="text-sm font-medium text-primary">
+                            {member.email?.charAt(0).toUpperCase() || "?"}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {member.full_name || member.email?.split("@")[0]}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {member.email}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {member.full_name || member.email?.split("@")[0]}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {member.email}
-                        </p>
+                      <div className="flex items-center gap-1">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1">
+                              {roleConfig[member.role].label}
+                              <ChevronDown className="w-3 h-3" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {(Object.keys(roleConfig) as ProjectRole[]).map((role) => (
+                              <DropdownMenuItem
+                                key={role}
+                                onClick={() => handleUpdateRole(member.id, role)}
+                              >
+                                {roleConfig[role].label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        {member.user_id !== user?.id && (
+                          <button
+                            onClick={() => handleRemoveMember(member.id)}
+                            className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1">
-                            {roleConfig[member.role].label}
-                            <ChevronDown className="w-3 h-3" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {(Object.keys(roleConfig) as ProjectRole[]).map((role) => (
-                            <DropdownMenuItem
-                              key={role}
-                              onClick={() => handleUpdateRole(member.id, role)}
-                            >
-                              {roleConfig[role].label}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      {member.user_id !== user?.id && (
+                  ))}
+                  {/* Pending invitations */}
+                  {pendingInvitations.map((invitation) => (
+                    <div
+                      key={invitation.id}
+                      className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/30 border border-dashed border-border"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                          <Mail className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {invitation.email}
+                          </p>
+                          <p className="text-xs text-amber-500">
+                            Pending invitation
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                          {roleConfig[invitation.role].label}
+                        </span>
                         <button
-                          onClick={() => handleRemoveMember(member.id)}
+                          onClick={() => handleCancelInvitation(invitation.id)}
                           className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
+                          title="Cancel invitation"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </>
               )}
             </div>
           </div>
