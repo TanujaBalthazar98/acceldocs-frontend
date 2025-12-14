@@ -11,6 +11,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import PagePreview from "./pages/PagePreview";
+import Docs from "./pages/Docs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,10 @@ const App = () => (
                     </ProtectedRoute>
                   }
                 />
+                {/* Public documentation routes - access controlled via RLS */}
+                <Route path="/docs" element={<Docs />} />
+                <Route path="/docs/:projectId" element={<Docs />} />
+                <Route path="/docs/:projectId/:pageId" element={<Docs />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
