@@ -30,8 +30,16 @@ type VisibilityLevel = "internal" | "external" | "public";
 interface Project {
   id: string;
   name: string;
+  slug: string | null;
   visibility: VisibilityLevel;
   is_published: boolean;
+  organization_id: string;
+}
+
+interface Organization {
+  id: string;
+  slug: string | null;
+  domain: string;
 }
 
 interface Topic {
@@ -43,6 +51,7 @@ interface Topic {
 interface Document {
   id: string;
   title: string;
+  slug: string | null;
   google_doc_id: string;
   project_id: string;
   topic_id: string | null;
@@ -70,7 +79,11 @@ function cleanGoogleDocsHtml(html: string): string {
 }
 
 export default function Docs() {
-  const { projectId, pageId } = useParams<{ projectId?: string; pageId?: string }>();
+  const { orgSlug, projectSlug, pageSlug } = useParams<{ 
+    orgSlug?: string; 
+    projectSlug?: string; 
+    pageSlug?: string;
+  }>();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { theme } = useTheme();
@@ -87,6 +100,8 @@ export default function Docs() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [documentHtml, setDocumentHtml] = useState<string | null>(null);
   const [isOrgUser, setIsOrgUser] = useState(false);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
 
   // Track if we've already fetched to avoid double fetching
   const [hasFetched, setHasFetched] = useState(false);
@@ -117,26 +132,46 @@ export default function Docs() {
     }
   };
 
+  // Handle URL-based document selection using slugs
   useEffect(() => {
-    if (pageId && documents.length > 0) {
-      const doc = documents.find(d => d.id === pageId);
-      if (doc) {
-        setSelectedDocument(doc);
-        autoSyncContent(doc);
-        // Auto-expand the project and topic
-        setExpandedProjects(prev => new Set([...prev, doc.project_id]));
-        if (doc.topic_id) {
-          setExpandedTopics(prev => new Set([...prev, doc.topic_id!]));
+    if (documents.length === 0 || projects.length === 0) return;
+
+    if (pageSlug && projectSlug) {
+      // Find document by slug
+      const project = projects.find(p => p.slug === projectSlug);
+      if (project) {
+        const doc = documents.find(d => d.slug === pageSlug && d.project_id === project.id);
+        if (doc) {
+          setSelectedDocument(doc);
+          autoSyncContent(doc);
+          setExpandedProjects(prev => new Set([...prev, doc.project_id]));
+          if (doc.topic_id) {
+            setExpandedTopics(prev => new Set([...prev, doc.topic_id!]));
+          }
         }
       }
-    } else if (!pageId && documents.length > 0) {
-      // Select first document by default
-      const firstDoc = documents[0];
-      if (firstDoc) {
-        navigate(`/docs/${firstDoc.project_id}/${firstDoc.id}`, { replace: true });
+    } else if (projectSlug && !pageSlug) {
+      // Project selected but no page - select first document in project
+      const project = projects.find(p => p.slug === projectSlug);
+      if (project) {
+        const firstDoc = documents.find(d => d.project_id === project.id);
+        if (firstDoc && currentOrg) {
+          const orgIdentifier = currentOrg.slug || currentOrg.domain;
+          navigate(`/docs/${orgIdentifier}/${project.slug}/${firstDoc.slug}`, { replace: true });
+        }
+      }
+    } else if (orgSlug && !projectSlug && !pageSlug) {
+      // Only org selected - select first project's first document
+      const firstProject = projects[0];
+      if (firstProject) {
+        const firstDoc = documents.find(d => d.project_id === firstProject.id);
+        if (firstDoc && currentOrg) {
+          const orgIdentifier = currentOrg.slug || currentOrg.domain;
+          navigate(`/docs/${orgIdentifier}/${firstProject.slug}/${firstDoc.slug}`, { replace: true });
+        }
       }
     }
-  }, [pageId, documents, navigate]);
+  }, [pageSlug, projectSlug, orgSlug, documents, projects, currentOrg, navigate]);
 
 
   const fetchContent = async () => {
@@ -158,15 +193,39 @@ export default function Docs() {
         
         userOrgId = profile?.organization_id || null;
         setIsOrgUser(!!userOrgId);
+        
+        // Fetch user's organization for slug URLs
+        if (userOrgId) {
+          const { data: orgData } = await supabase
+            .from("organizations")
+            .select("id, slug, domain")
+            .eq("id", userOrgId)
+            .single();
+          if (orgData) {
+            setCurrentOrg(orgData);
+          }
+        }
       } else {
         setIsOrgUser(false);
+      }
+      
+      // For public access via orgSlug, fetch org info
+      if (orgSlug && !currentOrg) {
+        const { data: orgData } = await supabase
+          .from("organizations")
+          .select("id, slug, domain")
+          .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
+          .maybeSingle();
+        if (orgData) {
+          setCurrentOrg(orgData);
+        }
       }
 
       // For authenticated users with org access, show all org projects (published or not)
       // For public/unauthenticated users, only show published projects
       let projectsQuery = supabase
         .from("projects")
-        .select("id, name, visibility, is_published, organization_id")
+        .select("id, name, slug, visibility, is_published, organization_id")
         .order("name");
 
       // If user has org, fetch all their org's projects; otherwise only published ones
@@ -218,7 +277,7 @@ export default function Docs() {
     // For public users, only show published documents
     let docsQuery = supabase
       .from("documents")
-      .select("id, title, google_doc_id, project_id, topic_id, visibility, is_published, content_html, created_at, updated_at, owner_id")
+      .select("id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, created_at, updated_at, owner_id")
       .in("project_id", projectIds)
       .order("title");
 
@@ -262,7 +321,12 @@ export default function Docs() {
 
   const selectDocument = (doc: Document) => {
     setSelectedDocument(doc);
-    navigate(`/docs/${doc.project_id}/${doc.id}`);
+    // Navigate using slugs
+    const project = projects.find(p => p.id === doc.project_id);
+    if (project && currentOrg) {
+      const orgIdentifier = currentOrg.slug || currentOrg.domain;
+      navigate(`/docs/${orgIdentifier}/${project.slug}/${doc.slug}`);
+    }
     setMobileMenuOpen(false);
   };
 
