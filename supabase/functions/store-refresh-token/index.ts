@@ -29,10 +29,16 @@ Deno.serve(async (req) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     
     if (userError || !user) {
-      console.error("User authentication failed:", userError);
+      // Don't return 401 for session issues - return a soft error that doesn't break the app
+      console.log("User session not valid, skipping token refresh:", userError?.message);
       return new Response(
-        JSON.stringify({ error: "Invalid user token" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          success: false, 
+          skipped: true,
+          reason: "session_invalid",
+          message: "Session not valid, please re-authenticate if needed" 
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
