@@ -133,51 +133,90 @@ export default function Docs() {
   const fetchContent = async () => {
     setLoading(true);
     try {
-      // Fetch published projects (RLS handles visibility)
-      const { data: projectsData, error: projectsError } = await supabase
+      // Check if user is authenticated and has organization access
+      let userOrgId: string | null = null;
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("id", user.id)
+          .single();
+        
+        userOrgId = profile?.organization_id || null;
+      }
+
+      // For authenticated users with org access, show all org projects (published or not)
+      // For public/unauthenticated users, only show published projects
+      let projectsQuery = supabase
         .from("projects")
-        .select("id, name, visibility, is_published")
-        .eq("is_published", true)
+        .select("id, name, visibility, is_published, organization_id")
         .order("name");
 
-      if (projectsError) {
-        console.error("Error fetching projects:", projectsError);
-      } else if (projectsData) {
-        setProjects(projectsData);
+      // If user has org, fetch all their org's projects; otherwise only published ones
+      if (userOrgId) {
+        // User is authenticated with org - show all projects they have access to
+        // RLS will handle permissions
+        const { data: projectsData, error: projectsError } = await projectsQuery;
         
-        const projectIds = projectsData.map(p => p.id);
+        if (projectsError) {
+          console.error("Error fetching projects:", projectsError);
+        } else if (projectsData) {
+          setProjects(projectsData);
+          await fetchTopicsAndDocuments(projectsData.map(p => p.id), userOrgId);
+        }
+      } else {
+        // Unauthenticated or no org - only show published projects
+        const { data: projectsData, error: projectsError } = await projectsQuery
+          .eq("is_published", true);
         
-        if (projectIds.length > 0) {
-          // Fetch topics for accessible projects
-          const { data: topicsData } = await supabase
-            .from("topics")
-            .select("id, name, project_id")
-            .in("project_id", projectIds)
-            .order("name");
-          
-          if (topicsData) {
-            setTopics(topicsData);
-          }
-
-          // Fetch published documents (RLS handles visibility)
-          const { data: docsData, error: docsError } = await supabase
-            .from("documents")
-            .select("id, title, google_doc_id, project_id, topic_id, visibility, is_published, content_html, created_at, updated_at, owner_id")
-            .in("project_id", projectIds)
-            .eq("is_published", true)
-            .order("title");
-
-          if (docsError) {
-            console.error("Error fetching documents:", docsError);
-          } else if (docsData) {
-            setDocuments(docsData);
-          }
+        if (projectsError) {
+          console.error("Error fetching projects:", projectsError);
+        } else if (projectsData) {
+          setProjects(projectsData);
+          await fetchTopicsAndDocuments(projectsData.map(p => p.id), null);
         }
       }
     } catch (error) {
       console.error("Error fetching content:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTopicsAndDocuments = async (projectIds: string[], userOrgId: string | null) => {
+    if (projectIds.length === 0) return;
+
+    // Fetch topics for accessible projects
+    const { data: topicsData } = await supabase
+      .from("topics")
+      .select("id, name, project_id")
+      .in("project_id", projectIds)
+      .order("name");
+    
+    if (topicsData) {
+      setTopics(topicsData);
+    }
+
+    // For authenticated users with org, show all documents
+    // For public users, only show published documents
+    let docsQuery = supabase
+      .from("documents")
+      .select("id, title, google_doc_id, project_id, topic_id, visibility, is_published, content_html, created_at, updated_at, owner_id")
+      .in("project_id", projectIds)
+      .order("title");
+
+    if (!userOrgId) {
+      // Only published docs for public/unauthenticated users
+      docsQuery = docsQuery.eq("is_published", true);
+    }
+
+    const { data: docsData, error: docsError } = await docsQuery;
+
+    if (docsError) {
+      console.error("Error fetching documents:", docsError);
+    } else if (docsData) {
+      setDocuments(docsData);
     }
   };
 
