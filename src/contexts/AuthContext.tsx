@@ -66,7 +66,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log("Auth state changed:", event);
+        console.log("Auth state changed:", event, "provider_refresh_token:", !!session?.provider_refresh_token);
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
@@ -79,12 +79,21 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
         
         // Store refresh token when available (on sign in with Google)
+        // Google only provides refresh token on initial consent
         if (session?.provider_refresh_token && session?.user?.id) {
-          console.log("Storing Google refresh token");
+          console.log("Provider refresh token found, storing...");
           // Use setTimeout to avoid Supabase auth state change deadlock
           setTimeout(() => {
             storeRefreshToken(session.user.id, session.provider_refresh_token!);
-          }, 0);
+          }, 100);
+        } else if (event === 'SIGNED_IN' && session?.user?.id) {
+          // Check if we got the refresh token in the URL hash (Supabase passes it this way)
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          const refreshToken = hashParams.get('provider_refresh_token');
+          if (refreshToken) {
+            console.log("Found provider refresh token in URL hash, storing...");
+            storeRefreshToken(session.user.id, refreshToken);
+          }
         }
         
         // Clear token on sign out
