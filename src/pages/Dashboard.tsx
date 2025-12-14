@@ -55,6 +55,7 @@ import { AddProjectDialog } from "@/components/dashboard/AddProjectDialog";
 import { AddTopicDialog } from "@/components/dashboard/AddTopicDialog";
 import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
 import { PageSettingsDialog } from "@/components/dashboard/PageSettingsDialog";
+import { TopicSettingsDialog } from "@/components/dashboard/TopicSettingsDialog";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { supabase } from "@/integrations/supabase/client";
@@ -117,9 +118,11 @@ const Dashboard = () => {
   const [addTopicOpen, setAddTopicOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [pageSettingsOpen, setPageSettingsOpen] = useState(false);
+  const [topicSettingsOpen, setTopicSettingsOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+  const [settingsTopic, setSettingsTopic] = useState<Topic | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
   const [rootFolderId, setRootFolderId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -828,6 +831,16 @@ const Dashboard = () => {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-40">
                                 <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSettingsTopic(topic);
+                                    setTopicSettingsOpen(true);
+                                  }}
+                                >
+                                  <Settings className="w-3 h-3 mr-2" />
+                                  Settings
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
                                   className="text-destructive focus:text-destructive"
                                   onClick={() => {
                                     setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
@@ -1197,6 +1210,14 @@ const Dashboard = () => {
         onUpdate={() => fetchData()}
       />
       
+      <TopicSettingsDialog
+        open={topicSettingsOpen}
+        onOpenChange={setTopicSettingsOpen}
+        topicId={settingsTopic?.id || null}
+        topicName={settingsTopic?.name || null}
+        projectId={settingsTopic?.project_id || null}
+        onUpdate={() => fetchData()}
+      />
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
