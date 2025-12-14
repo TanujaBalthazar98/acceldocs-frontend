@@ -21,7 +21,10 @@ import {
   Moon,
   RefreshCw,
   ExternalLink,
-  Trash2
+  Trash2,
+  Lock,
+  Eye,
+  Globe
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -73,6 +76,8 @@ interface Topic {
   project_id: string;
 }
 
+type VisibilityLevel = "internal" | "external" | "public";
+
 interface Document {
   id: string;
   title: string;
@@ -81,7 +86,16 @@ interface Document {
   topic_id: string | null;
   google_modified_at: string | null;
   created_at: string;
+  visibility: VisibilityLevel;
+  is_published: boolean;
+  owner_id: string | null;
 }
+
+const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: string; color: string }> = {
+  internal: { icon: Lock, label: "Internal", color: "text-muted-foreground" },
+  external: { icon: Eye, label: "External", color: "text-blue-400" },
+  public: { icon: Globe, label: "Public", color: "text-green-400" },
+};
 
 const Dashboard = () => {
   const { user, signOut, requestDriveAccess } = useAuth();
@@ -171,12 +185,12 @@ const Dashboard = () => {
           // Get documents for all projects
           const { data: docsData } = await supabase
             .from("documents")
-            .select("id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at")
+            .select("id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at, visibility, is_published, owner_id")
             .in("project_id", projectIds)
             .order("created_at", { ascending: false });
           
           if (docsData) {
-            setDocuments(docsData);
+            setDocuments(docsData as Document[]);
           }
         }
       }
@@ -952,60 +966,63 @@ const Dashboard = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredDocuments.map((doc) => (
-                      <tr
-                        key={doc.id}
-                        className="hover:bg-secondary/30 transition-colors cursor-pointer group"
-                        onClick={() => handleOpenInDrive(doc.google_doc_id)}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <FileText className="w-4 h-4 text-muted-foreground" />
-                            <div className="flex-1">
-                              <span className="text-sm font-medium text-foreground">
-                                {doc.title}
-                              </span>
+                    filteredDocuments.map((doc) => {
+                      const VisIcon = visibilityConfig[doc.visibility || 'internal'].icon;
+                      return (
+                        <tr
+                          key={doc.id}
+                          className="hover:bg-secondary/30 transition-colors cursor-pointer group"
+                          onClick={() => navigate(`/page/${doc.id}`)}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <FileText className="w-4 h-4 text-muted-foreground" />
+                              <div className="flex-1">
+                                <span className="text-sm font-medium text-foreground">
+                                  {doc.title}
+                                </span>
+                              </div>
+                              <VisIcon className={`w-3 h-3 ${visibilityConfig[doc.visibility || 'internal'].color}`} />
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenInDrive(doc.google_doc_id);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
+                                title="Open in Google Docs"
+                              >
+                                <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                              </button>
+                              <button
+                                onClick={(e) => handleSharePage(e, doc.title)}
+                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
+                              >
+                                <Share2 className="w-4 h-4 text-muted-foreground" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
+                                  setDeleteDialogOpen(true);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenInDrive(doc.google_doc_id);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
-                              title="Open in Google Docs"
-                            >
-                              <ExternalLink className="w-4 h-4 text-muted-foreground" />
-                            </button>
-                            <button
-                              onClick={(e) => handleSharePage(e, doc.title)}
-                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all"
-                            >
-                              <Share2 className="w-4 h-4 text-muted-foreground" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
-                                setDeleteDialogOpen(true);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-secondary transition-all text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 hidden sm:table-cell">
-                          <div className="flex items-center gap-2">
-                            <Circle className="w-2 h-2 bg-state-active rounded-full" />
-                            <span className="text-sm text-muted-foreground">Active</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 hidden md:table-cell">
-                          <div className="flex items-center gap-2">
-                            <User className="w-3 h-3 text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">—</span>
-                          </div>
-                        </td>
+                          </td>
+                          <td className="px-4 py-3 hidden sm:table-cell">
+                            <div className="flex items-center gap-2">
+                              <Circle className="w-2 h-2 bg-state-active rounded-full" />
+                              <span className="text-sm text-muted-foreground">Active</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            <div className="flex items-center gap-2">
+                              <User className="w-3 h-3 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground">{doc.owner_id ? "—" : "—"}</span>
+                            </div>
+                          </td>
                         <td className="px-4 py-3 hidden lg:table-cell">
                           <div className="flex items-center gap-2">
                             <Clock className="w-3 h-3 text-muted-foreground" />
@@ -1016,8 +1033,9 @@ const Dashboard = () => {
                             </span>
                           </div>
                         </td>
-                      </tr>
-                    ))
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
