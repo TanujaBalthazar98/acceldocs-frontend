@@ -46,48 +46,14 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
   public: { icon: Globe, label: "Public", color: "bg-green-500/20 text-green-400" },
 };
 
-// Helper function to convert Google Docs JSON to simple HTML
-function convertDocToHtml(doc: any): string {
-  if (!doc?.body?.content) return "";
-  
-  let html = "";
-  
-  for (const element of doc.body.content) {
-    if (element.paragraph) {
-      const para = element.paragraph;
-      let paraHtml = "";
-      
-      if (para.elements) {
-        for (const el of para.elements) {
-          if (el.textRun) {
-            let text = el.textRun.content || "";
-            const style = el.textRun.textStyle || {};
-            
-            // Apply text styling
-            if (style.bold) text = `<strong>${text}</strong>`;
-            if (style.italic) text = `<em>${text}</em>`;
-            if (style.underline) text = `<u>${text}</u>`;
-            if (style.link?.url) text = `<a href="${style.link.url}" target="_blank" rel="noopener">${text}</a>`;
-            
-            paraHtml += text;
-          }
-        }
-      }
-      
-      // Check for heading styles
-      const namedStyle = para.paragraphStyle?.namedStyleType;
-      if (namedStyle === "HEADING_1") {
-        html += `<h1>${paraHtml}</h1>`;
-      } else if (namedStyle === "HEADING_2") {
-        html += `<h2>${paraHtml}</h2>`;
-      } else if (namedStyle === "HEADING_3") {
-        html += `<h3>${paraHtml}</h3>`;
-      } else {
-        html += `<p>${paraHtml}</p>`;
-      }
-    }
+// Helper function to clean Google Docs exported HTML
+function cleanGoogleDocsHtml(html: string): string {
+  // Remove Google's inline styles but keep basic structure
+  // Create a cleaner version by extracting just the body content
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    return bodyMatch[1];
   }
-  
   return html;
 }
 
@@ -183,10 +149,10 @@ export default function PagePreview() {
         return;
       }
       
-      // The edge function returns the doc object, convert to HTML content
-      if (data?.doc) {
-        const htmlContent = convertDocToHtml(data.doc);
-        setDocContent(htmlContent);
+      // The edge function now returns HTML directly
+      if (data?.html) {
+        const cleanedHtml = cleanGoogleDocsHtml(data.html);
+        setDocContent(cleanedHtml);
       } else if (data?.error) {
         console.error("API error:", data.error);
         setNeedsReconnect(true);

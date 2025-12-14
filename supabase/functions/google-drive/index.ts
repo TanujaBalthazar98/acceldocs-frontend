@@ -232,12 +232,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get document content
+    // Get document content using Drive API export (works with drive.file scope)
     if (body.action === "get_doc_content") {
-      console.log("Getting doc content:", body.docId);
+      console.log("Getting doc content via Drive export:", body.docId);
       
+      // Use Drive API to export as HTML - this works with drive.file scope
       const response = await fetch(
-        `https://docs.googleapis.com/v1/documents/${body.docId}`,
+        `https://www.googleapis.com/drive/v3/files/${body.docId}/export?mimeType=text/html`,
         {
           headers: {
             Authorization: `Bearer ${googleToken}`,
@@ -247,9 +248,9 @@ Deno.serve(async (req) => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Google Docs API error:", errorText);
+        console.error("Google Drive export error:", errorText);
         
-        // Check if it's an auth error - return 200 with needsReauth flag for client handling
+        // Check if it's an auth error
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({ 
@@ -267,11 +268,11 @@ Deno.serve(async (req) => {
         );
       }
 
-      const doc = await response.json();
-      console.log("Document retrieved:", doc.title);
+      const htmlContent = await response.text();
+      console.log("Document exported as HTML, length:", htmlContent.length);
 
       return new Response(
-        JSON.stringify({ success: true, doc }),
+        JSON.stringify({ success: true, html: htmlContent }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
