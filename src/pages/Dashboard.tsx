@@ -646,9 +646,22 @@ const Dashboard = () => {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>Projects</span>
             <ChevronRight className="w-3 h-3" />
-            <span className="text-foreground">Developer Docs</span>
+            <span className="text-foreground">{selectedProject?.name || "Select a project"}</span>
+            {selectedTopic && (
+              <>
+                <ChevronRight className="w-3 h-3" />
+                <span className="text-foreground">{selectedTopic.name}</span>
+              </>
+            )}
           </div>
-          <Button variant="hero" size="sm" className="gap-2" onClick={() => setAddPageOpen(true)}>
+          <Button 
+            variant="hero" 
+            size="sm" 
+            className="gap-2" 
+            onClick={() => setAddPageOpen(true)}
+            disabled={!selectedTopic}
+            title={!selectedTopic ? "Select a topic first" : "Add page"}
+          >
             <Plus className="w-4 h-4" />
             Add Page
           </Button>
@@ -698,14 +711,34 @@ const Dashboard = () => {
               <h2 className="text-lg font-semibold">Topics</h2>
               <button 
                 onClick={() => setAddTopicOpen(true)}
-                className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                disabled={!selectedProject}
+                className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
               </button>
             </div>
             <div className="flex flex-wrap gap-3">
-              {/* TODO: Replace with real topics from database */}
-              <p className="text-sm text-muted-foreground">No topics yet. Create one to organize pages.</p>
+              {!selectedProject ? (
+                <p className="text-sm text-muted-foreground">Select a project to view topics.</p>
+              ) : topics.filter(t => t.project_id === selectedProject.id).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No topics yet. Create one to organize pages.</p>
+              ) : (
+                topics
+                  .filter(t => t.project_id === selectedProject.id)
+                  .map((topic) => (
+                    <button
+                      key={topic.id}
+                      onClick={() => setSelectedTopic(topic)}
+                      className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                        selectedTopic?.id === topic.id
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-foreground hover:bg-secondary/80"
+                      }`}
+                    >
+                      {topic.name}
+                    </button>
+                  ))
+              )}
             </div>
           </div>
 
