@@ -523,7 +523,7 @@ const Dashboard = () => {
                   .maybeSingle();
 
                 if (!existingDoc) {
-                  // Create new document with topic_id
+                  // Create new document with topic_id - set current user as owner
                   const { error: docError } = await supabase
                     .from("documents")
                     .insert({
@@ -532,6 +532,7 @@ const Dashboard = () => {
                       project_id: projectId,
                       topic_id: topicId,
                       google_modified_at: doc.modifiedTime,
+                      owner_id: user.id,
                     });
 
                   if (!docError) {
