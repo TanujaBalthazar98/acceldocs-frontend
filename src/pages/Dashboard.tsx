@@ -870,7 +870,9 @@ const Dashboard = () => {
       <AddPageDialog
         open={addPageOpen}
         onOpenChange={setAddPageOpen}
+        projectId={selectedProject?.id}
         projectName={selectedProject?.name}
+        topicId={selectedTopic?.id}
         topicName={selectedTopic?.name}
         parentFolderId={selectedTopic?.drive_folder_id || null}
         onCreated={() => fetchData()}

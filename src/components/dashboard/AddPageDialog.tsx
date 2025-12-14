@@ -10,17 +10,29 @@ import { Button } from "@/components/ui/button";
 import { FilePlus } from "lucide-react";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AddPageDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projectId?: string | null;
   projectName?: string | null;
+  topicId?: string | null;
   topicName?: string | null;
   parentFolderId: string | null;
-  onCreated?: (doc: { id: string; name: string }) => void;
+  onCreated?: (doc: { id: string; name: string; google_doc_id: string }) => void;
 }
 
-export const AddPageDialog = ({ open, onOpenChange, projectName, topicName, parentFolderId, onCreated }: AddPageDialogProps) => {
+export const AddPageDialog = ({ 
+  open, 
+  onOpenChange, 
+  projectId,
+  projectName, 
+  topicId,
+  topicName, 
+  parentFolderId, 
+  onCreated 
+}: AddPageDialogProps) => {
   const [pageTitle, setPageTitle] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const { createDoc } = useGoogleDrive();
@@ -31,18 +43,41 @@ export const AddPageDialog = ({ open, onOpenChange, projectName, topicName, pare
     : projectName || "current project";
 
   const handleCreate = async () => {
-    if (!pageTitle.trim() || !parentFolderId) return;
+    if (!pageTitle.trim() || !parentFolderId || !projectId) return;
     
     setIsCreating(true);
     
+    // Create doc in Google Drive
     const doc = await createDoc(pageTitle.trim(), parentFolderId);
     
     if (doc) {
-      toast({
-        title: "Page created",
-        description: `"${pageTitle}" document created.`,
-      });
-      onCreated?.({ id: doc.id, name: doc.name });
+      // Save document to database
+      const { data: savedDoc, error } = await supabase
+        .from("documents")
+        .insert({
+          title: doc.name,
+          google_doc_id: doc.id,
+          project_id: projectId,
+          topic_id: topicId || null,
+        })
+        .select("id, title, google_doc_id")
+        .single();
+
+      if (error) {
+        console.error("Error saving document:", error);
+        toast({
+          title: "Warning",
+          description: "Document created in Drive but failed to save to database.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Page created",
+          description: `"${pageTitle}" document created.`,
+        });
+        onCreated?.({ id: savedDoc.id, name: savedDoc.title, google_doc_id: savedDoc.google_doc_id });
+      }
+      
       setPageTitle("");
       onOpenChange(false);
     }
@@ -66,7 +101,7 @@ export const AddPageDialog = ({ open, onOpenChange, projectName, topicName, pare
           {!parentFolderId && (
             <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
               <p className="text-sm text-destructive">
-                No folder selected. Please select a project or topic first.
+                No topic selected. Please select a topic first to add a page.
               </p>
             </div>
           )}
@@ -97,7 +132,7 @@ export const AddPageDialog = ({ open, onOpenChange, projectName, topicName, pare
             </Button>
             <Button 
               onClick={handleCreate} 
-              disabled={!pageTitle.trim() || isCreating || !parentFolderId}
+              disabled={!pageTitle.trim() || isCreating || !parentFolderId || !projectId}
             >
               {isCreating ? "Creating..." : "Create Page"}
             </Button>
