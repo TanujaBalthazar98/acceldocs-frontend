@@ -404,7 +404,7 @@ export default function Docs() {
     filteredDocuments.filter(d => d.project_id === projectId && !d.topic_id);
 
   // Sidebar content (reused for mobile and desktop)
-  const SidebarContent = () => (
+  const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Logo/Brand */}
       <div className="p-4 border-b border-border">
@@ -583,7 +583,7 @@ export default function Docs() {
     <div className="min-h-screen bg-background flex">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 border-r border-border flex-col bg-card">
-        <SidebarContent />
+        {sidebarContent}
       </aside>
 
       {/* Mobile Header */}
@@ -601,7 +601,7 @@ export default function Docs() {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-72 p-0">
-              <SidebarContent />
+              {sidebarContent}
             </SheetContent>
           </Sheet>
         </div>
