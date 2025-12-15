@@ -370,19 +370,38 @@ export default function Docs() {
     setMobileMenuOpen(false);
   };
 
-  // Filter content by search
-  const filteredProjects = projects.filter(p => 
-    !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  // Filter content by search - search across projects, topics, and documents
+  const searchLower = searchQuery.toLowerCase();
+  
+  const filteredDocuments = documents.filter(d =>
+    !searchQuery || d.title.toLowerCase().includes(searchLower)
   );
+  
+  const filteredTopics = topics.filter(t =>
+    !searchQuery || 
+    t.name.toLowerCase().includes(searchLower) ||
+    filteredDocuments.some(d => d.topic_id === t.id)
+  );
+  
+  const filteredProjects = projects.filter(p => {
+    if (!searchQuery) return true;
+    // Include project if its name matches
+    if (p.name.toLowerCase().includes(searchLower)) return true;
+    // Or if any of its topics match
+    if (filteredTopics.some(t => t.project_id === p.id)) return true;
+    // Or if any of its documents match
+    if (filteredDocuments.some(d => d.project_id === p.id)) return true;
+    return false;
+  });
 
   const getProjectTopics = (projectId: string) => 
-    topics.filter(t => t.project_id === projectId);
+    filteredTopics.filter(t => t.project_id === projectId);
 
   const getTopicDocuments = (topicId: string) =>
-    documents.filter(d => d.topic_id === topicId);
+    filteredDocuments.filter(d => d.topic_id === topicId);
 
   const getProjectDocuments = (projectId: string) =>
-    documents.filter(d => d.project_id === projectId && !d.topic_id);
+    filteredDocuments.filter(d => d.project_id === projectId && !d.topic_id);
 
   // Sidebar content (reused for mobile and desktop)
   const SidebarContent = () => (
