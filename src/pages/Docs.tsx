@@ -27,6 +27,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useSyncContent } from "@/hooks/useSyncContent";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { AskAIDialog } from "@/components/docs/AskAIDialog";
 
 type VisibilityLevel = "internal" | "external" | "public";
 
@@ -114,6 +115,7 @@ export default function Docs() {
   const [isOrgUser, setIsOrgUser] = useState(false);
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
+  const [askAIOpen, setAskAIOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !hasFetched) {
@@ -516,7 +518,7 @@ export default function Docs() {
                 /
               </kbd>
             </div>
-            <Button variant="outline" size="sm" className="gap-2 h-9">
+            <Button variant="outline" size="sm" className="gap-2 h-9" onClick={() => setAskAIOpen(true)}>
               <Sparkles className="h-4 w-4" />
               Ask AI
             </Button>
@@ -700,6 +702,14 @@ export default function Docs() {
           )}
         </main>
       </div>
+
+      {/* Ask AI Dialog */}
+      <AskAIDialog
+        open={askAIOpen}
+        onOpenChange={setAskAIOpen}
+        documentContent={documentHtml ? documentHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : undefined}
+        documentTitle={selectedDocument?.title}
+      />
     </div>
   );
 }
