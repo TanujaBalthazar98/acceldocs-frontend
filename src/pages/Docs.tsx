@@ -166,14 +166,17 @@ export default function Docs() {
   useEffect(() => {
     if (projects.length === 0) return;
 
-    // Select project from URL
+    // Select project from URL - only if projectSlug is provided
     if (projectSlug) {
       const project = projects.find(p => p.slug === projectSlug);
       if (project && project.id !== selectedProject?.id) {
         setSelectedProject(project);
       }
-    } else if (!selectedProject && projects.length > 0) {
-      setSelectedProject(projects[0]);
+    } else {
+      // No project slug in URL - clear selection to show landing page
+      setSelectedProject(null);
+      setSelectedDocument(null);
+      setDocumentHtml(null);
     }
   }, [projectSlug, projects]);
 
