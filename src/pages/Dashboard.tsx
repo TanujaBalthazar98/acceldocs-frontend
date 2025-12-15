@@ -126,6 +126,7 @@ const Dashboard = () => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -157,12 +158,15 @@ const Dashboard = () => {
       // Get organization details
       const { data: org } = await supabase
         .from("organizations")
-        .select("id, drive_folder_id, name")
+        .select("id, drive_folder_id, name, slug, domain")
         .eq("id", profile.organization_id)
         .single();
       
       if (org?.drive_folder_id) {
         setRootFolderId(org.drive_folder_id);
+      }
+      if (org?.slug || org?.domain) {
+        setOrganizationSlug(org.slug || org.domain);
       }
       
       // Onboarding is complete if the organization has a name set (not just the default domain)
@@ -928,17 +932,30 @@ const Dashboard = () => {
               </>
             )}
           </div>
-          <Button 
-            variant="hero" 
-            size="sm" 
-            className="gap-2" 
-            onClick={() => setAddPageOpen(true)}
-            disabled={!selectedTopic}
-            title={!selectedTopic ? "Select a topic first" : "Add page"}
-          >
-            <Plus className="w-4 h-4" />
-            Add Page
-          </Button>
+          <div className="flex items-center gap-2">
+            {organizationSlug && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2" 
+                onClick={() => window.open(`/docs/${organizationSlug}`, '_blank')}
+              >
+                <BookOpen className="w-4 h-4" />
+                View Docs
+              </Button>
+            )}
+            <Button 
+              variant="hero" 
+              size="sm" 
+              className="gap-2" 
+              onClick={() => setAddPageOpen(true)}
+              disabled={!selectedTopic}
+              title={!selectedTopic ? "Select a topic first" : "Add page"}
+            >
+              <Plus className="w-4 h-4" />
+              Add Page
+            </Button>
+          </div>
         </header>
 
         {/* Content */}
