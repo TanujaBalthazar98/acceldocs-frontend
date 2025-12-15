@@ -29,11 +29,8 @@ export const ThemeProvider = ({ children }: ThemeProviderProps) => {
     if (saved === "light" || saved === "dark") {
       return saved;
     }
-    // Check system preference
-    if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: light)").matches) {
-      return "light";
-    }
-    return "dark";
+    // Default to light mode
+    return "light";
   });
 
   useEffect(() => {
