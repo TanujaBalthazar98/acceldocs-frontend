@@ -371,6 +371,19 @@ Deno.serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
+        
+        // Check if it's an auth error
+        if (response.status === 401 || response.status === 403) {
+          return new Response(
+            JSON.stringify({ 
+              error: "Google authentication expired", 
+              needsReauth: true,
+              details: errorText 
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
         return new Response(
           JSON.stringify({ error: "Failed to create folder", details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -407,6 +420,19 @@ Deno.serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
+        
+        // Check if it's an auth error
+        if (response.status === 401 || response.status === 403) {
+          return new Response(
+            JSON.stringify({ 
+              error: "Google authentication expired", 
+              needsReauth: true,
+              details: errorText 
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
         return new Response(
           JSON.stringify({ error: "Failed to create document", details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
