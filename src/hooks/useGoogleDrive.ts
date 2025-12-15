@@ -97,7 +97,7 @@ export const useGoogleDrive = () => {
     return { files: data?.files || [] };
   };
 
-  const createFolder = async (name: string, parentFolderId: string) => {
+  const createFolder = async (name: string, parentFolderId: string): Promise<{ id: string; name: string } | null> => {
     const token = getGoogleToken();
     if (!token) {
       toast({
@@ -135,7 +135,16 @@ export const useGoogleDrive = () => {
     if (data?.needsReauth) {
       toast({
         title: "Re-authentication required",
-        description: "Please sign out and sign in again with Google.",
+        description: "Your Google session has expired. Please sign out and sign in again.",
+        variant: "destructive",
+      });
+      return null;
+    }
+    
+    if (data?.error) {
+      toast({
+        title: "Failed to create folder",
+        description: data.error,
         variant: "destructive",
       });
       return null;
