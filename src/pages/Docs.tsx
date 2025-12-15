@@ -25,6 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useSyncContent } from "@/hooks/useSyncContent";
+import { useBrandingLoader, useBrandingStyles } from "@/hooks/useBrandingLoader";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { AskAIDialog } from "@/components/docs/AskAIDialog";
@@ -504,37 +505,23 @@ export default function Docs() {
   // Show landing page when no project or page is selected
   const showLandingPage = !selectedDocument && !selectedProject && currentOrg && !loading;
 
-  // Dynamic styles based on org branding
-  const getBrandStyles = () => {
-    if (!currentOrg) return {};
-    return {
-      '--brand-primary': currentOrg.primary_color || '#3B82F6',
-      '--brand-secondary': currentOrg.secondary_color || '#1E40AF',
-      '--brand-accent': currentOrg.accent_color || '#F59E0B',
-    } as React.CSSProperties;
-  };
-
-  // Inject custom CSS
-  useEffect(() => {
-    if (currentOrg?.custom_css) {
-      const styleId = 'org-custom-css';
-      let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
-      if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = styleId;
-        document.head.appendChild(styleEl);
-      }
-      styleEl.textContent = currentOrg.custom_css;
-      return () => {
-        styleEl?.remove();
-      };
-    }
-  }, [currentOrg?.custom_css]);
+  // Load Google Fonts for branding
+  useBrandingLoader([currentOrg?.font_heading || "", currentOrg?.font_body || ""]);
+  
+  // Apply branding styles (CSS variables and custom CSS)
+  useBrandingStyles(currentOrg ? {
+    primary_color: currentOrg.primary_color,
+    secondary_color: currentOrg.secondary_color,
+    accent_color: currentOrg.accent_color,
+    font_heading: currentOrg.font_heading,
+    font_body: currentOrg.font_body,
+    custom_css: currentOrg.custom_css,
+  } : null);
 
   // If showing landing page
   if (showLandingPage) {
     return (
-      <div className="min-h-screen bg-background flex flex-col" style={getBrandStyles()}>
+      <div className="min-h-screen bg-background flex flex-col">
         {/* Minimal Header */}
         <header className="border-b border-border bg-card">
           <div className="flex items-center justify-between px-4 lg:px-6 h-14">
@@ -542,9 +529,9 @@ export default function Docs() {
               {currentOrg.logo_url ? (
                 <img src={currentOrg.logo_url} alt={currentOrg.name} className="h-8 w-auto" />
               ) : (
-                <FolderTree className="h-6 w-6" style={{ color: currentOrg.primary_color }} />
+                <FolderTree className="h-6 w-6 brand-primary-text" />
               )}
-              <span className="font-bold text-lg text-foreground">{currentOrg.name}</span>
+              <span className="font-bold text-lg text-foreground brand-heading">{currentOrg.name}</span>
             </div>
             <div className="flex items-center gap-2">
               {user ? (
@@ -554,7 +541,7 @@ export default function Docs() {
               ) : (
                 <>
                   <Link to="/auth"><Button variant="ghost" size="sm">Sign in</Button></Link>
-                  <Link to="/auth"><Button size="sm" style={{ backgroundColor: currentOrg.primary_color }}>Create account</Button></Link>
+                  <Link to="/auth"><Button size="sm" className="brand-primary-bg text-white">Create account</Button></Link>
                 </>
               )}
             </div>
@@ -574,7 +561,7 @@ export default function Docs() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col" style={getBrandStyles()}>
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Top Header */}
       <header className="border-b border-border bg-card sticky top-0 z-50">
         <div className="flex items-center justify-between px-4 lg:px-6 h-14">
@@ -584,13 +571,13 @@ export default function Docs() {
               {currentOrg?.logo_url ? (
                 <img src={currentOrg.logo_url} alt={currentOrg.name} className="h-8 w-auto" />
               ) : (
-                <FolderTree className="h-6 w-6" style={{ color: currentOrg?.primary_color || 'hsl(var(--primary))' }} />
+                <FolderTree className="h-6 w-6 brand-primary-text" />
               )}
-              <span className="font-bold text-lg text-foreground">
+              <span className="font-bold text-lg text-foreground brand-heading">
                 {currentOrg?.name || "Documentation"}
               </span>
               {currentOrg?.tagline && (
-                <span className="text-muted-foreground font-normal hidden md:inline">{currentOrg.tagline}</span>
+                <span className="text-muted-foreground font-normal hidden md:inline brand-body">{currentOrg.tagline}</span>
               )}
             </Link>
           </div>

@@ -23,6 +23,9 @@ import {
   Sun,
   Moon,
   Monitor,
+  Globe,
+  Loader2,
+  Wand2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -86,6 +89,8 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const [members, setMembers] = useState<Member[]>([]);
   const [savingBranding, setSavingBranding] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [extractingStyles, setExtractingStyles] = useState(false);
+  const [websiteUrl, setWebsiteUrl] = useState("");
   
   const [branding, setBranding] = useState<BrandingData>({
     logo_url: null,
@@ -292,6 +297,54 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
   const updateBranding = <K extends keyof BrandingData>(key: K, value: BrandingData[K]) => {
     setBranding(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleExtractStyles = async () => {
+    if (!websiteUrl.trim()) {
+      toast({
+        title: "Website URL required",
+        description: "Please enter your company website URL to extract styles.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setExtractingStyles(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("extract-website-styles", {
+        body: { websiteUrl: websiteUrl.trim() },
+      });
+
+      if (error) throw error;
+
+      if (data?.success && data?.data) {
+        setBranding(prev => ({
+          ...prev,
+          primary_color: data.data.primary_color || prev.primary_color,
+          secondary_color: data.data.secondary_color || prev.secondary_color,
+          accent_color: data.data.accent_color || prev.accent_color,
+          font_heading: data.data.font_heading || prev.font_heading,
+          font_body: data.data.font_body || prev.font_body,
+        }));
+
+        toast({
+          title: "Styles extracted!",
+          description: "Brand colors and fonts have been applied. Don't forget to save.",
+        });
+      } else {
+        throw new Error(data?.error || "Failed to extract styles");
+      }
+    } catch (error: any) {
+      console.error("Error extracting styles:", error);
+      toast({
+        title: "Extraction failed",
+        description: error.message || "Could not extract styles from the website.",
+        variant: "destructive",
+      });
+    } finally {
+      setExtractingStyles(false);
+    }
   };
 
   return (
@@ -503,6 +556,49 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                 {savingBranding ? "Saving..." : "Save Branding"}
               </Button>
             </div>
+
+            {/* Extract from Website */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Wand2 className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-semibold text-foreground">Auto-Extract from Website</h2>
+              </div>
+              
+              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Enter your company website and we'll extract your brand colors and fonts automatically.
+                </p>
+                
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={websiteUrl}
+                      onChange={(e) => setWebsiteUrl(e.target.value)}
+                      placeholder="https://yourcompany.com"
+                      className="pl-10"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleExtractStyles}
+                    disabled={extractingStyles || !websiteUrl.trim()}
+                    variant="secondary"
+                  >
+                    {extractingStyles ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Extracting...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="w-4 h-4 mr-2" />
+                        Extract Styles
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </section>
 
             {/* Logo & Identity */}
             <section className="space-y-4">
