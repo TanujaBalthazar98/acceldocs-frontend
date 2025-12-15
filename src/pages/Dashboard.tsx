@@ -524,7 +524,16 @@ const Dashboard = () => {
                   .eq("google_doc_id", doc.id)
                   .maybeSingle();
 
-                if (!existingDoc) {
+                if (existingDoc) {
+                  // Update existing document's title and modified time (NOT is_published!)
+                  await supabase
+                    .from("documents")
+                    .update({
+                      title: doc.name,
+                      google_modified_at: doc.modifiedTime,
+                    })
+                    .eq("id", existingDoc.id);
+                } else {
                   // Create new document with topic_id - set current user as owner
                   const { error: docError } = await supabase
                     .from("documents")

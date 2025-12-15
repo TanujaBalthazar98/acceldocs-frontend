@@ -292,6 +292,25 @@ Deno.serve(async (req) => {
     if (body.action === "sync_doc_content") {
       console.log("Syncing doc content:", body.googleDocId, "to document:", body.documentId);
       
+      // First, get the file metadata to retrieve the modifiedTime
+      const metadataResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}?fields=modifiedTime,name`,
+        {
+          headers: {
+            Authorization: `Bearer ${googleToken}`,
+          },
+        }
+      );
+
+      let googleModifiedAt: string | null = null;
+      if (metadataResponse.ok) {
+        const metadata = await metadataResponse.json();
+        googleModifiedAt = metadata.modifiedTime;
+        console.log("Document modifiedTime:", googleModifiedAt);
+      } else {
+        console.warn("Failed to fetch file metadata, continuing without modifiedTime");
+      }
+      
       // Use Drive API to export as HTML
       const response = await fetch(
         `https://www.googleapis.com/drive/v3/files/${body.googleDocId}/export?mimeType=text/html`,
@@ -326,13 +345,19 @@ Deno.serve(async (req) => {
       const htmlContent = await response.text();
       console.log("Document exported as HTML, length:", htmlContent.length);
 
-      // Save to database
+      // Build update object - only include google_modified_at if we got it
+      const updateData: Record<string, unknown> = {
+        content_html: htmlContent,
+        last_synced_at: new Date().toISOString()
+      };
+      if (googleModifiedAt) {
+        updateData.google_modified_at = googleModifiedAt;
+      }
+
+      // Save to database - NOTE: Do NOT update is_published here!
       const { error: updateError } = await supabase
         .from("documents")
-        .update({ 
-          content_html: htmlContent,
-          last_synced_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq("id", body.documentId);
 
       if (updateError) {
@@ -343,9 +368,9 @@ Deno.serve(async (req) => {
         );
       }
 
-      console.log("Content synced successfully");
+      console.log("Content synced successfully with modifiedTime:", googleModifiedAt);
       return new Response(
-        JSON.stringify({ success: true, html: htmlContent }),
+        JSON.stringify({ success: true, html: htmlContent, modifiedAt: googleModifiedAt }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
