@@ -518,10 +518,12 @@ export default function Docs() {
                 /
               </kbd>
             </div>
-            <Button variant="outline" size="sm" className="gap-2 h-9" onClick={() => setAskAIOpen(true)}>
+            {selectedProject?.visibility === "public" && (
+              <Button variant="outline" size="sm" className="gap-2 h-9" onClick={() => setAskAIOpen(true)}>
               <Sparkles className="h-4 w-4" />
               Ask AI
-            </Button>
+              </Button>
+            )}
           </div>
 
           {/* Right: Auth buttons */}
