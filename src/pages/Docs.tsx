@@ -422,8 +422,8 @@ export default function Docs() {
                     onClick={() => topicDocs.length > 0 && toggleTopic(topic.id)}
                     className={cn(
                       "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
-                      "hover:bg-accent hover:text-accent-foreground",
-                      isTopicExpanded && "bg-accent/30"
+                      "hover:bg-accent/50 hover:text-accent-foreground",
+                      isTopicExpanded && "sidebar-item-selected"
                     )}
                   >
                     {topicDocs.length > 0 ? (
@@ -448,7 +448,7 @@ export default function Docs() {
                           className={cn(
                             "flex items-center gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
                             "hover:bg-accent hover:text-accent-foreground",
-                            selectedDocument?.id === doc.id && "bg-primary/10 text-primary font-medium"
+                            selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                           )}
                         >
                           <span className="truncate flex-1 text-left">{doc.title}</span>
@@ -473,7 +473,7 @@ export default function Docs() {
                 className={cn(
                   "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
-                  selectedDocument?.id === doc.id && "bg-primary/10 text-primary font-medium"
+                  selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                 )}
               >
                 <FileText className="h-4 w-4 shrink-0" />
@@ -521,7 +521,7 @@ export default function Docs() {
   // If showing landing page
   if (showLandingPage) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="min-h-screen bg-background flex flex-col docs-branded">
         {/* Minimal Header */}
         <header className="border-b border-border bg-card">
           <div className="flex items-center justify-between px-4 lg:px-6 h-14">
@@ -561,7 +561,7 @@ export default function Docs() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col docs-branded">
       {/* Top Header */}
       <header className="border-b border-border bg-card sticky top-0 z-50">
         <div className="flex items-center justify-between px-4 lg:px-6 h-14">
