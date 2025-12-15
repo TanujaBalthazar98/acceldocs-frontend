@@ -136,33 +136,69 @@ export type Database = {
       }
       organizations: {
         Row: {
+          accent_color: string | null
           created_at: string
+          custom_css: string | null
           domain: string
           drive_folder_id: string | null
+          font_body: string | null
+          font_heading: string | null
+          hero_description: string | null
+          hero_title: string | null
           id: string
+          logo_url: string | null
           name: string
           owner_id: string
+          primary_color: string | null
+          secondary_color: string | null
+          show_featured_projects: boolean | null
+          show_search_on_landing: boolean | null
           slug: string | null
+          tagline: string | null
           updated_at: string
         }
         Insert: {
+          accent_color?: string | null
           created_at?: string
+          custom_css?: string | null
           domain: string
           drive_folder_id?: string | null
+          font_body?: string | null
+          font_heading?: string | null
+          hero_description?: string | null
+          hero_title?: string | null
           id?: string
+          logo_url?: string | null
           name: string
           owner_id: string
+          primary_color?: string | null
+          secondary_color?: string | null
+          show_featured_projects?: boolean | null
+          show_search_on_landing?: boolean | null
           slug?: string | null
+          tagline?: string | null
           updated_at?: string
         }
         Update: {
+          accent_color?: string | null
           created_at?: string
+          custom_css?: string | null
           domain?: string
           drive_folder_id?: string | null
+          font_body?: string | null
+          font_heading?: string | null
+          hero_description?: string | null
+          hero_title?: string | null
           id?: string
+          logo_url?: string | null
           name?: string
           owner_id?: string
+          primary_color?: string | null
+          secondary_color?: string | null
+          show_featured_projects?: boolean | null
+          show_search_on_landing?: boolean | null
           slug?: string | null
+          tagline?: string | null
           updated_at?: string
         }
         Relationships: []

@@ -28,6 +28,7 @@ import {
   Eye,
   Globe,
   BookOpen,
+  Palette,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -57,6 +58,7 @@ import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPane
 import { PageSettingsDialog } from "@/components/dashboard/PageSettingsDialog";
 import { TopicSettingsDialog } from "@/components/dashboard/TopicSettingsDialog";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
+import { BrandingSettings } from "@/components/dashboard/BrandingSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
@@ -124,6 +126,7 @@ const Dashboard = () => {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [settingsTopic, setSettingsTopic] = useState<Topic | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
+  const [showBrandingSettings, setShowBrandingSettings] = useState(false);
   const [rootFolderId, setRootFolderId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -619,6 +622,14 @@ const Dashboard = () => {
     }} />;
   }
 
+  // If showing branding settings
+  if (showBrandingSettings) {
+    return <BrandingSettings onBack={() => {
+      setShowBrandingSettings(false);
+      fetchData(); // Refresh data when returning from settings
+    }} />;
+  }
+
   // If a page is selected, show the PageView
   if (selectedPage) {
     return <PageView onBack={() => setSelectedPage(null)} />;
@@ -903,6 +914,15 @@ const Dashboard = () => {
             >
               <Settings className="w-4 h-4" />
               Settings
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="flex-1 justify-start gap-2"
+              onClick={() => setShowBrandingSettings(true)}
+            >
+              <Palette className="w-4 h-4" />
+              Branding
             </Button>
             <Button
               variant="ghost"

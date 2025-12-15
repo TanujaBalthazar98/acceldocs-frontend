@@ -28,6 +28,7 @@ import { useSyncContent } from "@/hooks/useSyncContent";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { AskAIDialog } from "@/components/docs/AskAIDialog";
+import { DocsLanding } from "@/components/docs/DocsLanding";
 
 type VisibilityLevel = "internal" | "external" | "public";
 
@@ -45,6 +46,18 @@ interface Organization {
   name: string;
   slug: string | null;
   domain: string;
+  logo_url: string | null;
+  tagline: string | null;
+  primary_color: string;
+  secondary_color: string;
+  accent_color: string;
+  font_heading: string;
+  font_body: string;
+  custom_css: string | null;
+  hero_title: string | null;
+  hero_description: string | null;
+  show_search_on_landing: boolean;
+  show_featured_projects: boolean;
 }
 
 interface Topic {
@@ -218,11 +231,11 @@ export default function Docs() {
         if (userOrgId) {
           const { data: orgData } = await supabase
             .from("organizations")
-            .select("id, name, slug, domain")
+            .select("id, name, slug, domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects")
             .eq("id", userOrgId)
             .single();
           if (orgData) {
-            setCurrentOrg(orgData);
+            setCurrentOrg(orgData as Organization);
           }
         }
       } else {
@@ -232,11 +245,11 @@ export default function Docs() {
       if (orgSlug && !currentOrg) {
         const { data: orgData } = await supabase
           .from("organizations")
-          .select("id, name, slug, domain")
+          .select("id, name, slug, domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects")
           .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
           .maybeSingle();
         if (orgData) {
-          setCurrentOrg(orgData);
+          setCurrentOrg(orgData as Organization);
         }
       }
 
@@ -488,19 +501,97 @@ export default function Docs() {
     </div>
   );
 
+  // Show landing page when no project or page is selected
+  const showLandingPage = !selectedDocument && !selectedProject && currentOrg && !loading;
+
+  // Dynamic styles based on org branding
+  const getBrandStyles = () => {
+    if (!currentOrg) return {};
+    return {
+      '--brand-primary': currentOrg.primary_color || '#3B82F6',
+      '--brand-secondary': currentOrg.secondary_color || '#1E40AF',
+      '--brand-accent': currentOrg.accent_color || '#F59E0B',
+    } as React.CSSProperties;
+  };
+
+  // Inject custom CSS
+  useEffect(() => {
+    if (currentOrg?.custom_css) {
+      const styleId = 'org-custom-css';
+      let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent = currentOrg.custom_css;
+      return () => {
+        styleEl?.remove();
+      };
+    }
+  }, [currentOrg?.custom_css]);
+
+  // If showing landing page
+  if (showLandingPage) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col" style={getBrandStyles()}>
+        {/* Minimal Header */}
+        <header className="border-b border-border bg-card">
+          <div className="flex items-center justify-between px-4 lg:px-6 h-14">
+            <div className="flex items-center gap-3">
+              {currentOrg.logo_url ? (
+                <img src={currentOrg.logo_url} alt={currentOrg.name} className="h-8 w-auto" />
+              ) : (
+                <FolderTree className="h-6 w-6" style={{ color: currentOrg.primary_color }} />
+              )}
+              <span className="font-bold text-lg text-foreground">{currentOrg.name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {user ? (
+                <Link to="/dashboard">
+                  <Button variant="ghost" size="sm">Dashboard</Button>
+                </Link>
+              ) : (
+                <>
+                  <Link to="/auth"><Button variant="ghost" size="sm">Sign in</Button></Link>
+                  <Link to="/auth"><Button size="sm" style={{ backgroundColor: currentOrg.primary_color }}>Create account</Button></Link>
+                </>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <DocsLanding
+          organization={currentOrg}
+          projects={projects.map(p => ({ ...p, description: null }))}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onProjectSelect={selectProject}
+          isAuthenticated={!!user}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col" style={getBrandStyles()}>
       {/* Top Header */}
       <header className="border-b border-border bg-card sticky top-0 z-50">
         <div className="flex items-center justify-between px-4 lg:px-6 h-14">
           {/* Left: Organization Logo/Name */}
           <div className="flex items-center gap-3">
-            <Link to="/" className="flex items-center gap-2">
-              <FolderTree className="h-6 w-6 text-primary" />
+            <Link to={currentOrg ? `/docs/${currentOrg.slug || currentOrg.domain}` : "/"} className="flex items-center gap-2">
+              {currentOrg?.logo_url ? (
+                <img src={currentOrg.logo_url} alt={currentOrg.name} className="h-8 w-auto" />
+              ) : (
+                <FolderTree className="h-6 w-6" style={{ color: currentOrg?.primary_color || 'hsl(var(--primary))' }} />
+              )}
               <span className="font-bold text-lg text-foreground">
                 {currentOrg?.name || "Documentation"}
               </span>
-              <span className="text-muted-foreground font-normal">DOCS</span>
+              {currentOrg?.tagline && (
+                <span className="text-muted-foreground font-normal hidden md:inline">{currentOrg.tagline}</span>
+              )}
             </Link>
           </div>
 
@@ -544,7 +635,7 @@ export default function Docs() {
                   </Button>
                 </Link>
                 <Link to="/auth">
-                  <Button variant="default" size="sm" className="hidden sm:inline-flex">
+                  <Button size="sm" className="hidden sm:inline-flex" style={{ backgroundColor: currentOrg?.primary_color }}>
                     Create account
                   </Button>
                 </Link>
