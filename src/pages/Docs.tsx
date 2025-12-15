@@ -10,7 +10,10 @@ import {
   Lock,
   Eye,
   Globe,
-  RefreshCw
+  RefreshCw,
+  Sparkles,
+  PanelLeftClose,
+  User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +41,7 @@ interface Project {
 
 interface Organization {
   id: string;
+  name: string;
   slug: string | null;
   domain: string;
 }
@@ -80,7 +84,6 @@ function cleanGoogleDocsHtml(html: string): string {
 }
 
 export default function Docs() {
-  // URL can be: /docs/:orgSlug/:projectSlug/:pageSlug OR /docs/:orgSlug/:projectSlug/:topicSlug/:pageSlug
   const params = useParams<{ 
     orgSlug?: string; 
     projectSlug?: string; 
@@ -88,11 +91,8 @@ export default function Docs() {
     pageSlug?: string;
   }>();
   
-  // Destructure with fallback - if only 3 segments, topicSlug is actually pageSlug
   const orgSlug = params.orgSlug;
   const projectSlug = params.projectSlug;
-  // If we have 4 segments (topicSlug and pageSlug both present), use them
-  // Otherwise, the third segment is the pageSlug (no topic)
   const topicSlug = params.pageSlug ? params.topicSlug : undefined;
   const pageSlug = params.pageSlug || params.topicSlug;
   const navigate = useNavigate();
@@ -103,33 +103,26 @@ export default function Docs() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [documentHtml, setDocumentHtml] = useState<string | null>(null);
   const [isOrgUser, setIsOrgUser] = useState(false);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
-
-  // Track if we've already fetched to avoid double fetching
   const [hasFetched, setHasFetched] = useState(false);
 
-  // Fetch accessible projects, topics, and documents
   useEffect(() => {
-    // Wait for auth to finish loading before fetching content
-    // Only fetch once after auth is resolved
     if (!authLoading && !hasFetched) {
       setHasFetched(true);
       fetchContent();
     }
   }, [authLoading, hasFetched]);
 
-  // Auto-sync content when document is selected
   const autoSyncContent = async (doc: Document) => {
-    // Only sync if content_html is empty or missing
     if (!doc.content_html) {
       const html = await syncDocument(doc.id, doc.google_doc_id);
       if (html) {
@@ -143,7 +136,6 @@ export default function Docs() {
     }
   };
 
-  // Helper to build document URL with topic if applicable
   const buildDocUrl = (doc: Document, project: Project, org: Organization) => {
     const orgIdentifier = org.slug || org.domain;
     const topic = doc.topic_id ? topics.find(t => t.id === doc.topic_id) : null;
@@ -154,75 +146,61 @@ export default function Docs() {
     return `/docs/${orgIdentifier}/${project.slug}/${doc.slug}`;
   };
 
-  // Handle URL-based document selection using slugs
+  // Handle URL-based project and document selection
   useEffect(() => {
-    if (documents.length === 0 || projects.length === 0) return;
+    if (projects.length === 0) return;
 
-    if (pageSlug && projectSlug) {
+    // Select project from URL
+    if (projectSlug) {
       const project = projects.find(p => p.slug === projectSlug);
-      if (project) {
-        let doc: Document | undefined;
-        
-        if (topicSlug) {
-          // URL has topic: /docs/org/project/topic/page
-          const topic = topics.find(t => t.slug === topicSlug && t.project_id === project.id);
-          if (topic) {
-            doc = documents.find(d => d.slug === pageSlug && d.topic_id === topic.id);
-          }
-        } else {
-          // URL without topic: /docs/org/project/page (page directly under project)
-          doc = documents.find(d => d.slug === pageSlug && d.project_id === project.id && !d.topic_id);
-          
-          // If not found without topic, maybe the URL is missing the topic - try to find and redirect
-          if (!doc) {
-            doc = documents.find(d => d.slug === pageSlug && d.project_id === project.id);
-            if (doc?.topic_id && currentOrg) {
-              // Redirect to include topic in URL
-              navigate(buildDocUrl(doc, project, currentOrg), { replace: true });
-              return;
-            }
-          }
+      if (project && project.id !== selectedProject?.id) {
+        setSelectedProject(project);
+      }
+    } else if (!selectedProject && projects.length > 0) {
+      setSelectedProject(projects[0]);
+    }
+  }, [projectSlug, projects]);
+
+  // Handle document selection from URL
+  useEffect(() => {
+    if (documents.length === 0 || !selectedProject) return;
+
+    if (pageSlug) {
+      let doc: Document | undefined;
+      
+      if (topicSlug) {
+        const topic = topics.find(t => t.slug === topicSlug && t.project_id === selectedProject.id);
+        if (topic) {
+          doc = documents.find(d => d.slug === pageSlug && d.topic_id === topic.id);
         }
+      } else {
+        doc = documents.find(d => d.slug === pageSlug && d.project_id === selectedProject.id && !d.topic_id);
         
-        if (doc) {
-          setSelectedDocument(doc);
-          autoSyncContent(doc);
-          setExpandedProjects(prev => new Set([...prev, doc.project_id]));
-          if (doc.topic_id) {
-            setExpandedTopics(prev => new Set([...prev, doc.topic_id!]));
+        if (!doc) {
+          doc = documents.find(d => d.slug === pageSlug && d.project_id === selectedProject.id);
+          if (doc?.topic_id && currentOrg) {
+            navigate(buildDocUrl(doc, selectedProject, currentOrg), { replace: true });
+            return;
           }
         }
       }
-    } else if (projectSlug && !pageSlug) {
-      // Project selected but no page - select first document
-      const project = projects.find(p => p.slug === projectSlug);
-      if (project && currentOrg) {
-        const firstDoc = documents.find(d => d.project_id === project.id);
-        if (firstDoc) {
-          navigate(buildDocUrl(firstDoc, project, currentOrg), { replace: true });
-        }
-      }
-    } else if (orgSlug && !projectSlug && !pageSlug) {
-      // Only org selected - select first project's first document
-      const firstProject = projects[0];
-      if (firstProject && currentOrg) {
-        const firstDoc = documents.find(d => d.project_id === firstProject.id);
-        if (firstDoc) {
-          navigate(buildDocUrl(firstDoc, firstProject, currentOrg), { replace: true });
+      
+      if (doc) {
+        setSelectedDocument(doc);
+        autoSyncContent(doc);
+        if (doc.topic_id) {
+          setExpandedTopics(prev => new Set([...prev, doc.topic_id!]));
         }
       }
     }
-  }, [pageSlug, topicSlug, projectSlug, orgSlug, documents, projects, topics, currentOrg, navigate]);
-
+  }, [pageSlug, topicSlug, selectedProject, documents, topics, currentOrg]);
 
   const fetchContent = async () => {
     setLoading(true);
     try {
-      // Get fresh session to avoid stale closures
       const { data: { session } } = await supabase.auth.getSession();
       const currentUser = session?.user;
       
-      // Check if user is authenticated and has organization access
       let userOrgId: string | null = null;
       
       if (currentUser) {
@@ -235,11 +213,10 @@ export default function Docs() {
         userOrgId = profile?.organization_id || null;
         setIsOrgUser(!!userOrgId);
         
-        // Fetch user's organization for slug URLs
         if (userOrgId) {
           const { data: orgData } = await supabase
             .from("organizations")
-            .select("id, slug, domain")
+            .select("id, name, slug, domain")
             .eq("id", userOrgId)
             .single();
           if (orgData) {
@@ -250,11 +227,10 @@ export default function Docs() {
         setIsOrgUser(false);
       }
       
-      // For public access via orgSlug, fetch org info
       if (orgSlug && !currentOrg) {
         const { data: orgData } = await supabase
           .from("organizations")
-          .select("id, slug, domain")
+          .select("id, name, slug, domain")
           .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
           .maybeSingle();
         if (orgData) {
@@ -262,17 +238,12 @@ export default function Docs() {
         }
       }
 
-      // For authenticated users with org access, show all org projects (published or not)
-      // For public/unauthenticated users, only show published projects
       let projectsQuery = supabase
         .from("projects")
         .select("id, name, slug, visibility, is_published, organization_id")
         .order("name");
 
-      // If user has org, fetch all their org's projects; otherwise only published ones
       if (userOrgId) {
-        // User is authenticated with org - show all projects they have access to
-        // RLS will handle permissions
         const { data: projectsData, error: projectsError } = await projectsQuery;
         
         if (projectsError) {
@@ -282,7 +253,6 @@ export default function Docs() {
           await fetchTopicsAndDocuments(projectsData.map(p => p.id), userOrgId);
         }
       } else {
-        // Unauthenticated or no org - only show published projects
         const { data: projectsData, error: projectsError } = await projectsQuery
           .eq("is_published", true);
         
@@ -303,7 +273,6 @@ export default function Docs() {
   const fetchTopicsAndDocuments = async (projectIds: string[], userOrgId: string | null) => {
     if (projectIds.length === 0) return;
 
-    // Fetch topics for accessible projects
     const { data: topicsData } = await supabase
       .from("topics")
       .select("id, name, slug, project_id")
@@ -314,8 +283,6 @@ export default function Docs() {
       setTopics(topicsData);
     }
 
-    // For authenticated users with org, show all documents
-    // For public users, only show published documents
     let docsQuery = supabase
       .from("documents")
       .select("id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, created_at, updated_at, owner_id")
@@ -323,7 +290,6 @@ export default function Docs() {
       .order("title");
 
     if (!userOrgId) {
-      // Only published docs for public/unauthenticated users
       docsQuery = docsQuery.eq("is_published", true);
     }
 
@@ -336,16 +302,13 @@ export default function Docs() {
     }
   };
 
-  const toggleProject = (projectId: string) => {
-    setExpandedProjects(prev => {
-      const next = new Set(prev);
-      if (next.has(projectId)) {
-        next.delete(projectId);
-      } else {
-        next.add(projectId);
-      }
-      return next;
-    });
+  const selectProject = (project: Project) => {
+    setSelectedProject(project);
+    setSelectedDocument(null);
+    setDocumentHtml(null);
+    if (currentOrg) {
+      navigate(`/docs/${currentOrg.slug || currentOrg.domain}/${project.slug}`);
+    }
   };
 
   const toggleTopic = (topicId: string) => {
@@ -362,69 +325,56 @@ export default function Docs() {
 
   const selectDocument = (doc: Document) => {
     setSelectedDocument(doc);
-    // Navigate using slugs with topic if applicable
-    const project = projects.find(p => p.id === doc.project_id);
-    if (project && currentOrg) {
-      navigate(buildDocUrl(doc, project, currentOrg));
+    autoSyncContent(doc);
+    if (selectedProject && currentOrg) {
+      navigate(buildDocUrl(doc, selectedProject, currentOrg));
     }
     setMobileMenuOpen(false);
   };
 
-  // Filter content by search - search across projects, topics, and documents
+  // Filter content by search
   const searchLower = searchQuery.toLowerCase();
   
-  const filteredDocuments = documents.filter(d =>
+  const projectTopics = selectedProject 
+    ? topics.filter(t => t.project_id === selectedProject.id)
+    : [];
+
+  const projectDocuments = selectedProject
+    ? documents.filter(d => d.project_id === selectedProject.id)
+    : [];
+  
+  const filteredDocuments = projectDocuments.filter(d =>
     !searchQuery || d.title.toLowerCase().includes(searchLower)
   );
   
-  const filteredTopics = topics.filter(t =>
+  const filteredTopics = projectTopics.filter(t =>
     !searchQuery || 
     t.name.toLowerCase().includes(searchLower) ||
     filteredDocuments.some(d => d.topic_id === t.id)
   );
-  
-  const filteredProjects = projects.filter(p => {
-    if (!searchQuery) return true;
-    // Include project if its name matches
-    if (p.name.toLowerCase().includes(searchLower)) return true;
-    // Or if any of its topics match
-    if (filteredTopics.some(t => t.project_id === p.id)) return true;
-    // Or if any of its documents match
-    if (filteredDocuments.some(d => d.project_id === p.id)) return true;
-    return false;
-  });
-
-  const getProjectTopics = (projectId: string) => 
-    filteredTopics.filter(t => t.project_id === projectId);
 
   const getTopicDocuments = (topicId: string) =>
     filteredDocuments.filter(d => d.topic_id === topicId);
 
-  const getProjectDocuments = (projectId: string) =>
-    filteredDocuments.filter(d => d.project_id === projectId && !d.topic_id);
+  const getProjectLevelDocuments = () =>
+    filteredDocuments.filter(d => !d.topic_id);
 
-  // Sidebar content (reused for mobile and desktop)
+  // Sidebar content for topics and pages
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      {/* Logo/Brand */}
-      <div className="p-4 border-b border-border">
-        <Link to="/" className="flex items-center gap-2">
-          <FolderTree className="h-6 w-6 text-primary" />
-          <span className="font-semibold text-lg text-foreground">Documentation</span>
-        </Link>
-      </div>
-
-      {/* Search */}
-      <div className="p-4 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search docs..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-muted/50"
-          />
-        </div>
+      {/* Sidebar Header with collapse button */}
+      <div className="p-3 border-b border-border flex items-center justify-between">
+        <span className="text-sm font-medium text-muted-foreground">
+          {selectedProject?.name || "Documentation"}
+        </span>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-7 w-7 hidden lg:flex"
+          onClick={() => setSidebarCollapsed(true)}
+        >
+          <PanelLeftClose className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Navigation Tree */}
@@ -435,31 +385,33 @@ export default function Docs() {
               <Skeleton key={i} className="h-8 w-full" />
             ))}
           </div>
-        ) : filteredProjects.length === 0 ? (
+        ) : !selectedProject ? (
           <div className="p-4 text-center text-muted-foreground text-sm">
-            No documentation available
+            Select a project above
+          </div>
+        ) : filteredTopics.length === 0 && getProjectLevelDocuments().length === 0 ? (
+          <div className="p-4 text-center text-muted-foreground text-sm">
+            No pages found
           </div>
         ) : (
           <nav className="space-y-1">
-            {filteredProjects.map(project => {
-              const projectTopics = getProjectTopics(project.id);
-              const projectDocs = getProjectDocuments(project.id);
-              const isExpanded = expandedProjects.has(project.id);
-              const hasChildren = projectTopics.length > 0 || projectDocs.length > 0;
+            {/* Topics */}
+            {filteredTopics.map(topic => {
+              const topicDocs = getTopicDocuments(topic.id);
+              const isTopicExpanded = expandedTopics.has(topic.id);
 
               return (
-                <div key={project.id}>
-                  {/* Project */}
+                <div key={topic.id}>
                   <button
-                    onClick={() => hasChildren && toggleProject(project.id)}
+                    onClick={() => topicDocs.length > 0 && toggleTopic(topic.id)}
                     className={cn(
                       "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
                       "hover:bg-accent hover:text-accent-foreground",
-                      isExpanded && "bg-accent/50"
+                      isTopicExpanded && "bg-accent/30"
                     )}
                   >
-                    {hasChildren ? (
-                      isExpanded ? (
+                    {topicDocs.length > 0 ? (
+                      isTopicExpanded ? (
                         <ChevronDown className="h-4 w-4 shrink-0" />
                       ) : (
                         <ChevronRight className="h-4 w-4 shrink-0" />
@@ -467,70 +419,13 @@ export default function Docs() {
                     ) : (
                       <div className="w-4" />
                     )}
-                    <FolderTree className="h-4 w-4 shrink-0 text-primary" />
-                    <span className="truncate font-medium">{project.name}</span>
+                    <span className="truncate font-medium">{topic.name}</span>
                   </button>
 
-                  {/* Project children */}
-                  {isExpanded && (
-                    <div className="ml-4 border-l border-border pl-2 mt-1 space-y-1">
-                      {/* Topics */}
-                      {projectTopics.map(topic => {
-                        const topicDocs = getTopicDocuments(topic.id);
-                        const isTopicExpanded = expandedTopics.has(topic.id);
-
-                        return (
-                          <div key={topic.id}>
-                            <button
-                              onClick={() => topicDocs.length > 0 && toggleTopic(topic.id)}
-                              className={cn(
-                                "flex items-center gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
-                                "hover:bg-accent hover:text-accent-foreground",
-                                isTopicExpanded && "bg-accent/30"
-                              )}
-                            >
-                              {topicDocs.length > 0 ? (
-                                isTopicExpanded ? (
-                                  <ChevronDown className="h-3 w-3 shrink-0" />
-                                ) : (
-                                  <ChevronRight className="h-3 w-3 shrink-0" />
-                                )
-                              ) : (
-                                <div className="w-3" />
-                              )}
-                              <span className="truncate text-muted-foreground">{topic.name}</span>
-                            </button>
-
-                            {/* Topic documents */}
-                            {isTopicExpanded && topicDocs.length > 0 && (
-                              <div className="ml-4 border-l border-border/50 pl-2 mt-1 space-y-0.5">
-                                {topicDocs.map(doc => (
-                                  <button
-                                    key={doc.id}
-                                    onClick={() => selectDocument(doc)}
-                                    className={cn(
-                                      "flex items-center gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
-                                      "hover:bg-accent hover:text-accent-foreground",
-                                      selectedDocument?.id === doc.id && "bg-primary/10 text-primary font-medium"
-                                    )}
-                                  >
-                                    <FileText className="h-3 w-3 shrink-0" />
-                                    <span className="truncate flex-1 text-left">{doc.title}</span>
-                                    {isOrgUser && !doc.is_published && (
-                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
-                                        Draft
-                                      </Badge>
-                                    )}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* Project-level documents (no topic) */}
-                      {projectDocs.map(doc => (
+                  {/* Topic documents */}
+                  {isTopicExpanded && topicDocs.length > 0 && (
+                    <div className="ml-4 border-l border-border pl-2 mt-1 space-y-0.5">
+                      {topicDocs.map(doc => (
                         <button
                           key={doc.id}
                           onClick={() => selectDocument(doc)}
@@ -540,7 +435,6 @@ export default function Docs() {
                             selectedDocument?.id === doc.id && "bg-primary/10 text-primary font-medium"
                           )}
                         >
-                          <FileText className="h-4 w-4 shrink-0" />
                           <span className="truncate flex-1 text-left">{doc.title}</span>
                           {isOrgUser && !doc.is_published && (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
@@ -554,141 +448,258 @@ export default function Docs() {
                 </div>
               );
             })}
+
+            {/* Project-level documents (no topic) */}
+            {getProjectLevelDocuments().map(doc => (
+              <button
+                key={doc.id}
+                onClick={() => selectDocument(doc)}
+                className={cn(
+                  "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                  "hover:bg-accent hover:text-accent-foreground",
+                  selectedDocument?.id === doc.id && "bg-primary/10 text-primary font-medium"
+                )}
+              >
+                <FileText className="h-4 w-4 shrink-0" />
+                <span className="truncate flex-1 text-left">{doc.title}</span>
+                {isOrgUser && !doc.is_published && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
+                    Draft
+                  </Badge>
+                )}
+              </button>
+            ))}
           </nav>
         )}
       </ScrollArea>
 
       {/* Footer */}
-      <div className="p-4 border-t border-border">
-        {authLoading ? (
-          <Skeleton className="h-9 w-full" />
-        ) : user ? (
+      <div className="p-3 border-t border-border">
+        {user ? (
           <Link to="/dashboard">
-            <Button variant="outline" size="sm" className="w-full">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground">
               Go to Dashboard
             </Button>
           </Link>
-        ) : (
-          <Link to="/auth">
-            <Button variant="outline" size="sm" className="w-full">
-              Sign In
-            </Button>
-          </Link>
-        )}
+        ) : null}
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-72 border-r border-border flex-col bg-card">
-        {sidebarContent}
-      </aside>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Top Header */}
+      <header className="border-b border-border bg-card sticky top-0 z-50">
+        <div className="flex items-center justify-between px-4 lg:px-6 h-14">
+          {/* Left: Organization Logo/Name */}
+          <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-2">
+              <FolderTree className="h-6 w-6 text-primary" />
+              <span className="font-bold text-lg text-foreground">
+                {currentOrg?.name || "Documentation"}
+              </span>
+              <span className="text-muted-foreground font-normal">DOCS</span>
+            </Link>
+          </div>
 
-      {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-card border-b border-border">
-        <div className="flex items-center justify-between px-4 py-3">
-          <Link to="/" className="flex items-center gap-2">
-            <FolderTree className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-foreground">Docs</span>
-          </Link>
-          
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0">
-              {sidebarContent}
-            </SheetContent>
-          </Sheet>
+          {/* Center: Search + Ask AI */}
+          <div className="hidden md:flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 w-64 h-9 bg-muted/50"
+              />
+              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                /
+              </kbd>
+            </div>
+            <Button variant="outline" size="sm" className="gap-2 h-9">
+              <Sparkles className="h-4 w-4" />
+              Ask AI
+            </Button>
+          </div>
+
+          {/* Right: Auth buttons */}
+          <div className="flex items-center gap-2">
+            {authLoading ? (
+              <Skeleton className="h-9 w-24" />
+            ) : user ? (
+              <Link to="/dashboard">
+                <Button variant="ghost" size="sm">
+                  Dashboard
+                </Button>
+              </Link>
+            ) : (
+              <>
+                <Link to="/auth">
+                  <Button variant="ghost" size="sm">
+                    Sign in
+                  </Button>
+                </Link>
+                <Link to="/auth">
+                  <Button variant="default" size="sm" className="hidden sm:inline-flex">
+                    Create account
+                  </Button>
+                </Link>
+              </>
+            )}
+
+            {/* Mobile menu trigger */}
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="lg:hidden">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 p-0">
+                {sidebarContent}
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
+      </header>
+
+      {/* Project Tabs Bar */}
+      <div className="border-b border-border bg-card">
+        <div className="flex items-center gap-1 px-4 lg:px-6 overflow-x-auto">
+          {loading ? (
+            <div className="flex gap-2 py-2">
+              {[1, 2, 3].map(i => (
+                <Skeleton key={i} className="h-8 w-24" />
+              ))}
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="py-3 text-sm text-muted-foreground">No projects available</div>
+          ) : (
+            projects.map(project => (
+              <button
+                key={project.id}
+                onClick={() => selectProject(project)}
+                className={cn(
+                  "px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
+                  selectedProject?.id === project.id
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                )}
+              >
+                {project.name}
+              </button>
+            ))
+          )}
         </div>
       </div>
 
-      {/* Main Content */}
-      <main className="flex-1 lg:pt-0 pt-14">
-        {loading ? (
-          <div className="max-w-4xl mx-auto p-8 space-y-4">
-            <Skeleton className="h-10 w-3/4" />
-            <Skeleton className="h-6 w-1/2" />
-            <Skeleton className="h-96 w-full" />
-          </div>
-        ) : selectedDocument ? (
-          <article className="max-w-4xl mx-auto p-6 lg:p-8">
-            {/* Breadcrumb */}
-            <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-              {projects.find(p => p.id === selectedDocument.project_id)?.name}
-              {selectedDocument.topic_id && (
-                <>
-                  <ChevronRight className="h-4 w-4" />
-                  {topics.find(t => t.id === selectedDocument.topic_id)?.name}
-                </>
-              )}
-            </nav>
+      {/* Main Layout */}
+      <div className="flex flex-1">
+        {/* Desktop Sidebar */}
+        {!sidebarCollapsed && (
+          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card">
+            {sidebarContent}
+          </aside>
+        )}
 
-            {/* Title */}
-            <div className="flex items-start gap-3 mb-4">
-              <h1 className="text-3xl lg:text-4xl font-bold text-foreground">
-                {selectedDocument.title}
-              </h1>
-              {isOrgUser && !selectedDocument.is_published && (
-                <Badge className="mt-2 text-xs bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800">
-                  Draft
-                </Badge>
-              )}
-            </div>
-
-            {/* Meta */}
-            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
-              <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
-              <Badge variant="outline" className="text-xs">
-                {visibilityConfig[selectedDocument.visibility].label}
-              </Badge>
-              {isOrgUser && selectedDocument.is_published && (
-                <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-800 dark:text-green-400">
-                  Published
-                </Badge>
-              )}
-              {syncing && (
-                <div className="flex items-center gap-2 ml-auto text-primary">
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span className="text-xs">Syncing...</span>
-                </div>
-              )}
-            </div>
-
-            {/* Content */}
-            <div className="bg-card border border-border rounded-lg p-6 lg:p-8">
-              {documentHtml ? (
-                <div 
-                  className="prose prose-neutral dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: cleanGoogleDocsHtml(documentHtml) }}
-                />
-              ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <RefreshCw className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
-                  <p className="font-medium">Loading content...</p>
-                  <p className="text-sm mt-2">Syncing document from Google Docs</p>
-                </div>
-              )}
-            </div>
-          </article>
-        ) : (
-          <div className="flex items-center justify-center h-full text-center p-8">
-            <div>
-              <FolderTree className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
-              <h2 className="text-xl font-semibold text-foreground mb-2">Welcome to Documentation</h2>
-              <p className="text-muted-foreground">
-                {projects.length === 0 
-                  ? "No documentation is available yet."
-                  : "Select a page from the sidebar to get started."}
-              </p>
-            </div>
+        {/* Collapsed sidebar trigger */}
+        {sidebarCollapsed && (
+          <div className="hidden lg:flex items-start pt-4 pl-2">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={() => setSidebarCollapsed(false)}
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
           </div>
         )}
-      </main>
+
+        {/* Main Content */}
+        <main className="flex-1 min-w-0">
+          {loading ? (
+            <div className="max-w-4xl mx-auto p-8 space-y-4">
+              <Skeleton className="h-10 w-3/4" />
+              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-96 w-full" />
+            </div>
+          ) : selectedDocument ? (
+            <article className="max-w-4xl mx-auto p-6 lg:p-8">
+              {/* Breadcrumb */}
+              <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+                <span>{selectedProject?.name}</span>
+                {selectedDocument.topic_id && (
+                  <>
+                    <span>/</span>
+                    <span>{topics.find(t => t.id === selectedDocument.topic_id)?.name}</span>
+                  </>
+                )}
+              </nav>
+
+              {/* Title */}
+              <div className="flex items-start gap-3 mb-4">
+                <h1 className="text-3xl lg:text-4xl font-bold text-foreground">
+                  {selectedDocument.title}
+                </h1>
+                {isOrgUser && !selectedDocument.is_published && (
+                  <Badge className="mt-2 text-xs bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800">
+                    Draft
+                  </Badge>
+                )}
+              </div>
+
+              {/* Meta */}
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
+                <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
+                <Badge variant="outline" className="text-xs">
+                  {visibilityConfig[selectedDocument.visibility].label}
+                </Badge>
+                {isOrgUser && selectedDocument.is_published && (
+                  <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-800 dark:text-green-400">
+                    Published
+                  </Badge>
+                )}
+                {syncing && (
+                  <div className="flex items-center gap-2 ml-auto text-primary">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span className="text-xs">Syncing...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Content */}
+              <div className="bg-card border border-border rounded-lg p-6 lg:p-8">
+                {documentHtml ? (
+                  <div 
+                    className="prose prose-neutral dark:prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{ __html: cleanGoogleDocsHtml(documentHtml) }}
+                  />
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <RefreshCw className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
+                    <p className="font-medium">Loading content...</p>
+                    <p className="text-sm mt-2">Syncing document from Google Docs</p>
+                  </div>
+                )}
+              </div>
+            </article>
+          ) : (
+            <div className="flex items-center justify-center h-full text-center p-8">
+              <div>
+                <FolderTree className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  {selectedProject ? `Welcome to ${selectedProject.name}` : "Welcome to Documentation"}
+                </h2>
+                <p className="text-muted-foreground">
+                  {projectDocuments.length === 0 
+                    ? "No pages available in this project yet."
+                    : "Select a page from the sidebar to get started."}
+                </p>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
