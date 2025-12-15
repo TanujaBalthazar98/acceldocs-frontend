@@ -45,22 +45,13 @@ export const DocsLanding = ({
   isAuthenticated,
 }: DocsLandingProps) => {
   const orgIdentifier = organization.slug || organization.domain;
-  
-  // Dynamic styles from org branding
-  const dynamicStyles = {
-    '--brand-primary': organization.primary_color,
-    '--brand-secondary': organization.secondary_color,
-    '--brand-accent': organization.accent_color,
-    '--brand-font-heading': organization.font_heading,
-    '--brand-font-body': organization.font_body,
-  } as React.CSSProperties;
 
   const heroTitle = organization.hero_title || `${organization.name} Documentation`;
   const heroDescription = organization.hero_description || 
     `Explore our comprehensive documentation to learn how to get the most out of ${organization.name}.`;
 
   return (
-    <div style={dynamicStyles} className="min-h-[80vh] flex flex-col">
+    <div className="min-h-[80vh] flex flex-col">
       {/* Hero Section */}
       <section className="flex-1 flex flex-col items-center justify-center px-4 py-16 lg:py-24 text-center">
         {/* Logo */}
@@ -73,18 +64,12 @@ export const DocsLanding = ({
         )}
 
         {/* Title */}
-        <h1 
-          className="text-4xl lg:text-5xl xl:text-6xl font-bold text-foreground mb-4"
-          style={{ fontFamily: `var(--brand-font-heading), sans-serif` }}
-        >
+        <h1 className="text-4xl lg:text-5xl xl:text-6xl font-bold text-foreground mb-4 brand-heading">
           {heroTitle}
         </h1>
 
         {/* Description */}
-        <p 
-          className="text-lg lg:text-xl text-muted-foreground max-w-2xl mb-8"
-          style={{ fontFamily: `var(--brand-font-body), sans-serif` }}
-        >
+        <p className="text-lg lg:text-xl text-muted-foreground max-w-2xl mb-8 brand-body">
           {heroDescription}
         </p>
 
@@ -97,10 +82,10 @@ export const DocsLanding = ({
                 placeholder="Search documentation..."
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="pl-12 pr-4 h-14 text-lg bg-card border-border shadow-lg"
+                className="pl-12 pr-4 h-14 text-lg bg-card border-border shadow-lg focus:ring-2"
                 style={{ 
-                  borderColor: organization.primary_color + '40',
-                }}
+                  "--tw-ring-color": organization.primary_color,
+                } as React.CSSProperties}
               />
             </div>
           </div>
@@ -113,11 +98,19 @@ export const DocsLanding = ({
               <Button
                 key={project.id}
                 variant="outline"
-                className="gap-2"
+                className="gap-2 hover:text-white transition-colors"
                 onClick={() => onProjectSelect(project)}
                 style={{
-                  borderColor: organization.primary_color + '40',
+                  borderColor: organization.primary_color,
                   color: organization.primary_color,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = organization.primary_color;
+                  e.currentTarget.style.color = "white";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.color = organization.primary_color;
                 }}
               >
                 <FileText className="h-4 w-4" />
@@ -133,10 +126,7 @@ export const DocsLanding = ({
       {organization.show_featured_projects && projects.length > 0 && (
         <section className="px-4 pb-16 lg:pb-24">
           <div className="max-w-5xl mx-auto">
-            <h2 
-              className="text-2xl font-semibold text-foreground mb-6 text-center"
-              style={{ fontFamily: `var(--brand-font-heading), sans-serif` }}
-            >
+            <h2 className="text-2xl font-semibold text-foreground mb-6 text-center brand-heading">
               Browse Documentation
             </h2>
             
@@ -145,15 +135,21 @@ export const DocsLanding = ({
                 <button
                   key={project.id}
                   onClick={() => onProjectSelect(project)}
-                  className="group p-6 rounded-xl border border-border bg-card hover:border-primary/50 hover:shadow-lg transition-all text-left"
+                  className="group p-6 rounded-xl border border-border bg-card hover:shadow-lg transition-all text-left"
                   style={{
-                    '--hover-border': organization.primary_color,
+                    "--hover-border": organization.primary_color,
                   } as React.CSSProperties}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = organization.primary_color;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "";
+                  }}
                 >
                   <div className="flex items-start gap-4">
                     <div 
                       className="p-3 rounded-lg"
-                      style={{ backgroundColor: organization.primary_color + '15' }}
+                      style={{ backgroundColor: `${organization.primary_color}15` }}
                     >
                       <FolderOpen 
                         className="h-6 w-6"
@@ -162,18 +158,21 @@ export const DocsLanding = ({
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 
-                        className="font-semibold text-foreground group-hover:text-primary transition-colors"
-                        style={{ fontFamily: `var(--brand-font-heading), sans-serif` }}
+                        className="font-semibold text-foreground transition-colors brand-heading"
+                        style={{ "--hover-color": organization.primary_color } as React.CSSProperties}
                       >
                         {project.name}
                       </h3>
                       {project.description && (
-                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2 brand-body">
                           {project.description}
                         </p>
                       )}
                     </div>
-                    <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                    <ArrowRight 
+                      className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-all"
+                      style={{ color: organization.primary_color }}
+                    />
                   </div>
                 </button>
               ))}
@@ -185,7 +184,7 @@ export const DocsLanding = ({
       {/* Footer */}
       <footer className="border-t border-border py-6 px-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 brand-body">
             {organization.logo_url ? (
               <img src={organization.logo_url} alt="" className="h-5 w-auto" />
             ) : null}
