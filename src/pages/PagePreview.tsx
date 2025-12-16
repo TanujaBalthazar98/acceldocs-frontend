@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Share2, User, Calendar, Eye, Lock, Globe, RefreshCw } from "lucide-react";
+import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,15 +47,16 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
   public: { icon: Globe, label: "Public", color: "bg-green-500/20 text-green-400" },
 };
 
-// Helper function to clean Google Docs exported HTML
+// Helper function to clean and sanitize Google Docs exported HTML
 function cleanGoogleDocsHtml(html: string): string {
-  // Remove Google's inline styles but keep basic structure
-  // Create a cleaner version by extracting just the body content
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  if (bodyMatch) {
-    return bodyMatch[1];
-  }
-  return html;
+  const content = bodyMatch ? bodyMatch[1] : html;
+  
+  // Sanitize HTML to prevent XSS attacks
+  return DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'div', 'span', 'blockquote', 'pre', 'code', 'hr', 'sup', 'sub'],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'style', 'target', 'rel', 'colspan', 'rowspan']
+  });
 }
 
 export default function PagePreview() {
