@@ -94,6 +94,8 @@ interface Document {
   is_published: boolean;
   owner_id: string | null;
   owner_name?: string;
+  content_html: string | null;
+  published_content_html: string | null;
 }
 
 const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: string; color: string }> = {
@@ -197,7 +199,7 @@ const Dashboard = () => {
           const { data: docsData } = await supabase
             .from("documents")
             .select(`
-              id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at, visibility, is_published, owner_id,
+              id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at, visibility, is_published, owner_id, content_html, published_content_html,
               owner:profiles!documents_owner_id_fkey(full_name, email)
             `)
             .in("project_id", projectIds)
@@ -331,9 +333,19 @@ const Dashboard = () => {
     e.stopPropagation();
     const newState = !currentState;
     
+    // Find the document to get its content_html for republishing
+    const doc = documents.find(d => d.id === docId);
+    
+    const updateData: Record<string, any> = { is_published: newState };
+    
+    // If publishing, copy current content to published content
+    if (newState && doc?.content_html) {
+      updateData.published_content_html = doc.content_html;
+    }
+    
     const { error } = await supabase
       .from("documents")
-      .update({ is_published: newState })
+      .update(updateData)
       .eq("id", docId);
 
     if (error) {
@@ -343,7 +355,43 @@ const Dashboard = () => {
         title: newState ? "Published" : "Unpublished",
         description: newState ? "Page is now live." : "Page is no longer published.",
       });
-      setDocuments(prev => prev.map(d => d.id === docId ? { ...d, is_published: newState } : d));
+      setDocuments(prev => prev.map(d => d.id === docId ? { 
+        ...d, 
+        is_published: newState,
+        published_content_html: newState ? d.content_html : d.published_content_html 
+      } : d));
+    }
+  };
+
+  const handleRepublishPage = async (e: React.MouseEvent, docId: string) => {
+    e.stopPropagation();
+    
+    const doc = documents.find(d => d.id === docId);
+    if (!doc?.content_html) {
+      toast({ title: "Error", description: "No content to publish.", variant: "destructive" });
+      return;
+    }
+    
+    const { error } = await supabase
+      .from("documents")
+      .update({ 
+        is_published: true,
+        published_content_html: doc.content_html 
+      })
+      .eq("id", docId);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to republish.", variant: "destructive" });
+    } else {
+      toast({
+        title: "Republished",
+        description: "Changes are now live.",
+      });
+      setDocuments(prev => prev.map(d => d.id === docId ? { 
+        ...d, 
+        is_published: true,
+        published_content_html: d.content_html 
+      } : d));
     }
   };
 
@@ -963,7 +1011,10 @@ const Dashboard = () => {
           {/* Stats */}
           {(() => {
             const publishedCount = filteredDocuments.filter(d => d.is_published).length;
-            const draftCount = filteredDocuments.filter(d => !d.is_published).length;
+            const draftCount = filteredDocuments.filter(d => !d.is_published && !d.published_content_html).length;
+            const pendingRepublishCount = filteredDocuments.filter(d => 
+              !d.is_published && d.published_content_html && d.content_html !== d.published_content_html
+            ).length;
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
             const staleCount = filteredDocuments.filter(d => {
@@ -972,7 +1023,7 @@ const Dashboard = () => {
             }).length;
             
             return (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div className="p-4 rounded-xl glass">
                   <p className="text-2xl font-bold text-foreground">{filteredDocuments.length}</p>
                   <p className="text-sm text-muted-foreground">Total Pages</p>
@@ -982,8 +1033,12 @@ const Dashboard = () => {
                   <p className="text-sm text-muted-foreground">Published</p>
                 </div>
                 <div className="p-4 rounded-xl glass">
+                  <p className="text-2xl font-bold text-amber-500">{pendingRepublishCount}</p>
+                  <p className="text-sm text-muted-foreground">Pending Republish</p>
+                </div>
+                <div className="p-4 rounded-xl glass">
                   <p className="text-2xl font-bold text-state-draft">{draftCount}</p>
-                  <p className="text-sm text-muted-foreground">Drafts</p>
+                  <p className="text-sm text-muted-foreground">New Drafts</p>
                 </div>
                 <div className="p-4 rounded-xl glass">
                   <p className="text-2xl font-bold text-state-deprecated">{staleCount}</p>
@@ -1123,19 +1178,42 @@ const Dashboard = () => {
                             </div>
                           </td>
                           <td className="px-4 py-3 hidden sm:table-cell">
-                            <div className="flex items-center gap-2">
-                              {doc.is_published ? (
-                                <>
-                                  <Circle className="w-2 h-2 bg-green-500 rounded-full" />
-                                  <span className="text-sm text-green-600">Published</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Circle className="w-2 h-2 bg-muted-foreground rounded-full" />
-                                  <span className="text-sm text-muted-foreground">Draft</span>
-                                </>
-                              )}
-                            </div>
+                            {(() => {
+                              // Has unpublished changes if: not published, has published_content_html, and content differs
+                              const hasUnpublishedChanges = !doc.is_published && 
+                                doc.published_content_html && 
+                                doc.content_html !== doc.published_content_html;
+                              
+                              if (doc.is_published) {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <Circle className="w-2 h-2 bg-green-500 rounded-full" />
+                                    <span className="text-sm text-green-600">Published</span>
+                                  </div>
+                                );
+                              } else if (hasUnpublishedChanges) {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2 text-xs gap-1.5 border-amber-500/50 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600"
+                                      onClick={(e) => handleRepublishPage(e, doc.id)}
+                                    >
+                                      <RefreshCw className="w-3 h-3" />
+                                      Republish
+                                    </Button>
+                                  </div>
+                                );
+                              } else {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <Circle className="w-2 h-2 bg-muted-foreground rounded-full" />
+                                    <span className="text-sm text-muted-foreground">Draft</span>
+                                  </div>
+                                );
+                              }
+                            })()}
                           </td>
                           <td className="px-4 py-3 hidden md:table-cell">
                             <div className="flex items-center gap-2">
