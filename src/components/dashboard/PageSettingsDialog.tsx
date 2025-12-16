@@ -67,7 +67,7 @@ export const PageSettingsDialog = ({
 
     const { data } = await supabase
       .from("documents")
-      .select("title, slug, is_published")
+      .select("title, slug, is_published, content_html, published_content_html")
       .eq("id", documentId)
       .single();
 
@@ -126,6 +126,13 @@ export const PageSettingsDialog = ({
     
     setIsSaving(true);
 
+    // First fetch current document state to get content_html
+    const { data: currentDoc } = await supabase
+      .from("documents")
+      .select("content_html, is_published")
+      .eq("id", documentId)
+      .single();
+
     const updateData: Record<string, any> = {
       title,
       is_published: isPublished,
@@ -134,6 +141,11 @@ export const PageSettingsDialog = ({
     // Only update slug if explicitly set
     if (slug) {
       updateData.slug = slug;
+    }
+
+    // If publishing (was unpublished, now published), copy content_html to published_content_html
+    if (isPublished && currentDoc && !currentDoc.is_published && currentDoc.content_html) {
+      updateData.published_content_html = currentDoc.content_html;
     }
 
     const { error } = await supabase
