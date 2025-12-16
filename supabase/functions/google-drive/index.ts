@@ -346,9 +346,12 @@ Deno.serve(async (req) => {
       console.log("Document exported as HTML, length:", htmlContent.length);
 
       // Build update object - only include google_modified_at if we got it
+      // When content changes, revert to draft (is_published = false)
+      // The published_content_html remains unchanged, preserving the last published version
       const updateData: Record<string, unknown> = {
         content_html: htmlContent,
-        last_synced_at: new Date().toISOString()
+        last_synced_at: new Date().toISOString(),
+        is_published: false  // Revert to draft when content is synced
       };
       if (googleModifiedAt) {
         updateData.google_modified_at = googleModifiedAt;

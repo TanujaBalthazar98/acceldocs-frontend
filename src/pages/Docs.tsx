@@ -79,6 +79,7 @@ interface Document {
   visibility: VisibilityLevel;
   is_published: boolean;
   content_html: string | null;
+  published_content_html: string | null;
   created_at: string;
   updated_at: string;
   owner_id: string | null;
@@ -143,6 +144,17 @@ export default function Docs() {
   }, [authLoading, hasFetched]);
 
   const autoSyncContent = async (doc: Document) => {
+    // For non-org users, show published content only (no syncing)
+    if (!isOrgUser) {
+      if (doc.published_content_html) {
+        setDocumentHtml(doc.published_content_html);
+      } else {
+        setDocumentHtml(null);
+      }
+      return;
+    }
+    
+    // For org users (preview mode), sync and show draft content
     if (!doc.content_html) {
       const html = await syncDocument(doc.id, doc.google_doc_id);
       if (html) {
@@ -308,7 +320,7 @@ export default function Docs() {
 
     let docsQuery = supabase
       .from("documents")
-      .select("id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, created_at, updated_at, owner_id")
+      .select("id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, published_content_html, created_at, updated_at, owner_id")
       .in("project_id", projectIds)
       .order("title");
 

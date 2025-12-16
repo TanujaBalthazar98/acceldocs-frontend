@@ -26,6 +26,7 @@ export type Database = {
           last_synced_at: string | null
           owner_id: string | null
           project_id: string
+          published_content_html: string | null
           slug: string | null
           title: string
           topic_id: string | null
@@ -43,6 +44,7 @@ export type Database = {
           last_synced_at?: string | null
           owner_id?: string | null
           project_id: string
+          published_content_html?: string | null
           slug?: string | null
           title: string
           topic_id?: string | null
@@ -60,6 +62,7 @@ export type Database = {
           last_synced_at?: string | null
           owner_id?: string | null
           project_id?: string
+          published_content_html?: string | null
           slug?: string | null
           title?: string
           topic_id?: string | null
