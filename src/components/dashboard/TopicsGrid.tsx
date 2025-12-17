@@ -19,6 +19,7 @@ interface TopicsGridProps {
   onSelectTopic: (topic: Topic | null) => void;
   documents?: { topic_id: string | null }[];
   onTopicsReordered?: () => void;
+  allTopics?: Topic[]; // Full list for drag-drop validation
 }
 
 interface TopicTreeNode {
@@ -37,7 +38,8 @@ export function TopicsGrid({
   selectedTopic, 
   onSelectTopic, 
   documents = [],
-  onTopicsReordered 
+  onTopicsReordered,
+  allTopics
 }: TopicsGridProps) {
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState>({
@@ -47,7 +49,11 @@ export function TopicsGrid({
   });
   const { toast } = useToast();
 
+  // Use allTopics for validation if provided, otherwise use topics
+  const topicsForValidation = allTopics || topics;
+
   // Build a proper tree structure from topics with parent_id
+  // When viewing a subtopic, treat it as the root
   const topicTree = useMemo(() => {
     const nodeMap = new Map<string, TopicTreeNode>();
     const rootNodes: TopicTreeNode[] = [];
@@ -58,11 +64,20 @@ export function TopicsGrid({
     }
 
     // Build tree by linking parents to children
+    // When we have a selectedTopic and it's in the list, treat topics that:
+    // 1. Are the selectedTopic itself (no parent in our subset)
+    // 2. Have a parent that's NOT in our current list
+    // as root nodes
+    const topicIds = new Set(topics.map(t => t.id));
+    
     for (const topic of topics) {
       const node = nodeMap.get(topic.id)!;
-      if (topic.parent_id && nodeMap.has(topic.parent_id)) {
+      
+      // If this topic's parent is in our list, link to parent
+      if (topic.parent_id && topicIds.has(topic.parent_id)) {
         nodeMap.get(topic.parent_id)!.children.push(node);
       } else {
+        // Otherwise it's a root in our current view
         rootNodes.push(node);
       }
     }
@@ -94,7 +109,7 @@ export function TopicsGrid({
   const getTopicDocCount = (topicId: string): number => {
     // Count docs in this topic and all descendants
     let count = documents.filter(d => d.topic_id === topicId).length;
-    const children = topics.filter(t => t.parent_id === topicId);
+    const children = topicsForValidation.filter(t => t.parent_id === topicId);
     for (const child of children) {
       count += getTopicDocCount(child.id);
     }
@@ -153,14 +168,14 @@ export function TopicsGrid({
       return;
     }
 
-    const draggedTopic = topics.find(t => t.id === draggedId);
-    const targetTopic = topics.find(t => t.id === targetTopicId);
+    const draggedTopic = topicsForValidation.find(t => t.id === draggedId);
+    const targetTopic = topicsForValidation.find(t => t.id === targetTopicId);
     
     if (!draggedTopic || !targetTopic) return;
 
     // Prevent dropping a parent into its own child
     const isDescendant = (parentId: string, childId: string): boolean => {
-      const children = topics.filter(t => t.parent_id === parentId);
+      const children = topicsForValidation.filter(t => t.parent_id === parentId);
       for (const child of children) {
         if (child.id === childId || isDescendant(child.id, childId)) {
           return true;
@@ -186,7 +201,7 @@ export function TopicsGrid({
       if (dropPosition === 'inside') {
         // Move inside target (make it a child)
         newParentId = targetTopicId;
-        const siblings = topics.filter(t => t.parent_id === targetTopicId);
+        const siblings = topicsForValidation.filter(t => t.parent_id === targetTopicId);
         newOrder = siblings.length > 0 ? Math.max(...siblings.map(s => s.display_order || 0)) + 1 : 0;
         
         // Expand the target to show the moved item
@@ -194,7 +209,7 @@ export function TopicsGrid({
       } else {
         // Move before or after target (same parent)
         newParentId = targetTopic.parent_id;
-        const siblings = topics.filter(t => t.parent_id === newParentId && t.id !== draggedId);
+        const siblings = topicsForValidation.filter(t => t.parent_id === newParentId && t.id !== draggedId);
         const targetIndex = siblings.findIndex(s => s.id === targetTopicId);
         
         if (dropPosition === 'before') {
@@ -232,7 +247,7 @@ export function TopicsGrid({
     }
 
     setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
-  }, [dragState.draggedId, dragState.dropPosition, topics, toast, onTopicsReordered]);
+  }, [dragState.draggedId, dragState.dropPosition, topicsForValidation, toast, onTopicsReordered]);
 
   if (topics.length === 0) {
     return (
@@ -244,7 +259,7 @@ export function TopicsGrid({
 
   const renderTopicNode = (node: TopicTreeNode, depth: number = 0): JSX.Element => {
     const { topic, children } = node;
-    const isExpanded = expandedTopics.has(topic.id);
+    const isExpanded = expandedTopics.has(topic.id) || depth === 0; // Auto-expand first level
     const isSelected = selectedTopic?.id === topic.id;
     const hasChildren = children.length > 0;
     const docCount = getTopicDocCount(topic.id);
@@ -268,37 +283,37 @@ export function TopicsGrid({
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, topic.id)}
           className={cn(
-            "flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
+            "flex items-center gap-1 px-2 py-2 rounded-md cursor-pointer transition-colors group",
             "hover:bg-muted/50",
             isSelected && "bg-primary/10 text-primary",
             isDragging && "opacity-50",
             isDragOver && dropPosition === 'inside' && "bg-primary/20 ring-2 ring-primary/50"
           )}
-          style={{ paddingLeft: `${8 + depth * 16}px` }}
+          style={{ paddingLeft: `${8 + depth * 20}px` }}
           onClick={() => onSelectTopic(topic)}
         >
           {/* Drag handle */}
-          <div className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-0.5 -ml-1 hover:bg-muted rounded">
-            <GripVertical className="w-3 h-3 text-muted-foreground" />
+          <div className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-0.5 -ml-1 hover:bg-muted rounded shrink-0">
+            <GripVertical className="w-3.5 h-3.5 text-muted-foreground" />
           </div>
 
           {/* Expand/collapse button */}
           {hasChildren ? (
             <button
-              className="p-0.5 hover:bg-muted rounded"
+              className="p-0.5 hover:bg-muted rounded shrink-0"
               onClick={(e) => {
                 e.stopPropagation();
                 toggleExpand(topic.id);
               }}
             >
               {isExpanded ? (
-                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
               ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
               )}
             </button>
           ) : (
-            <div className="w-4" />
+            <div className="w-5 shrink-0" />
           )}
 
           {/* Folder icon */}
@@ -326,38 +341,27 @@ export function TopicsGrid({
         </div>
 
         {/* Drop indicator - after */}
-        {isDragOver && dropPosition === 'after' && (
+        {isDragOver && dropPosition === 'after' && !hasChildren && (
           <div className="h-0.5 bg-primary mx-2 rounded-full" />
         )}
 
         {/* Children */}
         {hasChildren && isExpanded && (
-          <div className="border-l border-border/50 ml-4">
+          <div className="border-l border-border/50 ml-5">
             {children.map(child => renderTopicNode(child, depth + 1))}
           </div>
+        )}
+        
+        {/* Drop indicator - after (when has children) */}
+        {isDragOver && dropPosition === 'after' && hasChildren && !isExpanded && (
+          <div className="h-0.5 bg-primary mx-2 rounded-full" />
         )}
       </div>
     );
   };
 
   return (
-    <div className="space-y-0.5">
-      {/* "All Pages" option */}
-      <div
-        className={cn(
-          "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
-          "hover:bg-muted/50",
-          selectedTopic === null && "bg-primary/10 text-primary"
-        )}
-        onClick={() => onSelectTopic(null)}
-      >
-        <div className="w-4" />
-        <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-        <span className={cn("text-sm", selectedTopic === null && "font-medium")}>
-          All Pages
-        </span>
-      </div>
-
+    <div className="space-y-0.5 rounded-lg border border-border bg-card p-2">
       {/* Topic tree */}
       {topicTree.map(node => renderTopicNode(node))}
     </div>
