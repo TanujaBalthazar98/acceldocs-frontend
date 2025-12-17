@@ -95,6 +95,31 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
 };
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 
+// Helper to remove duplicate first heading if it matches the page title
+function removeFirstHeadingIfMatches(html: string, title: string): string {
+  if (!html || !title) return html;
+  
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
+  const container = doc.body.firstChild as HTMLElement;
+  
+  if (!container) return html;
+  
+  // Find the first heading (h1-h6)
+  const firstHeading = container.querySelector('h1, h2, h3, h4, h5, h6');
+  if (firstHeading) {
+    const headingText = firstHeading.textContent?.trim().toLowerCase() || '';
+    const titleText = title.trim().toLowerCase();
+    
+    // Remove if it matches the title (exact or very similar)
+    if (headingText === titleText || headingText.includes(titleText) || titleText.includes(headingText)) {
+      firstHeading.remove();
+    }
+  }
+  
+  return container.innerHTML;
+}
+
 export default function Docs() {
   const params = useParams<{ 
     orgSlug?: string; 
@@ -319,8 +344,10 @@ export default function Docs() {
       .in("project_id", projectIds)
       .order("title");
 
+    // For non-org users (public viewers), only show pages that have published content
+    // This includes currently published pages OR pages that were published before (have published_content_html)
     if (!userOrgId) {
-      docsQuery = docsQuery.eq("is_published", true);
+      docsQuery = docsQuery.not("published_content_html", "is", null);
     }
 
     const { data: docsData, error: docsError } = await docsQuery;
@@ -690,9 +717,9 @@ export default function Docs() {
 
       {/* Main Layout */}
       <div className="flex flex-1">
-        {/* Desktop Sidebar */}
+        {/* Desktop Sidebar - Sticky */}
         {!sidebarCollapsed && (
-          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card">
+          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card sticky top-[7.5rem] h-[calc(100vh-7.5rem)] overflow-y-auto">
             {sidebarContent}
           </aside>
         )}
@@ -770,8 +797,8 @@ export default function Docs() {
                 <div className="bg-card border border-border rounded-lg p-6 lg:p-8">
                   {documentHtml ? (
                     <div 
-                      className="prose prose-neutral dark:prose-invert max-w-none"
-                      dangerouslySetInnerHTML={{ __html: normalizeHtml(documentHtml) }}
+                      className="prose prose-neutral dark:prose-invert max-w-none docs-content"
+                      dangerouslySetInnerHTML={{ __html: removeFirstHeadingIfMatches(normalizeHtml(documentHtml), selectedDocument.title) }}
                     />
                   ) : (
                     <div className="text-center py-12 text-muted-foreground">
