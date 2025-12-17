@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ChevronRight,
   ChevronDown,
+  FileText,
   FolderTree,
   Menu,
   Search,
@@ -31,6 +32,8 @@ import { TableOfContents } from "@/components/docs/TableOfContents";
 import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 import { PageFeedback } from "@/components/docs/PageFeedback";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
+
+type VisibilityLevel = "internal" | "external" | "public";
 
 interface Project {
   id: string;
