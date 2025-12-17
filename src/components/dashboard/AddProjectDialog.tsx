@@ -197,10 +197,18 @@ export const AddProjectDialog = ({
       }
 
       if (data.success) {
-        toast({
-          title: "Project created with imported content",
-          description: `Created ${data.topicsCreated} topics and ${data.pagesCreated} pages.`,
-        });
+        if (data.background) {
+          // Large import running in background
+          toast({
+            title: "Import started",
+            description: data.message || `Importing ${data.estimatedPages} files in background. Refresh in a minute to see results.`,
+          });
+        } else {
+          toast({
+            title: "Project created with imported content",
+            description: `Created ${data.topicsCreated} topics and ${data.pagesCreated} pages.`,
+          });
+        }
       } else {
         toast({
           title: "Import completed with some issues",
