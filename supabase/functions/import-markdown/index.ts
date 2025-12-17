@@ -250,10 +250,13 @@ function parseNestedStructure(files: { path: string; content: string }[]): {
   return { topics, rootFiles };
 }
 
-// Helper to add delay between API calls
+// Helper to add delay between API calls (reduced for large imports)
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+// Batch size for processing files
+const BATCH_SIZE = 5;
 
 // Parse markdown to structured elements for Google Docs API
 function parseMarkdownToElements(markdown: string): Array<{
@@ -349,7 +352,7 @@ function cleanInlineMarkdown(text: string): string {
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
 }
 
-// Create Google Doc with content using proper formatting
+// Create Google Doc with simple text content (more reliable for large imports)
 async function createGoogleDocWithContent(
   googleToken: string,
   title: string,
@@ -380,70 +383,14 @@ async function createGoogleDocWithContent(
 
     const doc = await createResponse.json();
     
-    // Step 2: Build structured content requests for Google Docs API
+    // Step 2: Add plain text content (simpler, more reliable for large imports)
     if (originalMarkdown && originalMarkdown.trim()) {
-      const elements = parseMarkdownToElements(originalMarkdown);
-      const requests: any[] = [];
-      let currentIndex = 1;
+      // Clean markdown for readability in Google Docs
+      const cleanContent = originalMarkdown
+        .replace(/^---[\s\S]*?---\n*/m, '') // Remove frontmatter
+        .trim();
       
-      for (const element of elements) {
-        const cleanText = cleanInlineMarkdown(element.text) + '\n';
-        
-        // Insert text
-        requests.push({
-          insertText: {
-            location: { index: currentIndex },
-            text: cleanText,
-          },
-        });
-        
-        const startIndex = currentIndex;
-        const endIndex = currentIndex + cleanText.length - 1;
-        
-        // Apply formatting based on type
-        if (element.type === 'heading' && element.level) {
-          const headingType = element.level <= 3 
-            ? `HEADING_${element.level}` 
-            : 'HEADING_4';
-          requests.push({
-            updateParagraphStyle: {
-              range: { startIndex, endIndex },
-              paragraphStyle: { namedStyleType: headingType },
-              fields: 'namedStyleType',
-            },
-          });
-        } else if (element.type === 'bullet') {
-          requests.push({
-            createParagraphBullets: {
-              range: { startIndex, endIndex },
-              bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
-            },
-          });
-        } else if (element.type === 'numbered') {
-          requests.push({
-            createParagraphBullets: {
-              range: { startIndex, endIndex },
-              bulletPreset: 'NUMBERED_DECIMAL_NESTED',
-            },
-          });
-        } else if (element.type === 'code') {
-          // Apply monospace font for code blocks
-          requests.push({
-            updateTextStyle: {
-              range: { startIndex, endIndex },
-              textStyle: {
-                weightedFontFamily: { fontFamily: 'Courier New' },
-                backgroundColor: { color: { rgbColor: { red: 0.95, green: 0.95, blue: 0.95 } } },
-              },
-              fields: 'weightedFontFamily,backgroundColor',
-            },
-          });
-        }
-        
-        currentIndex += cleanText.length;
-      }
-      
-      if (requests.length > 0) {
+      if (cleanContent) {
         const updateResponse = await fetch(
           `https://docs.googleapis.com/v1/documents/${doc.id}:batchUpdate`,
           {
@@ -452,13 +399,19 @@ async function createGoogleDocWithContent(
               Authorization: `Bearer ${googleToken}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ requests }),
+            body: JSON.stringify({
+              requests: [{
+                insertText: {
+                  location: { index: 1 },
+                  text: cleanContent,
+                },
+              }],
+            }),
           }
         );
 
         if (!updateResponse.ok) {
-          const errorText = await updateResponse.text();
-          console.warn(`Content format failed for ${title}:`, errorText);
+          console.warn(`Content insert failed for ${title}, doc created empty`);
         }
       }
     }

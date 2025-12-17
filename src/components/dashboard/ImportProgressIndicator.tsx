@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, XCircle, Loader2, FileText } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, FileText, FolderTree, FileStack, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ImportJob {
@@ -44,7 +44,10 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
 
     fetchJob();
 
-    // Subscribe to realtime updates
+    // Poll for updates every 2 seconds (more reliable than realtime for edge function updates)
+    const pollInterval = setInterval(fetchJob, 2000);
+
+    // Also subscribe to realtime updates as backup
     const channel = supabase
       .channel(`import-job-${jobId}`)
       .on(
@@ -66,15 +69,16 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, [jobId, onComplete]);
 
   if (!job) {
     return (
-      <div className="flex items-center gap-2 p-4 border rounded-lg bg-muted/50">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span className="text-sm">Loading import status...</span>
+      <div className="flex items-center justify-center gap-3 p-6 rounded-lg border bg-card">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        <span className="text-sm font-medium">Initializing import...</span>
       </div>
     );
   }
@@ -89,58 +93,101 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
 
   return (
     <div className={cn(
-      "p-4 border rounded-lg space-y-3",
-      isComplete && "border-green-500/50 bg-green-500/10",
-      isFailed && "border-destructive/50 bg-destructive/10",
-      isProcessing && "border-primary/50 bg-primary/5"
+      "rounded-lg border overflow-hidden",
+      isComplete && "border-green-500/30",
+      isFailed && "border-destructive/30",
+      isProcessing && "border-primary/30"
     )}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {isProcessing && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-          {isComplete && <CheckCircle className="h-4 w-4 text-green-500" />}
-          {isFailed && <XCircle className="h-4 w-4 text-destructive" />}
-          <span className="font-medium">
+      {/* Header */}
+      <div className={cn(
+        "px-4 py-3 flex items-center gap-3",
+        isComplete && "bg-green-500/10",
+        isFailed && "bg-destructive/10",
+        isProcessing && "bg-primary/5"
+      )}>
+        {isProcessing && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+        {isComplete && <CheckCircle2 className="h-5 w-5 text-green-500" />}
+        {isFailed && <XCircle className="h-5 w-5 text-destructive" />}
+        <div className="flex-1">
+          <p className="font-semibold text-sm">
             {isProcessing && "Importing files..."}
-            {isComplete && "Import complete!"}
+            {isComplete && "Import completed"}
             {isFailed && "Import failed"}
-          </span>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {job.processed_files} of {job.total_files} files processed
+          </p>
         </div>
-        <span className="text-sm text-muted-foreground">
-          {job.processed_files} / {job.total_files} files
-        </span>
+        <span className="text-2xl font-bold text-foreground">{progress}%</span>
       </div>
 
-      <Progress value={progress} className="h-2" />
+      {/* Progress bar */}
+      <div className="px-4 py-2 bg-card">
+        <Progress 
+          value={progress} 
+          className={cn(
+            "h-2",
+            isComplete && "[&>div]:bg-green-500",
+            isFailed && "[&>div]:bg-destructive"
+          )} 
+        />
+      </div>
 
+      {/* Current file */}
       {job.current_file && isProcessing && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <FileText className="h-3 w-3" />
-          <span className="truncate">{job.current_file}</span>
+        <div className="px-4 py-2 bg-muted/30 border-t border-border/50">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <FileText className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{job.current_file}</span>
+          </div>
         </div>
       )}
 
-      <div className="flex gap-4 text-sm">
-        <span className="text-muted-foreground">
-          Topics: <span className="font-medium text-foreground">{job.topics_created}</span>
-        </span>
-        <span className="text-muted-foreground">
-          Pages: <span className="font-medium text-foreground">{job.pages_created}</span>
-        </span>
+      {/* Stats */}
+      <div className="px-4 py-3 bg-card border-t border-border/50 grid grid-cols-3 gap-4">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded bg-primary/10">
+            <FolderTree className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <div>
+            <p className="text-lg font-semibold leading-none">{job.topics_created}</p>
+            <p className="text-xs text-muted-foreground">Topics</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded bg-primary/10">
+            <FileStack className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <div>
+            <p className="text-lg font-semibold leading-none">{job.pages_created}</p>
+            <p className="text-xs text-muted-foreground">Pages</p>
+          </div>
+        </div>
         {job.errors && job.errors.length > 0 && (
-          <span className="text-destructive">
-            Errors: {job.errors.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-destructive/10">
+              <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+            </div>
+            <div>
+              <p className="text-lg font-semibold leading-none text-destructive">{job.errors.length}</p>
+              <p className="text-xs text-muted-foreground">Errors</p>
+            </div>
+          </div>
         )}
       </div>
 
-      {job.errors && job.errors.length > 0 && isComplete && (
-        <details className="text-sm">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-            View {job.errors.length} error(s)
+      {/* Errors list */}
+      {job.errors && job.errors.length > 0 && (isComplete || isFailed) && (
+        <details className="border-t border-border/50">
+          <summary className="px-4 py-2 cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors">
+            View {job.errors.length} error{job.errors.length !== 1 ? 's' : ''}
           </summary>
-          <ul className="mt-2 space-y-1 text-destructive/80 text-xs max-h-32 overflow-y-auto">
+          <ul className="px-4 py-2 space-y-1 text-xs max-h-32 overflow-y-auto bg-muted/20">
             {job.errors.map((error, i) => (
-              <li key={i}>• {error}</li>
+              <li key={i} className="text-destructive/80 flex items-start gap-2">
+                <span className="text-destructive mt-0.5">•</span>
+                <span>{error}</span>
+              </li>
             ))}
           </ul>
         </details>

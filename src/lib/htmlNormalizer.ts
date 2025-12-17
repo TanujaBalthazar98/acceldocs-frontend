@@ -17,20 +17,22 @@ export function normalizeHtml(html: string): string {
   // Clean up structural issues
   content = cleanupStructure(content);
   
-  // Sanitize to prevent XSS
+  // Sanitize to prevent XSS while preserving markdown HTML structure
   content = DOMPurify.sanitize(content, {
     ALLOWED_TAGS: [
-      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike',
+      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'del',
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
       'ul', 'ol', 'li',
       'a', 'img',
-      'table', 'thead', 'tbody', 'tr', 'td', 'th',
-      'div', 'span',
-      'blockquote', 'pre', 'code',
-      'hr', 'sup', 'sub'
+      'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col',
+      'div', 'span', 'section', 'article', 'aside', 'header', 'footer', 'nav', 'main',
+      'blockquote', 'pre', 'code', 'kbd', 'samp', 'var',
+      'hr', 'sup', 'sub', 'mark', 'small', 'abbr', 'time', 'address',
+      'dl', 'dt', 'dd', 'figure', 'figcaption', 'details', 'summary'
     ],
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'target', 'rel', 'colspan', 'rowspan', 'class'],
-    FORBID_ATTR: ['style'],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'target', 'rel', 'colspan', 'rowspan', 'class', 'id', 'name', 'datetime', 'lang', 'dir'],
+    FORBID_ATTR: ['style', 'onclick', 'onerror', 'onload'],
+    ALLOW_DATA_ATTR: false,
   });
   
   return content.trim();
