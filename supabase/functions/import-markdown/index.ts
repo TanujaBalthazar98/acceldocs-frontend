@@ -532,44 +532,75 @@ Deno.serve(async (req) => {
     console.log(`Found ${topics.size} topics and ${rootFiles.length} root files`);
 
     const totalFiles = files.length;
-    const LARGE_IMPORT_THRESHOLD = 30;
     
-    // For large imports, process in background
-    if (totalFiles > LARGE_IMPORT_THRESHOLD) {
-      console.log(`Large import detected (${totalFiles} files), processing in background`);
-      
-      // Start background processing
-      const backgroundTask = async () => {
-        await processImport(supabase, project, googleToken, topics, rootFiles, projectId, user.id);
-      };
-      
-      // @ts-ignore - EdgeRuntime.waitUntil is available in Deno Deploy
-      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
-        EdgeRuntime.waitUntil(backgroundTask());
-      } else {
-        // Fallback: run inline but don't await
-        backgroundTask().catch(err => console.error("Background import failed:", err));
-      }
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          background: true,
-          message: `Import started for ${totalFiles} files. This may take a few minutes.`,
-          estimatedTopics: topics.size,
-          estimatedPages: totalFiles
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Create import job record for progress tracking
+    const { data: importJob, error: jobError } = await supabase
+      .from("import_jobs")
+      .insert({
+        project_id: projectId,
+        user_id: user.id,
+        status: 'processing',
+        total_files: totalFiles,
+        processed_files: 0,
+        topics_created: 0,
+        pages_created: 0,
+        errors: [],
+      })
+      .select()
+      .single();
+    
+    if (jobError) {
+      console.error("Failed to create import job:", jobError);
+      // Continue anyway, just without progress tracking
     }
     
-    // For smaller imports, process synchronously
-    const results = await processImport(supabase, project, googleToken, topics, rootFiles, projectId, user.id);
+    const jobId = importJob?.id;
+    console.log(`Created import job ${jobId} for ${totalFiles} files`);
     
-    console.log("Import complete:", results);
-
+    // Start background processing with progress tracking
+    const backgroundTask = async () => {
+      try {
+        await processImportWithProgress(
+          supabase, 
+          project, 
+          googleToken, 
+          topics, 
+          rootFiles, 
+          projectId, 
+          user.id,
+          jobId
+        );
+      } catch (err) {
+        console.error("Import failed:", err);
+        if (jobId) {
+          await supabase
+            .from("import_jobs")
+            .update({ 
+              status: 'failed', 
+              errors: [err instanceof Error ? err.message : 'Unknown error'],
+              completed_at: new Date().toISOString()
+            })
+            .eq("id", jobId);
+        }
+      }
+    };
+    
+    // @ts-ignore - EdgeRuntime.waitUntil is available in Deno Deploy
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+      EdgeRuntime.waitUntil(backgroundTask());
+    } else {
+      // Fallback: run inline but don't await
+      backgroundTask().catch(err => console.error("Background import failed:", err));
+    }
+    
     return new Response(
-      JSON.stringify({ success: true, ...results }),
+      JSON.stringify({ 
+        success: true, 
+        jobId,
+        message: `Import started for ${totalFiles} files.`,
+        estimatedTopics: topics.size,
+        estimatedPages: totalFiles
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
@@ -582,27 +613,49 @@ Deno.serve(async (req) => {
   }
 });
 
-// Extracted import processing function
-async function processImport(
+// Import processing function with progress tracking
+async function processImportWithProgress(
   supabase: any,
   project: { drive_folder_id: string; name: string },
   googleToken: string,
   topics: Map<string, { files: { path: string; content: string }[] }>,
   rootFiles: { path: string; content: string }[],
   projectId: string,
-  userId: string
-): Promise<{ topicsCreated: number; pagesCreated: number; errors: string[] }> {
+  userId: string,
+  jobId: string | null
+): Promise<void> {
   const results = {
     topicsCreated: 0,
     pagesCreated: 0,
+    processedFiles: 0,
     errors: [] as string[],
+  };
+
+  // Helper to update job progress
+  const updateProgress = async (currentFile?: string) => {
+    if (!jobId) return;
+    try {
+      await supabase
+        .from("import_jobs")
+        .update({
+          processed_files: results.processedFiles,
+          topics_created: results.topicsCreated,
+          pages_created: results.pagesCreated,
+          errors: results.errors,
+          current_file: currentFile || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
+    } catch (err) {
+      console.error("Failed to update progress:", err);
+    }
   };
 
   // Create topics and their pages
   for (const [topicName, topicData] of topics) {
     try {
-      // Small delay to avoid rate limiting
       await delay(50);
+      await updateProgress(`Creating topic: ${topicName}`);
       
       // Create topic folder in Google Drive
       const folderResponse = await fetch("https://www.googleapis.com/drive/v3/files", {
@@ -621,7 +674,7 @@ async function processImport(
       if (!folderResponse.ok) {
         const errorText = await folderResponse.text();
         console.error(`Failed to create folder for topic ${topicName}:`, errorText);
-        results.errors.push(`Failed to create folder for topic: ${topicName}`);
+        results.errors.push(`Failed to create folder: ${topicName}`);
         continue;
       }
 
@@ -655,9 +708,11 @@ async function processImport(
           
           const filename = file.path.split('/').pop() || 'Untitled';
           const title = extractTitle(file.content, filename);
+          
+          await updateProgress(`Creating: ${title}`);
+          
           const htmlContent = markdownToHtml(file.content);
 
-          // Create Google Doc with content (pass original markdown for proper formatting)
           const docResult = await createGoogleDocWithContent(
             googleToken,
             title,
@@ -668,10 +723,11 @@ async function processImport(
 
           if (!docResult.success) {
             results.errors.push(`Failed to create doc: ${title}`);
+            results.processedFiles++;
+            await updateProgress();
             continue;
           }
 
-          // Create document in database with HTML content
           const { error: docError } = await supabase
             .from("documents")
             .insert({
@@ -688,15 +744,19 @@ async function processImport(
 
           if (docError) {
             console.error(`Failed to save document ${title}:`, docError);
-            results.errors.push(`Failed to save document: ${title}`);
-            continue;
+            results.errors.push(`Failed to save: ${title}`);
+          } else {
+            results.pagesCreated++;
+            console.log(`Created page: ${title}`);
           }
-
-          results.pagesCreated++;
-          console.log(`Created page: ${title}`);
+          
+          results.processedFiles++;
+          await updateProgress();
         } catch (err) {
           console.error(`Error processing file ${file.path}:`, err);
-          results.errors.push(`Error processing file: ${file.path}`);
+          results.errors.push(`Error: ${file.path}`);
+          results.processedFiles++;
+          await updateProgress();
         }
       }
     } catch (err) {
@@ -712,9 +772,11 @@ async function processImport(
       
       const filename = file.path.split('/').pop() || 'Untitled';
       const title = extractTitle(file.content, filename);
+      
+      await updateProgress(`Creating: ${title}`);
+      
       const htmlContent = markdownToHtml(file.content);
 
-      // Create Google Doc with content (pass original markdown for proper formatting)
       const docResult = await createGoogleDocWithContent(
         googleToken,
         title,
@@ -725,10 +787,11 @@ async function processImport(
 
       if (!docResult.success) {
         results.errors.push(`Failed to create doc: ${title}`);
+        results.processedFiles++;
+        await updateProgress();
         continue;
       }
 
-      // Create document in database
       const { error: docError } = await supabase
         .from("documents")
         .insert({
@@ -745,18 +808,38 @@ async function processImport(
 
       if (docError) {
         console.error(`Failed to save document ${title}:`, docError);
-        results.errors.push(`Failed to save document: ${title}`);
-        continue;
+        results.errors.push(`Failed to save: ${title}`);
+      } else {
+        results.pagesCreated++;
+        console.log(`Created root page: ${title}`);
       }
-
-      results.pagesCreated++;
-      console.log(`Created root page: ${title}`);
+      
+      results.processedFiles++;
+      await updateProgress();
     } catch (err) {
       console.error(`Error processing file ${file.path}:`, err);
-      results.errors.push(`Error processing file: ${file.path}`);
+      results.errors.push(`Error: ${file.path}`);
+      results.processedFiles++;
+      await updateProgress();
     }
   }
 
-  console.log("Background import complete:", results);
-  return results;
+  // Mark job as complete
+  if (jobId) {
+    await supabase
+      .from("import_jobs")
+      .update({
+        status: 'completed',
+        processed_files: results.processedFiles,
+        topics_created: results.topicsCreated,
+        pages_created: results.pagesCreated,
+        errors: results.errors,
+        current_file: null,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", jobId);
+  }
+
+  console.log("Import complete:", results);
 }

@@ -15,6 +15,7 @@ import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { ImportProgressIndicator } from "./ImportProgressIndicator";
 
 interface AddProjectDialogProps {
   open: boolean;
@@ -40,6 +41,8 @@ export const AddProjectDialog = ({
   const [isCreating, setIsCreating] = useState(false);
   const [activeTab, setActiveTab] = useState("empty");
   const [files, setFiles] = useState<FileEntry[]>([]);
+  const [importJobId, setImportJobId] = useState<string | null>(null);
+  const [createdFolder, setCreatedFolder] = useState<{ id: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { createFolder } = useGoogleDrive();
   const { toast } = useToast();
@@ -196,28 +199,28 @@ export const AddProjectDialog = ({
         return;
       }
 
-      if (data.success) {
-        if (data.background) {
-          // Large import running in background
-          toast({
-            title: "Import started",
-            description: data.message || `Importing ${data.estimatedPages} files in background. Refresh in a minute to see results.`,
-          });
-        } else {
-          toast({
-            title: "Project created with imported content",
-            description: `Created ${data.topicsCreated} topics and ${data.pagesCreated} pages.`,
-          });
-        }
+      if (data.success && data.jobId) {
+        // Show progress indicator
+        setImportJobId(data.jobId);
+        setCreatedFolder({ id: folder.id, name: folder.name });
+        toast({
+          title: "Import started",
+          description: `Importing ${files.length} files...`,
+        });
+      } else if (data.success) {
+        toast({
+          title: "Project created with imported content",
+          description: `Created ${data.topicsCreated || 0} topics and ${data.pagesCreated || 0} pages.`,
+        });
+        onCreated?.({ id: folder.id, name: folder.name });
+        resetAndClose();
       } else {
         toast({
-          title: "Import completed with some issues",
-          description: `Created ${data.topicsCreated || 0} topics and ${data.pagesCreated || 0} pages. ${data.errors?.length || 0} errors.`,
+          title: "Import failed",
+          description: "An error occurred during import.",
+          variant: "destructive",
         });
       }
-
-      onCreated?.({ id: folder.id, name: folder.name });
-      resetAndClose();
     } catch (err) {
       console.error("Import error:", err);
       toast({
@@ -230,10 +233,19 @@ export const AddProjectDialog = ({
     }
   };
 
+  const handleImportComplete = () => {
+    if (createdFolder) {
+      onCreated?.(createdFolder);
+    }
+    resetAndClose();
+  };
+
   const resetAndClose = () => {
     setProjectName("");
     setFiles([]);
     setActiveTab("empty");
+    setImportJobId(null);
+    setCreatedFolder(null);
     onOpenChange(false);
   };
 
@@ -255,20 +267,37 @@ export const AddProjectDialog = ({
       <DialogContent className="sm:max-w-lg bg-card border-border">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-foreground">
-            Create Project
+            {importJobId ? "Importing Files" : "Create Project"}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Start with an empty project or import existing Markdown documentation.
+            {importJobId 
+              ? "Your files are being imported. This may take a few minutes."
+              : "Start with an empty project or import existing Markdown documentation."
+            }
           </DialogDescription>
         </DialogHeader>
 
-        {!rootFolderId && (
-          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-            <p className="text-sm text-destructive">
-              No root folder configured. Please set your root folder in Settings first.
-            </p>
+        {importJobId ? (
+          <div className="space-y-4">
+            <ImportProgressIndicator 
+              jobId={importJobId} 
+              onComplete={handleImportComplete}
+            />
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={handleImportComplete}>
+                Close & Continue in Background
+              </Button>
+            </div>
           </div>
-        )}
+        ) : (
+          <>
+            {!rootFolderId && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                <p className="text-sm text-destructive">
+                  No root folder configured. Please set your root folder in Settings first.
+                </p>
+              </div>
+            )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -418,6 +447,8 @@ export const AddProjectDialog = ({
             </div>
           </TabsContent>
         </Tabs>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
