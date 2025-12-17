@@ -199,6 +199,7 @@ function generateSlug(text: string): string {
 
 // Parse folder structure from file paths
 // Structure: selected-folder/topic-folder/page.md OR selected-folder/page.md
+// INTELLIGENT GROUPING: Only first-level folders become topics, nested folders are flattened
 function parseNestedStructure(files: { path: string; content: string }[]): {
   topics: Map<string, { files: { path: string; content: string }[] }>;
   rootFiles: { path: string; content: string }[];
@@ -232,9 +233,12 @@ function parseNestedStructure(files: { path: string; content: string }[]): {
       // File directly in project folder (no topic)
       rootFiles.push(file);
     } else {
-      // First folder becomes the topic (or combined path for nested)
-      // e.g., "api" or "api/policies" becomes a topic
-      const topicName = pathParts.join(' / ');
+      // INTELLIGENT GROUPING: Only use the FIRST folder level as the topic name
+      // All nested files go under this parent topic
+      // e.g., "Data Reliability/Overview/file.md" -> topic "Data Reliability"
+      // e.g., "Data Reliability/Setup/Advanced/file.md" -> topic "Data Reliability"
+      const topicName = pathParts[0];
+      
       if (!topics.has(topicName)) {
         topics.set(topicName, { files: [] });
       }
