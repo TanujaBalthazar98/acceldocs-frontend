@@ -93,6 +93,62 @@ export type Database = {
           },
         ]
       }
+      import_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          current_file: string | null
+          errors: Json | null
+          id: string
+          pages_created: number
+          processed_files: number
+          project_id: string
+          status: string
+          topics_created: number
+          total_files: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          current_file?: string | null
+          errors?: Json | null
+          id?: string
+          pages_created?: number
+          processed_files?: number
+          project_id: string
+          status?: string
+          topics_created?: number
+          total_files?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          current_file?: string | null
+          errors?: Json | null
+          id?: string
+          pages_created?: number
+          processed_files?: number
+          project_id?: string
+          status?: string
+          topics_created?: number
+          total_files?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_jobs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitations: {
         Row: {
           accepted_at: string | null
