@@ -161,9 +161,12 @@ export default function Docs() {
       const html = await syncDocument(doc.id, doc.google_doc_id);
       if (html) {
         setDocumentHtml(html);
+        // Update local state - content synced means document reverts to draft
         setDocuments(prev => 
-          prev.map(d => d.id === doc.id ? { ...d, content_html: html } : d)
+          prev.map(d => d.id === doc.id ? { ...d, content_html: html, is_published: false } : d)
         );
+        // Also update selected document's published state
+        setSelectedDocument(prev => prev?.id === doc.id ? { ...prev, content_html: html, is_published: false } : prev);
       }
     } else {
       setDocumentHtml(doc.content_html);
@@ -791,7 +794,7 @@ export default function Docs() {
               </article>
 
               {/* Right sidebar - Table of Contents */}
-              <aside className="hidden xl:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4">
+              <aside className="hidden lg:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4">
                 <TableOfContents html={documentHtml} />
               </aside>
             </div>
