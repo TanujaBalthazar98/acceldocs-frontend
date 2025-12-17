@@ -1138,7 +1138,40 @@ const Dashboard = () => {
           {/* Topics */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Topics</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold">Topics</h2>
+                {selectedTopic && (
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <ChevronRight className="w-4 h-4" />
+                    <button 
+                      onClick={() => setSelectedTopic(null)}
+                      className="hover:text-foreground transition-colors"
+                    >
+                      All
+                    </button>
+                    {(() => {
+                      // Build breadcrumb path
+                      const path: Topic[] = [];
+                      let current: Topic | undefined = selectedTopic;
+                      while (current) {
+                        path.unshift(current);
+                        current = topics.find(t => t.id === current?.parent_id);
+                      }
+                      return path.map((topic, idx) => (
+                        <span key={topic.id} className="flex items-center">
+                          <ChevronRight className="w-4 h-4" />
+                          <button 
+                            onClick={() => setSelectedTopic(topic)}
+                            className={idx === path.length - 1 ? "text-foreground font-medium" : "hover:text-foreground transition-colors"}
+                          >
+                            {topic.name}
+                          </button>
+                        </span>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
               <button 
                 onClick={() => setAddTopicOpen(true)}
                 disabled={!selectedProject}
@@ -1152,7 +1185,20 @@ const Dashboard = () => {
               <p className="text-sm text-muted-foreground">Select a project to view topics.</p>
             ) : (
               <TopicsGrid
-                topics={topics.filter(t => t.project_id === selectedProject.id)}
+                topics={(() => {
+                  const projectTopics = topics.filter(t => t.project_id === selectedProject.id);
+                  if (!selectedTopic) {
+                    // Show only root-level topics when nothing selected
+                    return projectTopics.filter(t => !t.parent_id);
+                  }
+                  // Show selected topic and all its descendants
+                  const getDescendants = (parentId: string): Topic[] => {
+                    const children = projectTopics.filter(t => t.parent_id === parentId);
+                    return children.flatMap(c => [c, ...getDescendants(c.id)]);
+                  };
+                  return [selectedTopic, ...getDescendants(selectedTopic.id)];
+                })()}
+                allTopics={topics.filter(t => t.project_id === selectedProject.id)}
                 selectedTopic={selectedTopic}
                 onSelectTopic={(topic) => setSelectedTopic(topic)}
                 documents={documents}
