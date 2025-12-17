@@ -31,6 +31,8 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { AskAIDialog } from "@/components/docs/AskAIDialog";
 import { DocsLanding } from "@/components/docs/DocsLanding";
+import { TableOfContents } from "@/components/docs/TableOfContents";
+import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 
 type VisibilityLevel = "internal" | "external" | "public";
 
@@ -725,65 +727,74 @@ export default function Docs() {
               <Skeleton className="h-96 w-full" />
             </div>
           ) : selectedDocument ? (
-            <article className="max-w-4xl mx-auto p-6 lg:p-8">
-              {/* Breadcrumb */}
-              <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-                <span>{selectedProject?.name}</span>
-                {selectedDocument.topic_id && (
-                  <>
-                    <span>/</span>
-                    <span>{topics.find(t => t.id === selectedDocument.topic_id)?.name}</span>
-                  </>
-                )}
-              </nav>
+            <div className="flex">
+              {/* Article content */}
+              <article className="flex-1 max-w-4xl mx-auto p-6 lg:p-8">
+                {/* Breadcrumb */}
+                <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+                  <span>{selectedProject?.name}</span>
+                  {selectedDocument.topic_id && (
+                    <>
+                      <span>/</span>
+                      <span>{topics.find(t => t.id === selectedDocument.topic_id)?.name}</span>
+                    </>
+                  )}
+                </nav>
 
-              {/* Title */}
-              <div className="flex items-start gap-3 mb-4">
-                <h1 className="text-3xl lg:text-4xl font-bold text-foreground">
-                  {selectedDocument.title}
-                </h1>
-                {isOrgUser && !selectedDocument.is_published && (
-                  <Badge className="mt-2 text-xs bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800">
-                    Draft
+                {/* Title */}
+                <div className="flex items-start gap-3 mb-4">
+                  <h1 className="text-3xl lg:text-4xl font-bold text-foreground">
+                    {selectedDocument.title}
+                  </h1>
+                  {isOrgUser && !selectedDocument.is_published && (
+                    <Badge className="mt-2 text-xs bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800">
+                      Draft
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Meta */}
+                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
+                  <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
+                  <Badge variant="outline" className="text-xs">
+                    {visibilityConfig[selectedDocument.visibility].label}
                   </Badge>
-                )}
-              </div>
+                  {isOrgUser && selectedDocument.is_published && (
+                    <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-800 dark:text-green-400">
+                      Published
+                    </Badge>
+                  )}
+                  <CopyLinkButton className="ml-auto" />
+                  {syncing && (
+                    <div className="flex items-center gap-2 text-primary">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span className="text-xs">Syncing...</span>
+                    </div>
+                  )}
+                </div>
 
-              {/* Meta */}
-              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
-                <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
-                <Badge variant="outline" className="text-xs">
-                  {visibilityConfig[selectedDocument.visibility].label}
-                </Badge>
-                {isOrgUser && selectedDocument.is_published && (
-                  <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-800 dark:text-green-400">
-                    Published
-                  </Badge>
-                )}
-                {syncing && (
-                  <div className="flex items-center gap-2 ml-auto text-primary">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span className="text-xs">Syncing...</span>
-                  </div>
-                )}
-              </div>
+                {/* Content */}
+                <div className="bg-card border border-border rounded-lg p-6 lg:p-8">
+                  {documentHtml ? (
+                    <div 
+                      className="prose prose-neutral dark:prose-invert max-w-none"
+                      dangerouslySetInnerHTML={{ __html: cleanGoogleDocsHtml(documentHtml) }}
+                    />
+                  ) : (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <RefreshCw className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
+                      <p className="font-medium">Loading content...</p>
+                      <p className="text-sm mt-2">Syncing document from Google Docs</p>
+                    </div>
+                  )}
+                </div>
+              </article>
 
-              {/* Content */}
-              <div className="bg-card border border-border rounded-lg p-6 lg:p-8">
-                {documentHtml ? (
-                  <div 
-                    className="prose prose-neutral dark:prose-invert max-w-none"
-                    dangerouslySetInnerHTML={{ __html: cleanGoogleDocsHtml(documentHtml) }}
-                  />
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <RefreshCw className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
-                    <p className="font-medium">Loading content...</p>
-                    <p className="text-sm mt-2">Syncing document from Google Docs</p>
-                  </div>
-                )}
-              </div>
-            </article>
+              {/* Right sidebar - Table of Contents */}
+              <aside className="hidden xl:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4">
+                <TableOfContents html={documentHtml} />
+              </aside>
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full text-center p-8">
               <div>
