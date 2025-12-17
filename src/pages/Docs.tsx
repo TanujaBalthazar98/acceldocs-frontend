@@ -33,6 +33,7 @@ import { AskAIDialog } from "@/components/docs/AskAIDialog";
 import { DocsLanding } from "@/components/docs/DocsLanding";
 import { TableOfContents } from "@/components/docs/TableOfContents";
 import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
+import { PageFeedback } from "@/components/docs/PageFeedback";
 
 type VisibilityLevel = "internal" | "external" | "public";
 
@@ -791,6 +792,14 @@ export default function Docs() {
                     </div>
                   )}
                 </div>
+
+                {/* Page Feedback - only show on public published docs */}
+                {selectedDocument.is_published && selectedProject?.visibility === "public" && (
+                  <PageFeedback 
+                    documentId={selectedDocument.id} 
+                    isOrgUser={isOrgUser}
+                  />
+                )}
               </article>
 
               {/* Right sidebar - Table of Contents */}

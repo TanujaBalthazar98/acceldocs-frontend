@@ -206,6 +206,53 @@ export type Database = {
         }
         Relationships: []
       }
+      page_feedback: {
+        Row: {
+          content: string
+          created_at: string
+          document_id: string
+          feedback_type: string
+          id: string
+          is_resolved: boolean
+          updated_at: string
+          user_email: string | null
+          user_id: string | null
+          user_name: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          document_id: string
+          feedback_type?: string
+          id?: string
+          is_resolved?: boolean
+          updated_at?: string
+          user_email?: string | null
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          document_id?: string
+          feedback_type?: string
+          id?: string
+          is_resolved?: boolean
+          updated_at?: string
+          user_email?: string | null
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_feedback_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
