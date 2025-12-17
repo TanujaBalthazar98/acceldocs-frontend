@@ -15,7 +15,7 @@ import {
   PanelLeftClose,
   User
 } from "lucide-react";
-import DOMPurify from "dompurify";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -93,18 +93,7 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
   external: { icon: Eye, label: "External" },
   public: { icon: Globe, label: "Public" },
 };
-
-// Helper function to clean and sanitize Google Docs exported HTML
-function cleanGoogleDocsHtml(html: string): string {
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const content = bodyMatch ? bodyMatch[1] : html;
-  
-  // Sanitize HTML to prevent XSS attacks
-  return DOMPurify.sanitize(content, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'div', 'span', 'blockquote', 'pre', 'code', 'hr', 'sup', 'sub'],
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'style', 'target', 'rel', 'colspan', 'rowspan']
-  });
-}
+import { normalizeHtml } from "@/lib/htmlNormalizer";
 
 export default function Docs() {
   const params = useParams<{ 
@@ -782,7 +771,7 @@ export default function Docs() {
                   {documentHtml ? (
                     <div 
                       className="prose prose-neutral dark:prose-invert max-w-none"
-                      dangerouslySetInnerHTML={{ __html: cleanGoogleDocsHtml(documentHtml) }}
+                      dangerouslySetInnerHTML={{ __html: normalizeHtml(documentHtml) }}
                     />
                   ) : (
                     <div className="text-center py-12 text-muted-foreground">

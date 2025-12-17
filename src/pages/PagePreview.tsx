@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Share2, User, Calendar, Eye, Lock, Globe, RefreshCw } from "lucide-react";
-import DOMPurify from "dompurify";
+import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,17 +47,6 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
   public: { icon: Globe, label: "Public", color: "bg-green-500/20 text-green-400" },
 };
 
-// Helper function to clean and sanitize Google Docs exported HTML
-function cleanGoogleDocsHtml(html: string): string {
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const content = bodyMatch ? bodyMatch[1] : html;
-  
-  // Sanitize HTML to prevent XSS attacks
-  return DOMPurify.sanitize(content, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'div', 'span', 'blockquote', 'pre', 'code', 'hr', 'sup', 'sub'],
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'style', 'target', 'rel', 'colspan', 'rowspan']
-  });
-}
 
 export default function PagePreview() {
   const { id } = useParams<{ id: string }>();
@@ -153,7 +142,7 @@ export default function PagePreview() {
       
       // The edge function now returns HTML directly
       if (data?.html) {
-        const cleanedHtml = cleanGoogleDocsHtml(data.html);
+        const cleanedHtml = normalizeHtml(data.html);
         setDocContent(cleanedHtml);
       } else if (data?.error) {
         console.error("API error:", data.error);
