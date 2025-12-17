@@ -55,8 +55,10 @@ import { PageSettingsDialog } from "@/components/dashboard/PageSettingsDialog";
 import { TopicSettingsDialog } from "@/components/dashboard/TopicSettingsDialog";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
+import { ImportMarkdownDialog } from "@/components/dashboard/ImportMarkdownDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
+import { Upload } from "lucide-react";
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -137,6 +139,8 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'project' | 'topic' | 'document'; id: string; name: string } | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importProject, setImportProject] = useState<Project | null>(null);
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -881,6 +885,13 @@ const Dashboard = () => {
                             <Settings className="w-3 h-3 mr-2" />
                             Settings
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            setImportProject(project);
+                            setImportOpen(true);
+                          }}>
+                            <Upload className="w-3 h-3 mr-2" />
+                            Import Markdown
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
                             className="text-destructive focus:text-destructive"
@@ -1372,6 +1383,17 @@ const Dashboard = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      
+      {/* Import Markdown Dialog */}
+      {importProject && organizationId && (
+        <ImportMarkdownDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          projectId={importProject.id}
+          organizationId={organizationId}
+          onImportComplete={() => fetchData()}
+        />
+      )}
     </div>
   );
 };
