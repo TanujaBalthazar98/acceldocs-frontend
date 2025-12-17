@@ -194,7 +194,8 @@ function generateSlug(text: string): string {
     .trim();
 }
 
-// Parse nested folder structure from file paths
+// Parse folder structure from file paths
+// Structure: selected-folder/topic-folder/page.md OR selected-folder/page.md
 function parseNestedStructure(files: { path: string; content: string }[]): {
   topics: Map<string, { files: { path: string; content: string }[] }>;
   rootFiles: { path: string; content: string }[];
@@ -202,30 +203,45 @@ function parseNestedStructure(files: { path: string; content: string }[]): {
   const topics = new Map<string, { files: { path: string; content: string }[] }>();
   const rootFiles: { path: string; content: string }[] = [];
   
+  // Find the common root folder (the selected folder name)
+  let rootFolder = '';
+  if (files.length > 0) {
+    const firstPath = files[0].path;
+    const firstParts = firstPath.split('/');
+    if (firstParts.length > 1) {
+      rootFolder = firstParts[0];
+    }
+  }
+  
   for (const file of files) {
-    // Remove leading folder name (the selected folder itself)
-    const parts = file.path.split('/').filter(p => p && !p.endsWith('.md'));
-    const filename = file.path.split('/').pop() || '';
+    // Get path parts and remove the root folder
+    let pathParts = file.path.split('/');
     
-    if (parts.length === 0) {
-      // File at root level (or just the selected folder level)
+    // Remove the root folder if it matches
+    if (rootFolder && pathParts[0] === rootFolder) {
+      pathParts = pathParts.slice(1);
+    }
+    
+    // Remove the filename from parts
+    const filename = pathParts.pop() || '';
+    
+    if (pathParts.length === 0) {
+      // File directly in project folder (no topic)
       rootFiles.push(file);
-    } else if (parts.length === 1) {
-      // File in first-level folder - this becomes a topic
-      const topicName = parts[0];
-      if (!topics.has(topicName)) {
-        topics.set(topicName, { files: [] });
-      }
-      topics.get(topicName)!.files.push(file);
     } else {
-      // File in nested folders - flatten to "Parent > Child" topic name
-      // Or just use the immediate parent folder as topic
-      const topicName = parts.join(' / ');
+      // First folder becomes the topic (or combined path for nested)
+      // e.g., "api" or "api/policies" becomes a topic
+      const topicName = pathParts.join(' / ');
       if (!topics.has(topicName)) {
         topics.set(topicName, { files: [] });
       }
       topics.get(topicName)!.files.push(file);
     }
+  }
+  
+  console.log(`Parsed structure: ${rootFiles.length} root files, ${topics.size} topics`);
+  for (const [name, data] of topics) {
+    console.log(`  Topic "${name}": ${data.files.length} files`);
   }
   
   return { topics, rootFiles };
