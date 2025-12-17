@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FolderPlus, Upload, FileText, FolderTree, Loader2 } from "lucide-react";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
 interface AddProjectDialogProps {
@@ -42,24 +43,52 @@ export const AddProjectDialog = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { createFolder } = useGoogleDrive();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleCreateEmpty = async () => {
-    if (!projectName.trim() || !rootFolderId) return;
-    
+    if (!projectName.trim() || !rootFolderId || !organizationId || !user) return;
+
     setIsCreating(true);
-    
-    const folder = await createFolder(projectName.trim(), rootFolderId);
-    
-    if (folder) {
+
+    try {
+      const folder = await createFolder(projectName.trim(), rootFolderId);
+      if (!folder) {
+        toast({
+          title: "Failed to create project",
+          description: "Could not create the project folder in Drive.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error: createProjectError } = await supabase.from("projects").insert({
+        name: projectName.trim(),
+        organization_id: organizationId,
+        created_by: user.id,
+        drive_folder_id: folder.id,
+      });
+
+      if (createProjectError) {
+        console.error("Create project error:", createProjectError);
+        toast({
+          title: "Project folder created",
+          description: "Folder created, but the project record could not be created. Try Sync from Drive.",
+          variant: "destructive",
+        });
+        onCreated?.({ id: folder.id, name: folder.name });
+        resetAndClose();
+        return;
+      }
+
       toast({
         title: "Project created",
-        description: `"${projectName}" folder created in Drive.`,
+        description: `"${projectName}" created successfully.`,
       });
       onCreated?.({ id: folder.id, name: folder.name });
       resetAndClose();
+    } finally {
+      setIsCreating(false);
     }
-    
-    setIsCreating(false);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,8 +123,8 @@ export const AddProjectDialog = ({
   };
 
   const handleImportCreate = async () => {
-    if (!projectName.trim() || !rootFolderId || files.length === 0) return;
-    
+    if (!projectName.trim() || !rootFolderId || !organizationId || !user || files.length === 0) return;
+
     setIsCreating(true);
 
     try {
@@ -107,21 +136,27 @@ export const AddProjectDialog = ({
           description: "Could not create the project folder in Drive.",
           variant: "destructive",
         });
-        setIsCreating(false);
         return;
       }
 
-      // Step 2: Get the project ID from database
-      const { data: project } = await supabase
+      // Step 2: Create the project record immediately (no manual sync required)
+      const { data: project, error: createProjectError } = await supabase
         .from("projects")
+        .insert({
+          name: projectName.trim(),
+          organization_id: organizationId,
+          created_by: user.id,
+          drive_folder_id: folder.id,
+        })
         .select("id")
-        .eq("drive_folder_id", folder.id)
         .single();
 
-      if (!project) {
+      if (createProjectError || !project) {
+        console.error("Create project error:", createProjectError);
         toast({
-          title: "Project created",
-          description: "Folder created but import requires project sync. Please try importing again.",
+          title: "Project folder created",
+          description: "Folder created, but the project record could not be created. Try Sync from Drive.",
+          variant: "destructive",
         });
         onCreated?.({ id: folder.id, name: folder.name });
         resetAndClose();
@@ -133,10 +168,9 @@ export const AddProjectDialog = ({
       if (!googleToken) {
         toast({
           title: "Authentication required",
-          description: "Please sign in with Google to import files.",
+          description: "Please reconnect to Google Drive to import files.",
           variant: "destructive",
         });
-        setIsCreating(false);
         return;
       }
 
@@ -152,6 +186,15 @@ export const AddProjectDialog = ({
       });
 
       if (error) throw error;
+
+      if (data?.needsReauth) {
+        toast({
+          title: "Re-authentication required",
+          description: "Please reconnect to Google Drive and try importing again.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       if (data.success) {
         toast({
