@@ -1156,6 +1156,7 @@ const Dashboard = () => {
                 selectedTopic={selectedTopic}
                 onSelectTopic={(topic) => setSelectedTopic(topic)}
                 documents={documents}
+                onTopicsReordered={fetchData}
               />
             )}
           </div>
