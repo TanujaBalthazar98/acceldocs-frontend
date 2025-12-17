@@ -5,106 +5,275 @@ import DOMPurify from "dompurify";
  * Handles both Google Docs exported HTML and markdown-converted HTML.
  */
 export function normalizeHtml(html: string): string {
-  if (!html) return '';
-  
+  if (!html) return "";
+
   // Extract body content if present
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   let content = bodyMatch ? bodyMatch[1] : html;
-  
-  // FIRST: Convert Google Docs styled text to semantic headings BEFORE removing styles
-  content = convertGoogleDocsHeadings(content);
-  
+
+  // Extract Google Docs CSS so we can infer semantics (headings/code) from class-based styling.
+  const cssText = extractCssFromHtml(html);
+  const classStyles = parseCssClassStyles(cssText);
+
+  // Convert Google Docs styled text to semantic elements BEFORE stripping classes/styles.
+  content = convertGoogleDocsHeadings(content, classStyles);
+  content = convertGoogleDocsCodeBlocks(content, classStyles);
+
   // Remove Google Docs specific elements and styles
   content = removeGoogleDocsStyles(content);
-  
+
   // Clean up structural issues
   content = cleanupStructure(content);
-  
-  // Sanitize to prevent XSS while preserving markdown HTML structure
+
+  // Sanitize to prevent XSS while preserving markdown/Docs HTML structure
   content = DOMPurify.sanitize(content, {
     ALLOWED_TAGS: [
-      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'del',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'ul', 'ol', 'li',
-      'a', 'img',
-      'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col',
-      'div', 'span', 'section', 'article', 'aside', 'header', 'footer', 'nav', 'main',
-      'blockquote', 'pre', 'code', 'kbd', 'samp', 'var',
-      'hr', 'sup', 'sub', 'mark', 'small', 'abbr', 'time', 'address',
-      'dl', 'dt', 'dd', 'figure', 'figcaption', 'details', 'summary'
+      "p",
+      "br",
+      "strong",
+      "b",
+      "em",
+      "i",
+      "u",
+      "s",
+      "strike",
+      "del",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "ul",
+      "ol",
+      "li",
+      "a",
+      "img",
+      "table",
+      "thead",
+      "tbody",
+      "tfoot",
+      "tr",
+      "td",
+      "th",
+      "caption",
+      "colgroup",
+      "col",
+      "div",
+      "span",
+      "section",
+      "article",
+      "aside",
+      "header",
+      "footer",
+      "nav",
+      "main",
+      "blockquote",
+      "pre",
+      "code",
+      "kbd",
+      "samp",
+      "var",
+      "hr",
+      "sup",
+      "sub",
+      "mark",
+      "small",
+      "abbr",
+      "time",
+      "address",
+      "dl",
+      "dt",
+      "dd",
+      "figure",
+      "figcaption",
+      "details",
+      "summary",
     ],
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'target', 'rel', 'colspan', 'rowspan', 'class', 'id', 'name', 'datetime', 'lang', 'dir'],
-    FORBID_ATTR: ['style', 'onclick', 'onerror', 'onload'],
+    ALLOWED_ATTR: [
+      "href",
+      "src",
+      "alt",
+      "title",
+      "target",
+      "rel",
+      "colspan",
+      "rowspan",
+      "class",
+      "id",
+      "name",
+      "datetime",
+      "lang",
+      "dir",
+    ],
+    FORBID_ATTR: ["style", "onclick", "onerror", "onload"],
     ALLOW_DATA_ATTR: false,
   });
-  
+
   return content.trim();
+}
+
+
+/**
+ * Extracts CSS text from <style> blocks in an HTML document.
+ * Google Docs exports rely heavily on class-based CSS.
+ */
+function extractCssFromHtml(html: string): string {
+  const styles: string[] = [];
+  const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = styleRegex.exec(html))) {
+    styles.push(match[1]);
+  }
+  return styles.join("\n");
+}
+
+type CssDecls = Record<string, string>;
+type CssClassStyles = Record<string, CssDecls>;
+
+function parseCssClassStyles(cssText: string): CssClassStyles {
+  const map: CssClassStyles = {};
+  if (!cssText) return map;
+
+  const ruleRegex = /\.([a-zA-Z0-9_-]+)\s*\{([^}]*)\}/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = ruleRegex.exec(cssText))) {
+    const className = match[1];
+    const declsRaw = match[2];
+    const decls: CssDecls = {};
+
+    for (const part of declsRaw.split(";")) {
+      const [prop, val] = part.split(":");
+      if (!prop || !val) continue;
+      decls[prop.trim().toLowerCase()] = val.trim();
+    }
+
+    map[className] = { ...(map[className] || {}), ...decls };
+  }
+
+  return map;
+}
+
+function getDecl(el: Element, classStyles: CssClassStyles, prop: string): string {
+  // Inline style first
+  const inline = el.getAttribute("style") || "";
+  const inlineMatch = inline.match(new RegExp(`${prop}\\s*:\\s*([^;]+)`, "i"));
+  if (inlineMatch?.[1]) return inlineMatch[1].trim();
+
+  const classAttr = el.getAttribute("class") || "";
+  const classNames = classAttr.split(/\s+/).filter(Boolean);
+  for (const cn of classNames) {
+    const decls = classStyles[cn];
+    if (decls?.[prop]) return decls[prop];
+  }
+
+  return "";
+}
+
+function hasMonospace(el: Element, classStyles: CssClassStyles): boolean {
+  const fontFamily = getDecl(el, classStyles, "font-family").toLowerCase();
+  return (
+    fontFamily.includes("monospace") ||
+    fontFamily.includes("courier") ||
+    fontFamily.includes("consolas") ||
+    fontFamily.includes("menlo") ||
+    fontFamily.includes("source code")
+  );
 }
 
 /**
  * Converts Google Docs styled paragraphs to semantic heading tags.
- * Google Docs uses font-size in styles to denote heading levels.
+ * Google Docs uses class-based CSS to denote heading levels.
  */
-function convertGoogleDocsHeadings(html: string): string {
-  // Parse HTML to work with DOM
+function convertGoogleDocsHeadings(html: string, classStyles: CssClassStyles): string {
   const parser = new DOMParser();
-  const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
-  const container = doc.body.firstChild as HTMLElement;
-  
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const container = doc.body.firstElementChild as HTMLElement | null;
+
   if (!container) return html;
-  
-  // Find all paragraphs and spans that might be headings based on font-size
-  const elements = container.querySelectorAll('p, span, div');
-  
+
+  const elements = container.querySelectorAll("p, span, div");
+
   elements.forEach((el) => {
-    const style = el.getAttribute('style') || '';
-    const text = el.textContent?.trim() || '';
-    
-    // Skip empty elements or those with too much text (likely not headings)
+    const text = el.textContent?.trim() || "";
     if (!text || text.length > 200) return;
-    
-    // Check for font-size in style (Google Docs heading indicator)
-    const fontSizeMatch = style.match(/font-size:\s*(\d+(?:\.\d+)?)(pt|px)/i);
-    const fontWeightMatch = style.match(/font-weight:\s*(\d+|bold)/i);
-    
+
+    const fontSize = getDecl(el, classStyles, "font-size");
+    const fontWeight = getDecl(el, classStyles, "font-weight");
+
     let headingLevel = 0;
-    
-    if (fontSizeMatch) {
-      const size = parseFloat(fontSizeMatch[1]);
-      const unit = fontSizeMatch[2].toLowerCase();
-      
-      // Convert to pt for comparison (1px ≈ 0.75pt)
-      const sizeInPt = unit === 'px' ? size * 0.75 : size;
-      
-      // Google Docs typical heading sizes:
-      // Title: 26pt, H1: 20pt, H2: 16pt, H3: 14pt, H4: 12pt (bold), Normal: 11pt
-      if (sizeInPt >= 24) headingLevel = 1;
-      else if (sizeInPt >= 18) headingLevel = 2;
-      else if (sizeInPt >= 14) headingLevel = 3;
-      else if (sizeInPt >= 12 && fontWeightMatch) headingLevel = 4;
-    }
-    
-    // Also check for Google Docs heading classes
-    const className = el.getAttribute('class') || '';
-    if (className.includes('title')) headingLevel = 1;
-    else if (className.includes('subtitle')) headingLevel = 2;
-    else if (className.match(/heading[_-]?1/i)) headingLevel = 1;
-    else if (className.match(/heading[_-]?2/i)) headingLevel = 2;
-    else if (className.match(/heading[_-]?3/i)) headingLevel = 3;
-    else if (className.match(/heading[_-]?4/i)) headingLevel = 4;
-    
-    if (headingLevel > 0 && headingLevel <= 6) {
-      // Create a new heading element
-      const heading = doc.createElement(`h${headingLevel}`);
-      heading.textContent = text;
-      
-      // Replace the element with the heading
-      if (el.parentNode) {
-        el.parentNode.replaceChild(heading, el);
+
+    if (fontSize) {
+      const fontSizeMatch = fontSize.match(/(\d+(?:\.\d+)?)(pt|px)/i);
+      if (fontSizeMatch) {
+        const size = parseFloat(fontSizeMatch[1]);
+        const unit = fontSizeMatch[2].toLowerCase();
+        const sizeInPt = unit === "px" ? size * 0.75 : size;
+
+        // Google Docs typical sizes: Title ~26pt, H1 ~20pt, H2 ~16pt, H3 ~14pt
+        if (sizeInPt >= 24) headingLevel = 1;
+        else if (sizeInPt >= 18) headingLevel = 2;
+        else if (sizeInPt >= 14) headingLevel = 3;
+        else if (sizeInPt >= 12 && fontWeight) headingLevel = 4;
       }
     }
+
+    if (headingLevel > 0 && headingLevel <= 6) {
+      const heading = doc.createElement(`h${headingLevel}`);
+      heading.innerHTML = (el as HTMLElement).innerHTML;
+      el.parentNode?.replaceChild(heading, el);
+    }
   });
-  
+
+  return container.innerHTML;
+}
+
+/**
+ * Converts Google Docs class-styled code blocks into semantic <pre><code> blocks.
+ */
+function convertGoogleDocsCodeBlocks(html: string, classStyles: CssClassStyles): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const container = doc.body.firstElementChild as HTMLElement | null;
+
+  if (!container) return html;
+
+  const paragraphs = Array.from(container.querySelectorAll("p"));
+
+  const isCodeParagraph = (p: HTMLParagraphElement) => {
+    if (hasMonospace(p, classStyles)) return true;
+    const span = p.querySelector("span");
+    return !!span && hasMonospace(span, classStyles);
+  };
+
+  for (let i = 0; i < paragraphs.length; i++) {
+    const p = paragraphs[i];
+    if (!isCodeParagraph(p)) continue;
+
+    const codeLines: string[] = [];
+    let j = i;
+
+    while (j < paragraphs.length && isCodeParagraph(paragraphs[j])) {
+      const line = (paragraphs[j].textContent || "").replace(/\u00a0/g, " ");
+      codeLines.push(line);
+      j++;
+    }
+
+    const pre = doc.createElement("pre");
+    const code = doc.createElement("code");
+    code.textContent = codeLines.join("\n").trimEnd();
+    pre.appendChild(code);
+
+    // Replace first paragraph in the group with <pre>, remove the rest.
+    p.parentNode?.replaceChild(pre, p);
+    for (let k = i + 1; k < j; k++) {
+      paragraphs[k].remove();
+    }
+
+    i = j - 1;
+  }
+
   return container.innerHTML;
 }
 
