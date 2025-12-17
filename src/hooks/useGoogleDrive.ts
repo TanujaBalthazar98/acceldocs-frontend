@@ -200,5 +200,38 @@ export const useGoogleDrive = () => {
     return data?.doc || null;
   };
 
-  return { listFolder, createFolder, createDoc, getGoogleToken };
+  const trashFile = async (fileId: string): Promise<boolean> => {
+    const token = getGoogleToken();
+    if (!token) {
+      console.log("No Google token for trash operation");
+      return false;
+    }
+
+    // Ensure session is fresh
+    await ensureFreshSession();
+
+    const { data, error } = await supabase.functions.invoke("google-drive", {
+      body: {
+        action: "trash_file",
+        fileId,
+      },
+      headers: {
+        "x-google-token": token,
+      },
+    });
+
+    if (error) {
+      console.error("Trash file error:", error);
+      return false;
+    }
+
+    if (data?.needsReauth) {
+      console.log("Re-authentication required for trash operation");
+      return false;
+    }
+
+    return data?.success || false;
+  };
+
+  return { listFolder, createFolder, createDoc, trashFile, getGoogleToken };
 };

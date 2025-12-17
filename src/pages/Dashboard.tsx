@@ -108,7 +108,7 @@ const Dashboard = () => {
   const { user, signOut, requestDriveAccess } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { listFolder } = useGoogleDrive();
+  const { listFolder, trashFile } = useGoogleDrive();
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [addPageOpen, setAddPageOpen] = useState(false);
@@ -259,6 +259,21 @@ const Dashboard = () => {
   
   // Delete handlers
   const handleDeleteProject = async (projectId: string) => {
+    // Get the project's drive folder ID first
+    const project = projects.find(p => p.id === projectId);
+    
+    // Trash the Drive folder if it exists
+    if (project?.drive_folder_id) {
+      const trashed = await trashFile(project.drive_folder_id);
+      if (!trashed) {
+        toast({ 
+          title: "Warning", 
+          description: "Could not move Drive folder to trash, but project will be deleted from the app.", 
+          variant: "destructive" 
+        });
+      }
+    }
+    
     // Delete all documents in the project first
     await supabase.from("documents").delete().eq("project_id", projectId);
     // Delete all topics in the project
@@ -269,7 +284,7 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to delete project.", variant: "destructive" });
     } else {
-      toast({ title: "Deleted", description: "Project deleted successfully." });
+      toast({ title: "Deleted", description: "Project moved to Drive trash and deleted from app." });
       if (selectedProject?.id === projectId) {
         setSelectedProject(null);
         setSelectedTopic(null);
@@ -279,6 +294,21 @@ const Dashboard = () => {
   };
   
   const handleDeleteTopic = async (topicId: string) => {
+    // Get the topic's drive folder ID first
+    const topic = topics.find(t => t.id === topicId);
+    
+    // Trash the Drive folder if it exists
+    if (topic?.drive_folder_id) {
+      const trashed = await trashFile(topic.drive_folder_id);
+      if (!trashed) {
+        toast({ 
+          title: "Warning", 
+          description: "Could not move Drive folder to trash, but topic will be deleted from the app.", 
+          variant: "destructive" 
+        });
+      }
+    }
+    
     // Delete all documents in the topic first
     await supabase.from("documents").delete().eq("topic_id", topicId);
     // Delete the topic
@@ -287,7 +317,7 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to delete topic.", variant: "destructive" });
     } else {
-      toast({ title: "Deleted", description: "Topic deleted successfully." });
+      toast({ title: "Deleted", description: "Topic moved to Drive trash and deleted from app." });
       if (selectedTopic?.id === topicId) {
         setSelectedTopic(null);
       }
@@ -296,12 +326,27 @@ const Dashboard = () => {
   };
   
   const handleDeleteDocument = async (docId: string) => {
+    // Get the document's google doc ID first
+    const doc = filteredDocuments.find(d => d.id === docId);
+    
+    // Trash the Drive file if it exists
+    if (doc?.google_doc_id) {
+      const trashed = await trashFile(doc.google_doc_id);
+      if (!trashed) {
+        toast({ 
+          title: "Warning", 
+          description: "Could not move Drive file to trash, but page will be deleted from the app.", 
+          variant: "destructive" 
+        });
+      }
+    }
+    
     const { error } = await supabase.from("documents").delete().eq("id", docId);
     
     if (error) {
       toast({ title: "Error", description: "Failed to delete page.", variant: "destructive" });
     } else {
-      toast({ title: "Deleted", description: "Page deleted successfully." });
+      toast({ title: "Deleted", description: "Page moved to Drive trash and deleted from app." });
       fetchData();
     }
   };
@@ -1313,7 +1358,7 @@ const Dashboard = () => {
               Are you sure you want to delete "{itemToDelete?.name}"? 
               {itemToDelete?.type === 'project' && " This will also delete all topics and pages within it."}
               {itemToDelete?.type === 'topic' && " This will also delete all pages within it."}
-              {" This action cannot be undone."}
+              {" The corresponding files will be moved to Google Drive trash (recoverable for 30 days)."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
