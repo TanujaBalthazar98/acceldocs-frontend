@@ -1,5 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Declare EdgeRuntime for background tasks (available in Supabase Edge Functions)
+declare const EdgeRuntime: { waitUntil: (promise: Promise<any>) => void } | undefined;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-google-token",
@@ -252,12 +255,107 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Create Google Doc with content
+// Parse markdown to structured elements for Google Docs API
+function parseMarkdownToElements(markdown: string): Array<{
+  type: 'heading' | 'paragraph' | 'bullet' | 'numbered' | 'code' | 'blockquote';
+  level?: number;
+  text: string;
+}> {
+  const elements: Array<{
+    type: 'heading' | 'paragraph' | 'bullet' | 'numbered' | 'code' | 'blockquote';
+    level?: number;
+    text: string;
+  }> = [];
+  
+  // Remove frontmatter
+  let content = markdown.replace(/^---[\s\S]*?---\n*/m, '');
+  
+  // Split into lines but handle code blocks specially
+  const lines = content.split('\n');
+  let inCodeBlock = false;
+  let codeBlockContent = '';
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Handle code blocks
+    if (line.trim().startsWith('```')) {
+      if (inCodeBlock) {
+        elements.push({ type: 'code', text: codeBlockContent.trim() });
+        codeBlockContent = '';
+        inCodeBlock = false;
+      } else {
+        inCodeBlock = true;
+      }
+      continue;
+    }
+    
+    if (inCodeBlock) {
+      codeBlockContent += line + '\n';
+      continue;
+    }
+    
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+    
+    // Headers
+    const h1Match = trimmedLine.match(/^# (.+)$/);
+    const h2Match = trimmedLine.match(/^## (.+)$/);
+    const h3Match = trimmedLine.match(/^### (.+)$/);
+    const h4Match = trimmedLine.match(/^#### (.+)$/);
+    
+    if (h1Match) {
+      elements.push({ type: 'heading', level: 1, text: h1Match[1] });
+    } else if (h2Match) {
+      elements.push({ type: 'heading', level: 2, text: h2Match[1] });
+    } else if (h3Match) {
+      elements.push({ type: 'heading', level: 3, text: h3Match[1] });
+    } else if (h4Match) {
+      elements.push({ type: 'heading', level: 4, text: h4Match[1] });
+    }
+    // Unordered lists
+    else if (trimmedLine.match(/^[-*+]\s+(.+)$/)) {
+      const match = trimmedLine.match(/^[-*+]\s+(.+)$/);
+      elements.push({ type: 'bullet', text: match![1] });
+    }
+    // Ordered lists
+    else if (trimmedLine.match(/^\d+\.\s+(.+)$/)) {
+      const match = trimmedLine.match(/^\d+\.\s+(.+)$/);
+      elements.push({ type: 'numbered', text: match![1] });
+    }
+    // Blockquotes
+    else if (trimmedLine.startsWith('> ')) {
+      elements.push({ type: 'blockquote', text: trimmedLine.slice(2) });
+    }
+    // Regular paragraph
+    else {
+      elements.push({ type: 'paragraph', text: trimmedLine });
+    }
+  }
+  
+  return elements;
+}
+
+// Clean inline markdown formatting
+function cleanInlineMarkdown(text: string): string {
+  return text
+    .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/___(.+?)___/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+}
+
+// Create Google Doc with content using proper formatting
 async function createGoogleDocWithContent(
   googleToken: string,
   title: string,
   htmlContent: string,
-  parentFolderId: string
+  parentFolderId: string,
+  originalMarkdown?: string
 ): Promise<{ id: string; success: boolean; error?: string }> {
   try {
     // Step 1: Create the document
@@ -282,34 +380,86 @@ async function createGoogleDocWithContent(
 
     const doc = await createResponse.json();
     
-    // Step 2: Update the document with content using Google Docs API
-    // Convert HTML to plain text for basic insertion (Google Docs API has limited HTML support)
-    const plainText = htmlToPlainText(htmlContent);
-    
-    if (plainText.trim()) {
-      const updateResponse = await fetch(
-        `https://docs.googleapis.com/v1/documents/${doc.id}:batchUpdate`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${googleToken}`,
-            "Content-Type": "application/json",
+    // Step 2: Build structured content requests for Google Docs API
+    if (originalMarkdown && originalMarkdown.trim()) {
+      const elements = parseMarkdownToElements(originalMarkdown);
+      const requests: any[] = [];
+      let currentIndex = 1;
+      
+      for (const element of elements) {
+        const cleanText = cleanInlineMarkdown(element.text) + '\n';
+        
+        // Insert text
+        requests.push({
+          insertText: {
+            location: { index: currentIndex },
+            text: cleanText,
           },
-          body: JSON.stringify({
-            requests: [
-              {
-                insertText: {
-                  location: { index: 1 },
-                  text: plainText,
-                },
+        });
+        
+        const startIndex = currentIndex;
+        const endIndex = currentIndex + cleanText.length - 1;
+        
+        // Apply formatting based on type
+        if (element.type === 'heading' && element.level) {
+          const headingType = element.level <= 3 
+            ? `HEADING_${element.level}` 
+            : 'HEADING_4';
+          requests.push({
+            updateParagraphStyle: {
+              range: { startIndex, endIndex },
+              paragraphStyle: { namedStyleType: headingType },
+              fields: 'namedStyleType',
+            },
+          });
+        } else if (element.type === 'bullet') {
+          requests.push({
+            createParagraphBullets: {
+              range: { startIndex, endIndex },
+              bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+            },
+          });
+        } else if (element.type === 'numbered') {
+          requests.push({
+            createParagraphBullets: {
+              range: { startIndex, endIndex },
+              bulletPreset: 'NUMBERED_DECIMAL_NESTED',
+            },
+          });
+        } else if (element.type === 'code') {
+          // Apply monospace font for code blocks
+          requests.push({
+            updateTextStyle: {
+              range: { startIndex, endIndex },
+              textStyle: {
+                weightedFontFamily: { fontFamily: 'Courier New' },
+                backgroundColor: { color: { rgbColor: { red: 0.95, green: 0.95, blue: 0.95 } } },
               },
-            ],
-          }),
+              fields: 'weightedFontFamily,backgroundColor',
+            },
+          });
         }
-      );
+        
+        currentIndex += cleanText.length;
+      }
+      
+      if (requests.length > 0) {
+        const updateResponse = await fetch(
+          `https://docs.googleapis.com/v1/documents/${doc.id}:batchUpdate`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${googleToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ requests }),
+          }
+        );
 
-      if (!updateResponse.ok) {
-        console.warn(`Content insert failed for ${title}, doc created but empty`);
+        if (!updateResponse.ok) {
+          const errorText = await updateResponse.text();
+          console.warn(`Content format failed for ${title}:`, errorText);
+        }
       }
     }
 
@@ -318,55 +468,6 @@ async function createGoogleDocWithContent(
     console.error(`Error creating doc ${title}:`, error);
     return { id: '', success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
-}
-
-// Convert HTML to plain text with basic formatting preserved
-function htmlToPlainText(html: string): string {
-  let text = html;
-  
-  // Convert headers to plain text with line breaks
-  text = text.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n$1\n\n');
-  text = text.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n$1\n\n');
-  text = text.replace(/<h3[^>]*>(.*?)<\/h3>/gi, '\n$1\n\n');
-  text = text.replace(/<h4[^>]*>(.*?)<\/h4>/gi, '\n$1\n\n');
-  text = text.replace(/<h5[^>]*>(.*?)<\/h5>/gi, '\n$1\n');
-  text = text.replace(/<h6[^>]*>(.*?)<\/h6>/gi, '\n$1\n');
-  
-  // Convert list items
-  text = text.replace(/<li[^>]*>(.*?)<\/li>/gi, '• $1\n');
-  
-  // Convert paragraphs
-  text = text.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n');
-  
-  // Convert line breaks
-  text = text.replace(/<br\s*\/?>/gi, '\n');
-  
-  // Convert blockquotes
-  text = text.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, '> $1\n');
-  
-  // Convert code blocks
-  text = text.replace(/<pre[^>]*><code[^>]*>(.*?)<\/code><\/pre>/gis, '\n```\n$1\n```\n');
-  text = text.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
-  
-  // Convert horizontal rules
-  text = text.replace(/<hr\s*\/?>/gi, '\n---\n');
-  
-  // Remove remaining HTML tags
-  text = text.replace(/<[^>]+>/g, '');
-  
-  // Decode HTML entities
-  text = text.replace(/&amp;/g, '&');
-  text = text.replace(/&lt;/g, '<');
-  text = text.replace(/&gt;/g, '>');
-  text = text.replace(/&quot;/g, '"');
-  text = text.replace(/&#039;/g, "'");
-  text = text.replace(/&nbsp;/g, ' ');
-  
-  // Clean up whitespace
-  text = text.replace(/\n{3,}/g, '\n\n');
-  text = text.trim();
-  
-  return text;
 }
 
 Deno.serve(async (req) => {
@@ -430,169 +531,41 @@ Deno.serve(async (req) => {
     
     console.log(`Found ${topics.size} topics and ${rootFiles.length} root files`);
 
-    const results = {
-      topicsCreated: 0,
-      pagesCreated: 0,
-      errors: [] as string[],
-    };
-
-    // Create topics and their pages
-    for (const [topicName, topicData] of topics) {
-      try {
-        // Small delay to avoid rate limiting (reduced for faster imports)
-        await delay(50);
-        
-        // Create topic folder in Google Drive
-        const folderResponse = await fetch("https://www.googleapis.com/drive/v3/files", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${googleToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: topicName,
-            mimeType: "application/vnd.google-apps.folder",
-            parents: [project.drive_folder_id],
-          }),
-        });
-
-        if (!folderResponse.ok) {
-          const errorText = await folderResponse.text();
-          console.error(`Failed to create folder for topic ${topicName}:`, errorText);
-          results.errors.push(`Failed to create folder for topic: ${topicName}`);
-          continue;
-        }
-
-        const folder = await folderResponse.json();
-        
-        // Create topic in database
-        const { data: topic, error: topicError } = await supabase
-          .from("topics")
-          .insert({
-            name: topicName,
-            slug: generateSlug(topicName),
-            project_id: projectId,
-            drive_folder_id: folder.id,
-          })
-          .select()
-          .single();
-
-        if (topicError) {
-          console.error(`Failed to create topic ${topicName}:`, topicError);
-          results.errors.push(`Failed to create topic: ${topicName}`);
-          continue;
-        }
-
-        results.topicsCreated++;
-        console.log(`Created topic: ${topicName}`);
-
-        // Create pages for this topic
-        for (const file of topicData.files) {
-          try {
-            await delay(50); // Reduced delay for faster imports
-            
-            const filename = file.path.split('/').pop() || 'Untitled';
-            const title = extractTitle(file.content, filename);
-            const htmlContent = markdownToHtml(file.content);
-
-            // Create Google Doc with content
-            const docResult = await createGoogleDocWithContent(
-              googleToken,
-              title,
-              htmlContent,
-              folder.id
-            );
-
-            if (!docResult.success) {
-              results.errors.push(`Failed to create doc: ${title}`);
-              continue;
-            }
-
-            // Create document in database with HTML content
-            const { error: docError } = await supabase
-              .from("documents")
-              .insert({
-                title,
-                slug: generateSlug(title),
-                google_doc_id: docResult.id,
-                project_id: projectId,
-                topic_id: topic.id,
-                content_html: htmlContent,
-                owner_id: user.id,
-                visibility: "internal",
-                is_published: false,
-              });
-
-            if (docError) {
-              console.error(`Failed to save document ${title}:`, docError);
-              results.errors.push(`Failed to save document: ${title}`);
-              continue;
-            }
-
-            results.pagesCreated++;
-            console.log(`Created page: ${title}`);
-          } catch (err) {
-            console.error(`Error processing file ${file.path}:`, err);
-            results.errors.push(`Error processing file: ${file.path}`);
-          }
-        }
-      } catch (err) {
-        console.error(`Error creating topic ${topicName}:`, err);
-        results.errors.push(`Error creating topic: ${topicName}`);
+    const totalFiles = files.length;
+    const LARGE_IMPORT_THRESHOLD = 30;
+    
+    // For large imports, process in background
+    if (totalFiles > LARGE_IMPORT_THRESHOLD) {
+      console.log(`Large import detected (${totalFiles} files), processing in background`);
+      
+      // Start background processing
+      const backgroundTask = async () => {
+        await processImport(supabase, project, googleToken, topics, rootFiles, projectId, user.id);
+      };
+      
+      // @ts-ignore - EdgeRuntime.waitUntil is available in Deno Deploy
+      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+        EdgeRuntime.waitUntil(backgroundTask());
+      } else {
+        // Fallback: run inline but don't await
+        backgroundTask().catch(err => console.error("Background import failed:", err));
       }
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          background: true,
+          message: `Import started for ${totalFiles} files. This may take a few minutes.`,
+          estimatedTopics: topics.size,
+          estimatedPages: totalFiles
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-
-    // Create root-level pages
-    for (const file of rootFiles) {
-      try {
-        await delay(50); // Reduced delay for faster imports
-        
-        const filename = file.path.split('/').pop() || 'Untitled';
-        const title = extractTitle(file.content, filename);
-        const htmlContent = markdownToHtml(file.content);
-
-        // Create Google Doc with content
-        const docResult = await createGoogleDocWithContent(
-          googleToken,
-          title,
-          htmlContent,
-          project.drive_folder_id!
-        );
-
-        if (!docResult.success) {
-          results.errors.push(`Failed to create doc: ${title}`);
-          continue;
-        }
-
-        // Create document in database
-        const { error: docError } = await supabase
-          .from("documents")
-          .insert({
-            title,
-            slug: generateSlug(title),
-            google_doc_id: docResult.id,
-            project_id: projectId,
-            topic_id: null,
-            content_html: htmlContent,
-            owner_id: user.id,
-            visibility: "internal",
-            is_published: false,
-          });
-
-        if (docError) {
-          console.error(`Failed to save document ${title}:`, docError);
-          results.errors.push(`Failed to save document: ${title}`);
-          continue;
-        }
-
-        results.pagesCreated++;
-        console.log(`Created root page: ${title}`);
-      } catch (err) {
-        console.error(`Error processing file ${file.path}:`, err);
-        results.errors.push(`Error processing file: ${file.path}`);
-      }
-    }
-
+    
+    // For smaller imports, process synchronously
+    const results = await processImport(supabase, project, googleToken, topics, rootFiles, projectId, user.id);
+    
     console.log("Import complete:", results);
 
     return new Response(
@@ -608,3 +581,182 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// Extracted import processing function
+async function processImport(
+  supabase: any,
+  project: { drive_folder_id: string; name: string },
+  googleToken: string,
+  topics: Map<string, { files: { path: string; content: string }[] }>,
+  rootFiles: { path: string; content: string }[],
+  projectId: string,
+  userId: string
+): Promise<{ topicsCreated: number; pagesCreated: number; errors: string[] }> {
+  const results = {
+    topicsCreated: 0,
+    pagesCreated: 0,
+    errors: [] as string[],
+  };
+
+  // Create topics and their pages
+  for (const [topicName, topicData] of topics) {
+    try {
+      // Small delay to avoid rate limiting
+      await delay(50);
+      
+      // Create topic folder in Google Drive
+      const folderResponse = await fetch("https://www.googleapis.com/drive/v3/files", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${googleToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: topicName,
+          mimeType: "application/vnd.google-apps.folder",
+          parents: [project.drive_folder_id],
+        }),
+      });
+
+      if (!folderResponse.ok) {
+        const errorText = await folderResponse.text();
+        console.error(`Failed to create folder for topic ${topicName}:`, errorText);
+        results.errors.push(`Failed to create folder for topic: ${topicName}`);
+        continue;
+      }
+
+      const folder = await folderResponse.json();
+
+      // Create topic in database
+      const { data: topic, error: topicError } = await supabase
+        .from("topics")
+        .insert({
+          name: topicName,
+          slug: generateSlug(topicName),
+          project_id: projectId,
+          drive_folder_id: folder.id,
+        })
+        .select()
+        .single();
+
+      if (topicError) {
+        console.error(`Failed to create topic ${topicName}:`, topicError);
+        results.errors.push(`Failed to create topic: ${topicName}`);
+        continue;
+      }
+
+      results.topicsCreated++;
+      console.log(`Created topic: ${topicName}`);
+
+      // Create pages for this topic
+      for (const file of topicData.files) {
+        try {
+          await delay(50);
+          
+          const filename = file.path.split('/').pop() || 'Untitled';
+          const title = extractTitle(file.content, filename);
+          const htmlContent = markdownToHtml(file.content);
+
+          // Create Google Doc with content (pass original markdown for proper formatting)
+          const docResult = await createGoogleDocWithContent(
+            googleToken,
+            title,
+            htmlContent,
+            folder.id,
+            file.content
+          );
+
+          if (!docResult.success) {
+            results.errors.push(`Failed to create doc: ${title}`);
+            continue;
+          }
+
+          // Create document in database with HTML content
+          const { error: docError } = await supabase
+            .from("documents")
+            .insert({
+              title,
+              slug: generateSlug(title),
+              google_doc_id: docResult.id,
+              project_id: projectId,
+              topic_id: topic.id,
+              content_html: htmlContent,
+              owner_id: userId,
+              visibility: "internal",
+              is_published: false,
+            });
+
+          if (docError) {
+            console.error(`Failed to save document ${title}:`, docError);
+            results.errors.push(`Failed to save document: ${title}`);
+            continue;
+          }
+
+          results.pagesCreated++;
+          console.log(`Created page: ${title}`);
+        } catch (err) {
+          console.error(`Error processing file ${file.path}:`, err);
+          results.errors.push(`Error processing file: ${file.path}`);
+        }
+      }
+    } catch (err) {
+      console.error(`Error creating topic ${topicName}:`, err);
+      results.errors.push(`Error creating topic: ${topicName}`);
+    }
+  }
+
+  // Create root-level pages
+  for (const file of rootFiles) {
+    try {
+      await delay(50);
+      
+      const filename = file.path.split('/').pop() || 'Untitled';
+      const title = extractTitle(file.content, filename);
+      const htmlContent = markdownToHtml(file.content);
+
+      // Create Google Doc with content (pass original markdown for proper formatting)
+      const docResult = await createGoogleDocWithContent(
+        googleToken,
+        title,
+        htmlContent,
+        project.drive_folder_id!,
+        file.content
+      );
+
+      if (!docResult.success) {
+        results.errors.push(`Failed to create doc: ${title}`);
+        continue;
+      }
+
+      // Create document in database
+      const { error: docError } = await supabase
+        .from("documents")
+        .insert({
+          title,
+          slug: generateSlug(title),
+          google_doc_id: docResult.id,
+          project_id: projectId,
+          topic_id: null,
+          content_html: htmlContent,
+          owner_id: userId,
+          visibility: "internal",
+          is_published: false,
+        });
+
+      if (docError) {
+        console.error(`Failed to save document ${title}:`, docError);
+        results.errors.push(`Failed to save document: ${title}`);
+        continue;
+      }
+
+      results.pagesCreated++;
+      console.log(`Created root page: ${title}`);
+    } catch (err) {
+      console.error(`Error processing file ${file.path}:`, err);
+      results.errors.push(`Error processing file: ${file.path}`);
+    }
+  }
+
+  console.log("Background import complete:", results);
+  return results;
+}
