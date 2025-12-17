@@ -56,7 +56,8 @@ import { PageSettingsDialog } from "@/components/dashboard/PageSettingsDialog";
 import { TopicSettingsDialog } from "@/components/dashboard/TopicSettingsDialog";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
-import { TopicsGrid } from "@/components/dashboard/TopicsGrid";
+import { SubtopicsView } from "@/components/dashboard/SubtopicsView";
+import { SidebarTopicsTree } from "@/components/dashboard/SidebarTopicsTree";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 
@@ -939,71 +940,26 @@ const Dashboard = () => {
                     </div>
                     
                     {/* Topics under this project */}
-                    {isExpanded && projectTopics.length > 0 && (
-                      <div className="ml-4 mt-1 space-y-1">
-                        {projectTopics.map((topic) => (
-                          <div
-                            key={topic.id}
-                            className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors cursor-pointer ${
-                              selectedTopic?.id === topic.id
-                                ? "bg-primary/10 text-foreground"
-                                : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                            }`}
-                            onClick={() => setSelectedTopic(topic)}
-                          >
-                            <Folder className="w-3.5 h-3.5" />
-                            <span className="flex-1 text-left truncate">{topic.name}</span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedTopic(topic);
-                                setAddPageOpen(true);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
-                              title="Add page"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
-                                >
-                                  <MoreHorizontal className="w-3 h-3" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-40">
-                                <DropdownMenuItem 
-                                  onClick={() => {
-                                    setSettingsTopic(topic);
-                                    setTopicSettingsOpen(true);
-                                  }}
-                                >
-                                  <Settings className="w-3 h-3 mr-2" />
-                                  Settings
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => {
-                                    setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                >
-                                  <Trash2 className="w-3 h-3 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {isExpanded && projectTopics.length === 0 && (
-                      <div className="ml-6 mt-1">
-                        <p className="text-xs text-muted-foreground py-1">No topics yet</p>
+                    {isExpanded && (
+                      <div className="ml-2 mt-1">
+                        <SidebarTopicsTree
+                          topics={projectTopics}
+                          selectedTopic={selectedTopic}
+                          onSelectTopic={(topic) => setSelectedTopic(topic)}
+                          onAddPage={(topic) => {
+                            setSelectedTopic(topic);
+                            setAddPageOpen(true);
+                          }}
+                          onOpenSettings={(topic) => {
+                            setSettingsTopic(topic);
+                            setTopicSettingsOpen(true);
+                          }}
+                          onDeleteTopic={(topic) => {
+                            setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
+                            setDeleteDialogOpen(true);
+                          }}
+                          onTopicsReordered={fetchData}
+                        />
                       </div>
                     )}
                   </div>
@@ -1184,25 +1140,12 @@ const Dashboard = () => {
             {!selectedProject ? (
               <p className="text-sm text-muted-foreground">Select a project to view topics.</p>
             ) : (
-              <TopicsGrid
-                topics={(() => {
-                  const projectTopics = topics.filter(t => t.project_id === selectedProject.id);
-                  if (!selectedTopic) {
-                    // Show only root-level topics when nothing selected
-                    return projectTopics.filter(t => !t.parent_id);
-                  }
-                  // Show selected topic and all its descendants
-                  const getDescendants = (parentId: string): Topic[] => {
-                    const children = projectTopics.filter(t => t.parent_id === parentId);
-                    return children.flatMap(c => [c, ...getDescendants(c.id)]);
-                  };
-                  return [selectedTopic, ...getDescendants(selectedTopic.id)];
-                })()}
+              <SubtopicsView
+                topics={topics.filter(t => t.project_id === selectedProject.id)}
                 allTopics={topics.filter(t => t.project_id === selectedProject.id)}
                 selectedTopic={selectedTopic}
                 onSelectTopic={(topic) => setSelectedTopic(topic)}
                 documents={documents}
-                onTopicsReordered={fetchData}
               />
             )}
           </div>

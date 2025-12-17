@@ -1,8 +1,15 @@
-import { useState, useMemo, useCallback } from "react";
-import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, GripVertical } from "lucide-react";
+import { useState, useCallback, useMemo } from "react";
+import { ChevronRight, ChevronDown, Folder, FolderOpen, Plus, MoreHorizontal, Settings, Trash2, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Topic {
   id: string;
@@ -13,13 +20,14 @@ interface Topic {
   display_order: number;
 }
 
-interface TopicsGridProps {
+interface SidebarTopicsTreeProps {
   topics: Topic[];
   selectedTopic: Topic | null;
-  onSelectTopic: (topic: Topic | null) => void;
-  documents?: { topic_id: string | null }[];
+  onSelectTopic: (topic: Topic) => void;
+  onAddPage: (topic: Topic) => void;
+  onOpenSettings: (topic: Topic) => void;
+  onDeleteTopic: (topic: Topic) => void;
   onTopicsReordered?: () => void;
-  allTopics?: Topic[]; // Full list for drag-drop validation
 }
 
 interface TopicTreeNode {
@@ -33,14 +41,15 @@ interface DragState {
   dropPosition: 'before' | 'inside' | 'after' | null;
 }
 
-export function TopicsGrid({ 
-  topics, 
-  selectedTopic, 
-  onSelectTopic, 
-  documents = [],
+export function SidebarTopicsTree({
+  topics,
+  selectedTopic,
+  onSelectTopic,
+  onAddPage,
+  onOpenSettings,
+  onDeleteTopic,
   onTopicsReordered,
-  allTopics
-}: TopicsGridProps) {
+}: SidebarTopicsTreeProps) {
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState>({
     draggedId: null,
@@ -49,40 +58,24 @@ export function TopicsGrid({
   });
   const { toast } = useToast();
 
-  // Use allTopics for validation if provided, otherwise use topics
-  const topicsForValidation = allTopics || topics;
-
-  // Build a proper tree structure from topics with parent_id
-  // When viewing a subtopic, treat it as the root
+  // Build tree structure
   const topicTree = useMemo(() => {
     const nodeMap = new Map<string, TopicTreeNode>();
     const rootNodes: TopicTreeNode[] = [];
 
-    // Create nodes for all topics
     for (const topic of topics) {
       nodeMap.set(topic.id, { topic, children: [] });
     }
 
-    // Build tree by linking parents to children
-    // When we have a selectedTopic and it's in the list, treat topics that:
-    // 1. Are the selectedTopic itself (no parent in our subset)
-    // 2. Have a parent that's NOT in our current list
-    // as root nodes
-    const topicIds = new Set(topics.map(t => t.id));
-    
     for (const topic of topics) {
       const node = nodeMap.get(topic.id)!;
-      
-      // If this topic's parent is in our list, link to parent
-      if (topic.parent_id && topicIds.has(topic.parent_id)) {
+      if (topic.parent_id && nodeMap.has(topic.parent_id)) {
         nodeMap.get(topic.parent_id)!.children.push(node);
       } else {
-        // Otherwise it's a root in our current view
         rootNodes.push(node);
       }
     }
 
-    // Sort children by display_order
     const sortChildren = (nodes: TopicTreeNode[]) => {
       nodes.sort((a, b) => (a.topic.display_order || 0) - (b.topic.display_order || 0));
       for (const node of nodes) {
@@ -94,7 +87,8 @@ export function TopicsGrid({
     return rootNodes;
   }, [topics]);
 
-  const toggleExpand = (topicId: string) => {
+  const toggleExpand = (topicId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     setExpandedTopics(prev => {
       const next = new Set(prev);
       if (next.has(topicId)) {
@@ -106,17 +100,7 @@ export function TopicsGrid({
     });
   };
 
-  const getTopicDocCount = (topicId: string): number => {
-    // Count docs in this topic and all descendants
-    let count = documents.filter(d => d.topic_id === topicId).length;
-    const children = topicsForValidation.filter(t => t.parent_id === topicId);
-    for (const child of children) {
-      count += getTopicDocCount(child.id);
-    }
-    return count;
-  };
-
-  // Drag and drop handlers
+  // Drag handlers
   const handleDragStart = useCallback((e: React.DragEvent, topicId: string) => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', topicId);
@@ -168,14 +152,14 @@ export function TopicsGrid({
       return;
     }
 
-    const draggedTopic = topicsForValidation.find(t => t.id === draggedId);
-    const targetTopic = topicsForValidation.find(t => t.id === targetTopicId);
+    const draggedTopic = topics.find(t => t.id === draggedId);
+    const targetTopic = topics.find(t => t.id === targetTopicId);
     
     if (!draggedTopic || !targetTopic) return;
 
     // Prevent dropping a parent into its own child
     const isDescendant = (parentId: string, childId: string): boolean => {
-      const children = topicsForValidation.filter(t => t.parent_id === parentId);
+      const children = topics.filter(t => t.parent_id === parentId);
       for (const child of children) {
         if (child.id === childId || isDescendant(child.id, childId)) {
           return true;
@@ -199,17 +183,13 @@ export function TopicsGrid({
       let newOrder: number;
       
       if (dropPosition === 'inside') {
-        // Move inside target (make it a child)
         newParentId = targetTopicId;
-        const siblings = topicsForValidation.filter(t => t.parent_id === targetTopicId);
+        const siblings = topics.filter(t => t.parent_id === targetTopicId);
         newOrder = siblings.length > 0 ? Math.max(...siblings.map(s => s.display_order || 0)) + 1 : 0;
-        
-        // Expand the target to show the moved item
         setExpandedTopics(prev => new Set([...prev, targetTopicId]));
       } else {
-        // Move before or after target (same parent)
         newParentId = targetTopic.parent_id;
-        const siblings = topicsForValidation.filter(t => t.parent_id === newParentId && t.id !== draggedId);
+        const siblings = topics.filter(t => t.parent_id === newParentId && t.id !== draggedId);
         const targetIndex = siblings.findIndex(s => s.id === targetTopicId);
         
         if (dropPosition === 'before') {
@@ -219,13 +199,9 @@ export function TopicsGrid({
         }
       }
 
-      // Update the database
       const { error } = await supabase
         .from('topics')
-        .update({ 
-          parent_id: newParentId,
-          display_order: newOrder 
-        })
+        .update({ parent_id: newParentId, display_order: newOrder })
         .eq('id', draggedId);
 
       if (error) throw error;
@@ -235,41 +211,29 @@ export function TopicsGrid({
         description: `"${draggedTopic.name}" has been moved.`,
       });
 
-      // Refresh the topics list
       onTopicsReordered?.();
     } catch (error: any) {
-      console.error("Failed to move topic:", error);
       toast({
         title: "Failed to move topic",
-        description: error.message || "An error occurred while moving the topic.",
+        description: error.message || "An error occurred.",
         variant: "destructive",
       });
     }
 
     setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
-  }, [dragState.draggedId, dragState.dropPosition, topicsForValidation, toast, onTopicsReordered]);
-
-  if (topics.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground py-2">
-        No topics yet. Create one to organize pages.
-      </p>
-    );
-  }
+  }, [dragState.draggedId, dragState.dropPosition, topics, toast, onTopicsReordered]);
 
   const renderTopicNode = (node: TopicTreeNode, depth: number = 0): JSX.Element => {
     const { topic, children } = node;
-    const isExpanded = expandedTopics.has(topic.id) || depth === 0; // Auto-expand first level
+    const isExpanded = expandedTopics.has(topic.id);
     const isSelected = selectedTopic?.id === topic.id;
     const hasChildren = children.length > 0;
-    const docCount = getTopicDocCount(topic.id);
     const isDragging = dragState.draggedId === topic.id;
     const isDragOver = dragState.dragOverId === topic.id;
     const dropPosition = isDragOver ? dragState.dropPosition : null;
 
     return (
-      <div key={topic.id} className="select-none">
-        {/* Drop indicator - before */}
+      <div key={topic.id}>
         {isDragOver && dropPosition === 'before' && (
           <div className="h-0.5 bg-primary mx-2 rounded-full" />
         )}
@@ -283,76 +247,93 @@ export function TopicsGrid({
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, topic.id)}
           className={cn(
-            "flex items-center gap-1 px-2 py-2 rounded-md cursor-pointer transition-colors group",
-            "hover:bg-muted/50",
-            isSelected && "bg-primary/10 text-primary",
+            "group flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm transition-colors cursor-pointer",
+            isSelected ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
             isDragging && "opacity-50",
-            isDragOver && dropPosition === 'inside' && "bg-primary/20 ring-2 ring-primary/50"
+            isDragOver && dropPosition === 'inside' && "bg-primary/20 ring-1 ring-primary/50"
           )}
-          style={{ paddingLeft: `${8 + depth * 20}px` }}
+          style={{ paddingLeft: `${8 + depth * 12}px` }}
           onClick={() => onSelectTopic(topic)}
         >
           {/* Drag handle */}
-          <div className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-0.5 -ml-1 hover:bg-muted rounded shrink-0">
-            <GripVertical className="w-3.5 h-3.5 text-muted-foreground" />
+          <div className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing shrink-0">
+            <GripVertical className="w-3 h-3 text-muted-foreground" />
           </div>
 
-          {/* Expand/collapse button */}
+          {/* Expand/collapse */}
           {hasChildren ? (
             <button
               className="p-0.5 hover:bg-muted rounded shrink-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleExpand(topic.id);
-              }}
+              onClick={(e) => toggleExpand(topic.id, e)}
             >
               {isExpanded ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
               ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                <ChevronRight className="w-3 h-3 text-muted-foreground" />
               )}
             </button>
           ) : (
-            <div className="w-5 shrink-0" />
+            <div className="w-4 shrink-0" />
           )}
 
           {/* Folder icon */}
           {isExpanded && hasChildren ? (
-            <FolderOpen className="w-4 h-4 text-primary/70 shrink-0" />
+            <FolderOpen className="w-3.5 h-3.5 text-primary/70 shrink-0" />
           ) : (
-            <Folder className="w-4 h-4 text-muted-foreground shrink-0" />
+            <Folder className="w-3.5 h-3.5 shrink-0" />
           )}
 
-          {/* Topic name */}
-          <span className={cn(
-            "flex-1 text-sm truncate",
-            isSelected && "font-medium"
-          )}>
-            {topic.name}
-          </span>
+          {/* Name */}
+          <span className="flex-1 text-left truncate">{topic.name}</span>
 
-          {/* Doc count */}
-          {docCount > 0 && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
-              <FileText className="w-3 h-3" />
-              {docCount}
-            </span>
-          )}
+          {/* Actions */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddPage(topic);
+            }}
+            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
+            title="Add page"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
+              >
+                <MoreHorizontal className="w-3 h-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem onClick={() => onOpenSettings(topic)}>
+                <Settings className="w-3 h-3 mr-2" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                className="text-destructive focus:text-destructive"
+                onClick={() => onDeleteTopic(topic)}
+              >
+                <Trash2 className="w-3 h-3 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        {/* Drop indicator - after */}
         {isDragOver && dropPosition === 'after' && !hasChildren && (
           <div className="h-0.5 bg-primary mx-2 rounded-full" />
         )}
 
-        {/* Children */}
         {hasChildren && isExpanded && (
-          <div className="border-l border-border/50 ml-5">
+          <div className="border-l border-border/30 ml-4">
             {children.map(child => renderTopicNode(child, depth + 1))}
           </div>
         )}
         
-        {/* Drop indicator - after (when has children) */}
         {isDragOver && dropPosition === 'after' && hasChildren && !isExpanded && (
           <div className="h-0.5 bg-primary mx-2 rounded-full" />
         )}
@@ -360,9 +341,12 @@ export function TopicsGrid({
     );
   };
 
+  if (topicTree.length === 0) {
+    return <p className="text-xs text-muted-foreground py-1 px-3">No topics yet</p>;
+  }
+
   return (
-    <div className="space-y-0.5 rounded-lg border border-border bg-card p-2">
-      {/* Topic tree */}
+    <div className="space-y-0.5">
       {topicTree.map(node => renderTopicNode(node))}
     </div>
   );
