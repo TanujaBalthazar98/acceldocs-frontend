@@ -439,8 +439,8 @@ Deno.serve(async (req) => {
     // Create topics and their pages
     for (const [topicName, topicData] of topics) {
       try {
-        // Add delay to avoid rate limiting
-        await delay(100);
+        // Small delay to avoid rate limiting (reduced for faster imports)
+        await delay(50);
         
         // Create topic folder in Google Drive
         const folderResponse = await fetch("https://www.googleapis.com/drive/v3/files", {
@@ -489,7 +489,7 @@ Deno.serve(async (req) => {
         // Create pages for this topic
         for (const file of topicData.files) {
           try {
-            await delay(200); // Rate limiting delay
+            await delay(50); // Reduced delay for faster imports
             
             const filename = file.path.split('/').pop() || 'Untitled';
             const title = extractTitle(file.content, filename);
@@ -545,7 +545,7 @@ Deno.serve(async (req) => {
     // Create root-level pages
     for (const file of rootFiles) {
       try {
-        await delay(200); // Rate limiting delay
+        await delay(50); // Reduced delay for faster imports
         
         const filename = file.path.split('/').pop() || 'Untitled';
         const title = extractTitle(file.content, filename);
