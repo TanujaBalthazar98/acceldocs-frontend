@@ -33,7 +33,12 @@ interface SyncDocContentRequest {
   googleDocId: string;
 }
 
-type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | GetDocContentRequest | SyncDocContentRequest;
+interface TrashFileRequest {
+  action: "trash_file";
+  fileId: string;
+}
+
+type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | GetDocContentRequest | SyncDocContentRequest | TrashFileRequest;
 
 // Refresh Google access token using refresh token
 async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
@@ -472,6 +477,60 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, doc }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Trash a file or folder (move to Drive trash)
+    if (body.action === "trash_file") {
+      console.log("Trashing file/folder:", body.fileId);
+      
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${body.fileId}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${googleToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ trashed: true }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Google Drive API error:", errorText);
+        
+        // Check if it's an auth error
+        if (response.status === 401 || response.status === 403) {
+          return new Response(
+            JSON.stringify({ 
+              error: "Google authentication expired", 
+              needsReauth: true,
+              details: errorText 
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        // If file not found (already deleted), consider it successful
+        if (response.status === 404) {
+          console.log("File not found, treating as already deleted");
+          return new Response(
+            JSON.stringify({ success: true, alreadyDeleted: true }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        return new Response(
+          JSON.stringify({ error: "Failed to trash file", details: errorText }),
+          { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log("File/folder trashed successfully");
+      return new Response(
+        JSON.stringify({ success: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
