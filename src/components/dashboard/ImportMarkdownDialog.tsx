@@ -146,14 +146,21 @@ export function ImportMarkdownDialog({
     onOpenChange(false);
   };
 
-  // Group files by folder for preview
-  const filesByFolder = files.reduce((acc, file) => {
+  // Group files by topic (folder structure) for preview
+  const filesByTopic = files.reduce((acc, file) => {
     const parts = file.path.split('/');
-    const folder = parts.length > 1 ? parts[0] : '(root)';
-    if (!acc[folder]) acc[folder] = [];
-    acc[folder].push(file);
+    // Remove the root folder (selected folder name) and filename
+    const rootFolder = parts.length > 1 ? parts[0] : '';
+    const pathWithoutRoot = rootFolder ? parts.slice(1) : parts;
+    const filename = pathWithoutRoot.pop() || '';
+    
+    // Remaining parts form the topic path
+    const topicPath = pathWithoutRoot.length > 0 ? pathWithoutRoot.join(' / ') : '(Project Root)';
+    
+    if (!acc[topicPath]) acc[topicPath] = [];
+    acc[topicPath].push({ ...file, displayName: filename });
     return acc;
-  }, {} as Record<string, FileEntry[]>);
+  }, {} as Record<string, (FileEntry & { displayName: string })[]>);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -202,18 +209,18 @@ export function ImportMarkdownDialog({
               </div>
               <ScrollArea className="h-48">
                 <div className="p-4 space-y-4">
-                  {Object.entries(filesByFolder).map(([folder, folderFiles]) => (
-                    <div key={folder}>
+                  {Object.entries(filesByTopic).map(([topic, topicFiles]) => (
+                    <div key={topic}>
                       <div className="flex items-center gap-2 text-sm font-medium mb-2">
                         <FolderTree className="h-4 w-4 text-muted-foreground" />
-                        {folder === '(root)' ? 'Project Level' : folder}
-                        <Badge variant="outline" className="text-xs">{folderFiles.length}</Badge>
+                        {topic === '(Project Root)' ? 'Project Level Pages' : `Topic: ${topic}`}
+                        <Badge variant="outline" className="text-xs">{topicFiles.length}</Badge>
                       </div>
                       <div className="pl-6 space-y-1">
-                        {folderFiles.map((file, idx) => (
+                        {topicFiles.map((file, idx) => (
                           <div key={idx} className="flex items-center gap-2 text-sm text-muted-foreground">
                             <FileText className="h-3 w-3" />
-                            {file.path.split('/').pop()}
+                            {file.displayName}
                           </div>
                         ))}
                       </div>
