@@ -8,6 +8,67 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-google-token",
 };
 
+// Token management for long-running imports
+interface TokenManager {
+  getToken: () => Promise<string>;
+  userId: string;
+}
+
+async function createTokenManager(
+  supabase: any,
+  initialToken: string,
+  userId: string
+): Promise<TokenManager> {
+  let currentToken = initialToken;
+  let tokenExpiresAt = Date.now() + 50 * 60 * 1000; // Assume 50 min validity (conservative)
+
+  return {
+    userId,
+    getToken: async () => {
+      // If token is about to expire (within 5 minutes), try to refresh
+      if (Date.now() > tokenExpiresAt - 5 * 60 * 1000) {
+        console.log("Token expiring soon, attempting refresh...");
+        try {
+          // Get refresh token from profiles
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("google_refresh_token")
+            .eq("id", userId)
+            .single();
+
+          if (profile?.google_refresh_token) {
+            const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+            const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+
+            if (clientId && clientSecret) {
+              const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                  client_id: clientId,
+                  client_secret: clientSecret,
+                  refresh_token: profile.google_refresh_token,
+                  grant_type: "refresh_token",
+                }),
+              });
+
+              if (tokenResponse.ok) {
+                const tokenData = await tokenResponse.json();
+                currentToken = tokenData.access_token;
+                tokenExpiresAt = Date.now() + (tokenData.expires_in || 3600) * 1000;
+                console.log("Token refreshed successfully");
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Failed to refresh token:", err);
+        }
+      }
+      return currentToken;
+    },
+  };
+}
+
 interface ImportRequest {
   files: {
     path: string;
@@ -272,16 +333,20 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Create Google Doc by uploading HTML content
+// Create Google Doc by uploading HTML content with retry logic
 async function createGoogleDocWithHtml(
-  googleToken: string,
+  tokenManager: TokenManager,
   title: string,
   htmlContent: string,
-  parentFolderId: string
+  parentFolderId: string,
+  retries: number = 2
 ): Promise<{ id: string; success: boolean; error?: string }> {
-  try {
-    // Create HTML document with proper structure
-    const fullHtml = `<!DOCTYPE html>
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const googleToken = await tokenManager.getToken();
+      
+      // Create HTML document with proper structure
+      const fullHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -292,51 +357,110 @@ ${htmlContent}
 </body>
 </html>`;
 
-    // Create file metadata
-    const metadata = {
-      name: title,
-      mimeType: 'application/vnd.google-apps.document',
-      parents: [parentFolderId],
-    };
+      // Create file metadata
+      const metadata = {
+        name: title,
+        mimeType: 'application/vnd.google-apps.document',
+        parents: [parentFolderId],
+      };
 
-    // Create form data for multipart upload
-    const boundary = '-------314159265358979323846';
-    const delimiter = `\r\n--${boundary}\r\n`;
-    const closeDelim = `\r\n--${boundary}--`;
+      // Create form data for multipart upload
+      const boundary = '-------314159265358979323846';
+      const delimiter = `\r\n--${boundary}\r\n`;
+      const closeDelim = `\r\n--${boundary}--`;
 
-    const multipartBody = 
-      delimiter +
-      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-      JSON.stringify(metadata) +
-      delimiter +
-      'Content-Type: text/html; charset=UTF-8\r\n\r\n' +
-      fullHtml +
-      closeDelim;
+      const multipartBody = 
+        delimiter +
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+        JSON.stringify(metadata) +
+        delimiter +
+        'Content-Type: text/html; charset=UTF-8\r\n\r\n' +
+        fullHtml +
+        closeDelim;
 
-    const response = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&convert=true',
-      {
-        method: 'POST',
+      const response = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&convert=true',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${googleToken}`,
+            'Content-Type': `multipart/related; boundary=${boundary}`,
+          },
+          body: multipartBody,
+        }
+      );
+
+      if (response.status === 401 && attempt < retries) {
+        console.log(`Auth error on attempt ${attempt + 1}, retrying...`);
+        await delay(1000);
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Failed to create doc ${title}:`, errorText);
+        return { id: '', success: false, error: `Create failed: ${response.status}` };
+      }
+
+      const doc = await response.json();
+      return { id: doc.id, success: true };
+    } catch (error) {
+      console.error(`Error creating doc ${title} (attempt ${attempt + 1}):`, error);
+      if (attempt === retries) {
+        return { id: '', success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      }
+      await delay(1000);
+    }
+  }
+  return { id: '', success: false, error: 'Max retries exceeded' };
+}
+
+// Create folder with retry logic
+async function createGoogleFolder(
+  tokenManager: TokenManager,
+  name: string,
+  parentFolderId: string,
+  retries: number = 2
+): Promise<{ id: string; success: boolean; error?: string }> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const googleToken = await tokenManager.getToken();
+      
+      const response = await fetch("https://www.googleapis.com/drive/v3/files", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${googleToken}`,
-          'Content-Type': `multipart/related; boundary=${boundary}`,
+          "Content-Type": "application/json",
         },
-        body: multipartBody,
+        body: JSON.stringify({
+          name: name,
+          mimeType: "application/vnd.google-apps.folder",
+          parents: [parentFolderId],
+        }),
+      });
+
+      if (response.status === 401 && attempt < retries) {
+        console.log(`Auth error creating folder on attempt ${attempt + 1}, retrying...`);
+        await delay(1000);
+        continue;
       }
-    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Failed to create doc ${title}:`, errorText);
-      return { id: '', success: false, error: `Create failed: ${response.status}` };
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { id: '', success: false, error: `Create folder failed: ${response.status} - ${errorText}` };
+      }
+
+      const folder = await response.json();
+      return { id: folder.id, success: true };
+    } catch (error) {
+      console.error(`Error creating folder ${name} (attempt ${attempt + 1}):`, error);
+      if (attempt === retries) {
+        return { id: '', success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      }
+      await delay(1000);
     }
-
-    const doc = await response.json();
-    return { id: doc.id, success: true };
-  } catch (error) {
-    console.error(`Error creating doc ${title}:`, error);
-    return { id: '', success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
+  return { id: '', success: false, error: 'Max retries exceeded' };
 }
 
 Deno.serve(async (req) => {
@@ -435,13 +559,16 @@ Deno.serve(async (req) => {
     const jobId = importJob?.id;
     console.log(`Created import job ${jobId} for ${totalFiles} files`);
     
+    // Create token manager for automatic refresh during long imports
+    const tokenManager = await createTokenManager(supabase, googleToken, user.id);
+    
     // Start background processing
     const backgroundTask = async () => {
       try {
         await processImportWithProgress(
           supabase, 
           project, 
-          googleToken, 
+          tokenManager, 
           topicTree, 
           rootFiles, 
           projectId, 
@@ -493,7 +620,7 @@ Deno.serve(async (req) => {
 // Recursively create topics with proper hierarchy
 async function createTopicsRecursively(
   supabase: any,
-  googleToken: string,
+  tokenManager: TokenManager,
   node: TopicNode,
   projectId: string,
   parentFolderId: string,
@@ -505,31 +632,17 @@ async function createTopicsRecursively(
 ): Promise<void> {
   for (const [name, childNode] of node.children) {
     try {
-      await delay(50);
+      await delay(100); // Increased delay for rate limiting
       await updateProgress(`Creating topic: ${name}`);
       
-      // Create folder in Google Drive
-      const folderResponse = await fetch("https://www.googleapis.com/drive/v3/files", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${googleToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: name,
-          mimeType: "application/vnd.google-apps.folder",
-          parents: [parentFolderId],
-        }),
-      });
+      // Create folder in Google Drive with retry logic
+      const folderResult = await createGoogleFolder(tokenManager, name, parentFolderId);
 
-      if (!folderResponse.ok) {
-        const errorText = await folderResponse.text();
-        console.error(`Failed to create folder for topic ${name}:`, errorText);
+      if (!folderResult.success) {
+        console.error(`Failed to create folder for topic ${name}:`, folderResult.error);
         results.errors.push(`Failed to create folder: ${name}`);
         continue;
       }
-
-      const folder = await folderResponse.json();
 
       // Create topic in database with parent reference
       const { data: topic, error: topicError } = await supabase
@@ -538,7 +651,7 @@ async function createTopicsRecursively(
           name: name,
           slug: generateSlug(name),
           project_id: projectId,
-          drive_folder_id: folder.id,
+          drive_folder_id: folderResult.id,
           parent_id: parentTopicId,
           display_order: displayOrder++,
         })
@@ -557,7 +670,7 @@ async function createTopicsRecursively(
       // Create pages for this topic
       for (const file of childNode.files) {
         try {
-          await delay(50);
+          await delay(100); // Increased delay for rate limiting
           
           const filename = file.path.split('/').pop() || 'Untitled';
           const title = extractTitle(file.content, filename);
@@ -567,10 +680,10 @@ async function createTopicsRecursively(
           const htmlContent = markdownToHtml(file.content);
 
           const docResult = await createGoogleDocWithHtml(
-            googleToken,
+            tokenManager,
             title,
             htmlContent,
-            folder.id
+            folderResult.id
           );
 
           if (!docResult.success) {
@@ -615,10 +728,10 @@ async function createTopicsRecursively(
       // Recursively create child topics
       await createTopicsRecursively(
         supabase,
-        googleToken,
+        tokenManager,
         childNode,
         projectId,
-        folder.id,
+        folderResult.id,
         topic.id,
         userId,
         results,
@@ -636,7 +749,7 @@ async function createTopicsRecursively(
 async function processImportWithProgress(
   supabase: any,
   project: { drive_folder_id: string; name: string },
-  googleToken: string,
+  tokenManager: TokenManager,
   topicTree: TopicNode,
   rootFiles: { path: string; content: string }[],
   projectId: string,
@@ -673,7 +786,7 @@ async function processImportWithProgress(
   // Create topics recursively
   await createTopicsRecursively(
     supabase,
-    googleToken,
+    tokenManager,
     topicTree,
     projectId,
     project.drive_folder_id,
@@ -686,7 +799,7 @@ async function processImportWithProgress(
   // Create root-level pages
   for (const file of rootFiles) {
     try {
-      await delay(50);
+      await delay(100); // Increased delay for rate limiting
       
       const filename = file.path.split('/').pop() || 'Untitled';
       const title = extractTitle(file.content, filename);
@@ -696,7 +809,7 @@ async function processImportWithProgress(
       const htmlContent = markdownToHtml(file.content);
 
       const docResult = await createGoogleDocWithHtml(
-        googleToken,
+        tokenManager,
         title,
         htmlContent,
         project.drive_folder_id!

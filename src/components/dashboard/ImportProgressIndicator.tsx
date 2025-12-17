@@ -26,8 +26,13 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
   const [job, setJob] = useState<ImportJob | null>(null);
 
   useEffect(() => {
-    // Fetch initial job state
+    let pollInterval: NodeJS.Timeout | null = null;
+    let isActive = true;
+
+    // Fetch job state
     const fetchJob = async () => {
+      if (!isActive) return;
+      
       const { data, error } = await supabase
         .from("import_jobs")
         .select("*")
@@ -38,14 +43,27 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
         setJob(data as ImportJob);
         if (data.status === 'completed' || data.status === 'failed') {
           onComplete?.();
+          // Stop polling when complete
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
         }
       }
     };
 
     fetchJob();
 
-    // Poll for updates every 2 seconds (more reliable than realtime for edge function updates)
-    const pollInterval = setInterval(fetchJob, 2000);
+    // Poll more frequently (every 1.5 seconds) and use setInterval which continues in background
+    pollInterval = setInterval(fetchJob, 1500);
+
+    // Handle visibility change to immediately fetch when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchJob();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Also subscribe to realtime updates as backup
     const channel = supabase
@@ -63,13 +81,21 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
           setJob(updatedJob);
           if (updatedJob.status === 'completed' || updatedJob.status === 'failed') {
             onComplete?.();
+            if (pollInterval) {
+              clearInterval(pollInterval);
+              pollInterval = null;
+            }
           }
         }
       )
       .subscribe();
 
     return () => {
-      clearInterval(pollInterval);
+      isActive = false;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       supabase.removeChannel(channel);
     };
   }, [jobId, onComplete]);
