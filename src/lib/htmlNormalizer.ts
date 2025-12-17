@@ -11,6 +11,9 @@ export function normalizeHtml(html: string): string {
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   let content = bodyMatch ? bodyMatch[1] : html;
   
+  // FIRST: Convert Google Docs styled text to semantic headings BEFORE removing styles
+  content = convertGoogleDocsHeadings(content);
+  
   // Remove Google Docs specific elements and styles
   content = removeGoogleDocsStyles(content);
   
@@ -36,6 +39,73 @@ export function normalizeHtml(html: string): string {
   });
   
   return content.trim();
+}
+
+/**
+ * Converts Google Docs styled paragraphs to semantic heading tags.
+ * Google Docs uses font-size in styles to denote heading levels.
+ */
+function convertGoogleDocsHeadings(html: string): string {
+  // Parse HTML to work with DOM
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
+  const container = doc.body.firstChild as HTMLElement;
+  
+  if (!container) return html;
+  
+  // Find all paragraphs and spans that might be headings based on font-size
+  const elements = container.querySelectorAll('p, span, div');
+  
+  elements.forEach((el) => {
+    const style = el.getAttribute('style') || '';
+    const text = el.textContent?.trim() || '';
+    
+    // Skip empty elements or those with too much text (likely not headings)
+    if (!text || text.length > 200) return;
+    
+    // Check for font-size in style (Google Docs heading indicator)
+    const fontSizeMatch = style.match(/font-size:\s*(\d+(?:\.\d+)?)(pt|px)/i);
+    const fontWeightMatch = style.match(/font-weight:\s*(\d+|bold)/i);
+    
+    let headingLevel = 0;
+    
+    if (fontSizeMatch) {
+      const size = parseFloat(fontSizeMatch[1]);
+      const unit = fontSizeMatch[2].toLowerCase();
+      
+      // Convert to pt for comparison (1px ≈ 0.75pt)
+      const sizeInPt = unit === 'px' ? size * 0.75 : size;
+      
+      // Google Docs typical heading sizes:
+      // Title: 26pt, H1: 20pt, H2: 16pt, H3: 14pt, H4: 12pt (bold), Normal: 11pt
+      if (sizeInPt >= 24) headingLevel = 1;
+      else if (sizeInPt >= 18) headingLevel = 2;
+      else if (sizeInPt >= 14) headingLevel = 3;
+      else if (sizeInPt >= 12 && fontWeightMatch) headingLevel = 4;
+    }
+    
+    // Also check for Google Docs heading classes
+    const className = el.getAttribute('class') || '';
+    if (className.includes('title')) headingLevel = 1;
+    else if (className.includes('subtitle')) headingLevel = 2;
+    else if (className.match(/heading[_-]?1/i)) headingLevel = 1;
+    else if (className.match(/heading[_-]?2/i)) headingLevel = 2;
+    else if (className.match(/heading[_-]?3/i)) headingLevel = 3;
+    else if (className.match(/heading[_-]?4/i)) headingLevel = 4;
+    
+    if (headingLevel > 0 && headingLevel <= 6) {
+      // Create a new heading element
+      const heading = doc.createElement(`h${headingLevel}`);
+      heading.textContent = text;
+      
+      // Replace the element with the heading
+      if (el.parentNode) {
+        el.parentNode.replaceChild(heading, el);
+      }
+    }
+  });
+  
+  return container.innerHTML;
 }
 
 /**
@@ -65,10 +135,6 @@ function removeGoogleDocsStyles(html: string): string {
   // Remove empty paragraphs and divs
   cleaned = cleaned.replace(/<p[^>]*>\s*(&nbsp;)?\s*<\/p>/gi, '');
   cleaned = cleaned.replace(/<div[^>]*>\s*<\/div>/gi, '');
-  
-  // Convert Google Docs specific tags
-  // Google uses <span style="font-weight:bold"> instead of <strong>
-  // This is handled by style removal above, but we can try to preserve semantic meaning
   
   // Clean up whitespace
   cleaned = cleaned.replace(/&nbsp;/g, ' ');

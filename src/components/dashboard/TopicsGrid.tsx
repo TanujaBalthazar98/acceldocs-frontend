@@ -1,6 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Topic {
   id: string;
@@ -16,6 +18,7 @@ interface TopicsGridProps {
   selectedTopic: Topic | null;
   onSelectTopic: (topic: Topic | null) => void;
   documents?: { topic_id: string | null }[];
+  onTopicsReordered?: () => void;
 }
 
 interface TopicTreeNode {
@@ -23,8 +26,26 @@ interface TopicTreeNode {
   children: TopicTreeNode[];
 }
 
-export function TopicsGrid({ topics, selectedTopic, onSelectTopic, documents = [] }: TopicsGridProps) {
+interface DragState {
+  draggedId: string | null;
+  dragOverId: string | null;
+  dropPosition: 'before' | 'inside' | 'after' | null;
+}
+
+export function TopicsGrid({ 
+  topics, 
+  selectedTopic, 
+  onSelectTopic, 
+  documents = [],
+  onTopicsReordered 
+}: TopicsGridProps) {
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
+  const [dragState, setDragState] = useState<DragState>({
+    draggedId: null,
+    dragOverId: null,
+    dropPosition: null,
+  });
+  const { toast } = useToast();
 
   // Build a proper tree structure from topics with parent_id
   const topicTree = useMemo(() => {
@@ -73,15 +94,145 @@ export function TopicsGrid({ topics, selectedTopic, onSelectTopic, documents = [
   const getTopicDocCount = (topicId: string): number => {
     // Count docs in this topic and all descendants
     let count = documents.filter(d => d.topic_id === topicId).length;
-    const topic = topics.find(t => t.id === topicId);
-    if (topic) {
-      const children = topics.filter(t => t.parent_id === topicId);
-      for (const child of children) {
-        count += getTopicDocCount(child.id);
-      }
+    const children = topics.filter(t => t.parent_id === topicId);
+    for (const child of children) {
+      count += getTopicDocCount(child.id);
     }
     return count;
   };
+
+  // Drag and drop handlers
+  const handleDragStart = useCallback((e: React.DragEvent, topicId: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', topicId);
+    setDragState(prev => ({ ...prev, draggedId: topicId }));
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, topicId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    const rect = (e.target as HTMLElement).closest('[data-topic-id]')?.getBoundingClientRect();
+    if (!rect) return;
+    
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+    
+    let dropPosition: 'before' | 'inside' | 'after';
+    if (y < height * 0.25) {
+      dropPosition = 'before';
+    } else if (y > height * 0.75) {
+      dropPosition = 'after';
+    } else {
+      dropPosition = 'inside';
+    }
+    
+    setDragState(prev => ({
+      ...prev,
+      dragOverId: topicId,
+      dropPosition,
+    }));
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragState(prev => ({ ...prev, dragOverId: null, dropPosition: null }));
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent, targetTopicId: string) => {
+    e.preventDefault();
+    
+    const draggedId = dragState.draggedId;
+    const dropPosition = dragState.dropPosition;
+    
+    if (!draggedId || draggedId === targetTopicId || !dropPosition) {
+      setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
+      return;
+    }
+
+    const draggedTopic = topics.find(t => t.id === draggedId);
+    const targetTopic = topics.find(t => t.id === targetTopicId);
+    
+    if (!draggedTopic || !targetTopic) return;
+
+    // Prevent dropping a parent into its own child
+    const isDescendant = (parentId: string, childId: string): boolean => {
+      const children = topics.filter(t => t.parent_id === parentId);
+      for (const child of children) {
+        if (child.id === childId || isDescendant(child.id, childId)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (isDescendant(draggedId, targetTopicId)) {
+      toast({
+        title: "Invalid move",
+        description: "Cannot move a topic into its own subtopic.",
+        variant: "destructive",
+      });
+      setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
+      return;
+    }
+
+    try {
+      let newParentId: string | null;
+      let newOrder: number;
+      
+      if (dropPosition === 'inside') {
+        // Move inside target (make it a child)
+        newParentId = targetTopicId;
+        const siblings = topics.filter(t => t.parent_id === targetTopicId);
+        newOrder = siblings.length > 0 ? Math.max(...siblings.map(s => s.display_order || 0)) + 1 : 0;
+        
+        // Expand the target to show the moved item
+        setExpandedTopics(prev => new Set([...prev, targetTopicId]));
+      } else {
+        // Move before or after target (same parent)
+        newParentId = targetTopic.parent_id;
+        const siblings = topics.filter(t => t.parent_id === newParentId && t.id !== draggedId);
+        const targetIndex = siblings.findIndex(s => s.id === targetTopicId);
+        
+        if (dropPosition === 'before') {
+          newOrder = targetIndex > 0 ? (siblings[targetIndex - 1].display_order + targetTopic.display_order) / 2 : targetTopic.display_order - 1;
+        } else {
+          newOrder = targetIndex < siblings.length - 1 ? (targetTopic.display_order + siblings[targetIndex + 1].display_order) / 2 : targetTopic.display_order + 1;
+        }
+      }
+
+      // Update the database
+      const { error } = await supabase
+        .from('topics')
+        .update({ 
+          parent_id: newParentId,
+          display_order: newOrder 
+        })
+        .eq('id', draggedId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Topic moved",
+        description: `"${draggedTopic.name}" has been moved.`,
+      });
+
+      // Refresh the topics list
+      onTopicsReordered?.();
+    } catch (error: any) {
+      console.error("Failed to move topic:", error);
+      toast({
+        title: "Failed to move topic",
+        description: error.message || "An error occurred while moving the topic.",
+        variant: "destructive",
+      });
+    }
+
+    setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
+  }, [dragState.draggedId, dragState.dropPosition, topics, toast, onTopicsReordered]);
 
   if (topics.length === 0) {
     return (
@@ -97,18 +248,40 @@ export function TopicsGrid({ topics, selectedTopic, onSelectTopic, documents = [
     const isSelected = selectedTopic?.id === topic.id;
     const hasChildren = children.length > 0;
     const docCount = getTopicDocCount(topic.id);
+    const isDragging = dragState.draggedId === topic.id;
+    const isDragOver = dragState.dragOverId === topic.id;
+    const dropPosition = isDragOver ? dragState.dropPosition : null;
 
     return (
       <div key={topic.id} className="select-none">
+        {/* Drop indicator - before */}
+        {isDragOver && dropPosition === 'before' && (
+          <div className="h-0.5 bg-primary mx-2 rounded-full" />
+        )}
+        
         <div
+          data-topic-id={topic.id}
+          draggable
+          onDragStart={(e) => handleDragStart(e, topic.id)}
+          onDragEnd={handleDragEnd}
+          onDragOver={(e) => handleDragOver(e, topic.id)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, topic.id)}
           className={cn(
-            "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
+            "flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
             "hover:bg-muted/50",
-            isSelected && "bg-primary/10 text-primary"
+            isSelected && "bg-primary/10 text-primary",
+            isDragging && "opacity-50",
+            isDragOver && dropPosition === 'inside' && "bg-primary/20 ring-2 ring-primary/50"
           )}
           style={{ paddingLeft: `${8 + depth * 16}px` }}
           onClick={() => onSelectTopic(topic)}
         >
+          {/* Drag handle */}
+          <div className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-0.5 -ml-1 hover:bg-muted rounded">
+            <GripVertical className="w-3 h-3 text-muted-foreground" />
+          </div>
+
           {/* Expand/collapse button */}
           {hasChildren ? (
             <button
@@ -151,6 +324,11 @@ export function TopicsGrid({ topics, selectedTopic, onSelectTopic, documents = [
             </span>
           )}
         </div>
+
+        {/* Drop indicator - after */}
+        {isDragOver && dropPosition === 'after' && (
+          <div className="h-0.5 bg-primary mx-2 rounded-full" />
+        )}
 
         {/* Children */}
         {hasChildren && isExpanded && (
