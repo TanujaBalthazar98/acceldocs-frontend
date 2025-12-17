@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText } from "lucide-react";
+import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Topic {
@@ -7,67 +7,80 @@ interface Topic {
   name: string;
   drive_folder_id: string;
   project_id: string;
+  parent_id: string | null;
+  display_order: number;
 }
 
 interface TopicsGridProps {
   topics: Topic[];
   selectedTopic: Topic | null;
-  onSelectTopic: (topic: Topic) => void;
+  onSelectTopic: (topic: Topic | null) => void;
   documents?: { topic_id: string | null }[];
 }
 
-interface TopicGroup {
-  name: string;
-  topics: Topic[];
-  children: Map<string, TopicGroup>;
+interface TopicTreeNode {
+  topic: Topic;
+  children: TopicTreeNode[];
 }
 
 export function TopicsGrid({ topics, selectedTopic, onSelectTopic, documents = [] }: TopicsGridProps) {
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
 
-  // Group topics by their hierarchy (split by " / ")
-  const groupedTopics = useMemo(() => {
-    const root: TopicGroup = { name: "", topics: [], children: new Map() };
+  // Build a proper tree structure from topics with parent_id
+  const topicTree = useMemo(() => {
+    const nodeMap = new Map<string, TopicTreeNode>();
+    const rootNodes: TopicTreeNode[] = [];
 
+    // Create nodes for all topics
     for (const topic of topics) {
-      const parts = topic.name.split(" / ").map(p => p.trim());
-      
-      if (parts.length === 1) {
-        // Root-level topic
-        root.topics.push(topic);
+      nodeMap.set(topic.id, { topic, children: [] });
+    }
+
+    // Build tree by linking parents to children
+    for (const topic of topics) {
+      const node = nodeMap.get(topic.id)!;
+      if (topic.parent_id && nodeMap.has(topic.parent_id)) {
+        nodeMap.get(topic.parent_id)!.children.push(node);
       } else {
-        // Nested topic - group by first part
-        const parentName = parts[0];
-        if (!root.children.has(parentName)) {
-          root.children.set(parentName, { name: parentName, topics: [], children: new Map() });
-        }
-        root.children.get(parentName)!.topics.push(topic);
+        rootNodes.push(node);
       }
     }
 
-    return root;
+    // Sort children by display_order
+    const sortChildren = (nodes: TopicTreeNode[]) => {
+      nodes.sort((a, b) => (a.topic.display_order || 0) - (b.topic.display_order || 0));
+      for (const node of nodes) {
+        sortChildren(node.children);
+      }
+    };
+    sortChildren(rootNodes);
+
+    return rootNodes;
   }, [topics]);
 
-  const toggleGroup = (groupName: string) => {
-    setExpandedGroups(prev => {
+  const toggleExpand = (topicId: string) => {
+    setExpandedTopics(prev => {
       const next = new Set(prev);
-      if (next.has(groupName)) {
-        next.delete(groupName);
+      if (next.has(topicId)) {
+        next.delete(topicId);
       } else {
-        next.add(groupName);
+        next.add(topicId);
       }
       return next;
     });
   };
 
-  const getTopicDocCount = (topicId: string) => {
-    return documents.filter(d => d.topic_id === topicId).length;
-  };
-
-  // Get short display name (last part after " / ")
-  const getDisplayName = (fullName: string) => {
-    const parts = fullName.split(" / ");
-    return parts[parts.length - 1];
+  const getTopicDocCount = (topicId: string): number => {
+    // Count docs in this topic and all descendants
+    let count = documents.filter(d => d.topic_id === topicId).length;
+    const topic = topics.find(t => t.id === topicId);
+    if (topic) {
+      const children = topics.filter(t => t.parent_id === topicId);
+      for (const child of children) {
+        count += getTopicDocCount(child.id);
+      }
+    }
+    return count;
   };
 
   if (topics.length === 0) {
@@ -78,123 +91,97 @@ export function TopicsGrid({ topics, selectedTopic, onSelectTopic, documents = [
     );
   }
 
-  return (
-    <div className="space-y-2">
-      {/* Root-level topics */}
-      {groupedTopics.topics.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {groupedTopics.topics.map(topic => (
-            <TopicButton
-              key={topic.id}
-              topic={topic}
-              displayName={topic.name}
-              isSelected={selectedTopic?.id === topic.id}
-              docCount={getTopicDocCount(topic.id)}
-              onClick={() => onSelectTopic(topic)}
-            />
-          ))}
-        </div>
-      )}
+  const renderTopicNode = (node: TopicTreeNode, depth: number = 0): JSX.Element => {
+    const { topic, children } = node;
+    const isExpanded = expandedTopics.has(topic.id);
+    const isSelected = selectedTopic?.id === topic.id;
+    const hasChildren = children.length > 0;
+    const docCount = getTopicDocCount(topic.id);
 
-      {/* Grouped topics */}
-      {Array.from(groupedTopics.children.entries()).map(([groupName, group]) => {
-        const isExpanded = expandedGroups.has(groupName);
-        const totalDocs = group.topics.reduce((sum, t) => sum + getTopicDocCount(t.id), 0);
-        const hasSelectedChild = group.topics.some(t => t.id === selectedTopic?.id);
-        
-        return (
-          <div key={groupName} className="rounded-lg border border-border/50 overflow-hidden">
-            {/* Group header */}
+    return (
+      <div key={topic.id} className="select-none">
+        <div
+          className={cn(
+            "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
+            "hover:bg-muted/50",
+            isSelected && "bg-primary/10 text-primary"
+          )}
+          style={{ paddingLeft: `${8 + depth * 16}px` }}
+          onClick={() => onSelectTopic(topic)}
+        >
+          {/* Expand/collapse button */}
+          {hasChildren ? (
             <button
-              onClick={() => toggleGroup(groupName)}
-              className={cn(
-                "w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors",
-                "hover:bg-muted/50",
-                hasSelectedChild && "bg-primary/5"
-              )}
+              className="p-0.5 hover:bg-muted rounded"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleExpand(topic.id);
+              }}
             >
-              <span className="text-muted-foreground">
-                {isExpanded ? (
-                  <ChevronDown className="w-4 h-4" />
-                ) : (
-                  <ChevronRight className="w-4 h-4" />
-                )}
-              </span>
-              <span className="text-primary/70">
-                {isExpanded ? (
-                  <FolderOpen className="w-4 h-4" />
-                ) : (
-                  <Folder className="w-4 h-4" />
-                )}
-              </span>
-              <span className="font-medium text-sm flex-1">{groupName}</span>
-              <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted">
-                {group.topics.length} topics
-              </span>
-              {totalDocs > 0 && (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <FileText className="w-3 h-3" />
-                  {totalDocs}
-                </span>
+              {isExpanded ? (
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
               )}
             </button>
-            
-            {/* Group content */}
-            {isExpanded && (
-              <div className="px-3 pb-3 pt-1 bg-muted/20">
-                <div className="flex flex-wrap gap-2">
-                  {group.topics.map(topic => (
-                    <TopicButton
-                      key={topic.id}
-                      topic={topic}
-                      displayName={getDisplayName(topic.name)}
-                      isSelected={selectedTopic?.id === topic.id}
-                      docCount={getTopicDocCount(topic.id)}
-                      onClick={() => onSelectTopic(topic)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+          ) : (
+            <div className="w-4" />
+          )}
+
+          {/* Folder icon */}
+          {isExpanded && hasChildren ? (
+            <FolderOpen className="w-4 h-4 text-primary/70 shrink-0" />
+          ) : (
+            <Folder className="w-4 h-4 text-muted-foreground shrink-0" />
+          )}
+
+          {/* Topic name */}
+          <span className={cn(
+            "flex-1 text-sm truncate",
+            isSelected && "font-medium"
+          )}>
+            {topic.name}
+          </span>
+
+          {/* Doc count */}
+          {docCount > 0 && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+              <FileText className="w-3 h-3" />
+              {docCount}
+            </span>
+          )}
+        </div>
+
+        {/* Children */}
+        {hasChildren && isExpanded && (
+          <div className="border-l border-border/50 ml-4">
+            {children.map(child => renderTopicNode(child, depth + 1))}
           </div>
-        );
-      })}
-    </div>
-  );
-}
+        )}
+      </div>
+    );
+  };
 
-interface TopicButtonProps {
-  topic: Topic;
-  displayName: string;
-  isSelected: boolean;
-  docCount: number;
-  onClick: () => void;
-}
-
-function TopicButton({ topic, displayName, isSelected, docCount, onClick }: TopicButtonProps) {
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-all",
-        "border",
-        isSelected
-          ? "bg-primary text-primary-foreground border-primary shadow-sm"
-          : "bg-card text-foreground border-border hover:border-primary/50 hover:bg-primary/5"
-      )}
-    >
-      <Folder className="w-3.5 h-3.5 opacity-70" />
-      <span className="font-medium">{displayName}</span>
-      {docCount > 0 && (
-        <span className={cn(
-          "text-xs px-1.5 py-0.5 rounded-full",
-          isSelected 
-            ? "bg-primary-foreground/20 text-primary-foreground" 
-            : "bg-muted text-muted-foreground"
-        )}>
-          {docCount}
+    <div className="space-y-0.5">
+      {/* "All Pages" option */}
+      <div
+        className={cn(
+          "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
+          "hover:bg-muted/50",
+          selectedTopic === null && "bg-primary/10 text-primary"
+        )}
+        onClick={() => onSelectTopic(null)}
+      >
+        <div className="w-4" />
+        <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+        <span className={cn("text-sm", selectedTopic === null && "font-medium")}>
+          All Pages
         </span>
-      )}
-    </button>
+      </div>
+
+      {/* Topic tree */}
+      {topicTree.map(node => renderTopicNode(node))}
+    </div>
   );
 }

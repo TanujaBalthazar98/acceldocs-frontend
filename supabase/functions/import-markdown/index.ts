@@ -17,13 +17,14 @@ interface ImportRequest {
   organizationId: string;
 }
 
-interface NestedStructure {
+interface TopicNode {
   name: string;
+  fullPath: string;
   files: { path: string; content: string }[];
-  children: Map<string, NestedStructure>;
+  children: Map<string, TopicNode>;
 }
 
-// Convert Markdown to clean HTML
+// Convert Markdown to clean HTML for Google Docs import
 function markdownToHtml(markdown: string): string {
   let html = markdown;
   
@@ -32,20 +33,19 @@ function markdownToHtml(markdown: string): string {
   
   // Code blocks (must be before inline code)
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    const langAttr = lang ? ` class="language-${lang}"` : '';
-    return `<pre><code${langAttr}>${escapeHtml(code.trim())}</code></pre>`;
+    return `<pre style="background-color:#f4f4f4;padding:12px;border-radius:4px;overflow-x:auto;font-family:monospace;"><code>${escapeHtml(code.trim())}</code></pre>`;
   });
   
   // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/`([^`]+)`/g, '<code style="background-color:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:monospace;">$1</code>');
   
   // Headers (process from h6 to h1 to avoid conflicts)
-  html = html.replace(/^###### (.+)$/gm, '<h6>$1</h6>');
-  html = html.replace(/^##### (.+)$/gm, '<h5>$1</h5>');
-  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  html = html.replace(/^###### (.+)$/gm, '<h6 style="font-size:12px;font-weight:bold;margin:16px 0 8px 0;">$1</h6>');
+  html = html.replace(/^##### (.+)$/gm, '<h5 style="font-size:14px;font-weight:bold;margin:16px 0 8px 0;">$1</h5>');
+  html = html.replace(/^#### (.+)$/gm, '<h4 style="font-size:16px;font-weight:bold;margin:16px 0 8px 0;">$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3 style="font-size:18px;font-weight:bold;margin:20px 0 10px 0;">$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2 style="font-size:22px;font-weight:bold;margin:24px 0 12px 0;">$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1 style="font-size:28px;font-weight:bold;margin:28px 0 14px 0;">$1</h1>');
   
   // Bold and italic (order matters)
   html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
@@ -55,17 +55,16 @@ function markdownToHtml(markdown: string): string {
   html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
   html = html.replace(/_(.+?)_/g, '<em>$1</em>');
   
-  // Links (before images to avoid conflict)
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  // Links and images
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;" />');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:#1a73e8;">$1</a>');
   
   // Blockquotes
-  html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+  html = html.replace(/^> (.+)$/gm, '<blockquote style="border-left:4px solid #ddd;padding-left:16px;margin:16px 0;color:#666;">$1</blockquote>');
   
   // Horizontal rules
-  html = html.replace(/^---$/gm, '<hr>');
-  html = html.replace(/^\*\*\*$/gm, '<hr>');
-  html = html.replace(/^___$/gm, '<hr>');
+  html = html.replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #ddd;margin:24px 0;" />');
+  html = html.replace(/^\*\*\*$/gm, '<hr style="border:none;border-top:1px solid #ddd;margin:24px 0;" />');
   
   // Process tables
   html = processMarkdownTables(html);
@@ -79,11 +78,11 @@ function markdownToHtml(markdown: string): string {
     const trimmed = line.trim();
     if (!trimmed) return '';
     if (trimmed.startsWith('<')) return line;
-    return `<p>${line}</p>`;
+    return `<p style="margin:12px 0;line-height:1.6;">${line}</p>`;
   }).join('\n');
   
   // Clean up
-  html = html.replace(/<p>\s*<\/p>/g, '');
+  html = html.replace(/<p[^>]*>\s*<\/p>/g, '');
   html = html.replace(/\n{3,}/g, '\n\n');
   
   return html.trim();
@@ -94,7 +93,7 @@ function processMarkdownTables(html: string): string {
   
   return html.replace(tableRegex, (match) => {
     const rows = match.trim().split('\n');
-    let tableHtml = '<table>';
+    let tableHtml = '<table style="border-collapse:collapse;width:100%;margin:16px 0;">';
     let isHeader = true;
     
     for (const row of rows) {
@@ -107,7 +106,10 @@ function processMarkdownTables(html: string): string {
       }
       
       const cellTag = isHeader ? 'th' : 'td';
-      const rowHtml = cells.map(c => `<${cellTag}>${c}</${cellTag}>`).join('');
+      const cellStyle = isHeader 
+        ? 'style="border:1px solid #ddd;padding:8px 12px;background:#f5f5f5;font-weight:bold;text-align:left;"'
+        : 'style="border:1px solid #ddd;padding:8px 12px;"';
+      const rowHtml = cells.map(c => `<${cellTag} ${cellStyle}>${c}</${cellTag}>`).join('');
       tableHtml += `<tr>${rowHtml}</tr>`;
       
       if (isHeader) isHeader = false;
@@ -119,7 +121,6 @@ function processMarkdownTables(html: string): string {
 }
 
 function processLists(html: string): string {
-  // Process unordered lists
   const lines = html.split('\n');
   const result: string[] = [];
   let inList = false;
@@ -133,19 +134,19 @@ function processLists(html: string): string {
     if (unorderedMatch) {
       if (!inList || listType !== 'ul') {
         if (inList) result.push(`</${listType}>`);
-        result.push('<ul>');
+        result.push('<ul style="margin:12px 0;padding-left:24px;">');
         inList = true;
         listType = 'ul';
       }
-      result.push(`<li>${unorderedMatch[1]}</li>`);
+      result.push(`<li style="margin:4px 0;">${unorderedMatch[1]}</li>`);
     } else if (orderedMatch) {
       if (!inList || listType !== 'ol') {
         if (inList) result.push(`</${listType}>`);
-        result.push('<ol>');
+        result.push('<ol style="margin:12px 0;padding-left:24px;">');
         inList = true;
         listType = 'ol';
       }
-      result.push(`<li>${orderedMatch[1]}</li>`);
+      result.push(`<li style="margin:4px 0;">${orderedMatch[1]}</li>`);
     } else {
       if (inList) {
         result.push(`</${listType}>`);
@@ -197,17 +198,15 @@ function generateSlug(text: string): string {
     .trim();
 }
 
-// Parse folder structure from file paths
-// Structure: selected-folder/topic-folder/page.md OR selected-folder/page.md
-// INTELLIGENT GROUPING: Only first-level folders become topics, nested folders are flattened
+// Parse folder structure into a proper tree with UNLIMITED nesting
 function parseNestedStructure(files: { path: string; content: string }[]): {
-  topics: Map<string, { files: { path: string; content: string }[] }>;
+  topicTree: TopicNode;
   rootFiles: { path: string; content: string }[];
 } {
-  const topics = new Map<string, { files: { path: string; content: string }[] }>();
+  const topicTree: TopicNode = { name: '', fullPath: '', files: [], children: new Map() };
   const rootFiles: { path: string; content: string }[] = [];
   
-  // Find the common root folder (the selected folder name)
+  // Find the common root folder
   let rootFolder = '';
   if (files.length > 0) {
     const firstPath = files[0].path;
@@ -218,7 +217,6 @@ function parseNestedStructure(files: { path: string; content: string }[]): {
   }
   
   for (const file of files) {
-    // Get path parts and remove the root folder
     let pathParts = file.path.split('/');
     
     // Remove the root folder if it matches
@@ -226,200 +224,114 @@ function parseNestedStructure(files: { path: string; content: string }[]): {
       pathParts = pathParts.slice(1);
     }
     
-    // Remove the filename from parts
+    // Remove the filename
     const filename = pathParts.pop() || '';
     
     if (pathParts.length === 0) {
-      // File directly in project folder (no topic)
+      // File directly in project root
       rootFiles.push(file);
     } else {
-      // INTELLIGENT GROUPING: Only use the FIRST folder level as the topic name
-      // All nested files go under this parent topic
-      // e.g., "Data Reliability/Overview/file.md" -> topic "Data Reliability"
-      // e.g., "Data Reliability/Setup/Advanced/file.md" -> topic "Data Reliability"
-      const topicName = pathParts[0];
+      // Navigate/create the topic tree
+      let currentNode = topicTree;
+      let currentPath = '';
       
-      if (!topics.has(topicName)) {
-        topics.set(topicName, { files: [] });
+      for (const part of pathParts) {
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        
+        if (!currentNode.children.has(part)) {
+          currentNode.children.set(part, {
+            name: part,
+            fullPath: currentPath,
+            files: [],
+            children: new Map()
+          });
+        }
+        currentNode = currentNode.children.get(part)!;
       }
-      topics.get(topicName)!.files.push(file);
+      
+      // Add file to the leaf topic
+      currentNode.files.push(file);
     }
   }
   
-  console.log(`Parsed structure: ${rootFiles.length} root files, ${topics.size} topics`);
-  for (const [name, data] of topics) {
-    console.log(`  Topic "${name}": ${data.files.length} files`);
-  }
+  console.log(`Parsed structure: ${rootFiles.length} root files`);
+  logTopicTree(topicTree, 0);
   
-  return { topics, rootFiles };
+  return { topicTree, rootFiles };
 }
 
-// Helper to add delay between API calls (reduced for large imports)
+function logTopicTree(node: TopicNode, depth: number) {
+  for (const [name, child] of node.children) {
+    console.log(`${'  '.repeat(depth)}Topic "${name}": ${child.files.length} files, ${child.children.size} children`);
+    logTopicTree(child, depth + 1);
+  }
+}
+
+// Helper to add delay between API calls
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Batch size for processing files
-const BATCH_SIZE = 5;
-
-// Parse markdown to structured elements for Google Docs API
-function parseMarkdownToElements(markdown: string): Array<{
-  type: 'heading' | 'paragraph' | 'bullet' | 'numbered' | 'code' | 'blockquote';
-  level?: number;
-  text: string;
-}> {
-  const elements: Array<{
-    type: 'heading' | 'paragraph' | 'bullet' | 'numbered' | 'code' | 'blockquote';
-    level?: number;
-    text: string;
-  }> = [];
-  
-  // Remove frontmatter
-  let content = markdown.replace(/^---[\s\S]*?---\n*/m, '');
-  
-  // Split into lines but handle code blocks specially
-  const lines = content.split('\n');
-  let inCodeBlock = false;
-  let codeBlockContent = '';
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    // Handle code blocks
-    if (line.trim().startsWith('```')) {
-      if (inCodeBlock) {
-        elements.push({ type: 'code', text: codeBlockContent.trim() });
-        codeBlockContent = '';
-        inCodeBlock = false;
-      } else {
-        inCodeBlock = true;
-      }
-      continue;
-    }
-    
-    if (inCodeBlock) {
-      codeBlockContent += line + '\n';
-      continue;
-    }
-    
-    const trimmedLine = line.trim();
-    if (!trimmedLine) continue;
-    
-    // Headers
-    const h1Match = trimmedLine.match(/^# (.+)$/);
-    const h2Match = trimmedLine.match(/^## (.+)$/);
-    const h3Match = trimmedLine.match(/^### (.+)$/);
-    const h4Match = trimmedLine.match(/^#### (.+)$/);
-    
-    if (h1Match) {
-      elements.push({ type: 'heading', level: 1, text: h1Match[1] });
-    } else if (h2Match) {
-      elements.push({ type: 'heading', level: 2, text: h2Match[1] });
-    } else if (h3Match) {
-      elements.push({ type: 'heading', level: 3, text: h3Match[1] });
-    } else if (h4Match) {
-      elements.push({ type: 'heading', level: 4, text: h4Match[1] });
-    }
-    // Unordered lists
-    else if (trimmedLine.match(/^[-*+]\s+(.+)$/)) {
-      const match = trimmedLine.match(/^[-*+]\s+(.+)$/);
-      elements.push({ type: 'bullet', text: match![1] });
-    }
-    // Ordered lists
-    else if (trimmedLine.match(/^\d+\.\s+(.+)$/)) {
-      const match = trimmedLine.match(/^\d+\.\s+(.+)$/);
-      elements.push({ type: 'numbered', text: match![1] });
-    }
-    // Blockquotes
-    else if (trimmedLine.startsWith('> ')) {
-      elements.push({ type: 'blockquote', text: trimmedLine.slice(2) });
-    }
-    // Regular paragraph
-    else {
-      elements.push({ type: 'paragraph', text: trimmedLine });
-    }
-  }
-  
-  return elements;
-}
-
-// Clean inline markdown formatting
-function cleanInlineMarkdown(text: string): string {
-  return text
-    .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/___(.+?)___/g, '$1')
-    .replace(/__(.+?)__/g, '$1')
-    .replace(/_(.+?)_/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-}
-
-// Create Google Doc with simple text content (more reliable for large imports)
-async function createGoogleDocWithContent(
+// Create Google Doc by uploading HTML content
+async function createGoogleDocWithHtml(
   googleToken: string,
   title: string,
   htmlContent: string,
-  parentFolderId: string,
-  originalMarkdown?: string
+  parentFolderId: string
 ): Promise<{ id: string; success: boolean; error?: string }> {
   try {
-    // Step 1: Create the document
-    const createResponse = await fetch("https://www.googleapis.com/drive/v3/files", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${googleToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: title,
-        mimeType: "application/vnd.google-apps.document",
-        parents: [parentFolderId],
-      }),
-    });
+    // Create HTML document with proper structure
+    const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(title)}</title>
+</head>
+<body>
+${htmlContent}
+</body>
+</html>`;
 
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      console.error(`Failed to create doc ${title}:`, errorText);
-      return { id: '', success: false, error: `Create failed: ${createResponse.status}` };
-    }
+    // Create file metadata
+    const metadata = {
+      name: title,
+      mimeType: 'application/vnd.google-apps.document',
+      parents: [parentFolderId],
+    };
 
-    const doc = await createResponse.json();
-    
-    // Step 2: Add plain text content (simpler, more reliable for large imports)
-    if (originalMarkdown && originalMarkdown.trim()) {
-      // Clean markdown for readability in Google Docs
-      const cleanContent = originalMarkdown
-        .replace(/^---[\s\S]*?---\n*/m, '') // Remove frontmatter
-        .trim();
-      
-      if (cleanContent) {
-        const updateResponse = await fetch(
-          `https://docs.googleapis.com/v1/documents/${doc.id}:batchUpdate`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${googleToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              requests: [{
-                insertText: {
-                  location: { index: 1 },
-                  text: cleanContent,
-                },
-              }],
-            }),
-          }
-        );
+    // Create form data for multipart upload
+    const boundary = '-------314159265358979323846';
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelim = `\r\n--${boundary}--`;
 
-        if (!updateResponse.ok) {
-          console.warn(`Content insert failed for ${title}, doc created empty`);
-        }
+    const multipartBody = 
+      delimiter +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(metadata) +
+      delimiter +
+      'Content-Type: text/html; charset=UTF-8\r\n\r\n' +
+      fullHtml +
+      closeDelim;
+
+    const response = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&convert=true',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${googleToken}`,
+          'Content-Type': `multipart/related; boundary=${boundary}`,
+        },
+        body: multipartBody,
       }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Failed to create doc ${title}:`, errorText);
+      return { id: '', success: false, error: `Create failed: ${response.status}` };
     }
 
+    const doc = await response.json();
     return { id: doc.id, success: true };
   } catch (error) {
     console.error(`Error creating doc ${title}:`, error);
@@ -484,9 +396,19 @@ Deno.serve(async (req) => {
     }
 
     // Parse nested folder structure
-    const { topics, rootFiles } = parseNestedStructure(files);
+    const { topicTree, rootFiles } = parseNestedStructure(files);
     
-    console.log(`Found ${topics.size} topics and ${rootFiles.length} root files`);
+    // Count topics recursively
+    const countTopics = (node: TopicNode): number => {
+      let count = node.children.size;
+      for (const child of node.children.values()) {
+        count += countTopics(child);
+      }
+      return count;
+    };
+    
+    const totalTopics = countTopics(topicTree);
+    console.log(`Found ${totalTopics} topics and ${rootFiles.length} root files`);
 
     const totalFiles = files.length;
     
@@ -508,20 +430,19 @@ Deno.serve(async (req) => {
     
     if (jobError) {
       console.error("Failed to create import job:", jobError);
-      // Continue anyway, just without progress tracking
     }
     
     const jobId = importJob?.id;
     console.log(`Created import job ${jobId} for ${totalFiles} files`);
     
-    // Start background processing with progress tracking
+    // Start background processing
     const backgroundTask = async () => {
       try {
         await processImportWithProgress(
           supabase, 
           project, 
           googleToken, 
-          topics, 
+          topicTree, 
           rootFiles, 
           projectId, 
           user.id,
@@ -546,7 +467,6 @@ Deno.serve(async (req) => {
     if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
       EdgeRuntime.waitUntil(backgroundTask());
     } else {
-      // Fallback: run inline but don't await
       backgroundTask().catch(err => console.error("Background import failed:", err));
     }
     
@@ -555,7 +475,7 @@ Deno.serve(async (req) => {
         success: true, 
         jobId,
         message: `Import started for ${totalFiles} files.`,
-        estimatedTopics: topics.size,
+        estimatedTopics: totalTopics,
         estimatedPages: totalFiles
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -570,51 +490,25 @@ Deno.serve(async (req) => {
   }
 });
 
-// Import processing function with progress tracking
-async function processImportWithProgress(
+// Recursively create topics with proper hierarchy
+async function createTopicsRecursively(
   supabase: any,
-  project: { drive_folder_id: string; name: string },
   googleToken: string,
-  topics: Map<string, { files: { path: string; content: string }[] }>,
-  rootFiles: { path: string; content: string }[],
+  node: TopicNode,
   projectId: string,
+  parentFolderId: string,
+  parentTopicId: string | null,
   userId: string,
-  jobId: string | null
+  results: { topicsCreated: number; pagesCreated: number; processedFiles: number; errors: string[] },
+  updateProgress: (currentFile?: string) => Promise<void>,
+  displayOrder: number = 0
 ): Promise<void> {
-  const results = {
-    topicsCreated: 0,
-    pagesCreated: 0,
-    processedFiles: 0,
-    errors: [] as string[],
-  };
-
-  // Helper to update job progress
-  const updateProgress = async (currentFile?: string) => {
-    if (!jobId) return;
-    try {
-      await supabase
-        .from("import_jobs")
-        .update({
-          processed_files: results.processedFiles,
-          topics_created: results.topicsCreated,
-          pages_created: results.pagesCreated,
-          errors: results.errors,
-          current_file: currentFile || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", jobId);
-    } catch (err) {
-      console.error("Failed to update progress:", err);
-    }
-  };
-
-  // Create topics and their pages
-  for (const [topicName, topicData] of topics) {
+  for (const [name, childNode] of node.children) {
     try {
       await delay(50);
-      await updateProgress(`Creating topic: ${topicName}`);
+      await updateProgress(`Creating topic: ${name}`);
       
-      // Create topic folder in Google Drive
+      // Create folder in Google Drive
       const folderResponse = await fetch("https://www.googleapis.com/drive/v3/files", {
         method: "POST",
         headers: {
@@ -622,44 +516,46 @@ async function processImportWithProgress(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: topicName,
+          name: name,
           mimeType: "application/vnd.google-apps.folder",
-          parents: [project.drive_folder_id],
+          parents: [parentFolderId],
         }),
       });
 
       if (!folderResponse.ok) {
         const errorText = await folderResponse.text();
-        console.error(`Failed to create folder for topic ${topicName}:`, errorText);
-        results.errors.push(`Failed to create folder: ${topicName}`);
+        console.error(`Failed to create folder for topic ${name}:`, errorText);
+        results.errors.push(`Failed to create folder: ${name}`);
         continue;
       }
 
       const folder = await folderResponse.json();
 
-      // Create topic in database
+      // Create topic in database with parent reference
       const { data: topic, error: topicError } = await supabase
         .from("topics")
         .insert({
-          name: topicName,
-          slug: generateSlug(topicName),
+          name: name,
+          slug: generateSlug(name),
           project_id: projectId,
           drive_folder_id: folder.id,
+          parent_id: parentTopicId,
+          display_order: displayOrder++,
         })
         .select()
         .single();
 
       if (topicError) {
-        console.error(`Failed to create topic ${topicName}:`, topicError);
-        results.errors.push(`Failed to create topic: ${topicName}`);
+        console.error(`Failed to create topic ${name}:`, topicError);
+        results.errors.push(`Failed to create topic: ${name}`);
         continue;
       }
 
       results.topicsCreated++;
-      console.log(`Created topic: ${topicName}`);
+      console.log(`Created topic: ${name} (parent: ${parentTopicId || 'root'})`);
 
       // Create pages for this topic
-      for (const file of topicData.files) {
+      for (const file of childNode.files) {
         try {
           await delay(50);
           
@@ -670,12 +566,11 @@ async function processImportWithProgress(
           
           const htmlContent = markdownToHtml(file.content);
 
-          const docResult = await createGoogleDocWithContent(
+          const docResult = await createGoogleDocWithHtml(
             googleToken,
             title,
             htmlContent,
-            folder.id,
-            file.content
+            folder.id
           );
 
           if (!docResult.success) {
@@ -716,11 +611,77 @@ async function processImportWithProgress(
           await updateProgress();
         }
       }
+
+      // Recursively create child topics
+      await createTopicsRecursively(
+        supabase,
+        googleToken,
+        childNode,
+        projectId,
+        folder.id,
+        topic.id,
+        userId,
+        results,
+        updateProgress,
+        0
+      );
     } catch (err) {
-      console.error(`Error creating topic ${topicName}:`, err);
-      results.errors.push(`Error creating topic: ${topicName}`);
+      console.error(`Error creating topic ${name}:`, err);
+      results.errors.push(`Error creating topic: ${name}`);
     }
   }
+}
+
+// Import processing function with progress tracking
+async function processImportWithProgress(
+  supabase: any,
+  project: { drive_folder_id: string; name: string },
+  googleToken: string,
+  topicTree: TopicNode,
+  rootFiles: { path: string; content: string }[],
+  projectId: string,
+  userId: string,
+  jobId: string | null
+): Promise<void> {
+  const results = {
+    topicsCreated: 0,
+    pagesCreated: 0,
+    processedFiles: 0,
+    errors: [] as string[],
+  };
+
+  // Helper to update job progress
+  const updateProgress = async (currentFile?: string) => {
+    if (!jobId) return;
+    try {
+      await supabase
+        .from("import_jobs")
+        .update({
+          processed_files: results.processedFiles,
+          topics_created: results.topicsCreated,
+          pages_created: results.pagesCreated,
+          errors: results.errors,
+          current_file: currentFile || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
+    } catch (err) {
+      console.error("Failed to update progress:", err);
+    }
+  };
+
+  // Create topics recursively
+  await createTopicsRecursively(
+    supabase,
+    googleToken,
+    topicTree,
+    projectId,
+    project.drive_folder_id,
+    null,
+    userId,
+    results,
+    updateProgress
+  );
 
   // Create root-level pages
   for (const file of rootFiles) {
@@ -734,12 +695,11 @@ async function processImportWithProgress(
       
       const htmlContent = markdownToHtml(file.content);
 
-      const docResult = await createGoogleDocWithContent(
+      const docResult = await createGoogleDocWithHtml(
         googleToken,
         title,
         htmlContent,
-        project.drive_folder_id!,
-        file.content
+        project.drive_folder_id!
       );
 
       if (!docResult.success) {

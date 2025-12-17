@@ -515,32 +515,45 @@ export type Database = {
       topics: {
         Row: {
           created_at: string
+          display_order: number | null
           drive_folder_id: string
           id: string
           name: string
+          parent_id: string | null
           project_id: string
           slug: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
+          display_order?: number | null
           drive_folder_id: string
           id?: string
           name: string
+          parent_id?: string | null
           project_id: string
           slug?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
+          display_order?: number | null
           drive_folder_id?: string
           id?: string
           name?: string
+          parent_id?: string | null
           project_id?: string
           slug?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "topics_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "topics_project_id_fkey"
             columns: ["project_id"]

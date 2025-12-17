@@ -79,6 +79,8 @@ interface Topic {
   name: string;
   drive_folder_id: string;
   project_id: string;
+  parent_id: string | null;
+  display_order: number;
 }
 
 type VisibilityLevel = "internal" | "external" | "public";
@@ -189,11 +191,12 @@ const Dashboard = () => {
         if (projectIds.length > 0) {
           const { data: topicsData } = await supabase
             .from("topics")
-            .select("id, name, drive_folder_id, project_id")
-            .in("project_id", projectIds);
+            .select("id, name, drive_folder_id, project_id, parent_id, display_order")
+            .in("project_id", projectIds)
+            .order("display_order");
           
           if (topicsData) {
-            setTopics(topicsData);
+            setTopics(topicsData as Topic[]);
           }
           
           // Get documents for all projects with owner info
@@ -1113,7 +1116,7 @@ const Dashboard = () => {
               <TopicsGrid
                 topics={topics.filter(t => t.project_id === selectedProject.id)}
                 selectedTopic={selectedTopic}
-                onSelectTopic={setSelectedTopic}
+                onSelectTopic={(topic) => setSelectedTopic(topic)}
                 documents={documents}
               />
             )}
