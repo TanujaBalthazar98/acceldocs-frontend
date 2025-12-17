@@ -25,6 +25,7 @@ import {
   Eye,
   Globe,
   BookOpen,
+  Layers,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -140,6 +141,7 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'project' | 'topic' | 'document'; id: string; name: string } | null>(null);
+  const [isNormalizing, setIsNormalizing] = useState(false);
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -462,6 +464,35 @@ const Dashboard = () => {
     e.stopPropagation();
     setSelectedProject(project);
     setShareOpen(true);
+  };
+
+  // Normalize structure - merge scattered topics with same prefix
+  const handleNormalizeStructure = async (projectId: string) => {
+    setIsNormalizing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('normalize-structure', {
+        body: { projectId }
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Structure Normalized",
+        description: `Merged ${data?.mergedCount || 0} topics into parent-child hierarchy.`,
+      });
+      
+      // Refresh data to show updated structure
+      await fetchData();
+    } catch (error: any) {
+      console.error("Normalize error:", error);
+      toast({
+        title: "Normalization Failed",
+        description: error.message || "Could not normalize topic structure.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsNormalizing(false);
+    }
   };
 
   // Connect to Google Drive (request access)
@@ -884,6 +915,13 @@ const Dashboard = () => {
                           }}>
                             <Settings className="w-3 h-3 mr-2" />
                             Settings
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleNormalizeStructure(project.id)}
+                            disabled={isNormalizing}
+                          >
+                            <Layers className="w-3 h-3 mr-2" />
+                            {isNormalizing ? "Normalizing..." : "Normalize Structure"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
