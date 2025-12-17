@@ -79,14 +79,14 @@ export const useGoogleDrive = () => {
       return { files: null };
     }
 
-    // Check for reauth needed
+    // Check for reauth needed - treat same as needsDriveAccess to show reconnect banner
     if (data?.needsReauth) {
       toast({
-        title: "Session expired",
-        description: "Please sign in again to continue.",
+        title: "Google Drive access expired",
+        description: "Please reconnect to Google Drive to continue.",
         variant: "destructive",
       });
-      return { files: null };
+      return { files: null, needsDriveAccess: true };
     }
 
     // Check for scope/drive access needed
