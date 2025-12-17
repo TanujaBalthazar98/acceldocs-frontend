@@ -1,19 +1,16 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { 
-  ChevronRight, 
-  ChevronDown, 
-  FileText, 
-  FolderTree, 
-  Menu, 
+import {
+  ChevronRight,
+  ChevronDown,
+  FolderTree,
+  Menu,
   Search,
   Lock,
   Eye,
   Globe,
-  RefreshCw,
   Sparkles,
-  PanelLeftClose,
-  User
+  PanelLeftClose
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,7 +22,6 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import { useSyncContent } from "@/hooks/useSyncContent";
 import { useBrandingLoader, useBrandingStyles } from "@/hooks/useBrandingLoader";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -34,8 +30,7 @@ import { DocsLanding } from "@/components/docs/DocsLanding";
 import { TableOfContents } from "@/components/docs/TableOfContents";
 import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 import { PageFeedback } from "@/components/docs/PageFeedback";
-
-type VisibilityLevel = "internal" | "external" | "public";
+import { normalizeHtml } from "@/lib/htmlNormalizer";
 
 interface Project {
   id: string;
@@ -93,30 +88,33 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
   external: { icon: Eye, label: "External" },
   public: { icon: Globe, label: "Public" },
 };
-import { normalizeHtml } from "@/lib/htmlNormalizer";
-
-// Helper to remove duplicate first heading if it matches the page title
+// Helper to remove duplicate first "title" block inside the document body.
+// Google Docs exports often repeat the doc title as the first paragraph.
 function removeFirstHeadingIfMatches(html: string, title: string): string {
   if (!html || !title) return html;
-  
+
   const parser = new DOMParser();
-  const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
-  const container = doc.body.firstChild as HTMLElement;
-  
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const container = doc.body.firstElementChild as HTMLElement | null;
   if (!container) return html;
-  
-  // Find the first heading (h1-h6)
-  const firstHeading = container.querySelector('h1, h2, h3, h4, h5, h6');
-  if (firstHeading) {
-    const headingText = firstHeading.textContent?.trim().toLowerCase() || '';
-    const titleText = title.trim().toLowerCase();
-    
-    // Remove if it matches the title (exact or very similar)
-    if (headingText === titleText || headingText.includes(titleText) || titleText.includes(headingText)) {
-      firstHeading.remove();
-    }
+
+  const normalizedTitle = title.trim().toLowerCase();
+
+  // Find the first meaningful block element (often <p> or <h1>)
+  const firstBlock = container.querySelector("h1, h2, h3, h4, h5, h6, p, div");
+  if (!firstBlock) return container.innerHTML;
+
+  const blockText = (firstBlock.textContent || "").trim().toLowerCase();
+  if (!blockText) return container.innerHTML;
+
+  // Remove if it matches the title (exact or very similar)
+  if (
+    blockText === normalizedTitle ||
+    blockText.replace(/\s+/g, " ") === normalizedTitle.replace(/\s+/g, " ")
+  ) {
+    firstBlock.remove();
   }
-  
+
   return container.innerHTML;
 }
 
@@ -135,8 +133,7 @@ export default function Docs() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { theme } = useTheme();
-  const { syncDocument, syncing } = useSyncContent();
-  
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -160,32 +157,9 @@ export default function Docs() {
     }
   }, [authLoading, hasFetched]);
 
-  const autoSyncContent = async (doc: Document) => {
-    // For non-org users, show published content only (no syncing)
-    if (!isOrgUser) {
-      if (doc.published_content_html) {
-        setDocumentHtml(doc.published_content_html);
-      } else {
-        setDocumentHtml(null);
-      }
-      return;
-    }
-    
-    // For org users (preview mode), sync and show draft content
-    if (!doc.content_html) {
-      const html = await syncDocument(doc.id, doc.google_doc_id);
-      if (html) {
-        setDocumentHtml(html);
-        // Update local state - content synced means document reverts to draft
-        setDocuments(prev => 
-          prev.map(d => d.id === doc.id ? { ...d, content_html: html, is_published: false } : d)
-        );
-        // Also update selected document's published state
-        setSelectedDocument(prev => prev?.id === doc.id ? { ...prev, content_html: html, is_published: false } : prev);
-      }
-    } else {
-      setDocumentHtml(doc.content_html);
-    }
+  const setPublishedContent = async (doc: Document) => {
+    // Published docs view: NEVER show draft content.
+    setDocumentHtml(doc.published_content_html ?? null);
   };
 
   const buildDocUrl = (doc: Document, project: Project, org: Organization) => {
@@ -240,13 +214,11 @@ export default function Docs() {
         }
       }
       
-      if (doc) {
         setSelectedDocument(doc);
-        autoSyncContent(doc);
+        setPublishedContent(doc);
         if (doc.topic_id) {
           setExpandedTopics(prev => new Set([...prev, doc.topic_id!]));
         }
-      }
     }
   }, [pageSlug, topicSlug, selectedProject, documents, topics, currentOrg]);
 
@@ -296,27 +268,16 @@ export default function Docs() {
       let projectsQuery = supabase
         .from("projects")
         .select("id, name, slug, visibility, is_published, organization_id")
+        .eq("is_published", true)
         .order("name");
 
-      if (userOrgId) {
-        const { data: projectsData, error: projectsError } = await projectsQuery;
-        
-        if (projectsError) {
-          console.error("Error fetching projects:", projectsError);
-        } else if (projectsData) {
-          setProjects(projectsData);
-          await fetchTopicsAndDocuments(projectsData.map(p => p.id), userOrgId);
-        }
-      } else {
-        const { data: projectsData, error: projectsError } = await projectsQuery
-          .eq("is_published", true);
-        
-        if (projectsError) {
-          console.error("Error fetching projects:", projectsError);
-        } else if (projectsData) {
-          setProjects(projectsData);
-          await fetchTopicsAndDocuments(projectsData.map(p => p.id), null);
-        }
+      const { data: projectsData, error: projectsError } = await projectsQuery;
+
+      if (projectsError) {
+        console.error("Error fetching projects:", projectsError);
+      } else if (projectsData) {
+        setProjects(projectsData);
+        await fetchTopicsAndDocuments(projectsData.map(p => p.id), userOrgId);
       }
     } catch (error) {
       console.error("Error fetching content:", error);
@@ -333,24 +294,20 @@ export default function Docs() {
       .select("id, name, slug, project_id")
       .in("project_id", projectIds)
       .order("name");
-    
+
     if (topicsData) {
       setTopics(topicsData);
     }
 
-    let docsQuery = supabase
+    // Published docs view: ONLY show pages with a published version.
+    const { data: docsData, error: docsError } = await supabase
       .from("documents")
-      .select("id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, published_content_html, created_at, updated_at, owner_id")
+      .select(
+        "id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, published_content_html, created_at, updated_at, owner_id"
+      )
       .in("project_id", projectIds)
+      .not("published_content_html", "is", null)
       .order("title");
-
-    // For non-org users (public viewers), only show pages that have published content
-    // This includes currently published pages OR pages that were published before (have published_content_html)
-    if (!userOrgId) {
-      docsQuery = docsQuery.not("published_content_html", "is", null);
-    }
-
-    const { data: docsData, error: docsError } = await docsQuery;
 
     if (docsError) {
       console.error("Error fetching documents:", docsError);
@@ -382,7 +339,7 @@ export default function Docs() {
 
   const selectDocument = (doc: Document) => {
     setSelectedDocument(doc);
-    autoSyncContent(doc);
+    setPublishedContent(doc);
     if (selectedProject && currentOrg) {
       navigate(buildDocUrl(doc, selectedProject, currentOrg));
     }
@@ -518,12 +475,7 @@ export default function Docs() {
                 )}
               >
                 <FileText className="h-4 w-4 shrink-0" />
-                <span className="truncate flex-1 text-left">{doc.title}</span>
-                {isOrgUser && !doc.is_published && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
-                    Draft
-                  </Badge>
-                )}
+                          <span className="truncate flex-1 text-left">{doc.title}</span>
               </button>
             ))}
           </nav>
@@ -766,11 +718,6 @@ export default function Docs() {
                   <h1 className="text-3xl lg:text-4xl font-bold text-foreground">
                     {selectedDocument.title}
                   </h1>
-                  {isOrgUser && !selectedDocument.is_published && (
-                    <Badge className="mt-2 text-xs bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800">
-                      Draft
-                    </Badge>
-                  )}
                 </div>
 
                 {/* Meta */}
@@ -785,12 +732,6 @@ export default function Docs() {
                     </Badge>
                   )}
                   <CopyLinkButton className="ml-auto" />
-                  {syncing && (
-                    <div className="flex items-center gap-2 text-primary">
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      <span className="text-xs">Syncing...</span>
-                    </div>
-                  )}
                 </div>
 
                 {/* Content */}
@@ -801,20 +742,15 @@ export default function Docs() {
                       dangerouslySetInnerHTML={{ __html: removeFirstHeadingIfMatches(normalizeHtml(documentHtml), selectedDocument.title) }}
                     />
                   ) : (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <RefreshCw className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
-                      <p className="font-medium">Loading content...</p>
-                      <p className="text-sm mt-2">Syncing document from Google Docs</p>
+                    <div className="text-center py-10 text-muted-foreground">
+                      <p className="font-medium">This page hasn’t been published yet.</p>
                     </div>
                   )}
                 </div>
 
-                {/* Page Feedback - only show on public published docs */}
-                {selectedDocument.is_published && selectedProject?.visibility === "public" && (
-                  <PageFeedback 
-                    documentId={selectedDocument.id} 
-                    isOrgUser={isOrgUser}
-                  />
+                {/* Page Feedback - only for public docs pages */}
+                {selectedDocument.published_content_html && selectedProject?.visibility === "public" && (
+                  <PageFeedback documentId={selectedDocument.id} isOrgUser={isOrgUser} />
                 )}
               </article>
 
