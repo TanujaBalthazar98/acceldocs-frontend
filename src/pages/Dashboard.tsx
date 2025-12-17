@@ -55,6 +55,7 @@ import { PageSettingsDialog } from "@/components/dashboard/PageSettingsDialog";
 import { TopicSettingsDialog } from "@/components/dashboard/TopicSettingsDialog";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
+import { TopicsGrid } from "@/components/dashboard/TopicsGrid";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 
@@ -1101,33 +1102,21 @@ const Dashboard = () => {
                 onClick={() => setAddTopicOpen(true)}
                 disabled={!selectedProject}
                 className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                title={!selectedProject ? "Select a project first" : "Add topic"}
               >
                 <Plus className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex flex-wrap gap-3">
-              {!selectedProject ? (
-                <p className="text-sm text-muted-foreground">Select a project to view topics.</p>
-              ) : topics.filter(t => t.project_id === selectedProject.id).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No topics yet. Create one to organize pages.</p>
-              ) : (
-                topics
-                  .filter(t => t.project_id === selectedProject.id)
-                  .map((topic) => (
-                    <button
-                      key={topic.id}
-                      onClick={() => setSelectedTopic(topic)}
-                      className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                        selectedTopic?.id === topic.id
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary text-foreground hover:bg-secondary/80"
-                      }`}
-                    >
-                      {topic.name}
-                    </button>
-                  ))
-              )}
-            </div>
+            {!selectedProject ? (
+              <p className="text-sm text-muted-foreground">Select a project to view topics.</p>
+            ) : (
+              <TopicsGrid
+                topics={topics.filter(t => t.project_id === selectedProject.id)}
+                selectedTopic={selectedTopic}
+                onSelectTopic={setSelectedTopic}
+                documents={documents}
+              />
+            )}
           </div>
 
           {/* Pages Table */}
