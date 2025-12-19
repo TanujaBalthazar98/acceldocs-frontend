@@ -402,21 +402,21 @@ export default function Docs() {
         <button
           onClick={() => hasChildren && toggleTopic(topic.id)}
           className={cn(
-            "flex min-w-0 items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+            "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
             "hover:bg-accent/50 hover:text-accent-foreground",
             isTopicExpanded && "sidebar-item-selected"
           )}
         >
           {hasChildren ? (
             isTopicExpanded ? (
-              <ChevronDown className="h-4 w-4 shrink-0" />
+              <ChevronDown className="h-4 w-4 shrink-0 mt-0.5" />
             ) : (
-              <ChevronRight className="h-4 w-4 shrink-0" />
+              <ChevronRight className="h-4 w-4 shrink-0 mt-0.5" />
             )
           ) : (
-            <div className="w-4" />
+            <div className="w-4 shrink-0 mt-0.5" />
           )}
-          <span className="truncate font-medium min-w-0 flex-1 text-left">{topic.name}</span>
+          <span className={cn(twoLineClampClass, "font-medium")}>{topic.name}</span>
         </button>
 
         {/* Expanded content: child topics and documents */}
@@ -489,7 +489,7 @@ export default function Docs() {
             No pages found
           </div>
         ) : (
-          <nav className="py-2">
+          <nav className="py-2 pr-3">
             {/* Root topics (hierarchical) */}
             {getRootTopics()
               .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
