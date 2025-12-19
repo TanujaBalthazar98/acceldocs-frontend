@@ -394,8 +394,11 @@ export default function Docs() {
     const isTopicExpanded = expandedTopics.has(topic.id);
     const hasChildren = topicDocs.length > 0 || childTopics.length > 0;
 
+    const twoLineClampClass =
+      "min-w-0 flex-1 text-left overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] leading-snug";
+
     return (
-      <div key={topic.id}>
+      <div key={topic.id} className="min-w-0" style={{ paddingLeft: `${depth * 12}px` }}>
         <button
           onClick={() => hasChildren && toggleTopic(topic.id)}
           className={cn(
@@ -403,7 +406,6 @@ export default function Docs() {
             "hover:bg-accent/50 hover:text-accent-foreground",
             isTopicExpanded && "sidebar-item-selected"
           )}
-          style={{ paddingLeft: `${12 + depth * 12}px` }}
         >
           {hasChildren ? (
             isTopicExpanded ? (
@@ -419,28 +421,32 @@ export default function Docs() {
 
         {/* Expanded content: child topics and documents */}
         {isTopicExpanded && hasChildren && (
-          <div className="border-l border-border ml-4 pl-1 mt-1 space-y-0.5" style={{ marginLeft: `${16 + depth * 12}px` }}>
+          <div className="mt-1 space-y-0.5">
             {/* Render child topics recursively */}
-            {childTopics.map(childTopic => renderTopic(childTopic, depth + 1))}
-            
+            {childTopics.map((childTopic) => renderTopic(childTopic, depth + 1))}
+
             {/* Render topic documents */}
-            {topicDocs.map(doc => (
-              <button
-                key={doc.id}
-                onClick={() => selectDocument(doc)}
-                className={cn(
-                  "flex min-w-0 items-center gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
-                )}
-              >
-                <span className="truncate min-w-0 flex-1 text-left">{doc.title}</span>
-                {isOrgUser && !doc.is_published && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
-                    Draft
-                  </Badge>
-                )}
-              </button>
+            {topicDocs.map((doc) => (
+              <div key={doc.id} className="min-w-0" style={{ paddingLeft: "12px" }}>
+                <button
+                  onClick={() => selectDocument(doc)}
+                  className={cn(
+                    "flex min-w-0 items-start gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
+                    "hover:bg-accent hover:text-accent-foreground",
+                    selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
+                  )}
+                >
+                  <span className={twoLineClampClass}>{doc.title}</span>
+                  {isOrgUser && !doc.is_published && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400"
+                    >
+                      Draft
+                    </Badge>
+                  )}
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -495,13 +501,15 @@ export default function Docs() {
                 key={doc.id}
                 onClick={() => selectDocument(doc)}
                 className={cn(
-                  "flex min-w-0 items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                  "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                 )}
               >
-                <FileText className="h-4 w-4 shrink-0" />
-                <span className="truncate min-w-0 flex-1 text-left">{doc.title}</span>
+                <FileText className="h-4 w-4 shrink-0 mt-0.5" />
+                <span className="min-w-0 flex-1 text-left overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] leading-snug">
+                  {doc.title}
+                </span>
               </button>
             ))}
           </nav>
@@ -697,7 +705,7 @@ export default function Docs() {
       <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar - Sticky */}
         {!sidebarCollapsed && (
-          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card sticky top-[6.5rem] h-[calc(100vh-6.5rem)] overflow-hidden">
+          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card sticky top-24 h-[calc(100vh-6rem)] overflow-hidden">
             {sidebarContent}
           </aside>
         )}
