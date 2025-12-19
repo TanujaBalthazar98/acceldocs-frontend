@@ -68,6 +68,8 @@ interface Topic {
   name: string;
   slug: string | null;
   project_id: string;
+  parent_id: string | null;
+  display_order: number | null;
 }
 
 interface Document {
@@ -294,8 +296,9 @@ export default function Docs() {
 
     const { data: topicsData } = await supabase
       .from("topics")
-      .select("id, name, slug, project_id")
+      .select("id, name, slug, project_id, parent_id, display_order")
       .in("project_id", projectIds)
+      .order("display_order")
       .order("name");
 
     if (topicsData) {
@@ -370,11 +373,80 @@ export default function Docs() {
     filteredDocuments.some(d => d.topic_id === t.id)
   );
 
+  // Get root topics (no parent) for hierarchical rendering
+  const getRootTopics = () => filteredTopics.filter(t => !t.parent_id);
+  
+  // Get child topics for a given parent
+  const getChildTopics = (parentId: string) => 
+    filteredTopics.filter(t => t.parent_id === parentId)
+      .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+
   const getTopicDocuments = (topicId: string) =>
     filteredDocuments.filter(d => d.topic_id === topicId);
 
   const getProjectLevelDocuments = () =>
     filteredDocuments.filter(d => !d.topic_id);
+
+  // Recursive topic renderer component
+  const renderTopic = (topic: Topic, depth: number = 0) => {
+    const topicDocs = getTopicDocuments(topic.id);
+    const childTopics = getChildTopics(topic.id);
+    const isTopicExpanded = expandedTopics.has(topic.id);
+    const hasChildren = topicDocs.length > 0 || childTopics.length > 0;
+
+    return (
+      <div key={topic.id}>
+        <button
+          onClick={() => hasChildren && toggleTopic(topic.id)}
+          className={cn(
+            "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+            "hover:bg-accent/50 hover:text-accent-foreground",
+            isTopicExpanded && "sidebar-item-selected"
+          )}
+          style={{ paddingLeft: `${12 + depth * 12}px` }}
+        >
+          {hasChildren ? (
+            isTopicExpanded ? (
+              <ChevronDown className="h-4 w-4 shrink-0" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0" />
+            )
+          ) : (
+            <div className="w-4" />
+          )}
+          <span className="truncate font-medium">{topic.name}</span>
+        </button>
+
+        {/* Expanded content: child topics and documents */}
+        {isTopicExpanded && hasChildren && (
+          <div className="border-l border-border ml-4 pl-1 mt-1 space-y-0.5" style={{ marginLeft: `${16 + depth * 12}px` }}>
+            {/* Render child topics recursively */}
+            {childTopics.map(childTopic => renderTopic(childTopic, depth + 1))}
+            
+            {/* Render topic documents */}
+            {topicDocs.map(doc => (
+              <button
+                key={doc.id}
+                onClick={() => selectDocument(doc)}
+                className={cn(
+                  "flex items-center gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
+                  "hover:bg-accent hover:text-accent-foreground",
+                  selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
+                )}
+              >
+                <span className="truncate flex-1 text-left">{doc.title}</span>
+                {isOrgUser && !doc.is_published && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
+                    Draft
+                  </Badge>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Sidebar content for topics and pages
   const sidebarContent = (
@@ -395,7 +467,7 @@ export default function Docs() {
       </div>
 
       {/* Navigation Tree */}
-      <ScrollArea className="flex-1 p-2">
+      <ScrollArea className="flex-1">
         {loading ? (
           <div className="space-y-2 p-2">
             {[1, 2, 3].map(i => (
@@ -406,65 +478,16 @@ export default function Docs() {
           <div className="p-4 text-center text-muted-foreground text-sm">
             Select a project above
           </div>
-        ) : filteredTopics.length === 0 && getProjectLevelDocuments().length === 0 ? (
+        ) : getRootTopics().length === 0 && getProjectLevelDocuments().length === 0 ? (
           <div className="p-4 text-center text-muted-foreground text-sm">
             No pages found
           </div>
         ) : (
-          <nav className="space-y-1">
-            {/* Topics */}
-            {filteredTopics.map(topic => {
-              const topicDocs = getTopicDocuments(topic.id);
-              const isTopicExpanded = expandedTopics.has(topic.id);
-
-              return (
-                <div key={topic.id}>
-                  <button
-                    onClick={() => topicDocs.length > 0 && toggleTopic(topic.id)}
-                    className={cn(
-                      "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
-                      "hover:bg-accent/50 hover:text-accent-foreground",
-                      isTopicExpanded && "sidebar-item-selected"
-                    )}
-                  >
-                    {topicDocs.length > 0 ? (
-                      isTopicExpanded ? (
-                        <ChevronDown className="h-4 w-4 shrink-0" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 shrink-0" />
-                      )
-                    ) : (
-                      <div className="w-4" />
-                    )}
-                    <span className="truncate font-medium">{topic.name}</span>
-                  </button>
-
-                  {/* Topic documents */}
-                  {isTopicExpanded && topicDocs.length > 0 && (
-                    <div className="ml-4 border-l border-border pl-2 mt-1 space-y-0.5">
-                      {topicDocs.map(doc => (
-                        <button
-                          key={doc.id}
-                          onClick={() => selectDocument(doc)}
-                          className={cn(
-                            "flex items-center gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
-                            "hover:bg-accent hover:text-accent-foreground",
-                            selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
-                          )}
-                        >
-                          <span className="truncate flex-1 text-left">{doc.title}</span>
-                          {isOrgUser && !doc.is_published && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
-                              Draft
-                            </Badge>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <nav className="py-2">
+            {/* Root topics (hierarchical) */}
+            {getRootTopics()
+              .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+              .map(topic => renderTopic(topic, 0))}
 
             {/* Project-level documents (no topic) */}
             {getProjectLevelDocuments().map(doc => (
@@ -478,7 +501,7 @@ export default function Docs() {
                 )}
               >
                 <FileText className="h-4 w-4 shrink-0" />
-                          <span className="truncate flex-1 text-left">{doc.title}</span>
+                <span className="truncate flex-1 text-left">{doc.title}</span>
               </button>
             ))}
           </nav>
