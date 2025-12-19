@@ -5,3 +5,9 @@ verify_jwt = true
 
 [functions.store-refresh-token]
 verify_jwt = true
+
+[functions.serve-robots-txt]
+verify_jwt = false
+
+[functions.serve-llms-txt]
+verify_jwt = false

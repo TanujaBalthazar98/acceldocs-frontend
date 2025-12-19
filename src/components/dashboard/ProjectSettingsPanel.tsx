@@ -18,7 +18,10 @@ import {
   Eye,
   Send,
   CheckCircle,
+  Search,
+  Bot,
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +40,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDistanceToNow } from "date-fns";
+import { SEOSettings } from "./SEOSettings";
 
 type VisibilityLevel = "internal" | "external" | "public";
 type ProjectRole = "admin" | "editor" | "reviewer" | "viewer";
@@ -433,42 +437,51 @@ export const ProjectSettingsPanel = ({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-8 mt-6">
-          {/* Publish Status */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground">
-              Publish Status
-            </label>
-            <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
-              <div className="flex items-center gap-3">
-                {isPublished ? (
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                ) : (
-                  <Globe className="w-5 h-5 text-muted-foreground" />
-                )}
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {isPublished ? "Published" : "Not Published"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {isPublished 
-                      ? `Visible to ${visibility === "public" ? "everyone" : visibility === "external" ? "external users" : "internal users"}`
-                      : "Only visible in dashboard"}
-                  </p>
+        <Tabs defaultValue="general" className="mt-6">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="seo" className="gap-1">
+              <Search className="w-3 h-3" />
+              SEO & AI
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="general" className="space-y-8">
+            {/* Publish Status */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-foreground">
+                Publish Status
+              </label>
+              <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
+                <div className="flex items-center gap-3">
+                  {isPublished ? (
+                    <CheckCircle className="w-5 h-5 text-green-500" />
+                  ) : (
+                    <Globe className="w-5 h-5 text-muted-foreground" />
+                  )}
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {isPublished ? "Published" : "Not Published"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {isPublished 
+                        ? `Visible to ${visibility === "public" ? "everyone" : visibility === "external" ? "external users" : "internal users"}`
+                        : "Only visible in dashboard"}
+                    </p>
+                  </div>
                 </div>
+                <Button
+                  variant={isPublished ? "outline" : "hero"}
+                  size="sm"
+                  onClick={handlePublish}
+                  disabled={isPublishing}
+                  className="gap-2"
+                >
+                  <Send className="w-3 h-3" />
+                  {isPublishing ? "..." : isPublished ? "Unpublish" : "Publish"}
+                </Button>
               </div>
-              <Button
-                variant={isPublished ? "outline" : "hero"}
-                size="sm"
-                onClick={handlePublish}
-                disabled={isPublishing}
-                className="gap-2"
-              >
-                <Send className="w-3 h-3" />
-                {isPublishing ? "..." : isPublished ? "Unpublish" : "Publish"}
-              </Button>
             </div>
-          </div>
 
           {/* Visibility */}
           <div className="space-y-3">
@@ -711,7 +724,12 @@ export const ProjectSettingsPanel = ({
               </div>
             </div>
           </div>
-        </div>
+          </TabsContent>
+          
+          <TabsContent value="seo">
+            <SEOSettings projectId={projectId} />
+          </TabsContent>
+        </Tabs>
       </SheetContent>
     </Sheet>
   );
