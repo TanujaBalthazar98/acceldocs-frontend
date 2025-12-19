@@ -437,42 +437,66 @@ export type Database = {
       }
       projects: {
         Row: {
+          allow_indexing: boolean | null
+          allow_llm_crawlers: string[] | null
+          allow_llm_summarization: boolean | null
+          allow_llm_training: boolean | null
           created_at: string
           created_by: string
           description: string | null
+          disallowed_paths: string[] | null
           drive_folder_id: string | null
           id: string
           is_connected: boolean | null
           is_published: boolean
+          mcp_enabled: boolean | null
           name: string
+          openapi_spec_json: Json | null
+          openapi_spec_url: string | null
           organization_id: string
           slug: string | null
           updated_at: string
           visibility: Database["public"]["Enums"]["visibility_level"]
         }
         Insert: {
+          allow_indexing?: boolean | null
+          allow_llm_crawlers?: string[] | null
+          allow_llm_summarization?: boolean | null
+          allow_llm_training?: boolean | null
           created_at?: string
           created_by: string
           description?: string | null
+          disallowed_paths?: string[] | null
           drive_folder_id?: string | null
           id?: string
           is_connected?: boolean | null
           is_published?: boolean
+          mcp_enabled?: boolean | null
           name: string
+          openapi_spec_json?: Json | null
+          openapi_spec_url?: string | null
           organization_id: string
           slug?: string | null
           updated_at?: string
           visibility?: Database["public"]["Enums"]["visibility_level"]
         }
         Update: {
+          allow_indexing?: boolean | null
+          allow_llm_crawlers?: string[] | null
+          allow_llm_summarization?: boolean | null
+          allow_llm_training?: boolean | null
           created_at?: string
           created_by?: string
           description?: string | null
+          disallowed_paths?: string[] | null
           drive_folder_id?: string | null
           id?: string
           is_connected?: boolean | null
           is_published?: boolean
+          mcp_enabled?: boolean | null
           name?: string
+          openapi_spec_json?: Json | null
+          openapi_spec_url?: string | null
           organization_id?: string
           slug?: string | null
           updated_at?: string

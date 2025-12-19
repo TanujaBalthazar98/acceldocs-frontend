@@ -31,6 +31,7 @@ import { DocsLanding } from "@/components/docs/DocsLanding";
 import { TableOfContents } from "@/components/docs/TableOfContents";
 import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 import { PageFeedback } from "@/components/docs/PageFeedback";
+import { ThemeToggle } from "@/components/docs/ThemeToggle";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 
 type VisibilityLevel = "internal" | "external" | "public";
@@ -631,8 +632,9 @@ export default function Docs() {
             )}
           </div>
 
-          {/* Right: Auth buttons */}
+          {/* Right: Theme toggle + Auth buttons */}
           <div className="flex items-center gap-2">
+            <ThemeToggle className="h-9 w-9" />
             {authLoading ? (
               <Skeleton className="h-9 w-24" />
             ) : user ? (
