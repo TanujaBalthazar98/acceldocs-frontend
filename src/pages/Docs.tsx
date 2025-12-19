@@ -399,7 +399,7 @@ export default function Docs() {
         <button
           onClick={() => hasChildren && toggleTopic(topic.id)}
           className={cn(
-            "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+            "flex min-w-0 items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
             "hover:bg-accent/50 hover:text-accent-foreground",
             isTopicExpanded && "sidebar-item-selected"
           )}
@@ -414,7 +414,7 @@ export default function Docs() {
           ) : (
             <div className="w-4" />
           )}
-          <span className="truncate font-medium">{topic.name}</span>
+          <span className="truncate font-medium min-w-0 flex-1 text-left">{topic.name}</span>
         </button>
 
         {/* Expanded content: child topics and documents */}
@@ -429,12 +429,12 @@ export default function Docs() {
                 key={doc.id}
                 onClick={() => selectDocument(doc)}
                 className={cn(
-                  "flex items-center gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
+                  "flex min-w-0 items-center gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                 )}
               >
-                <span className="truncate flex-1 text-left">{doc.title}</span>
+                <span className="truncate min-w-0 flex-1 text-left">{doc.title}</span>
                 {isOrgUser && !doc.is_published && (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400">
                     Draft
@@ -495,13 +495,13 @@ export default function Docs() {
                 key={doc.id}
                 onClick={() => selectDocument(doc)}
                 className={cn(
-                  "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                  "flex min-w-0 items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                 )}
               >
                 <FileText className="h-4 w-4 shrink-0" />
-                <span className="truncate flex-1 text-left">{doc.title}</span>
+                <span className="truncate min-w-0 flex-1 text-left">{doc.title}</span>
               </button>
             ))}
           </nav>
@@ -694,10 +694,10 @@ export default function Docs() {
       </div>
 
       {/* Main Layout */}
-      <div className="flex flex-1">
+      <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar - Sticky */}
         {!sidebarCollapsed && (
-          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card sticky top-[7.5rem] h-[calc(100vh-7.5rem)] overflow-y-auto">
+          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card sticky top-[6.5rem] h-[calc(100vh-6.5rem)] overflow-hidden">
             {sidebarContent}
           </aside>
         )}
