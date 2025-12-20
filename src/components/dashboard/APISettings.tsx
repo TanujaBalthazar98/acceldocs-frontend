@@ -8,6 +8,26 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+// Recursively sanitize object to remove unsupported Unicode escape sequences
+const sanitizeForJson = (obj: unknown): unknown => {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === "string") {
+    // Remove problematic control characters (U+0000 to U+001F except \t, \n, \r)
+    return obj.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForJson);
+  }
+  if (typeof obj === "object") {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      sanitized[key] = sanitizeForJson(value);
+    }
+    return sanitized;
+  }
+  return obj;
+};
+
 interface APISettingsProps {
   projectId: string;
 }
@@ -109,11 +129,11 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
   const handleSave = async () => {
     setSaving(true);
 
-    // Serialize & re-parse to ensure valid JSON (removes unsupported Unicode escapes)
+    // Deep sanitize to remove unsupported Unicode escape sequences
     let sanitizedSpec: object | null = null;
     if (openApiSpec) {
       try {
-        sanitizedSpec = JSON.parse(JSON.stringify(openApiSpec));
+        sanitizedSpec = sanitizeForJson(openApiSpec) as object;
       } catch {
         toast({
           title: "Error",
