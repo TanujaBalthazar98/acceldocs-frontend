@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -267,9 +268,13 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
           <div className="p-2 rounded-lg bg-primary/10">
             <Code className="h-6 w-6 text-primary" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-bold text-foreground">{loadedSpec.info.title}</h1>
-            <p className="text-muted-foreground">{loadedSpec.info.description}</p>
+            {loadedSpec.info.description && (
+              <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none mt-2">
+                <ReactMarkdown>{loadedSpec.info.description}</ReactMarkdown>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -341,7 +346,9 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
                     <CollapsibleContent>
                       <div className="p-4 border-x border-b border-border rounded-b-lg bg-card/50 space-y-4">
                         {operation.description && (
-                          <p className="text-sm text-muted-foreground">{operation.description}</p>
+                          <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                            <ReactMarkdown>{operation.description}</ReactMarkdown>
+                          </div>
                         )}
 
                         <Tabs defaultValue="params" className="w-full">
