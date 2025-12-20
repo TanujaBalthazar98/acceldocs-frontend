@@ -24,21 +24,14 @@ interface Organization {
   custom_css: string | null;
 }
 
-interface Project {
-  id: string;
-  name: string;
-  slug: string | null;
-  openapi_spec_json: Json | null;
-  openapi_spec_url: string | null;
-  organization_id: string;
-}
 
 export default function APIDocs() {
-  const { orgSlug, projectSlug } = useParams();
+  const { orgSlug } = useParams();
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [project, setProject] = useState<Project | null>(null);
+  const [openApiSpec, setOpenApiSpec] = useState<Json | null>(null);
+  const [openApiSpecUrl, setOpenApiSpecUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Load branding fonts
@@ -56,14 +49,14 @@ export default function APIDocs() {
   } : null);
 
   useEffect(() => {
-    if (!orgSlug || !projectSlug) {
-      setError("Missing organization or project");
+    if (!orgSlug) {
+      setError("Missing organization");
       setLoading(false);
       return;
     }
 
     fetchData();
-  }, [orgSlug, projectSlug]);
+  }, [orgSlug]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -86,22 +79,23 @@ export default function APIDocs() {
 
       setOrganization(org);
 
-      // Fetch project by slug
-      const { data: proj, error: projError } = await supabase
+      // Fetch all projects for this org that have an OpenAPI spec
+      const { data: projects, error: projError } = await supabase
         .from("projects")
         .select("id, name, slug, openapi_spec_json, openapi_spec_url, organization_id")
         .eq("organization_id", org.id)
-        .eq("slug", projectSlug)
-        .maybeSingle();
+        .or("openapi_spec_json.not.is.null,openapi_spec_url.not.is.null");
 
       if (projError) throw projError;
-      if (!proj) {
-        setError("Project not found");
-        setLoading(false);
-        return;
+      
+      // Combine all OpenAPI specs from projects (use first one for now)
+      if (projects && projects.length > 0) {
+        const projectWithSpec = projects.find(p => p.openapi_spec_json || p.openapi_spec_url);
+        if (projectWithSpec) {
+          setOpenApiSpec(projectWithSpec.openapi_spec_json);
+          setOpenApiSpecUrl(projectWithSpec.openapi_spec_url);
+        }
       }
-
-      setProject(proj);
     } catch (err) {
       console.error("Error fetching API docs data:", err);
       setError("Failed to load API documentation");
@@ -128,7 +122,7 @@ export default function APIDocs() {
     );
   }
 
-  if (error || !project) {
+  if (error) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -150,17 +144,17 @@ export default function APIDocs() {
     );
   }
 
-  const hasApiSpec = project.openapi_spec_json || project.openapi_spec_url;
+  const hasApiSpec = openApiSpec || openApiSpecUrl;
 
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex h-14 items-center justify-between px-4 lg:px-6">
-          {/* Left: Logo & Back */}
+          {/* Left: Logo & Title */}
           <div className="flex items-center gap-4">
             <Link 
-              to={`/docs/${orgSlug}/${projectSlug}`}
+              to={`/docs/${orgSlug}`}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
               {organization?.logo_url ? (
@@ -175,8 +169,6 @@ export default function APIDocs() {
                 </span>
               )}
             </Link>
-            <span className="text-muted-foreground">/</span>
-            <span className="font-medium text-foreground">{project.name}</span>
             <span className="text-muted-foreground">/</span>
             <span className="text-muted-foreground">API Reference</span>
           </div>
@@ -207,8 +199,8 @@ export default function APIDocs() {
       <main>
         {hasApiSpec ? (
           <APIDocsComponent 
-            spec={project.openapi_spec_json as any} 
-            specUrl={project.openapi_spec_url || undefined}
+            spec={openApiSpec as any} 
+            specUrl={openApiSpecUrl || undefined}
           />
         ) : (
           <div className="max-w-4xl mx-auto p-6 lg:p-8">
@@ -216,7 +208,7 @@ export default function APIDocs() {
               <FileJson className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
               <h2 className="text-xl font-semibold text-foreground mb-2">No API Specification</h2>
               <p className="text-muted-foreground">
-                This project doesn't have an OpenAPI specification configured yet.
+                No OpenAPI specification has been configured for this organization yet.
               </p>
             </div>
           </div>
