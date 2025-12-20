@@ -52,7 +52,7 @@ const App = () => (
                 <Route path="/docs/:orgSlug/:projectSlug/:pageSlug" element={<Docs />} />
                 <Route path="/docs/:orgSlug/:projectSlug/:topicSlug/:pageSlug" element={<Docs />} />
                 {/* Standalone API documentation routes */}
-                <Route path="/api/:orgSlug/:projectSlug" element={<APIDocs />} />
+                <Route path="/api/:orgSlug" element={<APIDocs />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
