@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Upload, Link as LinkIcon, FileJson, Check, X, Loader2 } from "lucide-react";
+import yaml from "js-yaml";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -56,18 +57,11 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
       const text = await file.text();
       let parsed;
 
-      if (file.name.endsWith(".json")) {
+      if (file.name.endsWith(".yaml") || file.name.endsWith(".yml")) {
+        parsed = yaml.load(text) as object;
+      } else {
+        // Default to JSON
         parsed = JSON.parse(text);
-      } else if (file.name.endsWith(".yaml") || file.name.endsWith(".yml")) {
-        // For YAML, we'd need a YAML parser library
-        // For now, just try JSON
-        toast({
-          title: "YAML not supported yet",
-          description: "Please convert your YAML spec to JSON.",
-          variant: "destructive",
-        });
-        setValidating(false);
-        return;
       }
 
       // Basic OpenAPI validation
@@ -214,7 +208,7 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
                 <>
                   <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
-                    Drop your OpenAPI JSON file here or click to browse
+                    Drop your OpenAPI JSON or YAML file here or click to browse
                   </p>
                 </>
               )}
