@@ -108,20 +108,41 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
 
   const handleSave = async () => {
     setSaving(true);
-    
+
+    // Serialize & re-parse to ensure valid JSON (removes unsupported Unicode escapes)
+    let sanitizedSpec: object | null = null;
+    if (openApiSpec) {
+      try {
+        sanitizedSpec = JSON.parse(JSON.stringify(openApiSpec));
+      } catch {
+        toast({
+          title: "Error",
+          description: "OpenAPI spec contains invalid data.",
+          variant: "destructive",
+        });
+        setSaving(false);
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from("projects")
       .update({
         mcp_enabled: mcpEnabled,
         openapi_spec_url: openApiUrl || null,
-        openapi_spec_json: openApiSpec as any,
+        openapi_spec_json: sanitizedSpec as any,
       })
       .eq("id", projectId);
 
     setSaving(false);
 
     if (error) {
-      toast({ title: "Error", description: "Failed to save API settings.", variant: "destructive" });
+      console.error("Save API settings error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save API settings.",
+        variant: "destructive",
+      });
     } else {
       toast({ title: "Saved", description: "API documentation settings updated." });
     }
