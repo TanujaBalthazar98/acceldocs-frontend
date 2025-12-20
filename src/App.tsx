@@ -12,6 +12,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import PagePreview from "./pages/PagePreview";
 import Docs from "./pages/Docs";
+import APIDocs from "./pages/APIDocs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -50,6 +51,8 @@ const App = () => (
                 <Route path="/docs/:orgSlug/:projectSlug" element={<Docs />} />
                 <Route path="/docs/:orgSlug/:projectSlug/:pageSlug" element={<Docs />} />
                 <Route path="/docs/:orgSlug/:projectSlug/:topicSlug/:pageSlug" element={<Docs />} />
+                {/* Standalone API documentation routes */}
+                <Route path="/api/:orgSlug/:projectSlug" element={<APIDocs />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

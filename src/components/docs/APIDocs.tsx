@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -271,8 +272,8 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-foreground">{loadedSpec.info.title}</h1>
             {loadedSpec.info.description && (
-              <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none mt-2">
-                <ReactMarkdown>{loadedSpec.info.description}</ReactMarkdown>
+              <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none mt-2 prose-table:border prose-table:border-border prose-th:border prose-th:border-border prose-th:px-3 prose-th:py-2 prose-th:bg-muted prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{loadedSpec.info.description}</ReactMarkdown>
               </div>
             )}
           </div>
@@ -346,8 +347,8 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
                     <CollapsibleContent>
                       <div className="p-4 border-x border-b border-border rounded-b-lg bg-card/50 space-y-4">
                         {operation.description && (
-                          <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
-                            <ReactMarkdown>{operation.description}</ReactMarkdown>
+                          <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none prose-table:border prose-table:border-border prose-th:border prose-th:border-border prose-th:px-3 prose-th:py-2 prose-th:bg-muted prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{operation.description}</ReactMarkdown>
                           </div>
                         )}
 
