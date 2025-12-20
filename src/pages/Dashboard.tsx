@@ -203,22 +203,51 @@ const Dashboard = () => {
           }
           
           // Get documents for all projects with owner info
+          // Note: avoid fetching heavy HTML content for already-published pages (faster dashboard load)
           const { data: docsData } = await supabase
             .from("documents")
-            .select(`
-              id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at, visibility, is_published, owner_id, content_html, published_content_html,
+            .select(
+              `
+              id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at, updated_at,
+              visibility, is_published, owner_id,
               owner:profiles!documents_owner_id_fkey(full_name, email)
-            `)
+            `
+            )
             .in("project_id", projectIds)
             .order("created_at", { ascending: false });
-          
+
           if (docsData) {
-            // Map the owner data to a flat owner_name field
-            const docsWithOwnerName = docsData.map(doc => ({
+            const baseDocs = docsData.map((doc: any) => ({
               ...doc,
-              owner_name: doc.owner?.full_name || doc.owner?.email?.split('@')[0] || null,
+              // default to null so the rest of the dashboard logic keeps working
+              content_html: null,
+              published_content_html: null,
+              owner_name: doc.owner?.full_name || doc.owner?.email?.split("@")[0] || null,
             }));
-            setDocuments(docsWithOwnerName as Document[]);
+
+            const unpublishedIds = baseDocs
+              .filter((d: any) => !d.is_published)
+              .map((d: any) => d.id);
+
+            if (unpublishedIds.length > 0) {
+              const { data: contentRows } = await supabase
+                .from("documents")
+                .select("id, content_html, published_content_html")
+                .in("id", unpublishedIds);
+
+              const contentById = new Map(
+                (contentRows || []).map((r: any) => [r.id, r])
+              );
+
+              const merged = baseDocs.map((d: any) => ({
+                ...d,
+                ...(contentById.get(d.id) || {}),
+              }));
+
+              setDocuments(merged as Document[]);
+            } else {
+              setDocuments(baseDocs as Document[]);
+            }
           }
         }
       }
