@@ -673,8 +673,10 @@ export default function Docs() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col docs-branded">
-      {/* Top Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-50">
+      {/* Sticky Navigation Container */}
+      <div className="sticky top-0 z-50">
+        {/* Top Header */}
+        <header className="border-b border-border bg-card">
         <div className="flex items-center justify-between px-4 lg:px-6 h-14">
           {/* Left: Organization Logo/Name */}
           <div className="flex items-center gap-3">
@@ -754,35 +756,36 @@ export default function Docs() {
             </Sheet>
           </div>
         </div>
-      </header>
+        </header>
 
-      {/* Project Tabs Bar */}
-      <div className="border-b border-border bg-card">
-        <div className="flex items-center gap-1 px-4 lg:px-6 overflow-x-auto">
-          {loading ? (
-            <div className="flex gap-2 py-2">
-              {[1, 2, 3].map(i => (
-                <Skeleton key={i} className="h-8 w-24" />
-              ))}
-            </div>
-          ) : projects.length === 0 ? (
-            <div className="py-3 text-sm text-muted-foreground">No projects available</div>
-          ) : (
-            projects.map(project => (
-              <button
-                key={project.id}
-                onClick={() => selectProject(project)}
-                className={cn(
-                  "px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
-                  selectedProject?.id === project.id
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                )}
-              >
-                {project.name}
-              </button>
-            ))
-          )}
+        {/* Project Tabs Bar */}
+        <div className="border-b border-border bg-card">
+          <div className="flex items-center gap-1 px-4 lg:px-6 overflow-x-auto">
+            {loading ? (
+              <div className="flex gap-2 py-2">
+                {[1, 2, 3].map(i => (
+                  <Skeleton key={i} className="h-8 w-24" />
+                ))}
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="py-3 text-sm text-muted-foreground">No projects available</div>
+            ) : (
+              projects.map(project => (
+                <button
+                  key={project.id}
+                  onClick={() => selectProject(project)}
+                  className={cn(
+                    "px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
+                    selectedProject?.id === project.id
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                  )}
+                >
+                  {project.name}
+                </button>
+              ))
+            )}
+          </div>
         </div>
       </div>
 
@@ -790,7 +793,7 @@ export default function Docs() {
       <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar - Sticky */}
         {!sidebarCollapsed && (
-          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card sticky top-24 h-[calc(100vh-6rem)] overflow-hidden">
+          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card sticky top-[104px] h-[calc(100vh-104px)] overflow-hidden">
             {sidebarContent}
           </aside>
         )}
