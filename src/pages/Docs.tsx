@@ -11,7 +11,9 @@ import {
   Eye,
   Globe,
   Sparkles,
-  PanelLeftClose
+  PanelLeftClose,
+  Bot,
+  Code,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,8 @@ import { TableOfContents } from "@/components/docs/TableOfContents";
 import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 import { PageFeedback } from "@/components/docs/PageFeedback";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
+import { MCPDocs } from "@/components/docs/MCPDocs";
+import { APIDocs } from "@/components/docs/APIDocs";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 
 type VisibilityLevel = "internal" | "external" | "public";
@@ -43,6 +47,9 @@ interface Project {
   visibility: VisibilityLevel;
   is_published: boolean;
   organization_id: string;
+  mcp_enabled?: boolean | null;
+  openapi_spec_json?: any;
+  openapi_spec_url?: string | null;
 }
 
 interface Organization {
@@ -155,6 +162,8 @@ export default function Docs() {
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
+  const [showMCPDocs, setShowMCPDocs] = useState(false);
+  const [showAPIDocs, setShowAPIDocs] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !hasFetched) {
@@ -196,9 +205,32 @@ export default function Docs() {
     }
   }, [projectSlug, projects]);
 
-  // Handle document selection from URL
+  // Handle document selection from URL + MCP/API routes
   useEffect(() => {
-    if (documents.length === 0 || !selectedProject) return;
+    if (!selectedProject) return;
+
+    // Check for special routes first
+    if (pageSlug === "mcp" && selectedProject.mcp_enabled) {
+      setShowMCPDocs(true);
+      setShowAPIDocs(false);
+      setSelectedDocument(null);
+      setDocumentHtml(null);
+      return;
+    }
+    
+    if (pageSlug === "api" && selectedProject.openapi_spec_json) {
+      setShowAPIDocs(true);
+      setShowMCPDocs(false);
+      setSelectedDocument(null);
+      setDocumentHtml(null);
+      return;
+    }
+
+    // Reset special views
+    setShowMCPDocs(false);
+    setShowAPIDocs(false);
+
+    if (documents.length === 0) return;
 
     if (pageSlug) {
       let doc: Document | undefined;
@@ -220,11 +252,13 @@ export default function Docs() {
         }
       }
       
+      if (doc) {
         setSelectedDocument(doc);
         setPublishedContent(doc);
         if (doc.topic_id) {
           setExpandedTopics(prev => new Set([...prev, doc.topic_id!]));
         }
+      }
     }
   }, [pageSlug, topicSlug, selectedProject, documents, topics, currentOrg]);
 
@@ -273,7 +307,7 @@ export default function Docs() {
 
       let projectsQuery = supabase
         .from("projects")
-        .select("id, name, slug, visibility, is_published, organization_id")
+        .select("id, name, slug, visibility, is_published, organization_id, mcp_enabled, openapi_spec_json, openapi_spec_url")
         .eq("is_published", true)
         .order("name");
 
@@ -513,6 +547,55 @@ export default function Docs() {
                 </span>
               </button>
             ))}
+
+            {/* Developer Section - MCP & API */}
+            {(selectedProject?.mcp_enabled || selectedProject?.openapi_spec_json) && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  Developer
+                </p>
+                
+                {selectedProject?.openapi_spec_json && (
+                  <Link
+                    to={currentOrg ? `/docs/${currentOrg.slug || currentOrg.domain}/${selectedProject.slug}/api` : "#"}
+                    onClick={() => {
+                      setShowAPIDocs(true);
+                      setShowMCPDocs(false);
+                      setSelectedDocument(null);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={cn(
+                      "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                      "hover:bg-accent hover:text-accent-foreground",
+                      showAPIDocs && "sidebar-item-selected font-medium"
+                    )}
+                  >
+                    <Code className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>API Reference</span>
+                  </Link>
+                )}
+                
+                {selectedProject?.mcp_enabled && (
+                  <Link
+                    to={currentOrg ? `/docs/${currentOrg.slug || currentOrg.domain}/${selectedProject.slug}/mcp` : "#"}
+                    onClick={() => {
+                      setShowMCPDocs(true);
+                      setShowAPIDocs(false);
+                      setSelectedDocument(null);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={cn(
+                      "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                      "hover:bg-accent hover:text-accent-foreground",
+                      showMCPDocs && "sidebar-item-selected font-medium"
+                    )}
+                  >
+                    <Bot className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>MCP Protocol</span>
+                  </Link>
+                )}
+              </div>
+            )}
           </nav>
         )}
       </ScrollArea>
@@ -734,6 +817,10 @@ export default function Docs() {
               <Skeleton className="h-6 w-1/2" />
               <Skeleton className="h-96 w-full" />
             </div>
+          ) : showMCPDocs && selectedProject?.mcp_enabled ? (
+            <MCPDocs projectName={selectedProject.name} />
+          ) : showAPIDocs && selectedProject?.openapi_spec_json ? (
+            <APIDocs spec={selectedProject.openapi_spec_json} />
           ) : selectedDocument ? (
             <div className="flex">
               {/* Article content */}

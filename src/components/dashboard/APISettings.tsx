@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Upload, Link as LinkIcon, FileJson, Check, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [mcpEnabled, setMcpEnabled] = useState(false);
   const [openApiUrl, setOpenApiUrl] = useState("");
@@ -23,6 +23,27 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
   const [specFileName, setSpecFileName] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Fetch existing settings on mount
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("mcp_enabled, openapi_spec_url, openapi_spec_json")
+        .eq("id", projectId)
+        .single();
+
+      if (data && !error) {
+        setMcpEnabled(data.mcp_enabled ?? false);
+        setOpenApiUrl(data.openapi_spec_url ?? "");
+        if (data.openapi_spec_json) {
+          setOpenApiSpec(data.openapi_spec_json as object);
+        }
+      }
+      setLoading(false);
+    };
+    fetchSettings();
+  }, [projectId]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -121,6 +142,10 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
       fileInputRef.current.value = "";
     }
   };
+
+  if (loading) {
+    return <div className="py-4 text-sm text-muted-foreground">Loading settings...</div>;
+  }
 
   return (
     <div className="space-y-6">
