@@ -41,8 +41,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return localStorage.getItem(GOOGLE_TOKEN_KEY);
   });
 
+  // Track if we've already tried to store refresh token this session
+  const [hasAttemptedStoreToken, setHasAttemptedStoreToken] = useState(false);
+
   // Store refresh token by calling edge function that uses admin API
   const storeRefreshToken = async () => {
+    // Only attempt once per session to avoid repeated calls
+    if (hasAttemptedStoreToken) return;
+    setHasAttemptedStoreToken(true);
+    
     try {
       console.log("Calling store-refresh-token edge function...");
       const { data, error } = await supabase.functions.invoke('store-refresh-token');
@@ -58,10 +65,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   useEffect(() => {
+    let initialLoadDone = false;
+    
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log("Auth state changed:", event, "provider_refresh_token:", !!session?.provider_refresh_token);
+        console.log("Auth state changed:", event);
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
@@ -73,25 +82,24 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           setGoogleAccessToken(session.provider_token);
         }
         
-        // Try to store refresh token via edge function on sign in
-        if (event === 'SIGNED_IN' && session?.user?.id) {
+        // Try to store refresh token via edge function only on initial sign in (not on TOKEN_REFRESHED)
+        if (event === 'SIGNED_IN' && session?.user?.id && !initialLoadDone) {
           console.log("User signed in, attempting to store refresh token via edge function...");
-          // Use setTimeout to avoid Supabase auth state change deadlock
-          setTimeout(() => {
-            storeRefreshToken();
-          }, 500);
+          setTimeout(() => storeRefreshToken(), 500);
         }
         
         // Clear token on sign out
         if (event === "SIGNED_OUT") {
           localStorage.removeItem(GOOGLE_TOKEN_KEY);
           setGoogleAccessToken(null);
+          setHasAttemptedStoreToken(false); // Reset for next login
         }
       }
     );
 
     // THEN check for existing session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      initialLoadDone = true;
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -101,12 +109,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         console.log("Initial session has provider_token, storing it");
         localStorage.setItem(GOOGLE_TOKEN_KEY, session.provider_token);
         setGoogleAccessToken(session.provider_token);
-      }
-      
-      // Try to store refresh token on initial load if user is signed in
-      if (session?.user?.id) {
-        console.log("Initial session found, attempting to store refresh token...");
-        storeRefreshToken();
       }
     });
 
