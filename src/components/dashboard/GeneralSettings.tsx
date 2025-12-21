@@ -26,9 +26,7 @@ import {
   Globe,
   Loader2,
   Wand2,
-  FileJson,
 } from "lucide-react";
-import { OrgAPISettings } from "./OrgAPISettings";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -374,10 +372,9 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         </div>
 
         <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="branding">Branding</TabsTrigger>
-            <TabsTrigger value="api">API / MCP</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
           </TabsList>
 
@@ -884,27 +881,6 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
             </section>
           </TabsContent>
 
-          {/* API / MCP Tab */}
-          <TabsContent value="api" className="space-y-10">
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <FileJson className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Developer Documentation</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card">
-                <p className="text-sm text-muted-foreground mb-6">
-                  Configure API and MCP documentation for your organization. These settings apply to all projects.
-                </p>
-                {organizationId && (
-                  <OrgAPISettings 
-                    organizationId={organizationId} 
-                    orgSlug={domain}
-                  />
-                )}
-              </div>
-            </section>
-          </TabsContent>
 
           {/* Appearance Tab */}
           <TabsContent value="appearance" className="space-y-10">
