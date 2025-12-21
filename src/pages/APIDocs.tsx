@@ -63,7 +63,7 @@ export default function APIDocs() {
     setError(null);
 
     try {
-      // Fetch organization by slug or domain
+      // Fetch organization by slug or domain - including OpenAPI spec fields
       const { data: org, error: orgError } = await supabase
         .from("organizations")
         .select("*")
@@ -78,24 +78,10 @@ export default function APIDocs() {
       }
 
       setOrganization(org);
-
-      // Fetch all projects for this org that have an OpenAPI spec
-      const { data: projects, error: projError } = await supabase
-        .from("projects")
-        .select("id, name, slug, openapi_spec_json, openapi_spec_url, organization_id")
-        .eq("organization_id", org.id)
-        .or("openapi_spec_json.not.is.null,openapi_spec_url.not.is.null");
-
-      if (projError) throw projError;
       
-      // Combine all OpenAPI specs from projects (use first one for now)
-      if (projects && projects.length > 0) {
-        const projectWithSpec = projects.find(p => p.openapi_spec_json || p.openapi_spec_url);
-        if (projectWithSpec) {
-          setOpenApiSpec(projectWithSpec.openapi_spec_json);
-          setOpenApiSpecUrl(projectWithSpec.openapi_spec_url);
-        }
-      }
+      // Get OpenAPI spec directly from organization
+      setOpenApiSpec((org as any).openapi_spec_json);
+      setOpenApiSpecUrl((org as any).openapi_spec_url);
     } catch (err) {
       console.error("Error fetching API docs data:", err);
       setError("Failed to load API documentation");

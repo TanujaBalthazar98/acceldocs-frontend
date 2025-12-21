@@ -207,6 +207,8 @@ export type Database = {
           id: string
           logo_url: string | null
           name: string
+          openapi_spec_json: Json | null
+          openapi_spec_url: string | null
           owner_id: string
           primary_color: string | null
           secondary_color: string | null
@@ -229,6 +231,8 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name: string
+          openapi_spec_json?: Json | null
+          openapi_spec_url?: string | null
           owner_id: string
           primary_color?: string | null
           secondary_color?: string | null
@@ -251,6 +255,8 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name?: string
+          openapi_spec_json?: Json | null
+          openapi_spec_url?: string | null
           owner_id?: string
           primary_color?: string | null
           secondary_color?: string | null
