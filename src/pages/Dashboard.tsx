@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { SmartSearch } from "@/components/SmartSearch";
 import { PageView } from "@/components/dashboard/PageView";
 import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
 import { AddPageDialog } from "@/components/dashboard/AddPageDialog";
@@ -830,16 +831,49 @@ const Dashboard = () => {
 
         {/* Search */}
         <div className="p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search docs..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg bg-secondary text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
+          <SmartSearch
+            placeholder="Search docs..."
+            documents={documents.map(d => ({
+              id: d.id,
+              title: d.title,
+              project_id: d.project_id,
+              topic_id: d.topic_id,
+              content_html: d.content_html,
+            }))}
+            topics={topics.map(t => ({
+              id: t.id,
+              name: t.name,
+              project_id: t.project_id,
+            }))}
+            projects={projects.map(p => ({
+              id: p.id,
+              name: p.name,
+            }))}
+            showAIButton={false}
+            onSearch={setSearchQuery}
+            onSelect={(result) => {
+              if (result.type === "project") {
+                const project = projects.find(p => p.id === result.id);
+                if (project) {
+                  setSelectedProject(project);
+                  setSelectedTopic(null);
+                  setExpandedProjects(prev => new Set([...prev, project.id]));
+                }
+              } else if (result.type === "topic") {
+                const topic = topics.find(t => t.id === result.id);
+                if (topic) {
+                  const project = projects.find(p => p.id === topic.project_id);
+                  if (project) {
+                    setSelectedProject(project);
+                    setSelectedTopic(topic);
+                    setExpandedProjects(prev => new Set([...prev, project.id]));
+                  }
+                }
+              } else if (result.type === "page") {
+                navigate(`/page/${result.id}`);
+              }
+            }}
+          />
         </div>
 
         {/* Projects */}
