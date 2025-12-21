@@ -11,6 +11,7 @@ import {
   Globe,
   Sparkles,
   PanelLeftClose,
+  Code,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,12 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -732,9 +739,9 @@ export default function Docs() {
 
         {/* Project Tabs Bar */}
         <div className="border-b border-border bg-card">
-          <div className="flex items-center justify-between px-4 lg:px-6">
-            {/* Left: Project tabs */}
-            <div className="flex items-center gap-1 overflow-x-auto">
+          <div className="flex items-center justify-between">
+            {/* Left: Project tabs - aligned with sidebar */}
+            <div className="flex items-center gap-1 overflow-x-auto pl-4 lg:pl-6">
               {loading ? (
                 <div className="flex gap-2 py-2">
                   {[1, 2, 3].map(i => (
@@ -761,26 +768,34 @@ export default function Docs() {
               )}
             </div>
             
-            {/* Right: Developer Resources */}
+            {/* Right: Developer Dropdown */}
             {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
-              <div className="hidden sm:flex items-center gap-1 pl-4 shrink-0">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">Developer</span>
-                {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url) && (
-                  <Link
-                    to={`/api/${currentOrg?.slug || currentOrg?.domain}`}
-                    className="px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
-                  >
-                    API
-                  </Link>
-                )}
-                {currentOrg?.mcp_enabled && (
-                  <Link
-                    to={`/mcp/${currentOrg?.slug || currentOrg?.domain}`}
-                    className="px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
-                  >
-                    MCP
-                  </Link>
-                )}
+              <div className="hidden sm:flex items-center pr-4 lg:pr-6 shrink-0">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
+                      <Code className="h-4 w-4" />
+                      Developer
+                      <ChevronDown className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40 bg-popover z-50">
+                    {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url) && (
+                      <DropdownMenuItem asChild>
+                        <Link to={`/api/${currentOrg?.slug || currentOrg?.domain}`} className="cursor-pointer">
+                          API Reference
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                    {currentOrg?.mcp_enabled && (
+                      <DropdownMenuItem asChild>
+                        <Link to={`/mcp/${currentOrg?.slug || currentOrg?.domain}`} className="cursor-pointer">
+                          MCP Protocol
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             )}
           </div>
