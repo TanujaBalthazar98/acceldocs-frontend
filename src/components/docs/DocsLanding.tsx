@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Search, ArrowRight, FileText, FolderOpen } from "lucide-react";
+import { Search, ArrowRight, FileText, FolderOpen, Code, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -25,6 +25,9 @@ interface OrganizationBranding {
   hero_description: string | null;
   show_search_on_landing: boolean;
   show_featured_projects: boolean;
+  mcp_enabled?: boolean | null;
+  openapi_spec_json?: any;
+  openapi_spec_url?: string | null;
 }
 
 interface DocsLandingProps {
@@ -176,6 +179,94 @@ export const DocsLanding = ({
                   </div>
                 </button>
               ))}
+              
+              {/* API Reference Card */}
+              {(organization.openapi_spec_json || organization.openapi_spec_url) && (
+                <Link
+                  to={`/api/${orgIdentifier}`}
+                  className="group p-6 rounded-xl border border-border bg-card hover:shadow-lg transition-all text-left"
+                  style={{
+                    "--hover-border": organization.primary_color,
+                  } as React.CSSProperties}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = organization.primary_color;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "";
+                  }}
+                >
+                  <div className="flex items-start gap-4">
+                    <div 
+                      className="p-3 rounded-lg"
+                      style={{ backgroundColor: `${organization.primary_color}15` }}
+                    >
+                      <FileJson 
+                        className="h-6 w-6"
+                        style={{ color: organization.primary_color }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 
+                        className="font-semibold text-foreground transition-colors brand-heading"
+                        style={{ "--hover-color": organization.primary_color } as React.CSSProperties}
+                      >
+                        API Reference
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2 brand-body">
+                        Explore the API documentation
+                      </p>
+                    </div>
+                    <ArrowRight 
+                      className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-all"
+                      style={{ color: organization.primary_color }}
+                    />
+                  </div>
+                </Link>
+              )}
+              
+              {/* MCP Protocol Card */}
+              {organization.mcp_enabled && (
+                <Link
+                  to={`/mcp/${orgIdentifier}`}
+                  className="group p-6 rounded-xl border border-border bg-card hover:shadow-lg transition-all text-left"
+                  style={{
+                    "--hover-border": organization.primary_color,
+                  } as React.CSSProperties}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = organization.primary_color;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "";
+                  }}
+                >
+                  <div className="flex items-start gap-4">
+                    <div 
+                      className="p-3 rounded-lg"
+                      style={{ backgroundColor: `${organization.primary_color}15` }}
+                    >
+                      <Code 
+                        className="h-6 w-6"
+                        style={{ color: organization.primary_color }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 
+                        className="font-semibold text-foreground transition-colors brand-heading"
+                        style={{ "--hover-color": organization.primary_color } as React.CSSProperties}
+                      >
+                        MCP Protocol
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2 brand-body">
+                        Model Context Protocol integration
+                      </p>
+                    </div>
+                    <ArrowRight 
+                      className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-all"
+                      style={{ color: organization.primary_color }}
+                    />
+                  </div>
+                </Link>
+              )}
             </div>
           </div>
         </section>
