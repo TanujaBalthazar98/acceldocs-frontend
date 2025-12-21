@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
-import { Search, ArrowRight, FileText, FolderOpen, Code, FileJson } from "lucide-react";
+import { ArrowRight, FileText, FolderOpen, Code, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SmartSearch } from "@/components/SmartSearch";
 
 interface Project {
   id: string;
@@ -30,21 +30,45 @@ interface OrganizationBranding {
   openapi_spec_url?: string | null;
 }
 
+interface Document {
+  id: string;
+  title: string;
+  project_id: string;
+  topic_id?: string | null;
+  content_html?: string | null;
+}
+
+interface Topic {
+  id: string;
+  name: string;
+  project_id: string;
+}
+
 interface DocsLandingProps {
   organization: OrganizationBranding;
   projects: Project[];
+  documents?: Document[];
+  topics?: Topic[];
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onProjectSelect: (project: Project) => void;
+  onDocumentSelect?: (docId: string) => void;
+  onTopicSelect?: (topicId: string) => void;
+  onAskAI?: () => void;
   isAuthenticated: boolean;
 }
 
 export const DocsLanding = ({
   organization,
   projects,
+  documents = [],
+  topics = [],
   searchQuery,
   onSearchChange,
   onProjectSelect,
+  onDocumentSelect,
+  onTopicSelect,
+  onAskAI,
   isAuthenticated,
 }: DocsLandingProps) => {
   const orgIdentifier = organization.slug || organization.domain;
@@ -79,18 +103,27 @@ export const DocsLanding = ({
         {/* Search */}
         {organization.show_search_on_landing && (
           <div className="w-full max-w-xl mb-12">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-              <Input
-                placeholder="Search documentation..."
-                value={searchQuery}
-                onChange={(e) => onSearchChange(e.target.value)}
-                className="pl-12 pr-4 h-14 text-lg bg-card border-border shadow-lg focus:ring-2"
-                style={{ 
-                  "--tw-ring-color": organization.primary_color,
-                } as React.CSSProperties}
-              />
-            </div>
+            <SmartSearch
+              placeholder="Search documentation..."
+              documents={documents}
+              topics={topics}
+              projects={projects}
+              primaryColor={organization.primary_color}
+              size="large"
+              showAIButton={true}
+              onAskAI={onAskAI}
+              onSearch={onSearchChange}
+              onSelect={(result) => {
+                if (result.type === "project") {
+                  const project = projects.find(p => p.id === result.id);
+                  if (project) onProjectSelect(project);
+                } else if (result.type === "topic" && onTopicSelect) {
+                  onTopicSelect(result.id);
+                } else if (result.type === "page" && onDocumentSelect) {
+                  onDocumentSelect(result.id);
+                }
+              }}
+            />
           </div>
         )}
 

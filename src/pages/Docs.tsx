@@ -6,7 +6,6 @@ import {
   FileText,
   FolderTree,
   Menu,
-  Search,
   Lock,
   Eye,
   Globe,
@@ -15,7 +14,6 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,6 +30,7 @@ import { TableOfContents } from "@/components/docs/TableOfContents";
 import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 import { PageFeedback } from "@/components/docs/PageFeedback";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
+import { SmartSearch } from "@/components/SmartSearch";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 
 type VisibilityLevel = "internal" | "external" | "public";
@@ -589,9 +588,33 @@ export default function Docs() {
         <DocsLanding
           organization={currentOrg}
           projects={projects.map(p => ({ ...p, description: null }))}
+          documents={documents.map(d => ({
+            id: d.id,
+            title: d.title,
+            project_id: d.project_id,
+            topic_id: d.topic_id,
+            content_html: d.published_content_html,
+          }))}
+          topics={topics.map(t => ({
+            id: t.id,
+            name: t.name,
+            project_id: t.project_id,
+          }))}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onProjectSelect={selectProject}
+          onDocumentSelect={(docId) => {
+            const doc = documents.find(d => d.id === docId);
+            if (doc) selectDocument(doc);
+          }}
+          onTopicSelect={(topicId) => {
+            const topic = topics.find(t => t.id === topicId);
+            if (topic) {
+              const project = projects.find(p => p.id === topic.project_id);
+              if (project) selectProject(project);
+            }
+          }}
+          onAskAI={() => setAskAIOpen(true)}
           isAuthenticated={!!user}
         />
       </div>
@@ -623,25 +646,44 @@ export default function Docs() {
           </div>
 
           {/* Center: Search + Ask AI */}
-          <div className="hidden md:flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 w-64 h-9 bg-muted/50"
-              />
-              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                /
-              </kbd>
-            </div>
-            {selectedProject?.visibility === "public" && (
-              <Button variant="outline" size="sm" className="gap-2 h-9" onClick={() => setAskAIOpen(true)}>
-              <Sparkles className="h-4 w-4" />
-              Ask AI
-              </Button>
-            )}
+          <div className="hidden md:flex items-center gap-2 flex-1 max-w-md mx-4">
+            <SmartSearch
+              placeholder="Search documentation..."
+              documents={documents.map(d => ({
+                id: d.id,
+                title: d.title,
+                project_id: d.project_id,
+                topic_id: d.topic_id,
+                content_html: d.published_content_html,
+              }))}
+              topics={topics.map(t => ({
+                id: t.id,
+                name: t.name,
+                project_id: t.project_id,
+              }))}
+              projects={projects.map(p => ({
+                id: p.id,
+                name: p.name,
+              }))}
+              primaryColor={currentOrg?.primary_color}
+              showAIButton={selectedProject?.visibility === "public"}
+              onAskAI={() => setAskAIOpen(true)}
+              onSelect={(result) => {
+                if (result.type === "project") {
+                  const project = projects.find(p => p.id === result.id);
+                  if (project) selectProject(project);
+                } else if (result.type === "topic") {
+                  const topic = topics.find(t => t.id === result.id);
+                  if (topic) {
+                    const project = projects.find(p => p.id === topic.project_id);
+                    if (project) selectProject(project);
+                  }
+                } else if (result.type === "page") {
+                  const doc = documents.find(d => d.id === result.id);
+                  if (doc) selectDocument(doc);
+                }
+              }}
+            />
           </div>
 
           {/* Right: Theme toggle + Auth buttons */}
