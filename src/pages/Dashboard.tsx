@@ -60,7 +60,8 @@ import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { SubtopicsView } from "@/components/dashboard/SubtopicsView";
 import { SidebarTopicsTree } from "@/components/dashboard/SidebarTopicsTree";
-import { OrgResourceItem } from "@/components/dashboard/OrgResourceItem";
+import { APISettingsPanel } from "@/components/dashboard/APISettingsPanel";
+import { MCPSettingsPanel } from "@/components/dashboard/MCPSettingsPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 
@@ -148,6 +149,8 @@ const Dashboard = () => {
   const [isNormalizing, setIsNormalizing] = useState(false);
   const [orgMcpEnabled, setOrgMcpEnabled] = useState(false);
   const [orgHasApiSpec, setOrgHasApiSpec] = useState(false);
+  const [showAPISettings, setShowAPISettings] = useState(false);
+  const [showMCPSettings, setShowMCPSettings] = useState(false);
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -795,6 +798,34 @@ const Dashboard = () => {
     }} />;
   }
 
+  // If showing API settings
+  if (showAPISettings && organizationId) {
+    return (
+      <APISettingsPanel
+        organizationId={organizationId}
+        orgSlug={organizationSlug}
+        onBack={() => {
+          setShowAPISettings(false);
+          fetchData();
+        }}
+      />
+    );
+  }
+
+  // If showing MCP settings
+  if (showMCPSettings && organizationId) {
+    return (
+      <MCPSettingsPanel
+        organizationId={organizationId}
+        orgSlug={organizationSlug}
+        onBack={() => {
+          setShowMCPSettings(false);
+          fetchData();
+        }}
+      />
+    );
+  }
+
   // If a page is selected, show the PageView
   if (selectedPage) {
     return <PageView onBack={() => setSelectedPage(null)} />;
@@ -891,6 +922,8 @@ const Dashboard = () => {
                       }`}
                       onClick={() => {
                         setSelectedProject(project);
+                        setShowAPISettings(false);
+                        setShowMCPSettings(false);
                         setExpandedProjects(prev => {
                           const next = new Set(prev);
                           if (next.has(project.id)) {
@@ -1007,33 +1040,55 @@ const Dashboard = () => {
           </div>
 
           {/* Developer Resources - API/MCP */}
-          {(orgHasApiSpec || orgMcpEnabled) && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <div className="flex items-center justify-between px-2 py-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Developer Resources
-                </span>
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center justify-between px-2 py-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Developer Resources
+              </span>
+            </div>
+            <div className="space-y-1">
+              <div
+                className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                  showAPISettings
+                    ? "bg-secondary text-foreground"
+                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                }`}
+                onClick={() => {
+                  setShowAPISettings(true);
+                  setShowMCPSettings(false);
+                  setShowGeneralSettings(false);
+                  setSelectedProject(null);
+                  setSelectedTopic(null);
+                }}
+              >
+                <Code className="w-4 h-4" />
+                <span className="flex-1 text-left">API Reference</span>
+                {orgHasApiSpec && (
+                  <span className="w-2 h-2 rounded-full bg-green-500" title="Published" />
+                )}
               </div>
-              <div className="space-y-1">
-                <OrgResourceItem
-                  icon={<Code className="w-4 h-4" />}
-                  label="API Reference"
-                  isEnabled={orgHasApiSpec}
-                  previewUrl={`/api/${organizationSlug}`}
-                  onClick={() => window.open(`/api/${organizationSlug}`, '_blank')}
-                  onOpenSettings={() => setShowGeneralSettings(true)}
-                />
-                <OrgResourceItem
-                  icon={<FileJson className="w-4 h-4" />}
-                  label="MCP Protocol"
-                  isEnabled={orgMcpEnabled}
-                  previewUrl={`/mcp/${organizationSlug}`}
-                  onClick={() => window.open(`/mcp/${organizationSlug}`, '_blank')}
-                  onOpenSettings={() => setShowGeneralSettings(true)}
-                />
+              <div
+                className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                  showMCPSettings
+                    ? "bg-secondary text-foreground"
+                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                }`}
+                onClick={() => {
+                  setShowMCPSettings(true);
+                  setShowAPISettings(false);
+                  setShowGeneralSettings(false);
+                  setSelectedProject(null);
+                  setSelectedTopic(null);
+                }}
+              >
+                <FileJson className="w-4 h-4" />
+                <span className="flex-1 text-left">MCP Protocol</span>
+                {orgMcpEnabled && (
+                  <span className="w-2 h-2 rounded-full bg-green-500" title="Published" />
+                )}
               </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* User Section */}
