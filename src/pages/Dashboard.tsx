@@ -152,6 +152,7 @@ const Dashboard = () => {
   const [orgHasApiSpec, setOrgHasApiSpec] = useState(false);
   const [showAPISettings, setShowAPISettings] = useState(false);
   const [showMCPSettings, setShowMCPSettings] = useState(false);
+  const [visiblePagesCount, setVisiblePagesCount] = useState(10);
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -277,6 +278,11 @@ const Dashboard = () => {
     fetchData();
   }, [user]);
   
+  // Reset visible pages when filters change
+  useEffect(() => {
+    setVisiblePagesCount(10);
+  }, [selectedProject, selectedTopic, searchQuery]);
+
   // Filter documents based on selected project/topic and search query
   const filteredDocuments = documents.filter(doc => {
     // Filter by search query first
@@ -296,6 +302,10 @@ const Dashboard = () => {
     }
     return true;
   });
+  
+  // Paginated documents for infinite scroll
+  const visibleDocuments = filteredDocuments.slice(0, visiblePagesCount);
+  const hasMorePages = visiblePagesCount < filteredDocuments.length;
   
   // Filter projects and topics by search
   const filteredProjects = projects.filter(p => 
@@ -1174,36 +1184,60 @@ const Dashboard = () => {
             const publishedCount = filteredDocuments.filter(d => d.is_published).length;
             const draftCount = filteredDocuments.filter(d => !d.is_published && !d.published_content_html).length;
             const pendingRepublishCount = filteredDocuments.filter(d => 
-              !d.is_published && d.published_content_html && d.content_html !== d.published_content_html
+              d.is_published && d.content_html && d.published_content_html && d.content_html !== d.published_content_html
             ).length;
-            const thirtyDaysAgo = new Date();
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            const staleCount = filteredDocuments.filter(d => {
-              if (!d.google_modified_at) return true;
-              return new Date(d.google_modified_at) < thirtyDaysAgo;
+            
+            // Calculate recent activity (last 7 days)
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const recentlyUpdated = filteredDocuments.filter(d => {
+              if (!d.google_modified_at) return false;
+              return new Date(d.google_modified_at) > sevenDaysAgo;
             }).length;
+            
+            // Pages ready to publish (drafts with content)
+            const readyToPublish = filteredDocuments.filter(d => !d.is_published && d.content_html).length;
+            
+            const publishRate = filteredDocuments.length > 0 
+              ? Math.round((publishedCount / filteredDocuments.length) * 100) 
+              : 0;
             
             return (
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div className="p-4 rounded-xl glass">
-                  <p className="text-2xl font-bold text-foreground">{filteredDocuments.length}</p>
+                  <div className="flex items-baseline justify-between">
+                    <p className="text-2xl font-bold text-foreground">{filteredDocuments.length}</p>
+                    <span className="text-xs text-muted-foreground">{projects.length} projects</span>
+                  </div>
                   <p className="text-sm text-muted-foreground">Total Pages</p>
                 </div>
                 <div className="p-4 rounded-xl glass">
-                  <p className="text-2xl font-bold text-state-active">{publishedCount}</p>
+                  <div className="flex items-baseline justify-between">
+                    <p className="text-2xl font-bold text-state-active">{publishedCount}</p>
+                    <span className="text-xs text-state-active">{publishRate}%</span>
+                  </div>
                   <p className="text-sm text-muted-foreground">Published</p>
                 </div>
                 <div className="p-4 rounded-xl glass">
-                  <p className="text-2xl font-bold text-amber-500">{pendingRepublishCount}</p>
+                  <div className="flex items-baseline justify-between">
+                    <p className="text-2xl font-bold text-blue-500">{recentlyUpdated}</p>
+                    <span className="text-xs text-muted-foreground">7 days</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Recently Updated</p>
+                </div>
+                <div className="p-4 rounded-xl glass">
+                  <div className="flex items-baseline justify-between">
+                    <p className="text-2xl font-bold text-amber-500">{pendingRepublishCount}</p>
+                    {pendingRepublishCount > 0 && <RefreshCw className="w-3 h-3 text-amber-500" />}
+                  </div>
                   <p className="text-sm text-muted-foreground">Pending Republish</p>
                 </div>
                 <div className="p-4 rounded-xl glass">
-                  <p className="text-2xl font-bold text-state-draft">{draftCount}</p>
-                  <p className="text-sm text-muted-foreground">New Drafts</p>
-                </div>
-                <div className="p-4 rounded-xl glass">
-                  <p className="text-2xl font-bold text-state-deprecated">{staleCount}</p>
-                  <p className="text-sm text-muted-foreground" title="Pages not modified in 30+ days">Needs Attention</p>
+                  <div className="flex items-baseline justify-between">
+                    <p className="text-2xl font-bold text-primary">{readyToPublish}</p>
+                    {readyToPublish > 0 && <Send className="w-3 h-3 text-primary" />}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Ready to Publish</p>
                 </div>
               </div>
             );
@@ -1290,7 +1324,7 @@ const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filteredDocuments.length === 0 ? (
+                  {visibleDocuments.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
                         {selectedTopic 
@@ -1301,7 +1335,7 @@ const Dashboard = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredDocuments.map((doc) => {
+                    visibleDocuments.map((doc) => {
                       const VisIcon = visibilityConfig[doc.visibility || 'internal'].icon;
                       return (
                         <tr
@@ -1420,6 +1454,21 @@ const Dashboard = () => {
                   )}
                 </tbody>
               </table>
+              {hasMorePages && (
+                <div className="p-4 border-t border-border flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setVisiblePagesCount(prev => prev + 10)}
+                    className="gap-2"
+                  >
+                    Load More
+                    <span className="text-muted-foreground">
+                      ({visiblePagesCount} of {filteredDocuments.length})
+                    </span>
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
