@@ -13,7 +13,6 @@ import {
   Sparkles,
   PanelLeftClose,
   Bot,
-  Code,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -35,7 +34,6 @@ import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 import { PageFeedback } from "@/components/docs/PageFeedback";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
 import { MCPDocs } from "@/components/docs/MCPDocs";
-import { APIDocs } from "@/components/docs/APIDocs";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 
 type VisibilityLevel = "internal" | "external" | "public";
@@ -163,7 +161,6 @@ export default function Docs() {
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
   const [showMCPDocs, setShowMCPDocs] = useState(false);
-  const [showAPIDocs, setShowAPIDocs] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !hasFetched) {
@@ -212,15 +209,6 @@ export default function Docs() {
     // Check for special routes first
     if (pageSlug === "mcp" && selectedProject.mcp_enabled) {
       setShowMCPDocs(true);
-      setShowAPIDocs(false);
-      setSelectedDocument(null);
-      setDocumentHtml(null);
-      return;
-    }
-    
-    if (pageSlug === "api" && selectedProject.openapi_spec_json) {
-      setShowAPIDocs(true);
-      setShowMCPDocs(false);
       setSelectedDocument(null);
       setDocumentHtml(null);
       return;
@@ -228,7 +216,6 @@ export default function Docs() {
 
     // Reset special views
     setShowMCPDocs(false);
-    setShowAPIDocs(false);
 
     if (documents.length === 0) return;
 
@@ -548,52 +535,29 @@ export default function Docs() {
               </button>
             ))}
 
-            {/* Developer Section - MCP & API */}
-            {(selectedProject?.mcp_enabled || selectedProject?.openapi_spec_json) && (
+            {/* Developer Section - MCP only (API is now org-level standalone) */}
+            {selectedProject?.mcp_enabled && (
               <div className="mt-4 pt-4 border-t border-border">
                 <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                   Developer
                 </p>
                 
-                {selectedProject?.openapi_spec_json && (
-                  <Link
-                    to={currentOrg ? `/docs/${currentOrg.slug || currentOrg.domain}/${selectedProject.slug}/api` : "#"}
-                    onClick={() => {
-                      setShowAPIDocs(true);
-                      setShowMCPDocs(false);
-                      setSelectedDocument(null);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={cn(
-                      "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
-                      "hover:bg-accent hover:text-accent-foreground",
-                      showAPIDocs && "sidebar-item-selected font-medium"
-                    )}
-                  >
-                    <Code className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>API Reference</span>
-                  </Link>
-                )}
-                
-                {selectedProject?.mcp_enabled && (
-                  <Link
-                    to={currentOrg ? `/docs/${currentOrg.slug || currentOrg.domain}/${selectedProject.slug}/mcp` : "#"}
-                    onClick={() => {
-                      setShowMCPDocs(true);
-                      setShowAPIDocs(false);
-                      setSelectedDocument(null);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={cn(
-                      "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
-                      "hover:bg-accent hover:text-accent-foreground",
-                      showMCPDocs && "sidebar-item-selected font-medium"
-                    )}
-                  >
-                    <Bot className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>MCP Protocol</span>
-                  </Link>
-                )}
+                <Link
+                  to={currentOrg ? `/docs/${currentOrg.slug || currentOrg.domain}/${selectedProject.slug}/mcp` : "#"}
+                  onClick={() => {
+                    setShowMCPDocs(true);
+                    setSelectedDocument(null);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={cn(
+                    "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                    "hover:bg-accent hover:text-accent-foreground",
+                    showMCPDocs && "sidebar-item-selected font-medium"
+                  )}
+                >
+                  <Bot className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>MCP Protocol</span>
+                </Link>
               </div>
             )}
           </nav>
@@ -822,8 +786,6 @@ export default function Docs() {
             </div>
           ) : showMCPDocs && selectedProject?.mcp_enabled ? (
             <MCPDocs projectName={selectedProject.name} />
-          ) : showAPIDocs && selectedProject?.openapi_spec_json ? (
-            <APIDocs spec={selectedProject.openapi_spec_json} />
           ) : selectedDocument ? (
             <div className="flex">
               {/* Article content */}
