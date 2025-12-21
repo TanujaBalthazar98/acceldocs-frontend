@@ -12,7 +12,6 @@ import {
   Globe,
   Sparkles,
   PanelLeftClose,
-  Bot,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -33,7 +32,6 @@ import { TableOfContents } from "@/components/docs/TableOfContents";
 import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 import { PageFeedback } from "@/components/docs/PageFeedback";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
-import { MCPDocs } from "@/components/docs/MCPDocs";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 
 type VisibilityLevel = "internal" | "external" | "public";
@@ -67,6 +65,9 @@ interface Organization {
   hero_description: string | null;
   show_search_on_landing: boolean;
   show_featured_projects: boolean;
+  mcp_enabled?: boolean | null;
+  openapi_spec_json?: any;
+  openapi_spec_url?: string | null;
 }
 
 interface Topic {
@@ -160,7 +161,6 @@ export default function Docs() {
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
-  const [showMCPDocs, setShowMCPDocs] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !hasFetched) {
@@ -202,20 +202,9 @@ export default function Docs() {
     }
   }, [projectSlug, projects]);
 
-  // Handle document selection from URL + MCP/API routes
+  // Handle document selection from URL
   useEffect(() => {
     if (!selectedProject) return;
-
-    // Check for special routes first
-    if (pageSlug === "mcp" && selectedProject.mcp_enabled) {
-      setShowMCPDocs(true);
-      setSelectedDocument(null);
-      setDocumentHtml(null);
-      return;
-    }
-
-    // Reset special views
-    setShowMCPDocs(false);
 
     if (documents.length === 0) return;
 
@@ -534,32 +523,6 @@ export default function Docs() {
                 </span>
               </button>
             ))}
-
-            {/* Developer Section - MCP only (API is now org-level standalone) */}
-            {selectedProject?.mcp_enabled && (
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  Developer
-                </p>
-                
-                <Link
-                  to={currentOrg ? `/docs/${currentOrg.slug || currentOrg.domain}/${selectedProject.slug}/mcp` : "#"}
-                  onClick={() => {
-                    setShowMCPDocs(true);
-                    setSelectedDocument(null);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={cn(
-                    "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
-                    "hover:bg-accent hover:text-accent-foreground",
-                    showMCPDocs && "sidebar-item-selected font-medium"
-                  )}
-                >
-                  <Bot className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>MCP Protocol</span>
-                </Link>
-              </div>
-            )}
           </nav>
         )}
       </ScrollArea>
@@ -734,20 +697,44 @@ export default function Docs() {
             ) : projects.length === 0 ? (
               <div className="py-3 text-sm text-muted-foreground">No projects available</div>
             ) : (
-              projects.map(project => (
-                <button
-                  key={project.id}
-                  onClick={() => selectProject(project)}
-                  className={cn(
-                    "px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
-                    selectedProject?.id === project.id
-                      ? "border-primary text-foreground"
-                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                  )}
-                >
-                  {project.name}
-                </button>
-              ))
+              <>
+                {projects.map(project => (
+                  <button
+                    key={project.id}
+                    onClick={() => selectProject(project)}
+                    className={cn(
+                      "px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
+                      selectedProject?.id === project.id
+                        ? "border-primary text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                    )}
+                  >
+                    {project.name}
+                  </button>
+                ))}
+                
+                {/* Developer tabs - org level */}
+                {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
+                  <div className="flex items-center gap-1 ml-4 pl-4 border-l border-border">
+                    {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url) && (
+                      <Link
+                        to={`/api/${currentOrg?.slug || currentOrg?.domain}`}
+                        className="px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                      >
+                        API Reference
+                      </Link>
+                    )}
+                    {currentOrg?.mcp_enabled && (
+                      <Link
+                        to={`/mcp/${currentOrg?.slug || currentOrg?.domain}`}
+                        className="px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                      >
+                        MCP Protocol
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -784,8 +771,6 @@ export default function Docs() {
               <Skeleton className="h-6 w-1/2" />
               <Skeleton className="h-96 w-full" />
             </div>
-          ) : showMCPDocs && selectedProject?.mcp_enabled ? (
-            <MCPDocs projectName={selectedProject.name} />
           ) : selectedDocument ? (
             <div className="flex">
               {/* Article content */}

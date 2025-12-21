@@ -206,6 +206,7 @@ export type Database = {
           hero_title: string | null
           id: string
           logo_url: string | null
+          mcp_enabled: boolean | null
           name: string
           openapi_spec_json: Json | null
           openapi_spec_url: string | null
@@ -230,6 +231,7 @@ export type Database = {
           hero_title?: string | null
           id?: string
           logo_url?: string | null
+          mcp_enabled?: boolean | null
           name: string
           openapi_spec_json?: Json | null
           openapi_spec_url?: string | null
@@ -254,6 +256,7 @@ export type Database = {
           hero_title?: string | null
           id?: string
           logo_url?: string | null
+          mcp_enabled?: boolean | null
           name?: string
           openapi_spec_json?: Json | null
           openapi_spec_url?: string | null
