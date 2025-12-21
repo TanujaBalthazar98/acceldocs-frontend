@@ -729,18 +729,19 @@ export default function Docs() {
 
         {/* Project Tabs Bar */}
         <div className="border-b border-border bg-card">
-          <div className="flex items-center gap-1 px-4 lg:px-6 overflow-x-auto">
-            {loading ? (
-              <div className="flex gap-2 py-2">
-                {[1, 2, 3].map(i => (
-                  <Skeleton key={i} className="h-8 w-24" />
-                ))}
-              </div>
-            ) : projects.length === 0 ? (
-              <div className="py-3 text-sm text-muted-foreground">No projects available</div>
-            ) : (
-              <>
-                {projects.map(project => (
+          <div className="flex items-center justify-between px-4 lg:px-6">
+            {/* Left: Project tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {loading ? (
+                <div className="flex gap-2 py-2">
+                  {[1, 2, 3].map(i => (
+                    <Skeleton key={i} className="h-8 w-24" />
+                  ))}
+                </div>
+              ) : projects.length === 0 ? (
+                <div className="py-3 text-sm text-muted-foreground">No projects available</div>
+              ) : (
+                projects.map(project => (
                   <button
                     key={project.id}
                     onClick={() => selectProject(project)}
@@ -753,30 +754,31 @@ export default function Docs() {
                   >
                     {project.name}
                   </button>
-                ))}
-                
-                {/* Developer tabs - org level */}
-                {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
-                  <div className="flex items-center gap-1 ml-4 pl-4 border-l border-border">
-                    {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url) && (
-                      <Link
-                        to={`/api/${currentOrg?.slug || currentOrg?.domain}`}
-                        className="px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                      >
-                        API Reference
-                      </Link>
-                    )}
-                    {currentOrg?.mcp_enabled && (
-                      <Link
-                        to={`/mcp/${currentOrg?.slug || currentOrg?.domain}`}
-                        className="px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                      >
-                        MCP Protocol
-                      </Link>
-                    )}
-                  </div>
+                ))
+              )}
+            </div>
+            
+            {/* Right: Developer Resources */}
+            {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
+              <div className="hidden sm:flex items-center gap-1 pl-4 shrink-0">
+                <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">Developer</span>
+                {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url) && (
+                  <Link
+                    to={`/api/${currentOrg?.slug || currentOrg?.domain}`}
+                    className="px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+                  >
+                    API
+                  </Link>
                 )}
-              </>
+                {currentOrg?.mcp_enabled && (
+                  <Link
+                    to={`/mcp/${currentOrg?.slug || currentOrg?.domain}`}
+                    className="px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+                  >
+                    MCP
+                  </Link>
+                )}
+              </div>
             )}
           </div>
         </div>
