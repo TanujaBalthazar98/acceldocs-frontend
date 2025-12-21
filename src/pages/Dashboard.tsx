@@ -798,34 +798,6 @@ const Dashboard = () => {
     }} />;
   }
 
-  // If showing API settings
-  if (showAPISettings && organizationId) {
-    return (
-      <APISettingsPanel
-        organizationId={organizationId}
-        orgSlug={organizationSlug}
-        onBack={() => {
-          setShowAPISettings(false);
-          fetchData();
-        }}
-      />
-    );
-  }
-
-  // If showing MCP settings
-  if (showMCPSettings && organizationId) {
-    return (
-      <MCPSettingsPanel
-        organizationId={organizationId}
-        orgSlug={organizationSlug}
-        onBack={() => {
-          setShowMCPSettings(false);
-          fetchData();
-        }}
-      />
-    );
-  }
-
   // If a page is selected, show the PageView
   if (selectedPage) {
     return <PageView onBack={() => setSelectedPage(null)} />;
@@ -1131,45 +1103,64 @@ const Dashboard = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col">
-        {/* Header */}
-        <header className="h-14 border-b border-border flex items-center justify-between px-6">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Projects</span>
-            <ChevronRight className="w-3 h-3" />
-            <span className="text-foreground">{selectedProject?.name || "Select a project"}</span>
-            {selectedTopic && (
-              <>
-                <ChevronRight className="w-3 h-3" />
-                <span className="text-foreground">{selectedTopic.name}</span>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {organizationSlug && (
+      {showAPISettings && organizationId ? (
+        <APISettingsPanel
+          organizationId={organizationId}
+          orgSlug={organizationSlug}
+          onBack={() => {
+            setShowAPISettings(false);
+            fetchData();
+          }}
+        />
+      ) : showMCPSettings && organizationId ? (
+        <MCPSettingsPanel
+          organizationId={organizationId}
+          orgSlug={organizationSlug}
+          onBack={() => {
+            setShowMCPSettings(false);
+            fetchData();
+          }}
+        />
+      ) : (
+        <main className="flex-1 flex flex-col">
+          {/* Header */}
+          <header className="h-14 border-b border-border flex items-center justify-between px-6">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Projects</span>
+              <ChevronRight className="w-3 h-3" />
+              <span className="text-foreground">{selectedProject?.name || "Select a project"}</span>
+              {selectedTopic && (
+                <>
+                  <ChevronRight className="w-3 h-3" />
+                  <span className="text-foreground">{selectedTopic.name}</span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {organizationSlug && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2" 
+                  onClick={() => window.open(`/docs/${organizationSlug}`, '_blank')}
+                >
+                  <BookOpen className="w-4 h-4" />
+                  View Docs
+                </Button>
+              )}
               <Button 
-                variant="outline" 
+                variant="hero" 
                 size="sm" 
                 className="gap-2" 
-                onClick={() => window.open(`/docs/${organizationSlug}`, '_blank')}
+                onClick={() => setAddPageOpen(true)}
+                disabled={!selectedTopic}
+                title={!selectedTopic ? "Select a topic first" : "Add page"}
               >
-                <BookOpen className="w-4 h-4" />
-                View Docs
+                <Plus className="w-4 h-4" />
+                Add Page
               </Button>
-            )}
-            <Button 
-              variant="hero" 
-              size="sm" 
-              className="gap-2" 
-              onClick={() => setAddPageOpen(true)}
-              disabled={!selectedTopic}
-              title={!selectedTopic ? "Select a topic first" : "Add page"}
-            >
-              <Plus className="w-4 h-4" />
-              Add Page
-            </Button>
-          </div>
-        </header>
+            </div>
+          </header>
 
         {/* Content */}
         <div className="flex-1 p-6 overflow-y-auto">
@@ -1427,7 +1418,8 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
-      </main>
+        </main>
+      )}
 
       <ProjectSharePanel
         open={shareOpen}
