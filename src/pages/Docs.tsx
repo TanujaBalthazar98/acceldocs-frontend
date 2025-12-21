@@ -617,6 +617,9 @@ export default function Docs() {
           onAskAI={() => setAskAIOpen(true)}
           isAuthenticated={!!user}
         />
+
+        {/* Ask AI Dialog (landing page) */}
+        <AskAIDialog open={askAIOpen} onOpenChange={setAskAIOpen} />
       </div>
     );
   }
