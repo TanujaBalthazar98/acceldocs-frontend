@@ -741,7 +741,7 @@ export default function Docs() {
         <div className="border-b border-border bg-card">
           <div className="flex items-center justify-between">
             {/* Left: Project tabs - aligned with sidebar */}
-            <div className="flex items-center gap-1 overflow-x-auto pl-4 lg:pl-6">
+            <div className="flex items-center gap-0 overflow-x-auto pl-3">
               {loading ? (
                 <div className="flex gap-2 py-2">
                   {[1, 2, 3].map(i => (
@@ -751,12 +751,13 @@ export default function Docs() {
               ) : projects.length === 0 ? (
                 <div className="py-3 text-sm text-muted-foreground">No projects available</div>
               ) : (
-                projects.map(project => (
+                projects.map((project, index) => (
                   <button
                     key={project.id}
                     onClick={() => selectProject(project)}
                     className={cn(
-                      "px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
+                      "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
+                      index === 0 && "pl-0",
                       selectedProject?.id === project.id
                         ? "border-primary text-foreground"
                         : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
