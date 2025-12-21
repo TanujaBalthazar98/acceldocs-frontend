@@ -19,8 +19,6 @@ import {
   Send,
   CheckCircle,
   Search,
-  Bot,
-  Code,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -42,7 +40,6 @@ import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDistanceToNow } from "date-fns";
 import { SEOSettings } from "./SEOSettings";
-import { APISettings } from "./APISettings";
 
 type VisibilityLevel = "internal" | "external" | "public";
 type ProjectRole = "admin" | "editor" | "reviewer" | "viewer";
@@ -440,15 +437,11 @@ export const ProjectSettingsPanel = ({
         </SheetHeader>
 
         <Tabs defaultValue="general" className="mt-6">
-          <TabsList className="grid w-full grid-cols-3 mb-4">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="seo" className="gap-1">
               <Search className="w-3 h-3" />
               SEO & AI
-            </TabsTrigger>
-            <TabsTrigger value="api" className="gap-1">
-              <Code className="w-3 h-3" />
-              API/MCP
             </TabsTrigger>
           </TabsList>
           
@@ -734,10 +727,6 @@ export const ProjectSettingsPanel = ({
           
           <TabsContent value="seo">
             <SEOSettings projectId={projectId} />
-          </TabsContent>
-          
-          <TabsContent value="api">
-            <APISettings projectId={projectId} />
           </TabsContent>
         </Tabs>
       </SheetContent>
