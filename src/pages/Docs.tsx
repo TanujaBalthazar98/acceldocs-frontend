@@ -637,28 +637,28 @@ export default function Docs() {
       <div className="sticky top-0 z-50">
         {/* Top Header */}
         <header className="border-b border-border bg-card">
-        <div className="flex items-center justify-between px-4 lg:px-6 h-14">
+        <div className="flex items-center justify-between px-3 sm:px-4 lg:px-6 h-14 gap-2">
           {/* Left: Organization Logo/Name */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link to={currentOrg ? `/docs/${currentOrg.slug || currentOrg.domain}` : "/"} className="flex items-center gap-2">
               {currentOrg?.logo_url ? (
-                <img src={currentOrg.logo_url} alt={currentOrg.name} className="h-8 w-auto" />
+                <img src={currentOrg.logo_url} alt={currentOrg.name} className="h-7 sm:h-8 w-auto" />
               ) : (
-                <FolderTree className="h-6 w-6 brand-primary-text" />
+                <FolderTree className="h-5 sm:h-6 w-5 sm:w-6 brand-primary-text" />
               )}
-              <span className="font-bold text-lg text-foreground brand-heading">
+              <span className="font-bold text-base sm:text-lg text-foreground brand-heading truncate max-w-[120px] sm:max-w-none">
                 {currentOrg?.name || "Documentation"}
               </span>
               {currentOrg?.tagline && (
-                <span className="text-muted-foreground font-normal hidden md:inline brand-body">{currentOrg.tagline}</span>
+                <span className="text-muted-foreground font-normal hidden lg:inline brand-body">{currentOrg.tagline}</span>
               )}
             </Link>
           </div>
 
           {/* Center: Search + Ask AI */}
-          <div className="hidden md:flex items-center gap-2 flex-1 max-w-md mx-4">
+          <div className="hidden sm:flex items-center gap-2 flex-1 max-w-xs md:max-w-md mx-2 md:mx-4">
             <SmartSearch
-              placeholder="Search documentation..."
+              placeholder="Search..."
               documents={documents.map(d => ({
                 id: d.id,
                 title: d.title,
@@ -697,25 +697,26 @@ export default function Docs() {
           </div>
 
           {/* Right: Theme toggle + Auth buttons */}
-          <div className="flex items-center gap-2">
-            <ThemeToggle className="h-9 w-9" />
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <ThemeToggle className="h-8 w-8 sm:h-9 sm:w-9" />
             {authLoading ? (
-              <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-8 w-16 sm:h-9 sm:w-24" />
             ) : user ? (
               <Link to="/dashboard">
-                <Button variant="ghost" size="sm">
-                  Dashboard
+                <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
+                  <span className="hidden sm:inline">Dashboard</span>
+                  <span className="sm:hidden">Dash</span>
                 </Button>
               </Link>
             ) : (
               <>
                 <Link to="/auth">
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
                     Sign in
                   </Button>
                 </Link>
                 <Link to="/auth">
-                  <Button size="sm" className="hidden sm:inline-flex" style={{ backgroundColor: currentOrg?.primary_color }}>
+                  <Button size="sm" className="hidden md:inline-flex" style={{ backgroundColor: currentOrg?.primary_color }}>
                     Create account
                   </Button>
                 </Link>
@@ -725,8 +726,8 @@ export default function Docs() {
             {/* Mobile menu trigger */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="lg:hidden">
-                  <Menu className="h-5 w-5" />
+                <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8 sm:h-9 sm:w-9">
+                  <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-72 p-0">
@@ -771,12 +772,12 @@ export default function Docs() {
             
             {/* Right: Developer Dropdown */}
             {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
-              <div className="hidden sm:flex items-center pr-4 lg:pr-6 shrink-0">
+              <div className="flex items-center pr-3 lg:pr-6 shrink-0">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
+                    <Button variant="ghost" size="sm" className="gap-1 sm:gap-1.5 text-muted-foreground hover:text-foreground px-2 sm:px-3">
                       <Code className="h-4 w-4" />
-                      Developer
+                      <span className="hidden sm:inline">Developer</span>
                       <ChevronDown className="h-3 w-3" />
                     </Button>
                   </DropdownMenuTrigger>

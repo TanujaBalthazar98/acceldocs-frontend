@@ -107,6 +107,13 @@ export function useBrandingStyles(branding: {
         --primary: ${primaryHsl};
         --accent: ${primaryHsl};
         --ring: ${primaryHsl};
+        --sidebar-primary: ${primaryHsl};
+      }
+      
+      /* Ensure light mode has proper contrast for branded docs */
+      .light .docs-branded {
+        --primary: ${primaryHsl};
+        --primary-foreground: 0 0% 100%;
       }
       
       .brand-heading {
@@ -141,6 +148,17 @@ export function useBrandingStyles(branding: {
       .docs-branded .sidebar-item-selected {
         background-color: hsl(${primaryHsl} / 0.1) !important;
         color: var(--brand-primary) !important;
+      }
+      
+      /* Developer dropdown active item styling */
+      .docs-branded [data-highlighted] {
+        background-color: hsl(${primaryHsl}) !important;
+        color: white !important;
+      }
+      
+      /* Ensure project tabs use brand color when selected */
+      .docs-branded .border-primary {
+        border-color: var(--brand-primary) !important;
       }
       
       ${branding.custom_css || ""}

@@ -126,46 +126,47 @@ export default function MCPDocs() {
   const hasMCP = (organization as any)?.mcp_enabled;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background docs-branded">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-14 items-center justify-between px-4 lg:px-6">
+        <div className="flex h-14 items-center justify-between px-3 sm:px-4 lg:px-6 gap-2">
           {/* Left: Logo & Title */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <Link 
               to={`/docs/${orgSlug}`}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
             >
               {organization?.logo_url ? (
                 <img
                   src={organization.logo_url}
                   alt={organization.name}
-                  className="h-8 w-auto object-contain"
+                  className="h-7 sm:h-8 w-auto object-contain"
                 />
               ) : (
-                <span className="font-semibold text-foreground">
+                <span className="font-semibold text-foreground truncate">
                   {organization?.name || "MCP Docs"}
                 </span>
               )}
             </Link>
-            <span className="text-muted-foreground">/</span>
-            <span className="text-muted-foreground">MCP Protocol</span>
+            <span className="text-muted-foreground hidden sm:inline">/</span>
+            <span className="text-muted-foreground text-sm sm:text-base truncate">MCP Protocol</span>
           </div>
 
           {/* Right: Theme + Auth */}
-          <div className="flex items-center gap-2">
-            <ThemeToggle className="h-9 w-9" />
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <ThemeToggle className="h-8 w-8 sm:h-9 sm:w-9" />
             {authLoading ? (
-              <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-8 w-16 sm:h-9 sm:w-24" />
             ) : user ? (
               <Link to="/dashboard">
-                <Button variant="ghost" size="sm">
-                  Dashboard
+                <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
+                  <span className="hidden sm:inline">Dashboard</span>
+                  <span className="sm:hidden">Dash</span>
                 </Button>
               </Link>
             ) : (
               <Link to="/auth">
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
                   Sign in
                 </Button>
               </Link>
