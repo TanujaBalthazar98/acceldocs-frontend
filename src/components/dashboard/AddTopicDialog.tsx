@@ -20,32 +20,48 @@ interface AddTopicDialogProps {
   projectName: string | null;
   projectId: string | null;
   projectFolderId: string | null;
+  parentTopic?: { id: string; name: string; drive_folder_id: string } | null;
   onCreated?: (topic: { id: string; name: string; drive_folder_id: string }) => void;
 }
 
-export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, projectFolderId, onCreated }: AddTopicDialogProps) => {
+export const AddTopicDialog = ({ 
+  open, 
+  onOpenChange, 
+  projectName, 
+  projectId, 
+  projectFolderId, 
+  parentTopic,
+  onCreated 
+}: AddTopicDialogProps) => {
   const [topicName, setTopicName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const { createFolder } = useGoogleDrive();
   const { toast } = useToast();
 
+  // Use parent topic's folder if creating a subtopic, otherwise use project folder
+  const targetFolderId = parentTopic?.drive_folder_id || projectFolderId;
+  const locationText = parentTopic 
+    ? `"${parentTopic.name}"` 
+    : `"${projectName}"`;
+
   const handleCreate = async () => {
-    if (!topicName.trim() || !projectFolderId || !projectId) return;
+    if (!topicName.trim() || !targetFolderId || !projectId) return;
     
     setIsCreating(true);
     
     // Create folder in Google Drive
-    const folder = await createFolder(topicName.trim(), projectFolderId);
+    const folder = await createFolder(topicName.trim(), targetFolderId);
     
     if (folder) {
-      // Save topic to database
+      // Save topic to database with parent_id if it's a subtopic
       const { data: topic, error } = await supabase
         .from("topics")
         .insert({
           name: folder.name,
           drive_folder_id: folder.id,
           project_id: projectId,
+          parent_id: parentTopic?.id || null,
         })
         .select("id, name, drive_folder_id")
         .single();
@@ -59,8 +75,8 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, pro
         });
       } else {
         toast({
-          title: "Topic created",
-          description: `"${topicName}" created in ${projectName}.`,
+          title: parentTopic ? "Subtopic created" : "Topic created",
+          description: `"${topicName}" created in ${locationText}.`,
         });
         onCreated?.(topic);
       }
@@ -78,10 +94,13 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, pro
         <DialogContent className="sm:max-w-md bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold text-foreground">
-              Add Topic
+              {parentTopic ? "Add Subtopic" : "Add Topic"}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Create or import topics within "{projectName}".
+              {parentTopic 
+                ? `Create a subtopic within "${parentTopic.name}".`
+                : `Create or import topics within "${projectName}".`
+              }
             </DialogDescription>
           </DialogHeader>
 
@@ -92,7 +111,7 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, pro
             </TabsList>
             
             <TabsContent value="create" className="space-y-4 pt-2">
-              {!projectFolderId && (
+              {!targetFolderId && (
                 <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                   <p className="text-sm text-destructive">
                     No project selected. Please select a project first.
@@ -102,7 +121,7 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, pro
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">
-                  Topic Name
+                  {parentTopic ? "Subtopic Name" : "Topic Name"}
                 </label>
                 <div className="relative">
                   <Folder className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -111,7 +130,7 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, pro
                     placeholder="e.g., Getting Started"
                     value={topicName}
                     onChange={(e) => setTopicName(e.target.value)}
-                    disabled={!projectFolderId}
+                    disabled={!targetFolderId}
                     className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
                   />
                 </div>
@@ -123,9 +142,9 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, pro
                 </Button>
                 <Button 
                   onClick={handleCreate} 
-                  disabled={!topicName.trim() || isCreating || !projectFolderId || !projectId}
+                  disabled={!topicName.trim() || isCreating || !targetFolderId || !projectId}
                 >
-                  {isCreating ? "Creating..." : "Create Topic"}
+                  {isCreating ? "Creating..." : parentTopic ? "Create Subtopic" : "Create Topic"}
                 </Button>
               </div>
             </TabsContent>
@@ -141,7 +160,7 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, pro
                     onOpenChange(false);
                     setShowImport(true);
                   }}
-                  disabled={!projectFolderId}
+                  disabled={!targetFolderId}
                 >
                   <Upload className="w-4 h-4 mr-2" />
                   Open Import Dialog
@@ -158,7 +177,7 @@ export const AddTopicDialog = ({ open, onOpenChange, projectName, projectId, pro
         type="topic"
         projectId={projectId}
         projectName={projectName}
-        projectFolderId={projectFolderId}
+        projectFolderId={targetFolderId}
         onImported={() => {
           onCreated?.({ id: '', name: '', drive_folder_id: '' });
         }}

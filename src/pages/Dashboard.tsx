@@ -129,6 +129,7 @@ const Dashboard = () => {
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+  const [parentTopicForCreate, setParentTopicForCreate] = useState<Topic | null>(null);
   const [settingsTopic, setSettingsTopic] = useState<Topic | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
   const [rootFolderId, setRootFolderId] = useState<string | null>(null);
@@ -993,6 +994,10 @@ const Dashboard = () => {
                             setSelectedTopic(topic);
                             setAddPageOpen(true);
                           }}
+                          onAddSubtopic={(topic) => {
+                            setParentTopicForCreate(topic);
+                            setAddTopicOpen(true);
+                          }}
                           onOpenSettings={(topic) => {
                             setSettingsTopic(topic);
                             setTopicSettingsOpen(true);
@@ -1451,11 +1456,22 @@ const Dashboard = () => {
       
       <AddTopicDialog
         open={addTopicOpen}
-        onOpenChange={setAddTopicOpen}
+        onOpenChange={(open) => {
+          setAddTopicOpen(open);
+          if (!open) setParentTopicForCreate(null);
+        }}
         projectName={selectedProject?.name || null}
         projectId={selectedProject?.id || null}
         projectFolderId={selectedProject?.drive_folder_id || null}
-        onCreated={() => fetchData()}
+        parentTopic={parentTopicForCreate ? {
+          id: parentTopicForCreate.id,
+          name: parentTopicForCreate.name,
+          drive_folder_id: parentTopicForCreate.drive_folder_id,
+        } : null}
+        onCreated={() => {
+          fetchData();
+          setParentTopicForCreate(null);
+        }}
       />
       
       <ProjectSettingsPanel

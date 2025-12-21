@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { ChevronRight, ChevronDown, Folder, FolderOpen, Plus, MoreHorizontal, Settings, Trash2, GripVertical } from "lucide-react";
+import { ChevronRight, ChevronDown, Folder, FolderOpen, FolderPlus, Plus, MoreHorizontal, Settings, Trash2, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +25,7 @@ interface SidebarTopicsTreeProps {
   selectedTopic: Topic | null;
   onSelectTopic: (topic: Topic) => void;
   onAddPage: (topic: Topic) => void;
+  onAddSubtopic: (parentTopic: Topic) => void;
   onOpenSettings: (topic: Topic) => void;
   onDeleteTopic: (topic: Topic) => void;
   onTopicsReordered?: () => void;
@@ -46,6 +47,7 @@ export function SidebarTopicsTree({
   selectedTopic,
   onSelectTopic,
   onAddPage,
+  onAddSubtopic,
   onOpenSettings,
   onDeleteTopic,
   onTopicsReordered,
@@ -307,7 +309,16 @@ export function SidebarTopicsTree({
                 <MoreHorizontal className="w-3 h-3" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={() => onAddPage(topic)}>
+                <Plus className="w-3 h-3 mr-2" />
+                Add Page
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddSubtopic(topic)}>
+                <FolderPlus className="w-3 h-3 mr-2" />
+                Add Subtopic
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onOpenSettings(topic)}>
                 <Settings className="w-3 h-3 mr-2" />
                 Settings
