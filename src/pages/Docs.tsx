@@ -259,7 +259,7 @@ export default function Docs() {
         if (userOrgId) {
           const { data: orgData } = await supabase
             .from("organizations")
-            .select("id, name, slug, domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects")
+            .select("id, name, slug, domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
             .eq("id", userOrgId)
             .single();
           if (orgData) {
@@ -273,7 +273,7 @@ export default function Docs() {
       if (orgSlug && !currentOrg) {
         const { data: orgData } = await supabase
           .from("organizations")
-          .select("id, name, slug, domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects")
+          .select("id, name, slug, domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
           .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
           .maybeSingle();
         if (orgData) {
