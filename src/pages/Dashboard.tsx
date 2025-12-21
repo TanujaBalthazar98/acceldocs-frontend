@@ -26,6 +26,8 @@ import {
   Globe,
   BookOpen,
   Layers,
+  FileJson,
+  Code,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -58,6 +60,7 @@ import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { SubtopicsView } from "@/components/dashboard/SubtopicsView";
 import { SidebarTopicsTree } from "@/components/dashboard/SidebarTopicsTree";
+import { OrgResourceItem } from "@/components/dashboard/OrgResourceItem";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 
@@ -143,6 +146,8 @@ const Dashboard = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'project' | 'topic' | 'document'; id: string; name: string } | null>(null);
   const [isNormalizing, setIsNormalizing] = useState(false);
+  const [orgMcpEnabled, setOrgMcpEnabled] = useState(false);
+  const [orgHasApiSpec, setOrgHasApiSpec] = useState(false);
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -166,7 +171,7 @@ const Dashboard = () => {
       // Get organization details
       const { data: org } = await supabase
         .from("organizations")
-        .select("id, drive_folder_id, name, slug, domain")
+        .select("id, drive_folder_id, name, slug, domain, mcp_enabled, openapi_spec_json, openapi_spec_url")
         .eq("id", profile.organization_id)
         .single();
       
@@ -176,6 +181,10 @@ const Dashboard = () => {
       if (org?.slug || org?.domain) {
         setOrganizationSlug(org.slug || org.domain);
       }
+      
+      // Set org-level API/MCP settings
+      setOrgMcpEnabled((org as any)?.mcp_enabled ?? false);
+      setOrgHasApiSpec(!!((org as any)?.openapi_spec_json || (org as any)?.openapi_spec_url));
       
       // Onboarding is complete if the organization has a name set (not just the default domain)
       setNeedsOnboarding(false);
@@ -996,6 +1005,35 @@ const Dashboard = () => {
               })
             )}
           </div>
+
+          {/* Developer Resources - API/MCP */}
+          {(orgHasApiSpec || orgMcpEnabled) && (
+            <div className="mt-4 pt-4 border-t border-border">
+              <div className="flex items-center justify-between px-2 py-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Developer Resources
+                </span>
+              </div>
+              <div className="space-y-1">
+                <OrgResourceItem
+                  icon={<Code className="w-4 h-4" />}
+                  label="API Reference"
+                  isEnabled={orgHasApiSpec}
+                  previewUrl={`/api/${organizationSlug}`}
+                  onClick={() => window.open(`/api/${organizationSlug}`, '_blank')}
+                  onOpenSettings={() => setShowGeneralSettings(true)}
+                />
+                <OrgResourceItem
+                  icon={<FileJson className="w-4 h-4" />}
+                  label="MCP Protocol"
+                  isEnabled={orgMcpEnabled}
+                  previewUrl={`/mcp/${organizationSlug}`}
+                  onClick={() => window.open(`/mcp/${organizationSlug}`, '_blank')}
+                  onOpenSettings={() => setShowGeneralSettings(true)}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* User Section */}
