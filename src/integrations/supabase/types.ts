@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          entity_id: string | null
+          entity_type: string
+          error_message: string | null
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          project_id: string | null
+          success: boolean | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          entity_id?: string | null
+          entity_type: string
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          project_id?: string | null
+          success?: boolean | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          project_id?: string | null
+          success?: boolean | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           content: string | null
@@ -641,8 +694,16 @@ export type Database = {
         Args: { invitation_token: string }
         Returns: boolean
       }
+      can_access_drive: {
+        Args: { _operation: string; _project_id: string; _user_id: string }
+        Returns: boolean
+      }
       can_edit_project: {
         Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
+      check_project_permission: {
+        Args: { _action: string; _project_id: string; _user_id: string }
         Returns: boolean
       }
       ensure_unique_slug: {
@@ -656,6 +717,10 @@ export type Database = {
         Returns: string
       }
       generate_slug: { Args: { title: string }; Returns: string }
+      get_project_role: {
+        Args: { _project_id: string; _user_id: string }
+        Returns: Database["public"]["Enums"]["project_role"]
+      }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       has_org_role: {
         Args: {
@@ -676,6 +741,18 @@ export type Database = {
       is_personal_email_domain: {
         Args: { email_domain: string }
         Returns: boolean
+      }
+      log_audit_action: {
+        Args: {
+          _action: string
+          _entity_id: string
+          _entity_type: string
+          _error_message?: string
+          _metadata?: Json
+          _project_id: string
+          _success?: boolean
+        }
+        Returns: string
       }
     }
     Enums: {
