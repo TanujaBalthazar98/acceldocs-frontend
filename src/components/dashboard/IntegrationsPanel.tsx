@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   ArrowLeft, 
   Building2, 
@@ -17,7 +18,8 @@ import {
   XCircle, 
   AlertCircle,
   Activity,
-  Trash2
+  Trash2,
+  Sparkles
 } from 'lucide-react';
 import { useConnectors } from '@/hooks/useConnectors';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -28,6 +30,7 @@ import {
 } from '@/lib/connectors/types';
 import { ConfigureConnectorDialog } from './ConfigureConnectorDialog';
 import { ConnectorActionsLog } from './ConnectorActionsLog';
+import { MCPActionsPanel } from './MCPActionsPanel';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -179,7 +182,20 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-4">
+      <Tabs defaultValue="connectors" className="flex-1 flex flex-col">
+        <TabsList className="mx-4 mt-4 w-fit">
+          <TabsTrigger value="connectors" className="gap-2">
+            <Plug className="h-4 w-4" />
+            Connectors
+          </TabsTrigger>
+          <TabsTrigger value="actions" className="gap-2">
+            <Sparkles className="h-4 w-4" />
+            MCP Actions
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="connectors" className="flex-1 mt-0">
+          <ScrollArea className="flex-1 p-4">
         {/* Installed Connectors */}
         <div className="space-y-4 mb-8">
           <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -335,7 +351,13 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
             </div>
           </div>
         )}
-      </ScrollArea>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="actions" className="flex-1 mt-0 p-4 overflow-auto">
+          <MCPActionsPanel projectId={projectId} />
+        </TabsContent>
+      </Tabs>
 
       {/* Configure Dialog */}
       {configureConnector && (
