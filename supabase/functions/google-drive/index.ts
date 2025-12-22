@@ -339,7 +339,20 @@ Deno.serve(async (req) => {
         const errorText = await response.text();
         console.error("Google Drive export error:", errorText);
         
-        if (response.status === 401 || response.status === 403) {
+        // Handle file too large error
+        if (errorText.includes("exportSizeLimitExceeded") || errorText.includes("too large to be exported")) {
+          return new Response(
+            JSON.stringify({ 
+              error: "Document too large", 
+              fileTooLarge: true,
+              message: "This document is too large to export. Please split it into smaller documents or edit directly in Google Docs."
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        // Handle auth errors
+        if (response.status === 401 || (response.status === 403 && !errorText.includes("exportSizeLimitExceeded"))) {
           return new Response(
             JSON.stringify({ 
               error: "Google authentication expired", 
@@ -400,7 +413,20 @@ Deno.serve(async (req) => {
         const errorText = await response.text();
         console.error("Google Drive export error:", errorText);
         
-        if (response.status === 401 || response.status === 403) {
+        // Handle file too large error
+        if (errorText.includes("exportSizeLimitExceeded") || errorText.includes("too large to be exported")) {
+          return new Response(
+            JSON.stringify({ 
+              error: "Document too large", 
+              fileTooLarge: true,
+              message: "This document is too large to sync. Please split it into smaller documents."
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        // Handle auth errors
+        if (response.status === 401 || (response.status === 403 && !errorText.includes("exportSizeLimitExceeded"))) {
           return new Response(
             JSON.stringify({ 
               error: "Google authentication expired", 
