@@ -67,6 +67,214 @@ export type Database = {
           },
         ]
       }
+      connector_actions: {
+        Row: {
+          action_type: string
+          connector_id: string
+          created_at: string
+          document_id: string | null
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          input_data: Json | null
+          output_data: Json | null
+          project_id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          connector_id: string
+          created_at?: string
+          document_id?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          input_data?: Json | null
+          output_data?: Json | null
+          project_id: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          connector_id?: string
+          created_at?: string
+          document_id?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          input_data?: Json | null
+          output_data?: Json | null
+          project_id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connector_actions_connector_id_fkey"
+            columns: ["connector_id"]
+            isOneToOne: false
+            referencedRelation: "connectors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connector_actions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connector_actions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      connector_credentials: {
+        Row: {
+          connector_id: string
+          created_at: string
+          encrypted_credentials: Json
+          id: string
+          oauth_access_token: string | null
+          oauth_expires_at: string | null
+          oauth_refresh_token: string | null
+          updated_at: string
+        }
+        Insert: {
+          connector_id: string
+          created_at?: string
+          encrypted_credentials?: Json
+          id?: string
+          oauth_access_token?: string | null
+          oauth_expires_at?: string | null
+          oauth_refresh_token?: string | null
+          updated_at?: string
+        }
+        Update: {
+          connector_id?: string
+          created_at?: string
+          encrypted_credentials?: Json
+          id?: string
+          oauth_access_token?: string | null
+          oauth_expires_at?: string | null
+          oauth_refresh_token?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connector_credentials_connector_id_fkey"
+            columns: ["connector_id"]
+            isOneToOne: true
+            referencedRelation: "connectors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      connector_permissions: {
+        Row: {
+          can_configure: boolean
+          can_use: boolean
+          can_view: boolean
+          connector_id: string
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["project_role"]
+        }
+        Insert: {
+          can_configure?: boolean
+          can_use?: boolean
+          can_view?: boolean
+          connector_id: string
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["project_role"]
+        }
+        Update: {
+          can_configure?: boolean
+          can_use?: boolean
+          can_view?: boolean
+          connector_id?: string
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["project_role"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connector_permissions_connector_id_fkey"
+            columns: ["connector_id"]
+            isOneToOne: false
+            referencedRelation: "connectors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      connectors: {
+        Row: {
+          connector_type: Database["public"]["Enums"]["connector_type"]
+          created_at: string
+          created_by: string
+          description: string | null
+          endpoint_url: string | null
+          id: string
+          is_enabled: boolean
+          last_error: string | null
+          last_health_check: string | null
+          last_sync_at: string | null
+          metadata: Json | null
+          name: string
+          project_id: string
+          status: Database["public"]["Enums"]["connector_status"]
+          updated_at: string
+        }
+        Insert: {
+          connector_type: Database["public"]["Enums"]["connector_type"]
+          created_at?: string
+          created_by: string
+          description?: string | null
+          endpoint_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          last_error?: string | null
+          last_health_check?: string | null
+          last_sync_at?: string | null
+          metadata?: Json | null
+          name: string
+          project_id: string
+          status?: Database["public"]["Enums"]["connector_status"]
+          updated_at?: string
+        }
+        Update: {
+          connector_type?: Database["public"]["Enums"]["connector_type"]
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          endpoint_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          last_error?: string | null
+          last_health_check?: string | null
+          last_sync_at?: string | null
+          metadata?: Json | null
+          name?: string
+          project_id?: string
+          status?: Database["public"]["Enums"]["connector_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connectors_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           content: string | null
@@ -698,8 +906,16 @@ export type Database = {
         Args: { _operation: string; _project_id: string; _user_id: string }
         Returns: boolean
       }
+      can_configure_connector: {
+        Args: { _connector_id: string; _user_id: string }
+        Returns: boolean
+      }
       can_edit_project: {
         Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
+      can_use_connector: {
+        Args: { _connector_id: string; _user_id: string }
         Returns: boolean
       }
       check_project_permission: {
@@ -758,6 +974,8 @@ export type Database = {
     Enums: {
       account_type: "individual" | "team" | "enterprise"
       app_role: "owner" | "admin" | "editor" | "viewer"
+      connector_status: "connected" | "disconnected" | "error" | "configuring"
+      connector_type: "atlassian" | "claude" | "custom_mcp"
       project_role: "admin" | "editor" | "reviewer" | "viewer"
       visibility_level: "internal" | "external" | "public"
     }
@@ -889,6 +1107,8 @@ export const Constants = {
     Enums: {
       account_type: ["individual", "team", "enterprise"],
       app_role: ["owner", "admin", "editor", "viewer"],
+      connector_status: ["connected", "disconnected", "error", "configuring"],
+      connector_type: ["atlassian", "claude", "custom_mcp"],
       project_role: ["admin", "editor", "reviewer", "viewer"],
       visibility_level: ["internal", "external", "public"],
     },

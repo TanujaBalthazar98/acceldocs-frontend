@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.check-permission]
 verify_jwt = true
+
+[functions.mcp-connector]
+verify_jwt = true
