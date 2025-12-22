@@ -9,36 +9,107 @@ interface CreateFolderRequest {
   action: "create_folder";
   name: string;
   parentFolderId: string;
+  projectId?: string;
 }
 
 interface CreateDocRequest {
   action: "create_doc";
   title: string;
   parentFolderId: string;
+  projectId?: string;
 }
 
 interface ListFolderRequest {
   action: "list_folder";
   folderId: string;
+  projectId?: string;
 }
 
 interface GetDocContentRequest {
   action: "get_doc_content";
   docId: string;
+  projectId?: string;
 }
 
 interface SyncDocContentRequest {
   action: "sync_doc_content";
-  documentId: string;  // Our database document ID
+  documentId: string;
   googleDocId: string;
+  projectId?: string;
 }
 
 interface TrashFileRequest {
   action: "trash_file";
   fileId: string;
+  projectId?: string;
 }
 
 type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | GetDocContentRequest | SyncDocContentRequest | TrashFileRequest;
+
+// Check if user has permission for a Drive operation
+async function checkDrivePermission(
+  supabase: any,
+  userId: string,
+  projectId: string | undefined,
+  operation: string
+): Promise<{ allowed: boolean; error?: string }> {
+  if (!projectId) {
+    // If no project context, allow basic operations (backwards compatibility)
+    console.log("No project context provided, allowing operation");
+    return { allowed: true };
+  }
+
+  try {
+    const { data: allowed, error } = await supabase.rpc('can_access_drive', {
+      _project_id: projectId,
+      _user_id: userId,
+      _operation: operation,
+    });
+
+    if (error) {
+      console.error("Permission check error:", error);
+      return { allowed: false, error: "Failed to check permissions" };
+    }
+
+    if (!allowed) {
+      // Log unauthorized attempt
+      await supabase.from('audit_logs').insert({
+        user_id: userId,
+        action: `unauthorized_drive_${operation}`,
+        entity_type: 'drive',
+        entity_id: null,
+        project_id: projectId,
+        metadata: { operation, attempted: true },
+        success: false,
+        error_message: `User attempted Drive ${operation} without permission`,
+      });
+    }
+
+    return { allowed: !!allowed };
+  } catch (err) {
+    console.error("Permission check exception:", err);
+    return { allowed: false, error: "Permission check failed" };
+  }
+}
+
+// Map action to Drive operation type
+function getOperationForAction(action: string): string {
+  switch (action) {
+    case 'create_folder':
+    case 'create_doc':
+      return 'edit';
+    case 'list_folder':
+      return 'view';
+    case 'get_doc_content':
+      return 'view';
+    case 'sync_doc_content':
+      return 'edit';
+    case 'trash_file':
+      return 'edit';
+    default:
+      return 'view';
+  }
+}
 
 // Refresh Google access token using refresh token
 async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
@@ -83,15 +154,12 @@ async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: 
 }
 
 // Get valid access token - either from header or by refreshing
-// Get access token - use provided token directly, only refresh if we have a stored refresh token
 async function getValidAccessToken(
   providerToken: string | null,
   userId: string,
   supabaseUrl: string,
   supabaseKey: string
 ): Promise<{ token: string | null; needsReauth: boolean }> {
-  // If we have a provider token, just use it directly
-  // Don't pre-validate - let the actual API call fail if the token is bad
   if (providerToken) {
     console.log("Using provided access token");
     return { token: providerToken, needsReauth: false };
@@ -99,7 +167,6 @@ async function getValidAccessToken(
 
   console.log("No provider token provided, checking for stored refresh token");
   
-  // No token provided - try to refresh using stored refresh token
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
@@ -120,7 +187,6 @@ async function getValidAccessToken(
     return { token: null, needsReauth: true };
   }
 
-  // Update the last refresh timestamp
   await supabase
     .from("profiles")
     .update({ google_token_refreshed_at: new Date().toISOString() } as Record<string, unknown>)
@@ -130,13 +196,11 @@ async function getValidAccessToken(
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Get the authorization header to extract user's session
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       console.error("No authorization header provided");
@@ -146,17 +210,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get the user from the JWT
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     
     if (userError || !user) {
-      // Return 200 with needsReauth flag instead of 401 to prevent app crashes
       console.log("User session not valid, returning soft error:", userError?.message);
       return new Response(
         JSON.stringify({ 
@@ -171,10 +232,25 @@ Deno.serve(async (req) => {
     const body: RequestBody = await req.json();
     console.log("Request body:", JSON.stringify(body));
 
-    // Get the provider token from header
+    // RBAC Permission Check
+    const operation = getOperationForAction(body.action);
+    const projectId = 'projectId' in body ? body.projectId : undefined;
+    
+    const permCheck = await checkDrivePermission(supabase, user.id, projectId, operation);
+    if (!permCheck.allowed) {
+      console.log("RBAC denied:", body.action, "for user:", user.id, "project:", projectId);
+      return new Response(
+        JSON.stringify({ 
+          error: "Insufficient permissions", 
+          message: `You don't have permission to ${operation} in this project`,
+          code: "PERMISSION_DENIED"
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const providerTokenFromHeader = req.headers.get("x-google-token");
     
-    // Get valid access token (with automatic refresh if needed)
     const { token: googleToken, needsReauth } = await getValidAccessToken(
       providerTokenFromHeader,
       user.id,
@@ -213,7 +289,6 @@ Deno.serve(async (req) => {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
         
-        // Check if it's a scope/permission error
         if (errorText.includes("SCOPE_INSUFFICIENT") || errorText.includes("insufficientPermissions")) {
           return new Response(
             JSON.stringify({ error: "Insufficient scopes", needsDriveAccess: true }),
@@ -221,7 +296,6 @@ Deno.serve(async (req) => {
           );
         }
         
-        // Check if it's an auth error - return 200 with needsReauth flag for client handling
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({ 
@@ -248,11 +322,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get document content using Drive API export (works with drive.file scope)
+    // Get document content
     if (body.action === "get_doc_content") {
       console.log("Getting doc content via Drive export:", body.docId);
       
-      // Use Drive API to export as HTML - this works with drive.file scope
       const response = await fetch(
         `https://www.googleapis.com/drive/v3/files/${body.docId}/export?mimeType=text/html`,
         {
@@ -266,7 +339,6 @@ Deno.serve(async (req) => {
         const errorText = await response.text();
         console.error("Google Drive export error:", errorText);
         
-        // Check if it's an auth error
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({ 
@@ -293,11 +365,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Sync document content - fetches from Google and saves to database
+    // Sync document content
     if (body.action === "sync_doc_content") {
       console.log("Syncing doc content:", body.googleDocId, "to document:", body.documentId);
       
-      // First, get the file metadata to retrieve the modifiedTime
       const metadataResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files/${body.googleDocId}?fields=modifiedTime,name`,
         {
@@ -316,7 +387,6 @@ Deno.serve(async (req) => {
         console.warn("Failed to fetch file metadata, continuing without modifiedTime");
       }
       
-      // Use Drive API to export as HTML
       const response = await fetch(
         `https://www.googleapis.com/drive/v3/files/${body.googleDocId}/export?mimeType=text/html`,
         {
@@ -350,19 +420,15 @@ Deno.serve(async (req) => {
       const htmlContent = await response.text();
       console.log("Document exported as HTML, length:", htmlContent.length);
 
-      // Build update object - only include google_modified_at if we got it
-      // When content changes, revert to draft (is_published = false)
-      // The published_content_html remains unchanged, preserving the last published version
       const updateData: Record<string, unknown> = {
         content_html: htmlContent,
         last_synced_at: new Date().toISOString(),
-        is_published: false  // Revert to draft when content is synced
+        is_published: false
       };
       if (googleModifiedAt) {
         updateData.google_modified_at = googleModifiedAt;
       }
 
-      // Save to database - NOTE: Do NOT update is_published here!
       const { error: updateError } = await supabase
         .from("documents")
         .update(updateData)
@@ -376,6 +442,17 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Log successful sync
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        action: 'sync_content',
+        entity_type: 'document',
+        entity_id: body.documentId,
+        project_id: projectId,
+        metadata: { googleDocId: body.googleDocId },
+        success: true,
+      });
+
       console.log("Content synced successfully with modifiedTime:", googleModifiedAt);
       return new Response(
         JSON.stringify({ success: true, html: htmlContent, modifiedAt: googleModifiedAt }),
@@ -383,6 +460,7 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Create folder
     if (body.action === "create_folder") {
       console.log("Creating folder:", body.name, "in parent:", body.parentFolderId);
       
@@ -405,7 +483,6 @@ Deno.serve(async (req) => {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
         
-        // Check if it's an auth error
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({ 
@@ -426,12 +503,24 @@ Deno.serve(async (req) => {
       const folder = await response.json();
       console.log("Folder created:", folder.id);
 
+      // Log successful creation
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        action: 'create_folder',
+        entity_type: 'folder',
+        entity_id: folder.id,
+        project_id: projectId,
+        metadata: { folderName: body.name },
+        success: true,
+      });
+
       return new Response(
         JSON.stringify({ success: true, folder }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    // Create doc
     if (body.action === "create_doc") {
       console.log("Creating doc:", body.title, "in parent:", body.parentFolderId);
       
@@ -454,7 +543,6 @@ Deno.serve(async (req) => {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
         
-        // Check if it's an auth error
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({ 
@@ -475,13 +563,24 @@ Deno.serve(async (req) => {
       const doc = await response.json();
       console.log("Document created:", doc.id);
 
+      // Log successful creation
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        action: 'create_document',
+        entity_type: 'document',
+        entity_id: doc.id,
+        project_id: projectId,
+        metadata: { documentTitle: body.title },
+        success: true,
+      });
+
       return new Response(
         JSON.stringify({ success: true, doc }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Trash a file or folder (move to Drive trash)
+    // Trash file
     if (body.action === "trash_file") {
       console.log("Trashing file/folder:", body.fileId);
       
@@ -501,7 +600,6 @@ Deno.serve(async (req) => {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
         
-        // Check if it's an auth error
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({ 
@@ -513,7 +611,6 @@ Deno.serve(async (req) => {
           );
         }
         
-        // If file not found (already deleted), consider it successful
         if (response.status === 404) {
           console.log("File not found, treating as already deleted");
           return new Response(
@@ -527,6 +624,17 @@ Deno.serve(async (req) => {
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+
+      // Log successful trash
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        action: 'trash_file',
+        entity_type: 'drive_file',
+        entity_id: body.fileId,
+        project_id: projectId,
+        metadata: {},
+        success: true,
+      });
 
       console.log("File/folder trashed successfully");
       return new Response(
