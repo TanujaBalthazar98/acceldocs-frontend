@@ -1209,7 +1209,7 @@ const Dashboard = () => {
                   setShowMCPSettings(false);
                   setShowAPISettings(false);
                   setShowGeneralSettings(false);
-                  setSelectedProject(null);
+                  // Keep selectedProject so integrations work - only clear if none selected
                   setSelectedTopic(null);
                 }}
               >
