@@ -28,6 +28,7 @@ import {
   Layers,
   FileJson,
   Code,
+  History,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -63,8 +64,10 @@ import { SubtopicsView } from "@/components/dashboard/SubtopicsView";
 import { SidebarTopicsTree } from "@/components/dashboard/SidebarTopicsTree";
 import { APISettingsPanel } from "@/components/dashboard/APISettingsPanel";
 import { MCPSettingsPanel } from "@/components/dashboard/MCPSettingsPanel";
+import { AuditLogPanel } from "@/components/dashboard/AuditLogPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
+import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -154,6 +157,11 @@ const Dashboard = () => {
   const [showAPISettings, setShowAPISettings] = useState(false);
   const [showMCPSettings, setShowMCPSettings] = useState(false);
   const [visiblePagesCount, setVisiblePagesCount] = useState(10);
+  const [auditLogOpen, setAuditLogOpen] = useState(false);
+  
+  // Permissions and audit logging
+  const { permissions, role, loading: permissionsLoading } = usePermissions(selectedProject?.id || null);
+  const { logAction, logUnauthorizedAttempt } = useAuditLog();
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
