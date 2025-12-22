@@ -1198,24 +1198,24 @@ const Dashboard = () => {
                   <span className="w-2 h-2 rounded-full bg-green-500" title="Published" />
                 )}
               </div>
-              {selectedProject && permissions.canEditProjectSettings && (
-                <div
-                  className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-                    showIntegrations
-                      ? "bg-secondary text-foreground"
-                      : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                  }`}
-                  onClick={() => {
-                    setShowIntegrations(true);
-                    setShowMCPSettings(false);
-                    setShowAPISettings(false);
-                    setShowGeneralSettings(false);
-                  }}
-                >
-                  <Plug2 className="w-4 h-4" />
-                  <span className="flex-1 text-left">Integrations</span>
-                </div>
-              )}
+              <div
+                className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                  showIntegrations
+                    ? "bg-secondary text-foreground"
+                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                }`}
+                onClick={() => {
+                  setShowIntegrations(true);
+                  setShowMCPSettings(false);
+                  setShowAPISettings(false);
+                  setShowGeneralSettings(false);
+                  setSelectedProject(null);
+                  setSelectedTopic(null);
+                }}
+              >
+                <Plug2 className="w-4 h-4" />
+                <span className="flex-1 text-left">Integrations</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1278,9 +1278,9 @@ const Dashboard = () => {
             fetchData();
           }}
         />
-      ) : showIntegrations && selectedProject ? (
+      ) : showIntegrations ? (
         <IntegrationsPanel
-          projectId={selectedProject.id}
+          projectId={selectedProject?.id || null}
           onBack={() => {
             setShowIntegrations(false);
           }}
