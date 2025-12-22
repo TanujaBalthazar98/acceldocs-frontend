@@ -260,6 +260,15 @@ export default function PagePreview() {
                   Published
                 </Badge>
               )}
+
+              {document.project?.id && docContent && (
+                <ConnectorContextActions
+                  projectId={document.project.id}
+                  documentId={document.id}
+                  documentTitle={document.title}
+                  documentContent={docContent}
+                />
+              )}
               
               <Button variant="outline" size="sm" onClick={() => setShowSharePanel(true)}>
                 <Share2 className="h-4 w-4 mr-2" />
@@ -361,17 +370,6 @@ export default function PagePreview() {
           )}
         </div>
 
-        {/* Connector Actions - Claude AI, Jira, etc. */}
-        {document.project?.id && docContent && (
-          <div className="mt-6">
-            <ConnectorContextActions
-              projectId={document.project.id}
-              documentId={document.id}
-              documentTitle={document.title}
-              documentContent={docContent}
-            />
-          </div>
-        )}
       </main>
 
       {/* Share Panel - at project level */}

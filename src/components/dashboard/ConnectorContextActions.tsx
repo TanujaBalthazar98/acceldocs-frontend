@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -46,6 +47,7 @@ export function ConnectorContextActions({
   documentTitle,
   documentContent,
 }: ConnectorContextActionsProps) {
+  const navigate = useNavigate();
   const { connectors, executeAction, canUseConnector } = useConnectors(projectId);
   const { role } = usePermissions(projectId);
   
@@ -70,6 +72,10 @@ export function ConnectorContextActions({
   if (!canUse || enabledConnectors.length === 0) {
     return null;
   }
+
+  const openIntegrations = () => {
+    navigate(`/dashboard?integrations=1&project=${projectId}`);
+  };
 
   const handleCreateJiraTicket = async () => {
     if (!atlassianConnector) return;
@@ -178,7 +184,13 @@ export function ConnectorContextActions({
             <span className="ml-2 hidden sm:inline">Integrations</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuItem onClick={openIntegrations}>
+            <Plug2 className="h-4 w-4 mr-2" />
+            Manage integrations
+          </DropdownMenuItem>
+          {(atlassianConnector || claudeConnector) && <DropdownMenuSeparator />}
+
           {atlassianConnector && (
             <>
               <DropdownMenuItem onClick={() => setShowJiraDialog(true)}>
@@ -189,7 +201,7 @@ export function ConnectorContextActions({
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Sync from Confluence
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              {claudeConnector && <DropdownMenuSeparator />}
             </>
           )}
           
