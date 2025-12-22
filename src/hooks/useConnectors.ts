@@ -29,17 +29,34 @@ interface UseConnectorsResult {
   canConfigureConnector: (connectorId: string) => boolean;
 }
 
-export function useConnectors(projectId: string | null): UseConnectorsResult {
+export function useConnectors(projectId?: string | null): UseConnectorsResult {
   const { user } = useAuth();
-  const { permissions, role } = usePermissions(projectId);
+  const { permissions, role } = usePermissions(projectId || null);
   const { logAction } = useAuditLog();
   
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+
+  // Fetch organization ID for current user
+  useEffect(() => {
+    const fetchOrgId = async () => {
+      if (!user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (data?.organization_id) {
+        setOrganizationId(data.organization_id);
+      }
+    };
+    fetchOrgId();
+  }, [user]);
 
   const fetchConnectors = useCallback(async () => {
-    if (!projectId) {
+    if (!organizationId) {
       setConnectors([]);
       setLoading(false);
       return;
@@ -49,10 +66,11 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
     setError(null);
 
     try {
+      // Fetch organization-level connectors
       const { data, error: fetchError } = await supabase
         .from('connectors')
         .select('*')
-        .eq('project_id', projectId)
+        .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
 
       if (fetchError) throw fetchError;
@@ -65,7 +83,7 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [organizationId]);
 
   useEffect(() => {
     fetchConnectors();
@@ -87,14 +105,8 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
     type: ConnectorType, 
     config?: Record<string, unknown>
   ): Promise<Connector | null> => {
-    if (!projectId || !user) {
-      toast.error('No project selected or user not authenticated');
-      return null;
-    }
-
-    if (!permissions.canEditProjectSettings) {
-      toast.error('You do not have permission to install connectors');
-      await logAction('unauthorized_install_connector', 'connector', null, projectId, { type }, false, 'Missing permission');
+    if (!organizationId || !user) {
+      toast.error('Not authenticated or no organization');
       return null;
     }
 
@@ -108,7 +120,7 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
       const { data, error: insertError } = await supabase
         .from('connectors')
         .insert({
-          project_id: projectId,
+          organization_id: organizationId,
           connector_type: type,
           name: definition.name,
           description: definition.description,
@@ -135,7 +147,7 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
         await supabase.from('connector_permissions').insert(perm);
       }
 
-      await logAction('install_connector', 'connector', data.id, projectId, { type, name: definition.name });
+      await logAction('install_connector', 'connector', data.id, null, { type, name: definition.name });
       
       toast.success(`${definition.name} connector installed`);
       await fetchConnectors();
@@ -146,19 +158,13 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
       toast.error('Failed to install connector');
       return null;
     }
-  }, [projectId, user, permissions, logAction, fetchConnectors]);
+  }, [organizationId, user, logAction, fetchConnectors]);
 
   const updateConnector = useCallback(async (
     id: string, 
     updates: Partial<Connector>
   ): Promise<boolean> => {
-    if (!projectId || !user) return false;
-
-    if (!canConfigureConnector(id)) {
-      toast.error('You do not have permission to configure this connector');
-      await logAction('unauthorized_update_connector', 'connector', id, projectId, updates, false, 'Missing permission');
-      return false;
-    }
+    if (!user) return false;
 
     try {
       const { error: updateError } = await supabase
@@ -168,7 +174,7 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
 
       if (updateError) throw updateError;
 
-      await logAction('update_connector', 'connector', id, projectId, updates);
+      await logAction('update_connector', 'connector', id, null, updates);
       await fetchConnectors();
       
       toast.success('Connector updated');
@@ -178,16 +184,10 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
       toast.error('Failed to update connector');
       return false;
     }
-  }, [projectId, user, canConfigureConnector, logAction, fetchConnectors]);
+  }, [user, logAction, fetchConnectors]);
 
   const deleteConnector = useCallback(async (id: string): Promise<boolean> => {
-    if (!projectId || !user) return false;
-
-    if (!canConfigureConnector(id)) {
-      toast.error('You do not have permission to delete this connector');
-      await logAction('unauthorized_delete_connector', 'connector', id, projectId, {}, false, 'Missing permission');
-      return false;
-    }
+    if (!user) return false;
 
     try {
       const { error: deleteError } = await supabase
@@ -197,7 +197,7 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
 
       if (deleteError) throw deleteError;
 
-      await logAction('delete_connector', 'connector', id, projectId);
+      await logAction('delete_connector', 'connector', id, null);
       await fetchConnectors();
       
       toast.success('Connector deleted');
@@ -207,7 +207,7 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
       toast.error('Failed to delete connector');
       return false;
     }
-  }, [projectId, user, canConfigureConnector, logAction, fetchConnectors]);
+  }, [user, logAction, fetchConnectors]);
 
   const enableConnector = useCallback(async (id: string): Promise<boolean> => {
     return updateConnector(id, { is_enabled: true, status: 'connected' });
@@ -218,14 +218,14 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
   }, [updateConnector]);
 
   const testConnection = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
-    if (!projectId || !user) return { success: false, error: 'Not authenticated' };
+    if (!user) return { success: false, error: 'Not authenticated' };
 
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('mcp-connector', {
         body: {
           action: 'health_check',
           connector_id: id,
-          project_id: projectId
+          organization_id: organizationId
         }
       });
 
@@ -251,22 +251,15 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
       console.error('Error testing connection:', err);
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
-  }, [projectId, user, updateConnector]);
+  }, [organizationId, user, updateConnector]);
 
   const executeAction = useCallback(async (
     connectorId: string,
     actionType: string,
     params: Record<string, unknown>
   ): Promise<ConnectorAction | null> => {
-    if (!projectId || !user) {
+    if (!user) {
       toast.error('Not authenticated');
-      return null;
-    }
-
-    if (!canUseConnector(connectorId)) {
-      toast.error('You do not have permission to use this connector');
-      await logAction('unauthorized_connector_action', 'connector_action', null, projectId, 
-        { connector_id: connectorId, action: actionType }, false, 'Missing permission');
       return null;
     }
 
@@ -281,14 +274,14 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
         body: {
           action: actionType,
           connector_id: connectorId,
-          project_id: projectId,
+          organization_id: organizationId,
           params
         }
       });
 
       if (invokeError) throw invokeError;
 
-      await logAction(`connector_${actionType}`, 'connector_action', connectorId, projectId, 
+      await logAction(`connector_${actionType}`, 'connector_action', connectorId, null, 
         { action: actionType, params, result: data?.success ? 'success' : 'failed' });
 
       if (data?.action) {
@@ -301,14 +294,12 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
       toast.error('Failed to execute action');
       return null;
     }
-  }, [projectId, user, connectors, canUseConnector, logAction]);
+  }, [organizationId, user, connectors, logAction]);
 
   const getConnectorActions = useCallback(async (
     connectorId: string, 
     limit = 50
   ): Promise<ConnectorAction[]> => {
-    if (!projectId) return [];
-
     try {
       const { data, error: fetchError } = await supabase
         .from('connector_actions')
@@ -324,7 +315,7 @@ export function useConnectors(projectId: string | null): UseConnectorsResult {
       console.error('Error fetching connector actions:', err);
       return [];
     }
-  }, [projectId]);
+  }, []);
 
   return {
     connectors,

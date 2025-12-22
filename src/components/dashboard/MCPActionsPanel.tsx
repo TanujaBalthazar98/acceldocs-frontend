@@ -189,11 +189,11 @@ const MCP_TOOLS: MCPTool[] = [
 ];
 
 interface MCPActionsPanelProps {
-  projectId: string;
+  projectId?: string;
 }
 
 export function MCPActionsPanel({ projectId }: MCPActionsPanelProps) {
-  const { connectors, executeAction } = useConnectors(projectId);
+  const { connectors, executeAction } = useConnectors();
   const claudeConnector = connectors.find(c => c.connector_type === 'claude' && c.is_enabled);
   
   const [selectedTool, setSelectedTool] = useState<MCPTool | null>(null);
@@ -222,7 +222,8 @@ export function MCPActionsPanel({ projectId }: MCPActionsPanelProps) {
     setResult(null);
 
     try {
-      const params: Record<string, any> = { projectId };
+      const params: Record<string, any> = {};
+      if (projectId) params.projectId = projectId;
       selectedTool.fields.forEach(field => {
         if (formData[field.name]) {
           params[field.name] = formData[field.name];

@@ -87,7 +87,7 @@ export function ConnectorContextActions({
     installConnector,
     enableConnector,
     loading: connectorsLoading,
-  } = useConnectors(projectId);
+  } = useConnectors();
   const { role, permissions } = usePermissions(projectId);
   
   const [showJiraDialog, setShowJiraDialog] = useState(false);
