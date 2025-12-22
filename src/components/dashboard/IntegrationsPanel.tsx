@@ -151,10 +151,14 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
           <Card className="bg-card/50 max-w-md w-full">
             <CardContent className="p-8 text-center">
               <Plug className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-medium mb-2">Select a Project</h3>
-              <p className="text-sm text-muted-foreground">
-                Choose a project from the sidebar to configure integrations and connect external services.
+              <h3 className="text-lg font-medium mb-2">No Project Selected</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Select a project from the sidebar first, then return to Integrations to configure connectors for that project.
               </p>
+              <Button variant="outline" onClick={onBack}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Go Back to Select Project
+              </Button>
             </CardContent>
           </Card>
         </div>
