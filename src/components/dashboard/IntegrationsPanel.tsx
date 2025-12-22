@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 interface IntegrationsPanelProps {
-  projectId: string;
+  projectId: string | null;
   onBack: () => void;
 }
 
@@ -133,6 +133,34 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
   };
 
   const canConfigure = permissions.canEditProjectSettings;
+
+  if (!projectId) {
+    return (
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        <div className="flex items-center gap-3 p-4 border-b border-border">
+          <Button variant="ghost" size="icon" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h2 className="text-lg font-semibold">Integrations</h2>
+            <p className="text-sm text-muted-foreground">Connect external services via MCP</p>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center p-8">
+          <Card className="bg-card/50 max-w-md w-full">
+            <CardContent className="p-8 text-center">
+              <Plug className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-medium mb-2">Select a Project</h3>
+              <p className="text-sm text-muted-foreground">
+                Choose a project from the sidebar to configure integrations and connect external services.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
