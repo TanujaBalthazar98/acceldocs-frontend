@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
+import { ConnectorContextActions } from "@/components/dashboard/ConnectorContextActions";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -326,6 +327,18 @@ export default function PagePreview() {
             </div>
           )}
         </div>
+
+        {/* Connector Actions - Claude AI, Jira, etc. */}
+        {document.project?.id && docContent && (
+          <div className="mt-6">
+            <ConnectorContextActions
+              projectId={document.project.id}
+              documentId={document.id}
+              documentTitle={document.title}
+              documentContent={docContent}
+            />
+          </div>
+        )}
       </main>
 
       {/* Share Panel - at project level */}
