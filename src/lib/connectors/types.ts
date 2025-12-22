@@ -114,7 +114,17 @@ export type ClaudeActionType =
   | 'summarize_page'
   | 'answer_question'
   | 'generate_content'
-  | 'analyze_document';
+  | 'analyze_document'
+  | 'create_page'
+  | 'update_page'
+  | 'delete_page'
+  | 'get_page'
+  | 'search_docs'
+  | 'create_topic'
+  | 'list_topics'
+  | 'publish_project'
+  | 'unpublish_project'
+  | 'get_project';
 
 export type CustomMCPActionType =
   | 'call_tool'
@@ -163,22 +173,29 @@ export const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
   {
     type: 'claude',
     name: 'Claude AI',
-    description: 'AI-powered summarization and content analysis (page-scoped only)',
+    description: 'AI-powered documentation assistant with full MCP action support',
     icon: 'Brain',
     capabilities: [
       'summarize_pages',
       'answer_questions',
       'generate_content',
-      'analyze_documents'
+      'analyze_documents',
+      'create_pages',
+      'update_pages',
+      'search_docs',
+      'manage_topics',
+      'publish_projects'
     ],
-    required_scopes: ['document:read'],
+    required_scopes: ['document:read', 'document:write', 'topic:write', 'project:publish'],
     config_schema: {
-      model: { type: 'string', default: 'claude-3-sonnet-20240229' },
-      max_tokens: { type: 'number', default: 4096 },
-      temperature: { type: 'number', default: 0.7 },
-      page_scoped_only: { type: 'boolean', default: true, readonly: true }
+      model: { type: 'string', default: 'google/gemini-2.5-flash' },
+      max_tokens: { type: 'number', default: 4096 }
     },
-    actions: ['summarize_page', 'answer_question', 'generate_content', 'analyze_document']
+    actions: [
+      'summarize_page', 'answer_question', 'generate_content', 'analyze_document',
+      'create_page', 'update_page', 'delete_page', 'get_page', 'search_docs',
+      'create_topic', 'list_topics', 'publish_project', 'unpublish_project', 'get_project'
+    ]
   },
   {
     type: 'custom_mcp',
