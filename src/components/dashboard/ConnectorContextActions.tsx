@@ -75,8 +75,14 @@ export function ConnectorContextActions({
   documentContent,
 }: ConnectorContextActionsProps) {
   const navigate = useNavigate();
-  const { connectors, executeAction } = useConnectors(projectId);
-  const { role } = usePermissions(projectId);
+  const {
+    connectors,
+    executeAction,
+    installConnector,
+    enableConnector,
+    loading: connectorsLoading,
+  } = useConnectors(projectId);
+  const { role, permissions } = usePermissions(projectId);
   
   const [showJiraDialog, setShowJiraDialog] = useState(false);
   const [showClaudeDialog, setShowClaudeDialog] = useState(false);
@@ -94,11 +100,39 @@ export function ConnectorContextActions({
   const claudeConnector = enabledConnectors.find(c => c.connector_type === 'claude');
   const customMcpConnectors = enabledConnectors.filter(c => c.connector_type === 'custom_mcp');
 
+  const hasClaudeInstalled = connectors.some(c => c.connector_type === 'claude');
+
   // Check if user can use connectors
   const canUse = role === 'admin' || role === 'editor';
+  const canConfigure = permissions.canEditProjectSettings;
 
   const openIntegrations = () => {
     navigate(`/dashboard?integrations=1&project=${projectId}`);
+  };
+
+  const handleQuickEnableClaude = async () => {
+    if (!canConfigure) {
+      toast.error('You do not have permission to enable integrations for this project');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const existing = connectors.find(c => c.connector_type === 'claude');
+      const installed = existing ?? (await installConnector('claude'));
+      if (!installed) return;
+
+      if (!installed.is_enabled) {
+        await enableConnector(installed.id);
+      }
+
+      toast.success('Claude is enabled for this project');
+      setShowClaudeDialog(true);
+    } catch (e) {
+      toast.error('Failed to enable Claude');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCreateJiraTicket = async () => {
@@ -214,21 +248,50 @@ export function ConnectorContextActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
-          {enabledConnectors.length === 0 ? (
-            <>
-              <div className="px-3 py-4 text-center">
-                <Plug2 className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground mb-3">
-                  No integrations configured yet.
-                </p>
-                <Button size="sm" variant="outline" onClick={openIntegrations} className="w-full">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configure Integrations
+          <DropdownMenuLabel className="text-xs text-muted-foreground">
+            Project integrations
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+
+          {connectorsLoading ? (
+            <div className="px-3 py-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading integrations…
+            </div>
+          ) : enabledConnectors.length === 0 ? (
+            <div className="px-3 py-4 text-center">
+              <Plug2 className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground mb-3">
+                No enabled integrations for this project.
+              </p>
+
+              {canConfigure && !hasClaudeInstalled && (
+                <Button
+                  size="sm"
+                  onClick={handleQuickEnableClaude}
+                  className="w-full mb-2"
+                  disabled={loading}
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Enable Claude AI
                 </Button>
-              </div>
-            </>
+              )}
+
+              <Button size="sm" variant="outline" onClick={openIntegrations} className="w-full">
+                <Settings className="h-4 w-4 mr-2" />
+                Manage Integrations
+              </Button>
+            </div>
           ) : (
             <>
+              {canConfigure && !claudeConnector && (
+                <DropdownMenuItem onClick={handleQuickEnableClaude} disabled={loading}>
+                  {ConnectorLogos.claude}
+                  <span className="ml-2">Enable Claude AI</span>
+                </DropdownMenuItem>
+              )}
+              {canConfigure && !claudeConnector && <DropdownMenuSeparator />}
+
               {/* Atlassian / Jira & Confluence */}
               {atlassianConnector && (
                 <DropdownMenuSub>
@@ -238,11 +301,11 @@ export function ConnectorContextActions({
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="w-52">
                     <DropdownMenuItem onClick={() => setShowJiraDialog(true)}>
-                      <FileUp className="h-4 w-4 mr-2 text-blue-500" />
+                      <FileUp className="h-4 w-4 mr-2 text-primary" />
                       Create Jira Ticket
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleSyncConfluence}>
-                      <RefreshCw className="h-4 w-4 mr-2 text-blue-500" />
+                      <RefreshCw className="h-4 w-4 mr-2 text-primary" />
                       Sync from Confluence
                     </DropdownMenuItem>
                   </DropdownMenuSubContent>
@@ -258,11 +321,11 @@ export function ConnectorContextActions({
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="w-52">
                     <DropdownMenuItem onClick={() => setShowClaudeDialog(true)}>
-                      <MessageSquare className="h-4 w-4 mr-2 text-amber-500" />
+                      <MessageSquare className="h-4 w-4 mr-2 text-primary" />
                       Ask Claude
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleSummarizePage}>
-                      <FileText className="h-4 w-4 mr-2 text-amber-500" />
+                      <FileText className="h-4 w-4 mr-2 text-primary" />
                       Summarize Page
                     </DropdownMenuItem>
                   </DropdownMenuSubContent>
