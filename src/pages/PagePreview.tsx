@@ -62,6 +62,7 @@ export default function PagePreview() {
   const [loadingContent, setLoadingContent] = useState(false);
   const [showSharePanel, setShowSharePanel] = useState(false);
   const [needsReconnect, setNeedsReconnect] = useState(false);
+  const [fileTooLarge, setFileTooLarge] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -117,6 +118,7 @@ export default function PagePreview() {
 
     setLoadingContent(true);
     setNeedsReconnect(false);
+    setFileTooLarge(false);
     try {
       const { data, error } = await supabase.functions.invoke("google-drive", {
         body: {
@@ -131,6 +133,13 @@ export default function PagePreview() {
       if (error) {
         console.error("Error fetching doc content:", error);
         setNeedsReconnect(true);
+        return;
+      }
+      
+      // Check if file is too large
+      if (data?.fileTooLarge) {
+        console.log("Document too large to export");
+        setFileTooLarge(true);
         return;
       }
       
@@ -313,6 +322,18 @@ export default function PagePreview() {
                   Open in Google Docs
                 </Button>
               </div>
+            </div>
+          ) : fileTooLarge ? (
+            <div className="text-center py-12">
+              <ExternalLink className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+              <h3 className="text-lg font-medium text-foreground mb-2">Document Too Large</h3>
+              <p className="text-muted-foreground mb-4">
+                This document is too large to display here. Please open it directly in Google Docs.
+              </p>
+              <Button onClick={handleOpenInDrive}>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open in Google Docs
+              </Button>
             </div>
           ) : docContent ? (
             <div className="prose prose-invert max-w-none">
