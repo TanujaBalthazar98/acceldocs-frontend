@@ -87,7 +87,8 @@ serve(async (req) => {
       );
     }
 
-    if (!connector.is_enabled) {
+    // Allow health_check even if connector is disabled (for testing)
+    if (!connector.is_enabled && action !== 'health_check') {
       return new Response(
         JSON.stringify({ error: 'Connector is not enabled' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
