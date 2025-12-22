@@ -462,6 +462,13 @@ async function handleCustomMCPAction(
   const credentials = connector.connector_credentials?.[0]?.encrypted_credentials || {};
   const config = connector.metadata || {};
 
+  // For health_check, return configuring status if endpoint not set
+  if (action === 'health_check') {
+    if (!config.endpoint_url) {
+      return { success: true, data: { status: 'configuring', message: 'Please configure the MCP endpoint URL' } };
+    }
+  }
+
   if (!config.endpoint_url) {
     return { success: false, error: 'MCP endpoint URL not configured' };
   }
