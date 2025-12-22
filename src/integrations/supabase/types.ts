@@ -227,7 +227,8 @@ export type Database = {
           last_sync_at: string | null
           metadata: Json | null
           name: string
-          project_id: string
+          organization_id: string | null
+          project_id: string | null
           status: Database["public"]["Enums"]["connector_status"]
           updated_at: string
         }
@@ -244,7 +245,8 @@ export type Database = {
           last_sync_at?: string | null
           metadata?: Json | null
           name: string
-          project_id: string
+          organization_id?: string | null
+          project_id?: string | null
           status?: Database["public"]["Enums"]["connector_status"]
           updated_at?: string
         }
@@ -261,11 +263,19 @@ export type Database = {
           last_sync_at?: string | null
           metadata?: Json | null
           name?: string
-          project_id?: string
+          organization_id?: string | null
+          project_id?: string | null
           status?: Database["public"]["Enums"]["connector_status"]
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "connectors_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "connectors_project_id_fkey"
             columns: ["project_id"]

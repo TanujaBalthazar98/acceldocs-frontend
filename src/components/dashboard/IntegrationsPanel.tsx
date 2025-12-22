@@ -44,7 +44,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 interface IntegrationsPanelProps {
-  projectId: string | null;
+  projectId?: string | null;
   onBack: () => void;
 }
 
@@ -88,8 +88,8 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
     deleteConnector,
     testConnection,
     canConfigureConnector 
-  } = useConnectors(projectId);
-  const { permissions } = usePermissions(projectId);
+  } = useConnectors();
+  const { permissions } = usePermissions(projectId || null);
   
   const [configureConnector, setConfigureConnector] = useState<Connector | null>(null);
   const [viewActionsConnector, setViewActionsConnector] = useState<Connector | null>(null);
@@ -135,39 +135,7 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
     }
   };
 
-  const canConfigure = permissions.canEditProjectSettings;
-
-  if (!projectId) {
-    return (
-      <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-center gap-3 p-4 border-b border-border">
-          <Button variant="ghost" size="icon" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h2 className="text-lg font-semibold">Integrations</h2>
-            <p className="text-sm text-muted-foreground">Connect external services via MCP</p>
-          </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center p-8">
-          <Card className="bg-card/50 max-w-md w-full">
-            <CardContent className="p-8 text-center">
-              <Plug className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-medium mb-2">No Project Selected</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Select a project from the sidebar first, then return to Integrations to configure connectors for that project.
-              </p>
-              <Button variant="outline" onClick={onBack}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Go Back to Select Project
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
+  const canConfigure = true; // Org-level permissions now
 
   return (
     <div className="flex flex-col h-full">
