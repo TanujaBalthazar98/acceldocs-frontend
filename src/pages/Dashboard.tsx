@@ -28,6 +28,7 @@ import {
   Layers,
   FileJson,
   Code,
+  Plug2,
   History,
 } from "lucide-react";
 import {
@@ -65,6 +66,7 @@ import { SidebarTopicsTree } from "@/components/dashboard/SidebarTopicsTree";
 import { APISettingsPanel } from "@/components/dashboard/APISettingsPanel";
 import { MCPSettingsPanel } from "@/components/dashboard/MCPSettingsPanel";
 import { AuditLogPanel } from "@/components/dashboard/AuditLogPanel";
+import { IntegrationsPanel } from "@/components/dashboard/IntegrationsPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
@@ -156,6 +158,7 @@ const Dashboard = () => {
   const [orgHasApiSpec, setOrgHasApiSpec] = useState(false);
   const [showAPISettings, setShowAPISettings] = useState(false);
   const [showMCPSettings, setShowMCPSettings] = useState(false);
+  const [showIntegrations, setShowIntegrations] = useState(false);
   const [visiblePagesCount, setVisiblePagesCount] = useState(10);
   const [auditLogOpen, setAuditLogOpen] = useState(false);
   
@@ -1162,6 +1165,7 @@ const Dashboard = () => {
                 onClick={() => {
                   setShowAPISettings(true);
                   setShowMCPSettings(false);
+                  setShowIntegrations(false);
                   setShowGeneralSettings(false);
                   setSelectedProject(null);
                   setSelectedTopic(null);
@@ -1182,6 +1186,7 @@ const Dashboard = () => {
                 onClick={() => {
                   setShowMCPSettings(true);
                   setShowAPISettings(false);
+                  setShowIntegrations(false);
                   setShowGeneralSettings(false);
                   setSelectedProject(null);
                   setSelectedTopic(null);
@@ -1193,6 +1198,24 @@ const Dashboard = () => {
                   <span className="w-2 h-2 rounded-full bg-green-500" title="Published" />
                 )}
               </div>
+              {selectedProject && permissions.canEditProjectSettings && (
+                <div
+                  className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                    showIntegrations
+                      ? "bg-secondary text-foreground"
+                      : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                  }`}
+                  onClick={() => {
+                    setShowIntegrations(true);
+                    setShowMCPSettings(false);
+                    setShowAPISettings(false);
+                    setShowGeneralSettings(false);
+                  }}
+                >
+                  <Plug2 className="w-4 h-4" />
+                  <span className="flex-1 text-left">Integrations</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1253,6 +1276,13 @@ const Dashboard = () => {
           onBack={() => {
             setShowMCPSettings(false);
             fetchData();
+          }}
+        />
+      ) : showIntegrations && selectedProject ? (
+        <IntegrationsPanel
+          projectId={selectedProject.id}
+          onBack={() => {
+            setShowIntegrations(false);
           }}
         />
       ) : (
