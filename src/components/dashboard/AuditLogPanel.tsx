@@ -56,7 +56,7 @@ interface AuditLogPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
-  projectName: string;
+  projectName?: string;
 }
 
 const ACTION_ICONS: Record<string, typeof FileText> = {
@@ -97,7 +97,7 @@ const ACTION_LABELS: Record<string, string> = {
   edit_project_settings: 'Updated settings',
 };
 
-export function AuditLogPanel({ open, onOpenChange, projectId, projectName }: AuditLogPanelProps) {
+export function AuditLogPanel({ open, onOpenChange, projectId, projectName = 'Project' }: AuditLogPanelProps) {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

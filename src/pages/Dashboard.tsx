@@ -325,8 +325,15 @@ const Dashboard = () => {
     !searchQuery.trim() || t.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
   
-  // Delete handlers
+  // Delete handlers with RBAC enforcement
   const handleDeleteProject = async (projectId: string) => {
+    // RBAC check - only admins can delete projects
+    if (!permissions.canDeleteProject) {
+      toast({ title: "Permission Denied", description: "You don't have permission to delete projects.", variant: "destructive" });
+      await logUnauthorizedAttempt('delete_project', 'project', projectId, projectId, 'canDeleteProject');
+      return;
+    }
+    
     // Get the project's drive folder ID first
     const project = projects.find(p => p.id === projectId);
     
@@ -352,6 +359,7 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to delete project.", variant: "destructive" });
     } else {
+      await logAction('delete_project', 'project', projectId, projectId, { projectName: project?.name });
       toast({ title: "Deleted", description: "Project moved to Drive trash and deleted from app." });
       if (selectedProject?.id === projectId) {
         setSelectedProject(null);
@@ -362,6 +370,13 @@ const Dashboard = () => {
   };
   
   const handleDeleteTopic = async (topicId: string) => {
+    // RBAC check - editors and admins can delete topics
+    if (!permissions.canDeleteTopic) {
+      toast({ title: "Permission Denied", description: "You don't have permission to delete topics.", variant: "destructive" });
+      await logUnauthorizedAttempt('delete_topic', 'topic', topicId, selectedProject?.id || '', 'canDeleteTopic');
+      return;
+    }
+    
     // Get the topic's drive folder ID first
     const topic = topics.find(t => t.id === topicId);
     
@@ -385,6 +400,7 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to delete topic.", variant: "destructive" });
     } else {
+      await logAction('delete_topic', 'topic', topicId, selectedProject?.id || '', { topicName: topic?.name });
       toast({ title: "Deleted", description: "Topic moved to Drive trash and deleted from app." });
       if (selectedTopic?.id === topicId) {
         setSelectedTopic(null);
@@ -394,6 +410,13 @@ const Dashboard = () => {
   };
   
   const handleDeleteDocument = async (docId: string) => {
+    // RBAC check - editors and admins can delete documents
+    if (!permissions.canDeleteDocument) {
+      toast({ title: "Permission Denied", description: "You don't have permission to delete pages.", variant: "destructive" });
+      await logUnauthorizedAttempt('delete_document', 'document', docId, selectedProject?.id || '', 'canDeleteDocument');
+      return;
+    }
+    
     // Get the document's google doc ID first
     const doc = filteredDocuments.find(d => d.id === docId);
     
@@ -414,6 +437,7 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to delete page.", variant: "destructive" });
     } else {
+      await logAction('delete_document', 'document', docId, selectedProject?.id || '', { documentTitle: doc?.title });
       toast({ title: "Deleted", description: "Page moved to Drive trash and deleted from app." });
       fetchData();
     }
@@ -446,6 +470,19 @@ const Dashboard = () => {
     e.stopPropagation();
     const newState = !currentState;
     
+    // RBAC check - only editors and admins can publish/unpublish
+    const requiredPermission = newState ? 'canPublish' : 'canUnpublish';
+    if (newState && !permissions.canPublish) {
+      toast({ title: "Permission Denied", description: "You don't have permission to publish pages.", variant: "destructive" });
+      await logUnauthorizedAttempt('publish', 'document', docId, selectedProject?.id || '', 'canPublish');
+      return;
+    }
+    if (!newState && !permissions.canUnpublish) {
+      toast({ title: "Permission Denied", description: "You don't have permission to unpublish pages.", variant: "destructive" });
+      await logUnauthorizedAttempt('unpublish', 'document', docId, selectedProject?.id || '', 'canUnpublish');
+      return;
+    }
+    
     // Find the document to get its content_html for republishing
     const doc = documents.find(d => d.id === docId);
     
@@ -464,6 +501,11 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to update publish state.", variant: "destructive" });
     } else {
+      await logAction(newState ? 'publish' : 'unpublish', 'document', docId, selectedProject?.id || '', { 
+        documentTitle: doc?.title,
+        previousState: currentState ? 'published' : 'draft',
+        newState: newState ? 'published' : 'draft'
+      });
       toast({
         title: newState ? "Published" : "Unpublished",
         description: newState ? "Page is now live." : "Page is no longer published.",
@@ -478,6 +520,13 @@ const Dashboard = () => {
 
   const handleRepublishPage = async (e: React.MouseEvent, docId: string) => {
     e.stopPropagation();
+    
+    // RBAC check - only editors and admins can republish
+    if (!permissions.canPublish) {
+      toast({ title: "Permission Denied", description: "You don't have permission to publish pages.", variant: "destructive" });
+      await logUnauthorizedAttempt('republish', 'document', docId, selectedProject?.id || '', 'canPublish');
+      return;
+    }
     
     const doc = documents.find(d => d.id === docId);
     if (!doc?.content_html) {
@@ -496,6 +545,7 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to republish.", variant: "destructive" });
     } else {
+      await logAction('republish', 'document', docId, selectedProject?.id || '', { documentTitle: doc?.title });
       toast({
         title: "Republished",
         description: "Changes are now live.",
@@ -522,8 +572,16 @@ const Dashboard = () => {
     setSelectedPage(title);
   };
 
-  const handleShareProject = (e: React.MouseEvent, project: Project) => {
+  const handleShareProject = async (e: React.MouseEvent, project: Project) => {
     e.stopPropagation();
+    
+    // RBAC check - only admins can share projects
+    if (!permissions.canManageMembers) {
+      toast({ title: "Permission Denied", description: "You don't have permission to share projects.", variant: "destructive" });
+      await logUnauthorizedAttempt('share_project', 'project', project.id, project.id, 'canManageMembers');
+      return;
+    }
+    
     setSelectedProject(project);
     setShareOpen(true);
   };
@@ -984,13 +1042,15 @@ const Dashboard = () => {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuItem onClick={(e) => {
-                            e.stopPropagation();
-                            handleShareProject(e as unknown as React.MouseEvent, project);
-                          }}>
-                            <Share2 className="w-3 h-3 mr-2" />
-                            Share
-                          </DropdownMenuItem>
+                          {permissions.canManageMembers && (
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
+                              handleShareProject(e as unknown as React.MouseEvent, project);
+                            }}>
+                              <Share2 className="w-3 h-3 mr-2" />
+                              Share
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => {
                             window.open(`/docs/${project.id}`, '_blank');
                           }}>
@@ -1006,31 +1066,48 @@ const Dashboard = () => {
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedProject(project);
-                            setProjectSettingsOpen(true);
-                          }}>
-                            <Settings className="w-3 h-3 mr-2" />
-                            Settings
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleNormalizeStructure(project.id)}
-                            disabled={isNormalizing}
-                          >
-                            <Layers className="w-3 h-3 mr-2" />
-                            {isNormalizing ? "Normalizing..." : "Normalize Structure"}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => {
-                              setItemToDelete({ type: 'project', id: project.id, name: project.name });
-                              setDeleteDialogOpen(true);
-                            }}
-                          >
-                            <Trash2 className="w-3 h-3 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
+                          {permissions.canEditProjectSettings && (
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedProject(project);
+                              setProjectSettingsOpen(true);
+                            }}>
+                              <Settings className="w-3 h-3 mr-2" />
+                              Settings
+                            </DropdownMenuItem>
+                          )}
+                          {permissions.canMoveTopic && (
+                            <DropdownMenuItem 
+                              onClick={() => handleNormalizeStructure(project.id)}
+                              disabled={isNormalizing}
+                            >
+                              <Layers className="w-3 h-3 mr-2" />
+                              {isNormalizing ? "Normalizing..." : "Normalize Structure"}
+                            </DropdownMenuItem>
+                          )}
+                          {permissions.canViewAuditLogs && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => setAuditLogOpen(true)}>
+                                <History className="w-3 h-3 mr-2" />
+                                Audit Logs
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {permissions.canDeleteProject && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => {
+                                  setItemToDelete({ type: 'project', id: project.id, name: project.name });
+                                  setDeleteDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className="w-3 h-3 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -1614,6 +1691,15 @@ const Dashboard = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      
+      {/* Audit Log Panel - Admin only */}
+      {permissions.canViewAuditLogs && selectedProject && (
+        <AuditLogPanel
+          open={auditLogOpen}
+          onOpenChange={setAuditLogOpen}
+          projectId={selectedProject.id}
+        />
+      )}
     </div>
   );
 };
