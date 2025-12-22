@@ -102,6 +102,12 @@ export default function PagePreview() {
       }
 
       setDocument({ ...data, owner: ownerData } as DocumentData);
+      
+      // If we have cached content_html, use it immediately as fallback
+      if (data.content_html) {
+        const cleanedHtml = normalizeHtml(data.content_html);
+        setDocContent(cleanedHtml);
+      }
     } catch (error) {
       console.error("Error fetching document:", error);
     } finally {
@@ -136,10 +142,16 @@ export default function PagePreview() {
         return;
       }
       
-      // Check if file is too large
+      // Check if file is too large - but we may have cached content
       if (data?.fileTooLarge) {
-        console.log("Document too large to export");
-        setFileTooLarge(true);
+        console.log("Document too large to export from Google");
+        // If we already have cached content from fetchDocument, don't show error
+        if (!docContent && document?.content_html) {
+          const cleanedHtml = normalizeHtml(document.content_html);
+          setDocContent(cleanedHtml);
+        } else if (!docContent) {
+          setFileTooLarge(true);
+        }
         return;
       }
       
