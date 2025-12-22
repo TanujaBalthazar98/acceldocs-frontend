@@ -30,7 +30,13 @@ import {
   Loader2,
   Settings,
   MessageSquare,
-  FileUp
+  FileUp,
+  FilePlus,
+  Search,
+  FolderPlus,
+  List,
+  Globe,
+  Sparkles
 } from 'lucide-react';
 import { useConnectors } from '@/hooks/useConnectors';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -86,6 +92,8 @@ export function ConnectorContextActions({
   
   const [showJiraDialog, setShowJiraDialog] = useState(false);
   const [showClaudeDialog, setShowClaudeDialog] = useState(false);
+  const [showCreatePageDialog, setShowCreatePageDialog] = useState(false);
+  const [showSearchDialog, setShowSearchDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const [jiraForm, setJiraForm] = useState({
     summary: '',
@@ -94,12 +102,14 @@ export function ConnectorContextActions({
   });
   const [claudeQuestion, setClaudeQuestion] = useState('');
   const [claudeResponse, setClaudeResponse] = useState('');
+  const [createPageForm, setCreatePageForm] = useState({ title: '', content: '' });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
 
   const enabledConnectors = connectors.filter(c => c.is_enabled);
   const atlassianConnector = enabledConnectors.find(c => c.connector_type === 'atlassian');
   const claudeConnector = enabledConnectors.find(c => c.connector_type === 'claude');
   const customMcpConnectors = enabledConnectors.filter(c => c.connector_type === 'custom_mcp');
-
   const hasClaudeInstalled = connectors.some(c => c.connector_type === 'claude');
 
   // Check if user can use connectors
