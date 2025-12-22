@@ -265,6 +265,11 @@
   line-height: 1.75;
 }
 
+/* Allow Tailwind's max-w-none utility to actually remove the prose width cap */
+.prose.max-w-none {
+  max-width: none;
+}
+
 .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
   color: hsl(var(--foreground));
   font-weight: 600;
@@ -393,6 +398,12 @@
   margin: 1.5em 0;
 }
 
+.docs-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+
 .prose > *:first-child {
   margin-top: 0;
 }
@@ -402,14 +413,16 @@
 }
 
 /* Enhanced table styles for docs */
+.docs-content {
+  overflow-x: auto;
+}
+
 .docs-content table {
   width: 100%;
   border-collapse: collapse;
   margin: 1.5em 0;
   font-size: 0.875em;
   border: 1px solid hsl(var(--border));
-  border-radius: 0.5rem;
-  overflow: hidden;
 }
 
 .docs-content th,

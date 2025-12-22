@@ -48,7 +48,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { SmartSearch } from "@/components/SmartSearch";
 import { PageView } from "@/components/dashboard/PageView";
@@ -122,6 +122,7 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
 const Dashboard = () => {
   const { user, signOut, requestDriveAccess } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { listFolder, trashFile } = useGoogleDrive();
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
@@ -159,12 +160,47 @@ const Dashboard = () => {
   const [showAPISettings, setShowAPISettings] = useState(false);
   const [showMCPSettings, setShowMCPSettings] = useState(false);
   const [showIntegrations, setShowIntegrations] = useState(false);
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
   const [visiblePagesCount, setVisiblePagesCount] = useState(10);
   const [auditLogOpen, setAuditLogOpen] = useState(false);
   
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading } = usePermissions(selectedProject?.id || null);
   const { logAction, logUnauthorizedAttempt } = useAuditLog();
+
+  // Handle deep-links from Page Preview → Integrations
+  useEffect(() => {
+    if (deepLinkHandled) return;
+
+    const params = new URLSearchParams(location.search);
+    const wantsIntegrations = params.get('integrations') === '1';
+    const requestedProjectId = params.get('project');
+
+    if (!wantsIntegrations) {
+      setDeepLinkHandled(true);
+      return;
+    }
+
+    setShowIntegrations(true);
+    setShowMCPSettings(false);
+    setShowAPISettings(false);
+    setShowGeneralSettings(false);
+
+    // If we have a project id, wait until projects are loaded to select it.
+    if (requestedProjectId) {
+      if (projects.length === 0) return;
+      const project = projects.find(p => p.id === requestedProjectId) || null;
+      if (project) {
+        setSelectedProject(project);
+        setSelectedTopic(null);
+        setExpandedProjects(prev => new Set([...prev, project.id]));
+      }
+    }
+
+    // Clean the URL to avoid reopening on refresh.
+    navigate('/dashboard', { replace: true });
+    setDeepLinkHandled(true);
+  }, [deepLinkHandled, location.search, navigate, projects]);
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
