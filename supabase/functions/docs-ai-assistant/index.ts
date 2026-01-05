@@ -9,8 +9,31 @@ const corsHeaders = {
 // Tool definitions for the AI
 const tools = [
   {
+    name: "find_project",
+    description: "Find a project by name or partial name. ALWAYS use this first when the user mentions a project by name to get its ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The name or partial name of the project to find" }
+      },
+      required: ["name"]
+    }
+  },
+  {
+    name: "find_topic",
+    description: "Find a topic by name within a project. Use this to get a topic's ID when the user mentions it by name.",
+    parameters: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "The ID of the project" },
+        name: { type: "string", description: "The name or partial name of the topic to find" }
+      },
+      required: ["projectId", "name"]
+    }
+  },
+  {
     name: "create_topic",
-    description: "Create a new topic (folder) within a project. Use this when the user wants to create a new section or category for documentation.",
+    description: "Create a new topic (folder) within a project. Execute this immediately when the user wants to create a topic.",
     parameters: {
       type: "object",
       properties: {
@@ -23,7 +46,7 @@ const tools = [
   },
   {
     name: "create_page",
-    description: "Create a new documentation page within a topic. Use this when the user wants to create a new document or page.",
+    description: "Create a new documentation page within a topic. Execute this immediately when the user wants to create a page.",
     parameters: {
       type: "object",
       properties: {
@@ -37,7 +60,7 @@ const tools = [
   },
   {
     name: "update_page_content",
-    description: "Update the content of an existing page. Use this when the user wants to modify or add content to a page.",
+    description: "Update the content of an existing page.",
     parameters: {
       type: "object",
       properties: {
@@ -50,7 +73,7 @@ const tools = [
   },
   {
     name: "list_projects",
-    description: "List all available projects. Use this to help the user see what projects exist.",
+    description: "List all available projects.",
     parameters: {
       type: "object",
       properties: {},
@@ -59,7 +82,7 @@ const tools = [
   },
   {
     name: "list_topics",
-    description: "List all topics within a project. Use this to help the user see the structure of a project.",
+    description: "List all topics within a project with their IDs and display order.",
     parameters: {
       type: "object",
       properties: {
@@ -70,7 +93,7 @@ const tools = [
   },
   {
     name: "list_pages",
-    description: "List all pages within a topic or project. Use this to help the user see existing documentation.",
+    description: "List all pages within a topic or project.",
     parameters: {
       type: "object",
       properties: {
@@ -82,7 +105,7 @@ const tools = [
   },
   {
     name: "generate_documentation",
-    description: "Generate documentation content based on a description or requirements. Use this when the user wants AI-generated content.",
+    description: "Generate documentation content based on a description.",
     parameters: {
       type: "object",
       properties: {
@@ -108,6 +131,45 @@ async function executeTool(
   
   try {
     switch (toolName) {
+      case "find_project": {
+        const { data, error } = await supabase
+          .from("projects")
+          .select("id, name, slug, visibility, is_published, drive_folder_id")
+          .eq("organization_id", organizationId)
+          .ilike("name", `%${args.name}%`);
+        
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+          return { success: false, error: `No project found matching "${args.name}"` };
+        }
+        
+        // Return the best match (exact match first, then first result)
+        const exactMatch = data.find((p: any) => p.name.toLowerCase() === args.name.toLowerCase());
+        const project = exactMatch || data[0];
+        
+        return { success: true, result: { project, message: `Found project "${project.name}" (ID: ${project.id})` } };
+      }
+      
+      case "find_topic": {
+        const { data, error } = await supabase
+          .from("topics")
+          .select("id, name, parent_id, display_order, drive_folder_id")
+          .eq("project_id", args.projectId)
+          .ilike("name", `%${args.name}%`);
+        
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+          return { success: false, error: `No topic found matching "${args.name}"` };
+        }
+        
+        const exactMatch = data.find((t: any) => t.name.toLowerCase() === args.name.toLowerCase());
+        const topic = exactMatch || data[0];
+        
+        return { success: true, result: { topic, message: `Found topic "${topic.name}" (ID: ${topic.id})` } };
+      }
+      
       case "list_projects": {
         const { data, error } = await supabase
           .from("projects")
@@ -126,7 +188,7 @@ async function executeTool(
           .order("display_order");
         
         if (error) throw error;
-        return { success: true, result: { topics: data } };
+        return { success: true, result: { topics: data, count: data?.length || 0 } };
       }
       
       case "list_pages": {
@@ -173,7 +235,7 @@ async function executeTool(
         
         // Create folder in Drive
         if (!googleToken) {
-          return { success: false, error: "Google Drive access required" };
+          return { success: false, error: "Google Drive access required. Please reconnect to Google Drive." };
         }
         
         const folderResponse = await fetch(
@@ -199,7 +261,7 @@ async function executeTool(
         
         const folder = await folderResponse.json();
         
-        // Get max display order
+        // Get max display order for positioning at the end
         const { data: existingTopics } = await supabase
           .from("topics")
           .select("display_order")
@@ -223,7 +285,7 @@ async function executeTool(
           .single();
         
         if (error) throw error;
-        return { success: true, result: { topic, message: `Created topic "${args.name}"` } };
+        return { success: true, result: { topic, message: `✅ Created topic "${args.name}" at position ${nextOrder + 1} (last)` } };
       }
       
       case "create_page": {
@@ -239,7 +301,7 @@ async function executeTool(
         }
         
         if (!googleToken) {
-          return { success: false, error: "Google Drive access required" };
+          return { success: false, error: "Google Drive access required. Please reconnect to Google Drive." };
         }
         
         // Create Google Doc
@@ -283,7 +345,7 @@ async function executeTool(
           .single();
         
         if (error) throw error;
-        return { success: true, result: { document, message: `Created page "${args.title}"` } };
+        return { success: true, result: { document, message: `✅ Created page "${args.title}"` } };
       }
       
       case "update_page_content": {
@@ -306,11 +368,10 @@ async function executeTool(
           .single();
         
         if (error) throw error;
-        return { success: true, result: { document: data, message: "Page content updated" } };
+        return { success: true, result: { document: data, message: "✅ Page content updated" } };
       }
       
       case "generate_documentation": {
-        // Use AI to generate content
         const prompt = `Generate professional documentation about: ${args.topic}
 ${args.style ? `Style: ${args.style}` : ""}
 ${args.details ? `Additional requirements: ${args.details}` : ""}
@@ -341,7 +402,7 @@ Generate well-structured HTML documentation with proper headings, paragraphs, co
         const genData = await genResponse.json();
         const generatedContent = genData.choices?.[0]?.message?.content || "";
         
-        return { success: true, result: { content: generatedContent, message: "Documentation generated" } };
+        return { success: true, result: { content: generatedContent, message: "✅ Documentation generated" } };
       }
       
       default:
@@ -399,25 +460,40 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const systemPrompt = `You are a documentation assistant that helps users create and manage their documentation. You have access to tools that can:
-- List projects, topics, and pages
-- Create new topics and subtopics
-- Create new documentation pages
-- Update page content
-- Generate documentation content using AI
+    // Build context-aware system prompt
+    let contextInfo = "";
+    if (context?.currentProject) {
+      contextInfo += `\nCURRENT PROJECT: "${context.currentProject.name}" (ID: ${context.currentProject.id})`;
+    }
+    if (context?.currentTopic) {
+      contextInfo += `\nCURRENT TOPIC: "${context.currentTopic.name}" (ID: ${context.currentTopic.id})`;
+    }
 
-${context?.currentProject ? `Current project: ${context.currentProject.name} (ID: ${context.currentProject.id})` : ""}
-${context?.currentTopic ? `Current topic: ${context.currentTopic.name} (ID: ${context.currentTopic.id})` : ""}
+    const systemPrompt = `You are a documentation assistant that EXECUTES tasks immediately. You have tools to manage documentation.
 
-When the user asks you to create something:
-1. First check if you have the necessary context (project, topic)
-2. If not, ask them to specify or use list tools to show options
-3. Use the appropriate tool to create the item
-4. Confirm what was created
+CRITICAL RULES:
+1. NEVER ask for clarification if you can figure it out - use find_project or find_topic to look up IDs by name
+2. ALWAYS execute the requested action immediately - don't explain what you could do, just DO IT
+3. When user mentions a project by name, use find_project to get its ID, then proceed with the action
+4. When user mentions a topic by name, use find_topic to get its ID
+5. If user says "last topic" or "at the end", the create_topic tool automatically places it last
+6. Chain multiple tool calls if needed to complete the task
 
-Always be helpful and proactive. If you can accomplish the task with the tools available, do so. If you need more information, ask specific questions.`;
+${contextInfo}
 
-    // Convert tools to Gemini function calling format
+EXAMPLES OF CORRECT BEHAVIOR:
+- User: "Create a topic called API Usage in Documentation project" 
+  → Call find_project with "Documentation", then create_topic with the returned ID and name "API Usage"
+  
+- User: "Add a page about authentication to the Getting Started topic"
+  → Call find_topic, then create_page with the topic ID
+
+- User: "List all topics in this project"
+  → If current project is set, call list_topics immediately with that ID
+
+DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND THEM.`;
+
+    // Convert tools to function calling format
     const geminiTools = [{
       function_declarations: tools.map(t => ({
         name: t.name,
@@ -453,10 +529,16 @@ Always be helpful and proactive. If you can accomplish the task with the tools a
     }
 
     const data = await response.json();
-    const assistantMessage = data.choices?.[0]?.message;
+    let assistantMessage = data.choices?.[0]?.message;
     
-    // Check if there are tool calls
-    if (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0) {
+    // Process tool calls in a loop until no more tool calls
+    let allToolResults: any[] = [];
+    let allActions: any[] = [];
+    let iterations = 0;
+    const maxIterations = 5; // Prevent infinite loops
+    
+    while (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0 && iterations < maxIterations) {
+      iterations++;
       const toolResults: any[] = [];
       
       for (const toolCall of assistantMessage.tool_calls) {
@@ -484,10 +566,17 @@ Always be helpful and proactive. If you can accomplish the task with the tools a
           name: functionName,
           content: JSON.stringify(result)
         });
+        
+        allToolResults.push(result);
+        allActions.push({
+          name: functionName,
+          args: functionArgs,
+          result
+        });
       }
       
-      // Send tool results back for final response
-      const finalResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      // Send tool results back for next response
+      const nextResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -501,36 +590,25 @@ Always be helpful and proactive. If you can accomplish the task with the tools a
             assistantMessage,
             ...toolResults
           ],
+          tools: geminiTools,
+          tool_choice: "auto",
         }),
       });
       
-      if (!finalResponse.ok) {
-        const errorText = await finalResponse.text();
-        console.error("Final AI response error:", errorText);
-        return new Response(JSON.stringify({ error: "Failed to process tool results" }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (!nextResponse.ok) {
+        const errorText = await nextResponse.text();
+        console.error("AI response error:", errorText);
+        break;
       }
       
-      const finalData = await finalResponse.json();
-      return new Response(JSON.stringify({
-        message: finalData.choices?.[0]?.message?.content || "Task completed",
-        toolResults: toolResults.map(tr => JSON.parse(tr.content)),
-        actions: assistantMessage.tool_calls.map((tc: any) => ({
-          name: tc.function?.name,
-          args: JSON.parse(tc.function?.arguments || "{}")
-        }))
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const nextData = await nextResponse.json();
+      assistantMessage = nextData.choices?.[0]?.message;
     }
 
-    // No tool calls, just return the message
     return new Response(JSON.stringify({
-      message: assistantMessage?.content || "I'm not sure how to help with that.",
-      toolResults: [],
-      actions: []
+      message: assistantMessage?.content || "Task completed",
+      toolResults: allToolResults,
+      actions: allActions
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
