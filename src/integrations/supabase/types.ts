@@ -464,6 +464,53 @@ export type Database = {
           },
         ]
       }
+      join_requests: {
+        Row: {
+          id: string
+          organization_id: string
+          rejection_reason: string | null
+          requested_at: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_email: string
+          user_id: string
+          user_name: string | null
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          rejection_reason?: string | null
+          requested_at?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_email: string
+          user_id: string
+          user_name?: string | null
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          rejection_reason?: string | null
+          requested_at?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_email?: string
+          user_id?: string
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "join_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           accent_color: string | null
@@ -912,6 +959,7 @@ export type Database = {
         Args: { invitation_token: string }
         Returns: boolean
       }
+      approve_join_request: { Args: { _request_id: string }; Returns: boolean }
       can_access_drive: {
         Args: { _operation: string; _project_id: string; _user_id: string }
         Returns: boolean
@@ -979,6 +1027,10 @@ export type Database = {
           _success?: boolean
         }
         Returns: string
+      }
+      reject_join_request: {
+        Args: { _reason?: string; _request_id: string }
+        Returns: boolean
       }
     }
     Enums: {
