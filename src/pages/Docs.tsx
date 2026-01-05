@@ -287,6 +287,7 @@ export default function Docs() {
         }
       }
 
+      // Build project query with visibility filtering
       let projectsQuery = supabase
         .from("projects")
         .select("id, name, slug, visibility, is_published, organization_id, mcp_enabled, openapi_spec_json, openapi_spec_url")
@@ -298,8 +299,21 @@ export default function Docs() {
       if (projectsError) {
         console.error("Error fetching projects:", projectsError);
       } else if (projectsData) {
-        setProjects(projectsData);
-        await fetchTopicsAndDocuments(projectsData.map(p => p.id), userOrgId);
+        // Filter projects based on visibility and user authentication
+        const filteredProjects = projectsData.filter(project => {
+          // Public projects: visible to everyone
+          if (project.visibility === "public") return true;
+          
+          // Internal/External projects: only visible to authenticated org users
+          if (currentUser && userOrgId && project.organization_id === userOrgId) {
+            return true;
+          }
+          
+          return false;
+        });
+        
+        setProjects(filteredProjects);
+        await fetchTopicsAndDocuments(filteredProjects.map(p => p.id), userOrgId, currentUser?.id || null);
       }
     } catch (error) {
       console.error("Error fetching content:", error);
@@ -308,7 +322,7 @@ export default function Docs() {
     }
   };
 
-  const fetchTopicsAndDocuments = async (projectIds: string[], userOrgId: string | null) => {
+  const fetchTopicsAndDocuments = async (projectIds: string[], userOrgId: string | null, userId: string | null) => {
     if (projectIds.length === 0) return;
 
     const { data: topicsData } = await supabase
@@ -335,6 +349,8 @@ export default function Docs() {
     if (docsError) {
       console.error("Error fetching documents:", docsError);
     } else if (docsData) {
+      // Documents inherit visibility from their parent project
+      // No additional filtering needed here since projects are already filtered
       setDocuments(docsData);
     }
   };
@@ -578,16 +594,18 @@ export default function Docs() {
               <span className="font-bold text-lg text-foreground brand-heading">{currentOrg.name}</span>
             </div>
             <div className="flex items-center gap-2">
-              {user ? (
+              {user && isOrgUser ? (
+                /* Only show Dashboard for authenticated org users */
                 <Link to="/dashboard">
                   <Button variant="ghost" size="sm">Dashboard</Button>
                 </Link>
-              ) : (
+              ) : !user ? (
+                /* Show auth options for unauthenticated users */
                 <>
                   <Link to="/auth"><Button variant="ghost" size="sm">Sign in</Button></Link>
                   <Link to="/auth"><Button size="sm" className="brand-primary-bg text-white">Create account</Button></Link>
                 </>
-              )}
+              ) : null}
             </div>
           </div>
         </header>
@@ -701,14 +719,16 @@ export default function Docs() {
             <ThemeToggle className="h-8 w-8 sm:h-9 sm:w-9" />
             {authLoading ? (
               <Skeleton className="h-8 w-16 sm:h-9 sm:w-24" />
-            ) : user ? (
+            ) : user && isOrgUser ? (
+              /* Only show Dashboard for authenticated org users */
               <Link to="/dashboard">
                 <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
                   <span className="hidden sm:inline">Dashboard</span>
                   <span className="sm:hidden">Dash</span>
                 </Button>
               </Link>
-            ) : (
+            ) : !user ? (
+              /* Show auth options for unauthenticated users */
               <>
                 <Link to="/auth">
                   <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
@@ -721,7 +741,7 @@ export default function Docs() {
                   </Button>
                 </Link>
               </>
-            )}
+            ) : null}
 
             {/* Mobile menu trigger */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
