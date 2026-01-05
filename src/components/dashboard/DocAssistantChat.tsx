@@ -16,11 +16,13 @@ import {
   Sparkles,
   X,
   Maximize2,
-  Minimize2
+  Minimize2,
+  RefreshCw
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Message {
   role: "user" | "assistant";
@@ -34,6 +36,7 @@ interface Message {
     result?: any;
     error?: string;
   }>;
+  needsDriveReauth?: boolean;
 }
 
 interface DocAssistantChatProps {
@@ -63,14 +66,41 @@ export function DocAssistantChat({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isReauthorizing, setIsReauthorizing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const { requestDriveAccess } = useAuth();
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  const handleReauthorizeDrive = async () => {
+    setIsReauthorizing(true);
+    try {
+      const { error } = await requestDriveAccess();
+      if (error) {
+        toast({
+          title: "Authorization failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Drive access granted",
+          description: "You can now try your request again.",
+        });
+        // Clear the message that needed reauth
+        setMessages(prev => prev.filter(m => !m.needsDriveReauth));
+      }
+    } catch (e) {
+      console.error("Drive reauth error:", e);
+    } finally {
+      setIsReauthorizing(false);
+    }
+  };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -111,28 +141,67 @@ export function DocAssistantChat({
         throw new Error(data.details || data.error);
       }
 
-      const assistantMessage: Message = {
-        role: "assistant",
-        content: data?.message || "",
-        actions: data?.actions,
-        toolResults: data?.toolResults,
-      };
+      // Check if any write actions failed
+      const writeActions = ["create_topic", "create_page", "update_page_content"];
+      const failedWriteActions = data?.actions?.filter((a: any, i: number) => {
+        const result = data?.toolResults?.[i];
+        return writeActions.includes(a.name) && !result?.success;
+      }) || [];
+      
+      // Build message with failure info if needed
+      let messageContent = data?.message || "";
+      if (failedWriteActions.length > 0) {
+        const failureMessages = failedWriteActions.map((a: any, i: number) => {
+          const resultIndex = data?.actions?.findIndex((action: any) => action === a);
+          const result = data?.toolResults?.[resultIndex];
+          return result?.error || "Unknown error";
+        });
+        
+        // Check for Drive permission issues
+        const hasDrivePermissionError = failureMessages.some((msg: string) => 
+          msg.includes("Insufficient Permission") || 
+          msg.includes("insufficient authentication scopes") ||
+          msg.includes("PERMISSION_DENIED")
+        );
+        
+        if (hasDrivePermissionError) {
+          messageContent = "❌ I couldn't create the content because Google Drive access needs to be re-authorized with write permissions.";
+        } else if (messageContent === "Task completed" || !messageContent) {
+          messageContent = `❌ Action failed: ${failureMessages.join(", ")}`;
+        }
 
-      setMessages((prev) => [...prev, assistantMessage]);
+        const assistantMessage: Message = {
+          role: "assistant",
+          content: messageContent,
+          actions: data?.actions,
+          toolResults: data?.toolResults,
+          needsDriveReauth: hasDrivePermissionError,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        const assistantMessage: Message = {
+          role: "assistant",
+          content: messageContent,
+          actions: data?.actions,
+          toolResults: data?.toolResults,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
 
       // Check if any actions were successful and refresh
-      if (data?.toolResults?.some((r: any) => r.success)) {
-        const hasCreatedSomething = data?.actions?.some(
-          (a: any) => a.name === "create_topic" || a.name === "create_page"
-        );
-
-        if (hasCreatedSomething) {
-          toast({
-            title: "Content Created",
-            description: "New content has been added to your documentation.",
-          });
-          onRefresh?.();
-        }
+      const successfulWriteActions = data?.actions?.filter((a: any, i: number) => {
+        const result = data?.toolResults?.[i];
+        return writeActions.includes(a.name) && result?.success;
+      }) || [];
+      
+      if (successfulWriteActions.length > 0) {
+        toast({
+          title: "Content Created",
+          description: "New content has been added to your documentation.",
+        });
+        onRefresh?.();
       }
     } catch (error) {
       console.error("Chat error:", error);
@@ -250,6 +319,24 @@ export function DocAssistantChat({
                   )}
                 >
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  
+                  {/* Show reconnect button for Drive permission errors */}
+                  {message.needsDriveReauth && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={handleReauthorizeDrive}
+                      disabled={isReauthorizing}
+                    >
+                      {isReauthorizing ? (
+                        <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3 mr-2" />
+                      )}
+                      Reconnect Google Drive
+                    </Button>
+                  )}
                   
                   {/* Show actions taken */}
                   {message.actions && message.actions.length > 0 && (
