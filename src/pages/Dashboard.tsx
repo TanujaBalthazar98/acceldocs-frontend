@@ -30,6 +30,8 @@ import {
   Code,
   Plug2,
   History,
+  Bot,
+  MessageSquare,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -67,6 +69,7 @@ import { APISettingsPanel } from "@/components/dashboard/APISettingsPanel";
 import { MCPSettingsPanel } from "@/components/dashboard/MCPSettingsPanel";
 import { AuditLogPanel } from "@/components/dashboard/AuditLogPanel";
 import { IntegrationsPanel } from "@/components/dashboard/IntegrationsPanel";
+import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
@@ -124,7 +127,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { listFolder, trashFile } = useGoogleDrive();
+  const { listFolder, trashFile, getGoogleToken } = useGoogleDrive();
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [addPageOpen, setAddPageOpen] = useState(false);
@@ -163,6 +166,7 @@ const Dashboard = () => {
   const [deepLinkHandled, setDeepLinkHandled] = useState(false);
   const [visiblePagesCount, setVisiblePagesCount] = useState(10);
   const [auditLogOpen, setAuditLogOpen] = useState(false);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
   
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading } = usePermissions(selectedProject?.id || null);
@@ -1337,6 +1341,15 @@ const Dashboard = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Button 
+                variant={showAIAssistant ? "secondary" : "outline"}
+                size="sm" 
+                className="gap-2" 
+                onClick={() => setShowAIAssistant(!showAIAssistant)}
+              >
+                <Bot className="w-4 h-4" />
+                <span className="hidden sm:inline">AI Assistant</span>
+              </Button>
               {organizationSlug && (
                 <Button 
                   variant="outline" 
@@ -1363,7 +1376,9 @@ const Dashboard = () => {
           </header>
 
         {/* Content */}
-        <div className="flex-1 p-6 overflow-y-auto">
+        <div className="flex-1 flex overflow-hidden">
+          {/* Main content area */}
+          <div className={`flex-1 p-6 overflow-y-auto ${showAIAssistant ? 'pr-3' : ''}`}>
           {/* Stats */}
           {(() => {
             const publishedCount = filteredDocuments.filter(d => d.is_published).length;
@@ -1656,6 +1671,19 @@ const Dashboard = () => {
               )}
             </div>
           </div>
+          </div>
+          
+          {/* AI Assistant Panel */}
+          {showAIAssistant && (
+            <div className="w-[400px] border-l border-border p-4 overflow-hidden flex-shrink-0">
+              <DocAssistantChat
+                currentProject={selectedProject ? { id: selectedProject.id, name: selectedProject.name } : null}
+                currentTopic={selectedTopic ? { id: selectedTopic.id, name: selectedTopic.name } : null}
+                onRefresh={fetchData}
+                googleToken={getGoogleToken()}
+              />
+            </div>
+          )}
         </div>
         </main>
       )}
