@@ -3,18 +3,26 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, FolderOpen, CheckCircle2, ArrowRight, Loader2, Link2 } from "lucide-react";
+import { FileText, FolderOpen, CheckCircle2, ArrowRight, Loader2, Link2, Users, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
-import { PlanSelection } from "./PlanSelection";
 
 interface OnboardingProps {
   onComplete: () => void;
   organizationId: string | null;
 }
 
-type Plan = "free" | "pro" | "enterprise";
+interface ExistingOrg {
+  id: string;
+  name: string;
+  domain: string;
+}
+
+const PERSONAL_DOMAINS = ["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", 
+  "msn.com", "yahoo.com", "yahoo.co.uk", "ymail.com", "aol.com", 
+  "icloud.com", "me.com", "mac.com", "protonmail.com", "proton.me",
+  "tutanota.com", "zoho.com", "mail.com", "gmx.com", "gmx.net"];
 
 export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const { user, session, requestDriveAccess } = useAuth();
@@ -23,25 +31,80 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const [step, setStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
   const [workspaceName, setWorkspaceName] = useState("");
   const [driveConnected, setDriveConnected] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<Plan>("free");
+  const [existingOrg, setExistingOrg] = useState<ExistingOrg | null>(null);
+  const [joinChoice, setJoinChoice] = useState<"join" | "create" | null>(null);
 
-  // Check if Drive is already connected (has provider_token with drive scope)
+  // Check if Drive is already connected and if there's an existing org for user's domain
   useEffect(() => {
-    const checkDriveConnection = async () => {
+    const checkInitialState = async () => {
       if (session?.provider_token) {
-        // If we have a provider token, Drive might be connected
-        // We can verify by checking if we can make a simple API call
         setDriveConnected(true);
       }
+      
+      // Check for existing org with same domain (for business emails)
+      if (user?.email) {
+        const emailDomain = user.email.split("@")[1]?.toLowerCase();
+        if (emailDomain && !PERSONAL_DOMAINS.includes(emailDomain)) {
+          const { data: orgByDomain } = await supabase
+            .from("organizations")
+            .select("id, name, domain")
+            .eq("domain", emailDomain)
+            .maybeSingle();
+          
+          if (orgByDomain) {
+            setExistingOrg(orgByDomain);
+          }
+        }
+      }
     };
-    checkDriveConnection();
-  }, [session]);
+    checkInitialState();
+  }, [session, user]);
 
-  const handlePlanSelect = (plan: Plan) => {
-    setSelectedPlan(plan);
-    setStep(2);
+  const handleJoinOrg = async () => {
+    if (!existingOrg || !user) return;
+    
+    setIsJoining(true);
+    try {
+      // Update user's profile to join the org
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert({ 
+          id: user.id,
+          email: user.email || "",
+          organization_id: existingOrg.id,
+          account_type: "team"
+        }, { onConflict: "id" });
+
+      if (profileError) throw profileError;
+
+      // Add viewer role for the new member
+      await supabase
+        .from("user_roles")
+        .upsert({
+          user_id: user.id,
+          organization_id: existingOrg.id,
+          role: "viewer",
+        }, { onConflict: "user_id,organization_id" });
+
+      toast({
+        title: "Welcome!",
+        description: `You've joined ${existingOrg.name}.`,
+      });
+
+      onComplete();
+    } catch (error: any) {
+      console.error("Error joining org:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to join workspace. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsJoining(false);
+    }
   };
 
   const handleConnectDrive = async () => {
@@ -56,7 +119,6 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         });
         setIsConnecting(false);
       }
-      // The page will redirect to Google for authorization
     } catch (error: any) {
       toast({
         title: "Error",
@@ -82,15 +144,10 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     try {
       let orgId = organizationId;
 
-      // If no organization exists (individual user), check if one was already created or create new
+      // If no organization exists (individual user), create one
       if (!orgId && user) {
         const emailDomain = user.email?.split("@")[1] || "personal";
-        // For personal email domains, use a unique domain per user to avoid conflicts
-        const personalDomains = ["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", 
-          "msn.com", "yahoo.com", "yahoo.co.uk", "ymail.com", "aol.com", 
-          "icloud.com", "me.com", "mac.com", "protonmail.com", "proton.me",
-          "tutanota.com", "zoho.com", "mail.com", "gmx.com", "gmx.net"];
-        const isPersonalEmail = personalDomains.includes(emailDomain.toLowerCase());
+        const isPersonalEmail = PERSONAL_DOMAINS.includes(emailDomain.toLowerCase());
         
         // Check if org already exists for this user first
         const { data: existingOrgByOwner } = await supabase
@@ -102,25 +159,22 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         if (existingOrgByOwner) {
           orgId = existingOrgByOwner.id;
         } else {
-          // For personal emails, always use unique domain. For business, check if domain exists first.
+          // For personal emails, always use unique domain. 
+          // For business, use domain if unique, else add suffix
           let domain: string;
           
           if (isPersonalEmail) {
             domain = `personal-${user.id}`;
           } else {
-            // Check if a business domain org already exists (user should join, not create new)
-            const { data: existingOrgByDomain } = await supabase
+            // User chose to create new org (existingOrg scenario handled by joinChoice)
+            // Check if domain already taken
+            const { data: domainTaken } = await supabase
               .from("organizations")
-              .select("id, name")
+              .select("id")
               .eq("domain", emailDomain)
               .maybeSingle();
             
-            if (existingOrgByDomain) {
-              // Domain already exists - create with unique domain suffix to avoid conflict
-              domain = `${emailDomain}-${user.id.substring(0, 8)}`;
-            } else {
-              domain = emailDomain;
-            }
+            domain = domainTaken ? `${emailDomain}-${user.id.substring(0, 8)}` : emailDomain;
           }
           
           const { data: newOrg, error: orgError } = await supabase
@@ -137,27 +191,26 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           orgId = newOrg.id;
         }
 
-        // Upsert user's profile with the organization (create if doesn't exist)
+        // Upsert user's profile with the organization
         const { error: profileError } = await supabase
           .from("profiles")
           .upsert({ 
             id: user.id,
             email: user.email || "",
             organization_id: orgId,
-            account_type: selectedPlan === "enterprise" ? "enterprise" : selectedPlan === "pro" ? "team" : "individual"
+            account_type: "individual"
           }, { onConflict: "id" });
 
         if (profileError) throw profileError;
 
-        // Add owner role (ignore if already exists)
+        // Add owner role
         await supabase
           .from("user_roles")
           .upsert({
             user_id: user.id,
             organization_id: orgId,
             role: "owner",
-          }, { onConflict: "user_id,organization_id" })
-          .select();
+          }, { onConflict: "user_id,organization_id" });
       }
 
       if (!orgId) {
@@ -212,7 +265,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     }
   };
 
-  const totalSteps = 4;
+  const totalSteps = existingOrg && !joinChoice ? 1 : 3;
+  const displayStep = existingOrg && !joinChoice ? 0 : step;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -225,63 +279,112 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           <span className="text-2xl font-bold text-foreground">DocLayer</span>
         </div>
 
-        {/* Progress Steps */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          {[1, 2, 3, 4].map((s, i) => (
-            <div key={s} className="flex items-center">
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
-                step >= s ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
-              }`}>
-                {step > s ? <CheckCircle2 className="w-5 h-5" /> : s}
-              </div>
-              {i < totalSteps - 1 && (
-                <div className={`w-8 h-0.5 mx-1 ${step > s ? "bg-primary" : "bg-border"}`} />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Step Labels */}
-        <div className="flex justify-center gap-4 mb-8 text-xs text-muted-foreground">
-          <span className={step >= 1 ? "text-primary" : ""}>Plan</span>
-          <span className={step >= 2 ? "text-primary" : ""}>Welcome</span>
-          <span className={step >= 3 ? "text-primary" : ""}>Connect Drive</span>
-          <span className={step >= 4 ? "text-primary" : ""}>Workspace</span>
-        </div>
-
-        {/* Step Content */}
-        <div className="glass rounded-2xl p-8">
-          {step === 1 && (
-            <PlanSelection onSelect={handlePlanSelect} />
-          )}
-
-          {step === 2 && (
+        {/* Show join/create choice for users with existing org domain */}
+        {existingOrg && !joinChoice ? (
+          <div className="glass rounded-2xl p-8">
             <div className="text-center max-w-md mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
-                <CheckCircle2 className="w-8 h-8 text-primary" />
+                <Building2 className="w-8 h-8 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold mb-3">Welcome to DocLayer!</h2>
+              <h2 className="text-2xl font-bold mb-3">We found your team!</h2>
               <p className="text-muted-foreground mb-6">
-                You're on the <span className="text-primary font-medium capitalize">{selectedPlan}</span> plan. 
-                Next, let's connect your Google Drive to manage your documentation.
+                <span className="font-medium text-foreground">{existingOrg.name}</span> already has a workspace on DocLayer. 
+                Would you like to join them?
               </p>
-              <div className="text-sm text-muted-foreground mb-6 p-4 rounded-lg bg-secondary/50">
-                <p className="font-medium text-foreground mb-1">Signed in as:</p>
-                <p>{user?.email}</p>
+              
+              <div className="space-y-3">
+                <Button 
+                  variant="hero" 
+                  size="lg" 
+                  onClick={handleJoinOrg}
+                  disabled={isJoining}
+                  className="w-full gap-2"
+                >
+                  {isJoining ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Joining...
+                    </>
+                  ) : (
+                    <>
+                      <Users className="w-4 h-4" />
+                      Join {existingOrg.name}
+                    </>
+                  )}
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  size="lg" 
+                  onClick={() => {
+                    setJoinChoice("create");
+                    setStep(1);
+                  }}
+                  className="w-full gap-2"
+                >
+                  <Building2 className="w-4 h-4" />
+                  Create my own workspace
+                </Button>
               </div>
-              <Button 
-                variant="hero" 
-                size="lg" 
-                onClick={() => setStep(3)}
-                className="gap-2"
-              >
-                Continue
-                <ArrowRight className="w-4 h-4" />
-              </Button>
+              
+              <p className="text-xs text-muted-foreground mt-6">
+                Joining will give you access to shared documentation. Creating your own workspace will be separate.
+              </p>
             </div>
-          )}
+          </div>
+        ) : (
+          <>
+            {/* Progress Steps */}
+            <div className="flex items-center justify-center gap-2 mb-8">
+              {[1, 2, 3].map((s, i) => (
+                <div key={s} className="flex items-center">
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
+                    step >= s ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
+                  }`}>
+                    {step > s ? <CheckCircle2 className="w-5 h-5" /> : s}
+                  </div>
+                  {i < totalSteps - 1 && (
+                    <div className={`w-8 h-0.5 mx-1 ${step > s ? "bg-primary" : "bg-border"}`} />
+                  )}
+                </div>
+              ))}
+            </div>
 
-          {step === 3 && (
+            {/* Step Labels */}
+            <div className="flex justify-center gap-6 mb-8 text-xs text-muted-foreground">
+              <span className={step >= 1 ? "text-primary" : ""}>Welcome</span>
+              <span className={step >= 2 ? "text-primary" : ""}>Connect Drive</span>
+              <span className={step >= 3 ? "text-primary" : ""}>Workspace</span>
+            </div>
+
+            {/* Step Content */}
+            <div className="glass rounded-2xl p-8">
+              {step === 1 && (
+                <div className="text-center max-w-md mx-auto">
+                  <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                    <CheckCircle2 className="w-8 h-8 text-primary" />
+                  </div>
+                  <h2 className="text-2xl font-bold mb-3">Welcome to DocLayer!</h2>
+                  <p className="text-muted-foreground mb-6">
+                    Let's get you set up. First, we'll connect your Google Drive to manage your documentation.
+                  </p>
+                  <div className="text-sm text-muted-foreground mb-6 p-4 rounded-lg bg-secondary/50">
+                    <p className="font-medium text-foreground mb-1">Signed in as:</p>
+                    <p>{user?.email}</p>
+                  </div>
+                  <Button 
+                    variant="hero" 
+                    size="lg" 
+                    onClick={() => setStep(2)}
+                    className="gap-2"
+                  >
+                    Continue
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+
+              {step === 2 && (
             <div className="text-center max-w-md mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <Link2 className="w-8 h-8 text-primary" />
@@ -291,62 +394,62 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                 DocLayer needs access to create and manage folders in your Google Drive. Your files stay in your Drive.
               </p>
 
-              {driveConnected ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-center gap-2 text-primary">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span className="font-medium">Google Drive connected!</span>
+                {driveConnected ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center gap-2 text-primary">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="font-medium">Google Drive connected!</span>
+                    </div>
+                    <Button 
+                      variant="hero" 
+                      size="lg" 
+                      onClick={() => setStep(3)}
+                      className="gap-2"
+                    >
+                      Continue
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
                   </div>
-                  <Button 
-                    variant="hero" 
-                    size="lg" 
-                    onClick={() => setStep(4)}
-                    className="gap-2"
-                  >
-                    Continue
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <Button 
-                    variant="hero" 
-                    size="lg" 
-                    onClick={handleConnectDrive}
-                    disabled={isConnecting}
-                    className="w-full gap-3"
-                  >
-                    {isConnecting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Connecting...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
-                          <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-                          <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
-                          <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 13.25z" fill="#ea4335"/>
-                          <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-                          <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-                          <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
-                        </svg>
-                        Connect Google Drive
-                      </>
-                    )}
-                  </Button>
-                  <button
-                    onClick={() => setStep(4)}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Skip for now (you can connect later)
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                ) : (
+                  <div className="space-y-4">
+                    <Button 
+                      variant="hero" 
+                      size="lg" 
+                      onClick={handleConnectDrive}
+                      disabled={isConnecting}
+                      className="w-full gap-3"
+                    >
+                      {isConnecting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                            <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                            <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                            <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 13.25z" fill="#ea4335"/>
+                            <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                            <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                            <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                          </svg>
+                          Connect Google Drive
+                        </>
+                      )}
+                    </Button>
+                    <button
+                      onClick={() => setStep(3)}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Skip for now (you can connect later)
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
-          {step === 4 && (
+              {step === 3 && (
             <div className="max-w-md mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <FolderOpen className="w-8 h-8 text-primary" />
@@ -389,11 +492,13 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                       Create Workspace
                     </>
                   )}
-                </Button>
+                  </Button>
+                </div>
               </div>
+            )}
             </div>
-          )}
-        </div>
+          </>
+        )}
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-6">
