@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, FolderOpen, CheckCircle2, ArrowRight, Loader2, Link2, Users, Building2 } from "lucide-react";
+import { FileText, FolderOpen, CheckCircle2, ArrowRight, Loader2, Link2, Users, Building2, Clock, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
@@ -36,70 +36,87 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const [driveConnected, setDriveConnected] = useState(false);
   const [existingOrg, setExistingOrg] = useState<ExistingOrg | null>(null);
   const [joinChoice, setJoinChoice] = useState<"join" | "create" | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<{ id: string; status: string } | null>(null);
+  const [requestSent, setRequestSent] = useState(false);
 
-  // Check if Drive is already connected and if there's an existing org for user's domain
+  // Check if Drive is already connected, existing org, and pending requests
   useEffect(() => {
     const checkInitialState = async () => {
       if (session?.provider_token) {
         setDriveConnected(true);
       }
       
+      if (!user?.email) return;
+      
+      const emailDomain = user.email.split("@")[1]?.toLowerCase();
+      if (!emailDomain || PERSONAL_DOMAINS.includes(emailDomain)) return;
+      
       // Check for existing org with same domain (for business emails)
-      if (user?.email) {
-        const emailDomain = user.email.split("@")[1]?.toLowerCase();
-        if (emailDomain && !PERSONAL_DOMAINS.includes(emailDomain)) {
-          const { data: orgByDomain } = await supabase
-            .from("organizations")
-            .select("id, name, domain")
-            .eq("domain", emailDomain)
-            .maybeSingle();
-          
-          if (orgByDomain) {
-            setExistingOrg(orgByDomain);
-          }
+      const { data: orgByDomain } = await supabase
+        .from("organizations")
+        .select("id, name, domain")
+        .eq("domain", emailDomain)
+        .maybeSingle();
+      
+      if (orgByDomain) {
+        setExistingOrg(orgByDomain);
+        
+        // Check if user already has a pending/rejected request
+        const { data: existingRequest } = await supabase
+          .from("join_requests")
+          .select("id, status")
+          .eq("organization_id", orgByDomain.id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        
+        if (existingRequest) {
+          setPendingRequest(existingRequest);
         }
       }
     };
     checkInitialState();
   }, [session, user]);
 
-  const handleJoinOrg = async () => {
+  const handleRequestToJoin = async () => {
     if (!existingOrg || !user) return;
     
     setIsJoining(true);
     try {
-      // Update user's profile to join the org
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert({ 
-          id: user.id,
-          email: user.email || "",
+      // Create a join request (not auto-join)
+      const { data: request, error: requestError } = await supabase
+        .from("join_requests")
+        .insert({
           organization_id: existingOrg.id,
-          account_type: "team"
-        }, { onConflict: "id" });
-
-      if (profileError) throw profileError;
-
-      // Add viewer role for the new member
-      await supabase
-        .from("user_roles")
-        .upsert({
           user_id: user.id,
-          organization_id: existingOrg.id,
-          role: "viewer",
-        }, { onConflict: "user_id,organization_id" });
+          user_email: user.email || "",
+          user_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "",
+        })
+        .select("id, status")
+        .single();
 
-      toast({
-        title: "Welcome!",
-        description: `You've joined ${existingOrg.name}.`,
-      });
-
-      onComplete();
+      if (requestError) {
+        if (requestError.code === "23505") {
+          // Duplicate - request already exists
+          toast({
+            title: "Request already sent",
+            description: "You have already requested to join this workspace.",
+          });
+        } else {
+          throw requestError;
+        }
+      } else {
+        setPendingRequest(request);
+        setRequestSent(true);
+        toast({
+          title: "Request sent!",
+          description: `Your request to join ${existingOrg.name} has been sent to the admins.`,
+        });
+      }
     } catch (error: any) {
-      console.error("Error joining org:", error);
+      console.error("Error requesting to join:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to join workspace. Please try again.",
+        description: error.message || "Failed to send request. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -283,53 +300,105 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         {existingOrg && !joinChoice ? (
           <div className="glass rounded-2xl p-8">
             <div className="text-center max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
-                <Building2 className="w-8 h-8 text-primary" />
-              </div>
-              <h2 className="text-2xl font-bold mb-3">We found your team!</h2>
-              <p className="text-muted-foreground mb-6">
-                <span className="font-medium text-foreground">{existingOrg.name}</span> already has a workspace on DocLayer. 
-                Would you like to join them?
-              </p>
-              
-              <div className="space-y-3">
-                <Button 
-                  variant="hero" 
-                  size="lg" 
-                  onClick={handleJoinOrg}
-                  disabled={isJoining}
-                  className="w-full gap-2"
-                >
-                  {isJoining ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Joining...
-                    </>
-                  ) : (
-                    <>
-                      <Users className="w-4 h-4" />
-                      Join {existingOrg.name}
-                    </>
-                  )}
-                </Button>
-                
-                <Button 
-                  variant="outline" 
-                  size="lg" 
-                  onClick={() => {
-                    setJoinChoice("create");
-                    setStep(1);
-                  }}
-                  className="w-full gap-2"
-                >
-                  <Building2 className="w-4 h-4" />
-                  Create my own workspace
-                </Button>
-              </div>
-              
-              <p className="text-xs text-muted-foreground mt-6">
-                Joining will give you access to shared documentation. Creating your own workspace will be separate.
-              </p>
+              {/* Show pending/rejected state */}
+              {pendingRequest?.status === 'pending' || requestSent ? (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-6">
+                    <Clock className="w-8 h-8 text-amber-500" />
+                  </div>
+                  <h2 className="text-2xl font-bold mb-3">Request pending</h2>
+                  <p className="text-muted-foreground mb-6">
+                    Your request to join <span className="font-medium text-foreground">{existingOrg.name}</span> is waiting for admin approval.
+                  </p>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    You'll get access once an admin approves your request. In the meantime, you can create your own workspace.
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    size="lg" 
+                    onClick={() => {
+                      setJoinChoice("create");
+                      setStep(1);
+                    }}
+                    className="w-full gap-2"
+                  >
+                    <Building2 className="w-4 h-4" />
+                    Create my own workspace instead
+                  </Button>
+                </>
+              ) : pendingRequest?.status === 'rejected' ? (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto mb-6">
+                    <Building2 className="w-8 h-8 text-destructive" />
+                  </div>
+                  <h2 className="text-2xl font-bold mb-3">Request declined</h2>
+                  <p className="text-muted-foreground mb-6">
+                    Your request to join <span className="font-medium text-foreground">{existingOrg.name}</span> was not approved.
+                  </p>
+                  <Button 
+                    variant="hero" 
+                    size="lg" 
+                    onClick={() => {
+                      setJoinChoice("create");
+                      setStep(1);
+                    }}
+                    className="w-full gap-2"
+                  >
+                    <Building2 className="w-4 h-4" />
+                    Create my own workspace
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                    <Building2 className="w-8 h-8 text-primary" />
+                  </div>
+                  <h2 className="text-2xl font-bold mb-3">We found your team!</h2>
+                  <p className="text-muted-foreground mb-6">
+                    <span className="font-medium text-foreground">{existingOrg.name}</span> already has a workspace on DocLayer. 
+                    Would you like to request to join?
+                  </p>
+                  
+                  <div className="space-y-3">
+                    <Button 
+                      variant="hero" 
+                      size="lg" 
+                      onClick={handleRequestToJoin}
+                      disabled={isJoining}
+                      className="w-full gap-2"
+                    >
+                      {isJoining ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Sending request...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          Request to join {existingOrg.name}
+                        </>
+                      )}
+                    </Button>
+                    
+                    <Button 
+                      variant="outline" 
+                      size="lg" 
+                      onClick={() => {
+                        setJoinChoice("create");
+                        setStep(1);
+                      }}
+                      className="w-full gap-2"
+                    >
+                      <Building2 className="w-4 h-4" />
+                      Create my own workspace
+                    </Button>
+                  </div>
+                  
+                  <p className="text-xs text-muted-foreground mt-6">
+                    An admin will review your request. Creating your own workspace will be separate from {existingOrg.name}.
+                  </p>
+                </>
+              )}
             </div>
           </div>
         ) : (

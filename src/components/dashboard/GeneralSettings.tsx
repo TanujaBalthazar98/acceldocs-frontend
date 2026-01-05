@@ -31,6 +31,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
+import { JoinRequestsPanel } from "./JoinRequestsPanel";
 
 interface GeneralSettingsProps {
   onBack: () => void;
@@ -521,6 +522,13 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                 </div>
               </div>
             </section>
+
+            {/* Join Requests */}
+            {organizationId && (
+              <section className="space-y-4">
+                <JoinRequestsPanel organizationId={organizationId} />
+              </section>
+            )}
 
             {/* Danger Zone */}
             <section className="space-y-4">
