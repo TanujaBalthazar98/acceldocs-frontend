@@ -118,7 +118,69 @@ const tools = [
   }
 ];
 
-// Execute tool calls
+// Map tools to required permissions
+const toolPermissions: Record<string, string> = {
+  find_project: "view",
+  find_topic: "view",
+  list_projects: "view",
+  list_topics: "view",
+  list_pages: "view",
+  create_topic: "create_topic",
+  create_page: "create_document",
+  update_page_content: "edit_document",
+  generate_documentation: "view", // Just generates content, doesn't save
+};
+
+// Check permission using the database function
+async function checkPermission(
+  supabase: any,
+  projectId: string,
+  userId: string,
+  action: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('check_project_permission', {
+    _project_id: projectId,
+    _user_id: userId,
+    _action: action
+  });
+  
+  if (error) {
+    console.error("Permission check error:", error);
+    return false;
+  }
+  
+  return data === true;
+}
+
+// Log action to audit_logs
+async function logAuditAction(
+  supabase: any,
+  userId: string,
+  action: string,
+  entityType: string,
+  entityId: string | null,
+  projectId: string | null,
+  metadata: Record<string, any> = {},
+  success: boolean = true,
+  errorMessage: string | null = null
+) {
+  try {
+    await supabase.from('audit_logs').insert({
+      user_id: userId,
+      action,
+      entity_type: entityType,
+      entity_id: entityId,
+      project_id: projectId,
+      metadata,
+      success,
+      error_message: errorMessage
+    });
+  } catch (e) {
+    console.error("Failed to log audit action:", e);
+  }
+}
+
+// Execute tool calls with permission checks
 async function executeTool(
   toolName: string, 
   args: Record<string, any>, 
@@ -128,6 +190,34 @@ async function executeTool(
   organizationId: string
 ): Promise<{ success: boolean; result?: any; error?: string }> {
   console.log(`Executing tool: ${toolName}`, args);
+  
+  // Check permissions for tools that modify data
+  const requiredPermission = toolPermissions[toolName];
+  const projectId = args.projectId;
+  
+  if (projectId && requiredPermission && requiredPermission !== "view") {
+    const hasPermission = await checkPermission(supabase, projectId, userId, requiredPermission);
+    
+    if (!hasPermission) {
+      // Log unauthorized attempt
+      await logAuditAction(
+        supabase,
+        userId,
+        `ai_assistant_${toolName}`,
+        "ai_action",
+        null,
+        projectId,
+        { args, unauthorized: true },
+        false,
+        `Permission denied: ${requiredPermission} required`
+      );
+      
+      return { 
+        success: false, 
+        error: `Permission denied. You need ${requiredPermission.replace(/_/g, " ")} permission to perform this action.` 
+      };
+    }
+  }
   
   try {
     switch (toolName) {
@@ -144,7 +234,6 @@ async function executeTool(
           return { success: false, error: `No project found matching "${args.name}"` };
         }
         
-        // Return the best match (exact match first, then first result)
         const exactMatch = data.find((p: any) => p.name.toLowerCase() === args.name.toLowerCase());
         const project = exactMatch || data[0];
         
@@ -220,7 +309,6 @@ async function executeTool(
         
         let parentFolderId = project.drive_folder_id;
         
-        // If parent topic, get its folder
         if (args.parentTopicId) {
           const { data: parentTopic } = await supabase
             .from("topics")
@@ -233,11 +321,11 @@ async function executeTool(
           }
         }
         
-        // Create folder in Drive
         if (!googleToken) {
           return { success: false, error: "Google Drive access required. Please reconnect to Google Drive." };
         }
         
+        // Create folder in Drive
         const folderResponse = await fetch(
           "https://www.googleapis.com/drive/v3/files",
           {
@@ -261,7 +349,6 @@ async function executeTool(
         
         const folder = await folderResponse.json();
         
-        // Get max display order for positioning at the end
         const { data: existingTopics } = await supabase
           .from("topics")
           .select("display_order")
@@ -271,7 +358,6 @@ async function executeTool(
         
         const nextOrder = existingTopics?.[0]?.display_order ? existingTopics[0].display_order + 1 : 0;
         
-        // Create topic in DB
         const { data: topic, error } = await supabase
           .from("topics")
           .insert({
@@ -285,11 +371,14 @@ async function executeTool(
           .single();
         
         if (error) throw error;
-        return { success: true, result: { topic, message: `✅ Created topic "${args.name}" at position ${nextOrder + 1} (last)` } };
+        
+        // Log successful action
+        await logAuditAction(supabase, userId, "ai_create_topic", "topic", topic.id, args.projectId, { name: args.name });
+        
+        return { success: true, result: { topic, message: `✅ Created topic "${args.name}"` } };
       }
       
       case "create_page": {
-        // Get topic's drive folder
         const { data: topic } = await supabase
           .from("topics")
           .select("drive_folder_id")
@@ -328,7 +417,6 @@ async function executeTool(
         
         const doc = await docResponse.json();
         
-        // Create document in DB
         const { data: document, error } = await supabase
           .from("documents")
           .insert({
@@ -345,15 +433,30 @@ async function executeTool(
           .single();
         
         if (error) throw error;
+        
+        // Log successful action
+        await logAuditAction(supabase, userId, "ai_create_page", "document", document.id, args.projectId, { title: args.title });
+        
         return { success: true, result: { document, message: `✅ Created page "${args.title}"` } };
       }
       
       case "update_page_content": {
-        const { data: existingDoc } = await supabase
+        // Get the page to find its project_id for permission check
+        const { data: existingDoc, error: fetchError } = await supabase
           .from("documents")
-          .select("content_html")
+          .select("content_html, project_id")
           .eq("id", args.pageId)
           .single();
+        
+        if (fetchError || !existingDoc) {
+          return { success: false, error: "Page not found" };
+        }
+        
+        // Check permission for this specific project
+        const hasPermission = await checkPermission(supabase, existingDoc.project_id, userId, "edit_document");
+        if (!hasPermission) {
+          return { success: false, error: "Permission denied. You need edit permission to update this page." };
+        }
         
         let newContent = args.content;
         if (args.append && existingDoc?.content_html) {
@@ -368,6 +471,9 @@ async function executeTool(
           .single();
         
         if (error) throw error;
+        
+        await logAuditAction(supabase, userId, "ai_update_page", "document", args.pageId, existingDoc.project_id, { append: args.append });
+        
         return { success: true, result: { document: data, message: "✅ Page content updated" } };
       }
       
@@ -423,29 +529,40 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     const googleToken = req.headers.get("x-google-token");
     
+    console.log("=== docs-ai-assistant request ===");
     console.log("Auth header present:", !!authHeader);
     console.log("Google token present:", !!googleToken);
     
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    // Get user from auth header
+    // Create service role client for database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Get user from auth header using a user-context client
     let userId: string | null = null;
     let organizationId: string | null = null;
     
     if (authHeader) {
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      // Create a client with the user's auth token to verify their identity
+      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: {
+          headers: { Authorization: authHeader }
+        }
+      });
+      
+      const { data: { user }, error: authError } = await userClient.auth.getUser();
       
       if (authError) {
         console.error("Auth error:", authError.message);
+      } else {
+        userId = user?.id || null;
+        console.log("User ID from token:", userId);
       }
       
-      userId = user?.id || null;
-      console.log("User ID from token:", userId);
-      
       if (userId) {
+        // Use service role client to fetch profile (bypasses RLS)
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("organization_id")
@@ -454,10 +571,10 @@ serve(async (req) => {
         
         if (profileError) {
           console.error("Profile fetch error:", profileError.message);
+        } else {
+          organizationId = profile?.organization_id || null;
+          console.log("Organization ID:", organizationId);
         }
-        
-        organizationId = profile?.organization_id || null;
-        console.log("Organization ID:", organizationId);
       }
     } else {
       console.log("No auth header provided");
@@ -465,7 +582,10 @@ serve(async (req) => {
     
     if (!userId || !organizationId) {
       console.log("Authentication failed - userId:", userId, "orgId:", organizationId);
-      return new Response(JSON.stringify({ error: "Authentication required" }), {
+      return new Response(JSON.stringify({ 
+        error: "Authentication required",
+        details: !userId ? "User not authenticated" : "User has no organization"
+      }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -511,7 +631,7 @@ EXAMPLES OF CORRECT BEHAVIOR:
 
 DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND THEM.`;
 
-    // OpenAI-compatible tool format (required by the Lovable AI Gateway)
+    // OpenAI-compatible tool format
     const openAiTools = tools.map((t) => ({
       type: "function",
       function: {
@@ -521,6 +641,8 @@ DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND
       },
     }));
 
+    console.log("Calling AI gateway...");
+    
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -550,14 +672,18 @@ DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND
     const data = await response.json();
     let assistantMessage = data.choices?.[0]?.message;
     
+    console.log("Initial AI response received, tool_calls:", assistantMessage?.tool_calls?.length || 0);
+    
     // Process tool calls in a loop until no more tool calls
     let allToolResults: any[] = [];
     let allActions: any[] = [];
     let iterations = 0;
-    const maxIterations = 5; // Prevent infinite loops
+    const maxIterations = 5;
     
     while (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0 && iterations < maxIterations) {
       iterations++;
+      console.log(`Processing tool calls iteration ${iterations}`);
+      
       const toolResults: any[] = [];
       
       for (const toolCall of assistantMessage.tool_calls) {
@@ -570,6 +696,8 @@ DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND
           console.error("Failed to parse tool arguments:", e);
         }
         
+        console.log(`Executing tool: ${functionName}`, functionArgs);
+        
         const result = await executeTool(
           functionName, 
           functionArgs, 
@@ -578,6 +706,8 @@ DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND
           googleToken,
           organizationId
         );
+        
+        console.log(`Tool ${functionName} result:`, result.success ? "success" : result.error);
         
         toolResults.push({
           tool_call_id: toolCall.id,
@@ -623,6 +753,8 @@ DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND
       const nextData = await nextResponse.json();
       assistantMessage = nextData.choices?.[0]?.message;
     }
+
+    console.log("Returning response with", allActions.length, "actions");
 
     return new Response(JSON.stringify({
       message: assistantMessage?.content || "Task completed",

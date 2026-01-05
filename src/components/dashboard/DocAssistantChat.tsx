@@ -98,11 +98,17 @@ export function DocAssistantChat({
       });
 
       if (error) {
-        throw new Error(error.message || "Failed to get response");
+        console.error("Supabase function error:", error);
+        // Check for specific error types
+        if (error.message?.includes("401") || error.message?.includes("Authentication")) {
+          throw new Error("Authentication required. Please refresh the page and try again.");
+        }
+        throw new Error(error.message || "Failed to get response from assistant");
       }
 
       if (data?.error) {
-        throw new Error(data.error);
+        console.error("Assistant returned error:", data.error, data.details);
+        throw new Error(data.details || data.error);
       }
 
       const assistantMessage: Message = {
