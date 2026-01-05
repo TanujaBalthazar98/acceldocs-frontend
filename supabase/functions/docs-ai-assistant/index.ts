@@ -423,6 +423,9 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     const googleToken = req.headers.get("x-google-token");
     
+    console.log("Auth header present:", !!authHeader);
+    console.log("Google token present:", !!googleToken);
+    
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -433,20 +436,35 @@ serve(async (req) => {
     
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "");
-      const { data: { user } } = await supabase.auth.getUser(token);
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      
+      if (authError) {
+        console.error("Auth error:", authError.message);
+      }
+      
       userId = user?.id || null;
+      console.log("User ID from token:", userId);
       
       if (userId) {
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("organization_id")
           .eq("id", userId)
           .single();
+        
+        if (profileError) {
+          console.error("Profile fetch error:", profileError.message);
+        }
+        
         organizationId = profile?.organization_id || null;
+        console.log("Organization ID:", organizationId);
       }
+    } else {
+      console.log("No auth header provided");
     }
     
     if (!userId || !organizationId) {
+      console.log("Authentication failed - userId:", userId, "orgId:", organizationId);
       return new Response(JSON.stringify({ error: "Authentication required" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
