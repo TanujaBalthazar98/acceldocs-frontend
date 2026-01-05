@@ -86,23 +86,43 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       if (!orgId && user) {
         const emailDomain = user.email?.split("@")[1] || "personal";
         // For personal email domains, use a unique domain per user to avoid conflicts
-        const isPersonalEmail = ["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", 
+        const personalDomains = ["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", 
           "msn.com", "yahoo.com", "yahoo.co.uk", "ymail.com", "aol.com", 
           "icloud.com", "me.com", "mac.com", "protonmail.com", "proton.me",
-          "tutanota.com", "zoho.com", "mail.com", "gmx.com", "gmx.net"].includes(emailDomain.toLowerCase());
+          "tutanota.com", "zoho.com", "mail.com", "gmx.com", "gmx.net"];
+        const isPersonalEmail = personalDomains.includes(emailDomain.toLowerCase());
         
-        const domain = isPersonalEmail ? `personal-${user.id}` : emailDomain;
-        
-        // Check if org already exists for this user
-        const { data: existingOrg } = await supabase
+        // Check if org already exists for this user first
+        const { data: existingOrgByOwner } = await supabase
           .from("organizations")
           .select("id")
           .eq("owner_id", user.id)
           .maybeSingle();
         
-        if (existingOrg) {
-          orgId = existingOrg.id;
+        if (existingOrgByOwner) {
+          orgId = existingOrgByOwner.id;
         } else {
+          // For personal emails, always use unique domain. For business, check if domain exists first.
+          let domain: string;
+          
+          if (isPersonalEmail) {
+            domain = `personal-${user.id}`;
+          } else {
+            // Check if a business domain org already exists (user should join, not create new)
+            const { data: existingOrgByDomain } = await supabase
+              .from("organizations")
+              .select("id, name")
+              .eq("domain", emailDomain)
+              .maybeSingle();
+            
+            if (existingOrgByDomain) {
+              // Domain already exists - create with unique domain suffix to avoid conflict
+              domain = `${emailDomain}-${user.id.substring(0, 8)}`;
+            } else {
+              domain = emailDomain;
+            }
+          }
+          
           const { data: newOrg, error: orgError } = await supabase
             .from("organizations")
             .insert({
