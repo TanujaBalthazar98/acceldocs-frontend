@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { decode } from "https://deno.land/x/djwt@v2.8/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -534,31 +535,24 @@ serve(async (req) => {
     console.log("Google token present:", !!googleToken);
     
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
     // Create service role client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Get user from auth header using a user-context client
+    // Get user from auth header by decoding the JWT
     let userId: string | null = null;
     let organizationId: string | null = null;
     
     if (authHeader) {
-      // Create a client with the user's auth token to verify their identity
-      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-        global: {
-          headers: { Authorization: authHeader }
-        }
-      });
-      
-      const { data: { user }, error: authError } = await userClient.auth.getUser();
-      
-      if (authError) {
-        console.error("Auth error:", authError.message);
-      } else {
-        userId = user?.id || null;
-        console.log("User ID from token:", userId);
+      try {
+        const token = authHeader.replace("Bearer ", "");
+        // Decode JWT to get user ID (we trust Supabase's token since it came through the gateway)
+        const [_header, payload, _signature] = decode(token);
+        userId = (payload as any)?.sub || null;
+        console.log("User ID from JWT:", userId);
+      } catch (jwtError) {
+        console.error("JWT decode error:", jwtError);
       }
       
       if (userId) {
