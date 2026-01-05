@@ -533,16 +533,16 @@ export default function Docs() {
         )}
       </ScrollArea>
 
-      {/* Footer */}
-      <div className="p-3 border-t border-border">
-        {user ? (
+      {/* Footer - only show for internal users viewing non-public projects */}
+      {user && selectedProject?.visibility !== "public" && (
+        <div className="p-3 border-t border-border">
           <Link to="/dashboard">
             <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground">
               Go to Dashboard
             </Button>
           </Link>
-        ) : null}
-      </div>
+        </div>
+      )}
     </div>
   );
 
@@ -857,19 +857,27 @@ export default function Docs() {
                   </h1>
                 </div>
 
-                {/* Meta */}
-                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
-                  <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
-                  <Badge variant="outline" className="text-xs">
-                    {visibilityConfig[selectedDocument.visibility].label}
-                  </Badge>
-                  {isOrgUser && selectedDocument.is_published && (
-                    <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-800 dark:text-green-400">
-                      Published
+                {/* Meta - show different info based on project visibility */}
+                {selectedProject?.visibility === "public" ? (
+                  /* Public docs: minimal metadata, no internal info */
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
+                    <CopyLinkButton className="ml-auto" />
+                  </div>
+                ) : (
+                  /* Internal/External docs: full metadata */
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
+                    <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {visibilityConfig[selectedProject?.visibility || selectedDocument.visibility].label}
                     </Badge>
-                  )}
-                  <CopyLinkButton className="ml-auto" />
-                </div>
+                    {isOrgUser && selectedDocument.is_published && (
+                      <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-800 dark:text-green-400">
+                        Published
+                      </Badge>
+                    )}
+                    <CopyLinkButton className="ml-auto" />
+                  </div>
+                )}
 
                 {/* Content */}
                 <div className="bg-card border border-border rounded-lg p-6 lg:p-8">
