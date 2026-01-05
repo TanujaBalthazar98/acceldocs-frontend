@@ -493,14 +493,15 @@ EXAMPLES OF CORRECT BEHAVIOR:
 
 DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND THEM.`;
 
-    // Convert tools to function calling format
-    const geminiTools = [{
-      function_declarations: tools.map(t => ({
+    // OpenAI-compatible tool format (required by the Lovable AI Gateway)
+    const openAiTools = tools.map((t) => ({
+      type: "function",
+      function: {
         name: t.name,
         description: t.description,
-        parameters: t.parameters
-      }))
-    }];
+        parameters: t.parameters,
+      },
+    }));
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -514,7 +515,7 @@ DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND
           { role: "system", content: systemPrompt },
           ...messages,
         ],
-        tools: geminiTools,
+        tools: openAiTools,
         tool_choice: "auto",
       }),
     });
@@ -588,9 +589,9 @@ DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND
             { role: "system", content: systemPrompt },
             ...messages,
             assistantMessage,
-            ...toolResults
+            ...toolResults,
           ],
-          tools: geminiTools,
+          tools: openAiTools,
           tool_choice: "auto",
         }),
       });

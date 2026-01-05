@@ -81,51 +81,45 @@ export function DocAssistantChat({
     setIsLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(
-        `https://hdqmklejahbrznskmvzp.supabase.co/functions/v1/docs-ai-assistant`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session?.access_token}`,
-            ...(googleToken ? { "x-google-token": googleToken } : {}),
+      const { data, error } = await supabase.functions.invoke("docs-ai-assistant", {
+        body: {
+          messages: [...messages, userMessage].map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          context: {
+            currentProject,
+            currentTopic,
           },
-          body: JSON.stringify({
-            messages: [...messages, userMessage].map(m => ({
-              role: m.role,
-              content: m.content
-            })),
-            context: {
-              currentProject,
-              currentTopic
-            }
-          }),
-        }
-      );
+        },
+        headers: {
+          ...(googleToken ? { "x-google-token": googleToken } : {}),
+        },
+      });
 
-      if (!response.ok) {
-        throw new Error("Failed to get response");
+      if (error) {
+        throw new Error(error.message || "Failed to get response");
       }
 
-      const data = await response.json();
-      
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
       const assistantMessage: Message = {
         role: "assistant",
-        content: data.message,
-        actions: data.actions,
-        toolResults: data.toolResults
+        content: data?.message || "",
+        actions: data?.actions,
+        toolResults: data?.toolResults,
       };
-      
-      setMessages(prev => [...prev, assistantMessage]);
+
+      setMessages((prev) => [...prev, assistantMessage]);
 
       // Check if any actions were successful and refresh
-      if (data.toolResults?.some((r: any) => r.success)) {
-        const hasCreatedSomething = data.actions?.some((a: any) => 
-          a.name === "create_topic" || a.name === "create_page"
+      if (data?.toolResults?.some((r: any) => r.success)) {
+        const hasCreatedSomething = data?.actions?.some(
+          (a: any) => a.name === "create_topic" || a.name === "create_page"
         );
-        
+
         if (hasCreatedSomething) {
           toast({
             title: "Content Created",
@@ -136,10 +130,18 @@ export function DocAssistantChat({
       }
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "Sorry, I encountered an error. Please try again."
-      }]);
+      toast({
+        title: "Assistant error",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, I encountered an error. Please try again.",
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
