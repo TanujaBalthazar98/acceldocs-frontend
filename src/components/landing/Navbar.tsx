@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { FileText, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import docspearelogo from "@/assets/docspeare-logo.png";
 
 const Navbar = () => {
   const { user, profileOrganizationId, profileLoading } = useAuth();
@@ -18,8 +19,8 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
-              <FileText className="w-4 h-4 text-primary-foreground" />
+            <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow overflow-hidden">
+              <img src={docspearelogo} alt="Docspeare" className="w-5 h-5 object-contain invert" />
             </div>
             <span className="text-lg font-semibold text-foreground">Docspeare</span>
           </div>
