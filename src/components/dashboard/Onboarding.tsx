@@ -42,21 +42,33 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   // Check if Drive is already connected, existing org, and pending requests
   useEffect(() => {
     const checkInitialState = async () => {
+      console.log("[Onboarding] Checking initial state...", { hasSession: !!session, hasUser: !!user });
+      
       if (session?.provider_token) {
         setDriveConnected(true);
       }
       
-      if (!user?.email) return;
+      if (!user?.email) {
+        console.log("[Onboarding] No user email, skipping org check");
+        return;
+      }
       
       const emailDomain = user.email.split("@")[1]?.toLowerCase();
-      if (!emailDomain || PERSONAL_DOMAINS.includes(emailDomain)) return;
+      console.log("[Onboarding] User email domain:", emailDomain);
+      
+      if (!emailDomain || PERSONAL_DOMAINS.includes(emailDomain)) {
+        console.log("[Onboarding] Personal domain or no domain, skipping org check");
+        return;
+      }
       
       // Check for existing org with same domain (for business emails)
-      const { data: orgByDomain } = await supabase
+      const { data: orgByDomain, error } = await supabase
         .from("organizations")
         .select("id, name, domain")
         .eq("domain", emailDomain)
         .maybeSingle();
+      
+      console.log("[Onboarding] Org by domain result:", { orgByDomain, error });
       
       if (orgByDomain) {
         setExistingOrg(orgByDomain);
@@ -68,6 +80,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           .eq("organization_id", orgByDomain.id)
           .eq("user_id", user.id)
           .maybeSingle();
+        
+        console.log("[Onboarding] Existing request:", existingRequest);
         
         if (existingRequest) {
           setPendingRequest(existingRequest);
