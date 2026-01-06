@@ -59,6 +59,7 @@ interface Organization {
   name: string;
   slug: string | null;
   domain: string;
+  custom_docs_domain: string | null;
   logo_url: string | null;
   tagline: string | null;
   primary_color: string;
@@ -167,6 +168,33 @@ export default function Docs() {
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
+  const [isCustomDomain, setIsCustomDomain] = useState(false);
+
+  // Check for custom domain on mount
+  useEffect(() => {
+    const checkCustomDomain = async () => {
+      const hostname = window.location.hostname;
+      
+      // Skip custom domain check for standard domains
+      if (hostname === 'localhost' || hostname.includes('lovable.app') || hostname.includes('lovable.dev')) {
+        return;
+      }
+      
+      // Check if this hostname matches any organization's custom_docs_domain
+      const { data: orgData } = await supabase
+        .from("organizations")
+        .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
+        .eq("custom_docs_domain", hostname)
+        .maybeSingle();
+      
+      if (orgData) {
+        setCurrentOrg(orgData as Organization);
+        setIsCustomDomain(true);
+      }
+    };
+    
+    checkCustomDomain();
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !hasFetched) {
@@ -183,6 +211,14 @@ export default function Docs() {
   const buildDocUrl = (doc: Document, project: Project, org: Organization) => {
     const orgIdentifier = org.slug || org.domain;
     const topic = doc.topic_id ? topics.find(t => t.id === doc.topic_id) : null;
+    
+    // For custom domains, use simplified URLs without org prefix
+    if (isCustomDomain) {
+      if (topic?.slug) {
+        return `/docs/${project.slug}/${topic.slug}/${doc.slug}`;
+      }
+      return `/docs/${project.slug}/${doc.slug}`;
+    }
     
     if (topic?.slug) {
       return `/docs/${orgIdentifier}/${project.slug}/${topic.slug}/${doc.slug}`;
@@ -265,7 +301,7 @@ export default function Docs() {
         if (userOrgId) {
           const { data: orgData } = await supabase
             .from("organizations")
-            .select("id, name, slug, domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
+            .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
             .eq("id", userOrgId)
             .single();
           if (orgData) {
@@ -276,10 +312,11 @@ export default function Docs() {
         setIsOrgUser(false);
       }
       
-      if (orgSlug && !currentOrg) {
+      // Load org from URL slug if not already loaded from custom domain
+      if (orgSlug && !currentOrg && !isCustomDomain) {
         const { data: orgData } = await supabase
           .from("organizations")
-          .select("id, name, slug, domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
+          .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
           .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
           .maybeSingle();
         if (orgData) {
@@ -360,7 +397,12 @@ export default function Docs() {
     setSelectedDocument(null);
     setDocumentHtml(null);
     if (currentOrg) {
-      navigate(`/docs/${currentOrg.slug || currentOrg.domain}/${project.slug}`);
+      // Use simplified URLs for custom domains
+      if (isCustomDomain) {
+        navigate(`/docs/${project.slug}`);
+      } else {
+        navigate(`/docs/${currentOrg.slug || currentOrg.domain}/${project.slug}`);
+      }
     }
   };
 

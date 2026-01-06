@@ -84,6 +84,8 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   
   const [orgName, setOrgName] = useState("");
   const [domain, setDomain] = useState("");
+  const [customDocsDomain, setCustomDocsDomain] = useState("");
+  const [savingCustomDomain, setSavingCustomDomain] = useState(false);
   const [rootFolderId, setRootFolderId] = useState("");
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [isSavingFolder, setIsSavingFolder] = useState(false);
@@ -123,13 +125,16 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
         const { data: org } = await supabase
           .from("organizations")
-          .select("name, domain, drive_folder_id, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects")
+          .select("name, domain, drive_folder_id, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects")
           .eq("id", profile.organization_id)
           .single();
 
         if (org) {
           setOrgName(org.name);
           setDomain(org.domain);
+          if (org.custom_docs_domain) {
+            setCustomDocsDomain(org.custom_docs_domain);
+          }
           if (org.drive_folder_id) {
             setRootFolderId(org.drive_folder_id);
           }
@@ -174,6 +179,48 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
     fetchOrgData();
   }, [user]);
+
+  const handleSaveCustomDomain = async () => {
+    if (!organizationId) return;
+
+    setSavingCustomDomain(true);
+
+    // Validate domain format
+    const domainValue = customDocsDomain.trim().toLowerCase();
+    if (domainValue && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(domainValue)) {
+      toast({
+        title: "Invalid domain format",
+        description: "Please enter a valid domain (e.g., docs.company.com)",
+        variant: "destructive",
+      });
+      setSavingCustomDomain(false);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("organizations")
+      .update({ custom_docs_domain: domainValue || null })
+      .eq("id", organizationId);
+
+    if (error) {
+      toast({
+        title: "Error saving custom domain",
+        description: error.message.includes("duplicate") 
+          ? "This domain is already in use by another organization"
+          : error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Custom domain saved",
+        description: domainValue 
+          ? "Your documentation domain has been configured. Set up DNS to point to Lovable."
+          : "Custom domain has been removed.",
+      });
+    }
+
+    setSavingCustomDomain(false);
+  };
 
   const handleSaveRootFolder = async () => {
     if (!organizationId || !rootFolderId.trim()) return;
@@ -412,6 +459,66 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                     Users with this email domain automatically join your organization.
                   </p>
                 </div>
+              </div>
+            </section>
+
+            {/* Custom Documentation Domain */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Globe className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-semibold text-foreground">Custom Documentation Domain</h2>
+              </div>
+
+              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Set a custom domain for your published documentation (e.g., docs.yourcompany.com).
+                  Your documentation will be accessible directly at this domain.
+                </p>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Documentation Domain
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={customDocsDomain}
+                      onChange={(e) => setCustomDocsDomain(e.target.value.toLowerCase())}
+                      placeholder="e.g., docs.yourcompany.com"
+                      className="flex-1 px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                    <Button 
+                      onClick={handleSaveCustomDomain}
+                      disabled={savingCustomDomain}
+                    >
+                      {savingCustomDomain ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    After saving, configure your DNS to point this domain to Lovable's servers.
+                  </p>
+                </div>
+
+                {customDocsDomain && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary">
+                    <Globe className="w-5 h-5 text-primary" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        Custom domain configured
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {customDocsDomain}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => window.open(`https://${customDocsDomain}`, "_blank")}
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </section>
 

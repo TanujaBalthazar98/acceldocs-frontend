@@ -516,6 +516,7 @@ export type Database = {
           accent_color: string | null
           created_at: string
           custom_css: string | null
+          custom_docs_domain: string | null
           domain: string
           drive_folder_id: string | null
           font_body: string | null
@@ -541,6 +542,7 @@ export type Database = {
           accent_color?: string | null
           created_at?: string
           custom_css?: string | null
+          custom_docs_domain?: string | null
           domain: string
           drive_folder_id?: string | null
           font_body?: string | null
@@ -566,6 +568,7 @@ export type Database = {
           accent_color?: string | null
           created_at?: string
           custom_css?: string | null
+          custom_docs_domain?: string | null
           domain?: string
           drive_folder_id?: string | null
           font_body?: string | null
