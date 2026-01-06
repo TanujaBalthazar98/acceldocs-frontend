@@ -71,6 +71,7 @@ import { MCPSettingsPanel } from "@/components/dashboard/MCPSettingsPanel";
 import { AuditLogPanel } from "@/components/dashboard/AuditLogPanel";
 import { IntegrationsPanel } from "@/components/dashboard/IntegrationsPanel";
 import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
+import { WorkspaceSwitcher } from "@/components/dashboard/WorkspaceSwitcher";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
@@ -936,12 +937,16 @@ const Dashboard = () => {
       <aside className="w-64 border-r border-border flex flex-col">
         {/* Logo */}
         <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
               <FileText className="w-4 h-4 text-primary-foreground" />
             </div>
             <span className="text-lg font-semibold text-foreground">DocLayer</span>
           </div>
+          <WorkspaceSwitcher 
+            currentOrganizationId={organizationId}
+            onWorkspaceChange={() => window.location.reload()}
+          />
         </div>
 
         {/* Search */}
