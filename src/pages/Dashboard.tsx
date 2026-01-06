@@ -952,9 +952,9 @@ const Dashboard = () => {
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
       <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} border-r border-border flex flex-col transition-all duration-300`}>
-        {/* Logo & Collapse Toggle */}
+        {/* Logo, Workspace, Notifications & Collapse Toggle */}
         <div className={`border-b border-border ${sidebarCollapsed ? 'p-2' : 'p-4'}`}>
-          <div className={`flex items-center ${sidebarCollapsed ? 'flex-col gap-2' : 'justify-between mb-3'}`}>
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-between' : 'justify-between mb-3'}`}>
             <div className={`flex items-center ${sidebarCollapsed ? '' : 'gap-2'}`}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -970,34 +970,62 @@ const Dashboard = () => {
               </Tooltip>
               {!sidebarCollapsed && <span className="text-lg font-semibold text-foreground">DocLayer</span>}
             </div>
-            
-            {/* Collapse/Expand Toggle - Always visible at top */}
+
+            <div className={`flex items-center ${sidebarCollapsed ? 'gap-1' : 'gap-1'}`}>
+              {/* Notifications in left panel */}
+              {organizationId && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <NotificationCenter organizationId={organizationId} />
+                    </span>
+                  </TooltipTrigger>
+                  {sidebarCollapsed && (
+                    <TooltipContent side="right">Notifications</TooltipContent>
+                  )}
+                </Tooltip>
+              )}
+
+              {/* Collapse/Expand Toggle - Always visible at top */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  >
+                    {sidebarCollapsed ? (
+                      <PanelLeft className="w-4 h-4" />
+                    ) : (
+                      <PanelLeftClose className="w-4 h-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+
+          {/* Workspace switcher should stay accessible in both expanded and collapsed sidebar */}
+          <div className={sidebarCollapsed ? 'mt-2 flex justify-center' : ''}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                >
-                  {sidebarCollapsed ? (
-                    <PanelLeft className="w-4 h-4" />
-                  ) : (
-                    <PanelLeftClose className="w-4 h-4" />
-                  )}
-                </Button>
+                <span className={sidebarCollapsed ? 'inline-flex' : 'w-full'}>
+                  <WorkspaceSwitcher
+                    currentOrganizationId={organizationId}
+                    onWorkspaceChange={() => window.location.reload()}
+                    collapsed={sidebarCollapsed}
+                  />
+                </span>
               </TooltipTrigger>
-              <TooltipContent side="right">
-                {sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              </TooltipContent>
+              {sidebarCollapsed && (
+                <TooltipContent side="right">Switch workspace</TooltipContent>
+              )}
             </Tooltip>
           </div>
-          {!sidebarCollapsed && (
-            <WorkspaceSwitcher 
-              currentOrganizationId={organizationId}
-              onWorkspaceChange={() => window.location.reload()}
-            />
-          )}
         </div>
 
         {/* Search - collapsed shows search icon */}
@@ -1667,7 +1695,6 @@ const Dashboard = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <NotificationCenter organizationId={organizationId} />
               <Button
                 variant="outline"
                 size="sm"

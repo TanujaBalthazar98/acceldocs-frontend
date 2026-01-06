@@ -6,10 +6,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Building2, ChevronDown, Check, Plus } from "lucide-react";
+import { Building2, ChevronDown, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Workspace {
@@ -21,9 +20,14 @@ interface Workspace {
 interface WorkspaceSwitcherProps {
   currentOrganizationId: string | null;
   onWorkspaceChange: () => void;
+  collapsed?: boolean;
 }
 
-export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: WorkspaceSwitcherProps) => {
+export const WorkspaceSwitcher = ({
+  currentOrganizationId,
+  onWorkspaceChange,
+  collapsed = false,
+}: WorkspaceSwitcherProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -38,7 +42,6 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
     }
 
     try {
-      // Get all organizations where the user has a role
       const { data: userRoles, error: rolesError } = await supabase
         .from("user_roles")
         .select("organization_id, role")
@@ -46,18 +49,15 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
 
       if (rolesError) {
         console.error("Error fetching user roles:", rolesError);
-        setIsLoading(false);
         return;
       }
 
       if (!userRoles || userRoles.length === 0) {
         setWorkspaces([]);
-        setIsLoading(false);
         return;
       }
 
-      // Get organization details for each role
-      const orgIds = userRoles.map(r => r.organization_id);
+      const orgIds = userRoles.map((r) => r.organization_id);
       const { data: orgs, error: orgsError } = await supabase
         .from("organizations")
         .select("id, name")
@@ -65,13 +65,11 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
 
       if (orgsError) {
         console.error("Error fetching organizations:", orgsError);
-        setIsLoading(false);
         return;
       }
 
-      // Combine org info with roles
-      const workspaceList: Workspace[] = (orgs || []).map(org => {
-        const role = userRoles.find(r => r.organization_id === org.id)?.role || "viewer";
+      const workspaceList: Workspace[] = (orgs || []).map((org) => {
+        const role = userRoles.find((r) => r.organization_id === org.id)?.role || "viewer";
         return {
           id: org.id,
           name: org.name,
@@ -81,9 +79,8 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
 
       setWorkspaces(workspaceList);
 
-      // Set current workspace
       if (currentOrganizationId) {
-        const current = workspaceList.find(w => w.id === currentOrganizationId);
+        const current = workspaceList.find((w) => w.id === currentOrganizationId);
         setCurrentWorkspace(current || null);
       }
     } catch (error) {
@@ -102,7 +99,6 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
 
     setIsSwitching(true);
     try {
-      // Update the user's profile to point to the new organization
       const { error } = await supabase
         .from("profiles")
         .update({ organization_id: workspace.id })
@@ -115,7 +111,6 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
         description: `Now viewing ${workspace.name}`,
       });
 
-      // Reload to refresh all data
       onWorkspaceChange();
     } catch (error: any) {
       console.error("Error switching workspace:", error);
@@ -129,14 +124,18 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
     }
   };
 
-  // Show loading skeleton while fetching
   if (isLoading) {
     return (
-      <div className="h-10 bg-secondary/50 rounded-lg animate-pulse" />
+      <div
+        className={
+          collapsed
+            ? "h-10 w-10 bg-secondary/50 rounded-lg animate-pulse"
+            : "h-10 bg-secondary/50 rounded-lg animate-pulse"
+        }
+      />
     );
   }
 
-  // Don't show if user only has one workspace
   if (workspaces.length <= 1) {
     return null;
   }
@@ -144,20 +143,34 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button 
-          variant="ghost" 
-          className="w-full justify-between px-3 py-2 h-auto"
-          disabled={isSwitching}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-            <span className="truncate text-sm font-medium">
-              {currentWorkspace?.name || "Select workspace"}
-            </span>
-          </div>
-          <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-        </Button>
+        {collapsed ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10"
+            disabled={isSwitching}
+            aria-label="Switch workspace"
+            title={currentWorkspace?.name || "Switch workspace"}
+          >
+            <Building2 className="w-4 h-4 text-muted-foreground" />
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            className="w-full justify-between px-3 py-2 h-auto"
+            disabled={isSwitching}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <span className="truncate text-sm font-medium">
+                {currentWorkspace?.name || "Select workspace"}
+              </span>
+            </div>
+            <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          </Button>
+        )}
       </DropdownMenuTrigger>
+
       <DropdownMenuContent align="start" className="w-56">
         {workspaces.map((workspace) => (
           <DropdownMenuItem
