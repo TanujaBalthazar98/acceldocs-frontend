@@ -32,6 +32,7 @@ import {
   History,
   Bot,
   MessageSquare,
+  ArrowRight,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -73,6 +74,7 @@ import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
+import { useJoinRequestNotifications } from "@/hooks/useJoinRequestNotifications";
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -171,6 +173,9 @@ const Dashboard = () => {
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading } = usePermissions(selectedProject?.id || null);
   const { logAction, logUnauthorizedAttempt } = useAuditLog();
+  
+  // Join request notifications for workspace switching
+  const { approvedOrgId, approvedOrgName, switchToApprovedWorkspace } = useJoinRequestNotifications(user?.id);
 
   // Handle deep-links from Page Preview → Integrations
   useEffect(() => {
@@ -1380,6 +1385,31 @@ const Dashboard = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* Main content area */}
           <div className={`flex-1 p-6 overflow-y-auto ${showAIAssistant ? 'pr-3' : ''}`}>
+          
+          {/* Workspace switch banner */}
+          {approvedOrgId && (
+            <div className="mb-6 p-4 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">You've been approved to join {approvedOrgName}!</p>
+                  <p className="text-sm text-muted-foreground">Switch to your team's workspace to collaborate with your colleagues.</p>
+                </div>
+              </div>
+              <Button 
+                variant="hero" 
+                size="sm" 
+                onClick={switchToApprovedWorkspace}
+                className="gap-2"
+              >
+                <ArrowRight className="w-4 h-4" />
+                Switch Workspace
+              </Button>
+            </div>
+          )}
+          
           {/* Stats */}
           {(() => {
             const publishedCount = filteredDocuments.filter(d => d.is_published).length;
