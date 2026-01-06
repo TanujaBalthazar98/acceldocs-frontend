@@ -32,6 +32,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
 import { JoinRequestsPanel } from "./JoinRequestsPanel";
+import docspeareIcon from "@/assets/docspeare-icon.png";
 
 interface GeneralSettingsProps {
   onBack: () => void;
@@ -82,6 +83,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  const [isLoading, setIsLoading] = useState(true);
   const [orgName, setOrgName] = useState("");
   const [domain, setDomain] = useState("");
   const [customDocsDomain, setCustomDocsDomain] = useState("");
@@ -112,68 +114,87 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
   useEffect(() => {
     const fetchOrgData = async () => {
-      if (!user) return;
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-
-      if (profile?.organization_id) {
-        setOrganizationId(profile.organization_id);
-
-        const { data: org } = await supabase
-          .from("organizations")
-          .select("name, domain, drive_folder_id, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects")
-          .eq("id", profile.organization_id)
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("id", user.id)
           .single();
 
-        if (org) {
-          setOrgName(org.name);
-          setDomain(org.domain);
-          if (org.custom_docs_domain) {
-            setCustomDocsDomain(org.custom_docs_domain);
-          }
-          if (org.drive_folder_id) {
-            setRootFolderId(org.drive_folder_id);
-          }
-          setBranding({
-            logo_url: org.logo_url,
-            tagline: org.tagline,
-            primary_color: org.primary_color || "#3B82F6",
-            secondary_color: org.secondary_color || "#1E40AF",
-            accent_color: org.accent_color || "#F59E0B",
-            font_heading: org.font_heading || "Inter",
-            font_body: org.font_body || "Inter",
-            custom_css: org.custom_css,
-            hero_title: org.hero_title,
-            hero_description: org.hero_description,
-            show_search_on_landing: org.show_search_on_landing ?? true,
-            show_featured_projects: org.show_featured_projects ?? true,
-          });
+        if (profileError) {
+          console.error("Error fetching profile:", profileError);
+          setIsLoading(false);
+          return;
         }
 
-        // Get team members
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, email, full_name")
-          .eq("organization_id", profile.organization_id);
+        if (profile?.organization_id) {
+          setOrganizationId(profile.organization_id);
 
-        const { data: roles } = await supabase
-          .from("user_roles")
-          .select("user_id, role")
-          .eq("organization_id", profile.organization_id);
+          const { data: org, error: orgError } = await supabase
+            .from("organizations")
+            .select("name, domain, drive_folder_id, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects")
+            .eq("id", profile.organization_id)
+            .single();
 
-        if (profiles && roles) {
-          const memberList = profiles.map((p) => ({
-            id: p.id,
-            email: p.email,
-            full_name: p.full_name,
-            role: roles.find((r) => r.user_id === p.id)?.role || "viewer",
-          }));
-          setMembers(memberList);
+          if (orgError) {
+            console.error("Error fetching organization:", orgError);
+          }
+
+          if (org) {
+            setOrgName(org.name);
+            setDomain(org.domain);
+            if (org.custom_docs_domain) {
+              setCustomDocsDomain(org.custom_docs_domain);
+            }
+            if (org.drive_folder_id) {
+              setRootFolderId(org.drive_folder_id);
+            }
+            setBranding({
+              logo_url: org.logo_url,
+              tagline: org.tagline,
+              primary_color: org.primary_color || "#3B82F6",
+              secondary_color: org.secondary_color || "#1E40AF",
+              accent_color: org.accent_color || "#F59E0B",
+              font_heading: org.font_heading || "Inter",
+              font_body: org.font_body || "Inter",
+              custom_css: org.custom_css,
+              hero_title: org.hero_title,
+              hero_description: org.hero_description,
+              show_search_on_landing: org.show_search_on_landing ?? true,
+              show_featured_projects: org.show_featured_projects ?? true,
+            });
+          }
+
+          // Get team members
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, email, full_name")
+            .eq("organization_id", profile.organization_id);
+
+          const { data: roles } = await supabase
+            .from("user_roles")
+            .select("user_id, role")
+            .eq("organization_id", profile.organization_id);
+
+          if (profiles && roles) {
+            const memberList = profiles.map((p) => ({
+              id: p.id,
+              email: p.email,
+              full_name: p.full_name,
+              role: roles.find((r) => r.user_id === p.id)?.role || "viewer",
+            }));
+            setMembers(memberList);
+          }
         }
+      } catch (error) {
+        console.error("Error in fetchOrgData:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -394,6 +415,19 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
       setExtractingStyles(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 rounded-xl overflow-hidden shadow-glow animate-pulse">
+            <img src={docspeareIcon} alt="Loading" className="w-full h-full object-cover" />
+          </div>
+          <p className="text-muted-foreground">Loading settings...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

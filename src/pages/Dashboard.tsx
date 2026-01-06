@@ -913,8 +913,8 @@ const Dashboard = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow animate-pulse">
-            <FileText className="w-6 h-6 text-primary-foreground" />
+          <div className="w-14 h-14 rounded-xl overflow-hidden shadow-glow animate-pulse">
+            <img src={docspeareIcon} alt="Loading" className="w-full h-full object-cover" />
           </div>
           <p className="text-muted-foreground">Loading...</p>
         </div>
