@@ -4,9 +4,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, ArrowLeft, Mail, Lock, AlertCircle } from "lucide-react";
+import { ArrowLeft, Mail, Lock, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import docspeareIcon from "@/assets/docspeare-icon.png";
 
 type AccountType = "individual" | "team" | "enterprise";
 
@@ -128,10 +129,10 @@ const Auth = () => {
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-              <FileText className="w-6 h-6 text-primary-foreground" />
+            <div className="w-12 h-12 rounded-xl overflow-hidden">
+              <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
             </div>
-            <span className="text-2xl font-bold text-foreground">DocLayer</span>
+            <span className="text-2xl font-bold text-foreground">Docspeare</span>
           </div>
 
           <h1 className="text-4xl xl:text-5xl font-bold mb-6 leading-tight">
@@ -165,10 +166,10 @@ const Auth = () => {
           <div className="w-full max-w-md">
             {/* Mobile Logo */}
             <div className="flex lg:hidden items-center gap-3 mb-8 justify-center">
-              <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-                <FileText className="w-5 h-5 text-primary-foreground" />
+              <div className="w-10 h-10 rounded-xl overflow-hidden">
+                <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
               </div>
-              <span className="text-xl font-bold text-foreground">DocLayer</span>
+              <span className="text-xl font-bold text-foreground">Docspeare</span>
             </div>
 
             {/* Header */}
