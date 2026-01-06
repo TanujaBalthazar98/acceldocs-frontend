@@ -11,14 +11,14 @@ const Index = () => {
   return (
     <>
       <Helmet>
-        <title>DocLayer - Turn Your Google Docs into Trusted Knowledge</title>
+        <title>Docspeare - Turn Your Google Docs into Trusted Knowledge</title>
         <meta 
           name="description" 
           content="The knowledge layer for Google Drive. Organize, govern, and publish your existing docs—without migration, uploads, or duplication. Built for Google Workspace." 
         />
-        <meta property="og:title" content="DocLayer - Google Drive-Native Knowledge Platform" />
+        <meta property="og:title" content="Docspeare - Google Drive-Native Knowledge Platform" />
         <meta property="og:description" content="Turn your Google Docs into trusted, organized knowledge. No migrations. No uploads. Just structure and trust." />
-        <link rel="canonical" href="https://doclayer.io" />
+        <link rel="canonical" href="https://docspeare.io" />
       </Helmet>
 
       <div className="min-h-screen bg-background">

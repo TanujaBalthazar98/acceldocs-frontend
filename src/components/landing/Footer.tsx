@@ -10,7 +10,7 @@ const Footer = () => {
             <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
               <FileText className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="text-lg font-semibold text-foreground">DocLayer</span>
+            <span className="text-lg font-semibold text-foreground">Docspeare</span>
           </div>
 
           {/* Links */}
@@ -31,7 +31,7 @@ const Footer = () => {
 
           {/* Copyright */}
           <p className="text-sm text-muted-foreground">
-            © 2024 DocLayer. All rights reserved.
+            © 2025 Docspeare. All rights reserved.
           </p>
         </div>
       </div>
