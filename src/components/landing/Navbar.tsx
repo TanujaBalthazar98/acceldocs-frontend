@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import docspearelogo from "@/assets/docspeare-logo.png";
+import docspeareIcon from "@/assets/docspeare-icon.png";
 
 const Navbar = () => {
   const { user, profileOrganizationId, profileLoading } = useAuth();
@@ -18,19 +18,19 @@ const Navbar = () => {
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center overflow-hidden">
-              <img src={docspearelogo} alt="Docspeare" className="w-5 h-5 object-contain" />
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl overflow-hidden">
+              <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
             </div>
             <span className="text-lg font-semibold text-foreground">Docspeare</span>
           </div>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200">
               Features
             </a>
-            <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200">
               How it works
             </a>
           </div>
