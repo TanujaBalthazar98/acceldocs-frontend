@@ -953,11 +953,20 @@ const Dashboard = () => {
       {/* Sidebar */}
       <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} border-r border-border flex flex-col transition-all duration-300`}>
         {/* Logo */}
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow flex-shrink-0">
-              <FileText className="w-4 h-4 text-primary-foreground" />
-            </div>
+        <div className={`border-b border-border ${sidebarCollapsed ? 'p-2' : 'p-4'}`}>
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2 mb-3'}`}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow flex-shrink-0 cursor-pointer">
+                  <FileText className="w-4 h-4 text-primary-foreground" />
+                </div>
+              </TooltipTrigger>
+              {sidebarCollapsed && (
+                <TooltipContent side="right">
+                  <p className="font-semibold">{organizationName || 'DocLayer'}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
             {!sidebarCollapsed && <span className="text-lg font-semibold text-foreground">DocLayer</span>}
           </div>
           {!sidebarCollapsed && (
@@ -968,8 +977,24 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* Search */}
-        {!sidebarCollapsed && (
+        {/* Search - collapsed shows search icon */}
+        {sidebarCollapsed ? (
+          <div className="p-2 border-b border-border">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="w-full h-10"
+                  onClick={() => setSidebarCollapsed(false)}
+                >
+                  <Search className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Search docs</TooltipContent>
+            </Tooltip>
+          </div>
+        ) : (
           <div className="p-4">
             <SmartSearch
               placeholder="Search docs..."
@@ -1018,322 +1043,538 @@ const Dashboard = () => {
         )}
 
         {/* Projects */}
-        <div className="flex-1 overflow-y-auto px-2">
-          {!sidebarCollapsed && (
-            <div className="flex items-center justify-between px-2 py-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Projects
-              </span>
-              <div className="flex items-center gap-1">
-                <button 
-                  onClick={handleSyncFromDrive}
-                  disabled={isSyncing || !rootFolderId}
-                  className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                  title="Sync from Google Drive"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                </button>
-                <Button 
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setAddProjectOpen(true)}
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          )}
-          {/* Connect Drive Banner */}
-          {!sidebarCollapsed && needsDriveAccess && rootFolderId && (
-            <div className="mx-2 mb-2 p-3 rounded-lg bg-primary/10 border border-primary/20">
-              <p className="text-xs text-muted-foreground mb-2">
-                Connect Google Drive to sync your folders
-              </p>
-              <Button
-                size="sm"
-                onClick={handleConnectDrive}
-                disabled={isConnectingDrive}
-                className="w-full"
-              >
-                {isConnectingDrive ? "Connecting..." : "Connect Google Drive"}
-              </Button>
-            </div>
-          )}
-
-          <div className="space-y-1">
-            {filteredProjects.length === 0 ? (
-              <p className="px-3 py-2 text-sm text-muted-foreground">
-                {searchQuery ? "No matching projects" : "No projects yet"}
-              </p>
-            ) : (
-              filteredProjects.map((project) => {
-                const projectTopics = filteredTopics.filter(t => t.project_id === project.id);
-                const isExpanded = expandedProjects.has(project.id) || !!searchQuery;
-                
-                return (
-                  <div key={project.id}>
-                    <div
-                      className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-                        selectedProject?.id === project.id
-                          ? "bg-secondary text-foreground"
-                          : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                      }`}
-                      onClick={() => {
-                        setSelectedProject(project);
-                        setShowAPISettings(false);
-                        setShowMCPSettings(false);
-                        setExpandedProjects(prev => {
-                          const next = new Set(prev);
-                          if (next.has(project.id)) {
-                            next.delete(project.id);
-                          } else {
-                            next.add(project.id);
-                          }
-                          return next;
-                        });
-                      }}
-                    >
-                      <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                      <FolderTree className="w-4 h-4" />
-                      <span className="flex-1 text-left truncate">{project.name}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedProject(project);
-                          setAddTopicOpen(true);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
-                        title="Add topic"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            onClick={(e) => e.stopPropagation()}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
-                          >
-                            <MoreHorizontal className="w-3 h-3" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
-                          {permissions.canManageMembers && (
-                            <DropdownMenuItem onClick={(e) => {
-                              e.stopPropagation();
-                              handleShareProject(e as unknown as React.MouseEvent, project);
-                            }}>
-                              <Share2 className="w-3 h-3 mr-2" />
-                              Share
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => {
-                            window.open(`/docs/${project.id}`, '_blank');
-                          }}>
-                            <Eye className="w-3 h-3 mr-2" />
-                            Preview Docs
-                          </DropdownMenuItem>
-                          {project.is_published && (
-                            <DropdownMenuItem onClick={() => {
-                              window.open(`/docs/${project.id}`, '_blank');
-                            }}>
-                              <BookOpen className="w-3 h-3 mr-2" />
-                              Published Docs
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          {permissions.canEditProjectSettings && (
-                            <DropdownMenuItem onClick={() => {
-                              setSelectedProject(project);
-                              setProjectSettingsOpen(true);
-                            }}>
-                              <Settings className="w-3 h-3 mr-2" />
-                              Settings
-                            </DropdownMenuItem>
-                          )}
-                          {permissions.canMoveTopic && (
-                            <DropdownMenuItem 
-                              onClick={() => handleNormalizeStructure(project.id)}
-                              disabled={isNormalizing}
-                            >
-                              <Layers className="w-3 h-3 mr-2" />
-                              {isNormalizing ? "Normalizing..." : "Normalize Structure"}
-                            </DropdownMenuItem>
-                          )}
-                          {permissions.canViewAuditLogs && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => setAuditLogOpen(true)}>
-                                <History className="w-3 h-3 mr-2" />
-                                Audit Logs
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                          {permissions.canDeleteProject && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                className="text-destructive focus:text-destructive"
-                                onClick={() => {
-                                  setItemToDelete({ type: 'project', id: project.id, name: project.name });
-                                  setDeleteDialogOpen(true);
-                                }}
-                              >
-                                <Trash2 className="w-3 h-3 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    
-                    {/* Topics under this project */}
-                    {isExpanded && (
-                      <div className="ml-2 mt-1">
-                        <SidebarTopicsTree
-                          topics={projectTopics}
-                          selectedTopic={selectedTopic}
-                          onSelectTopic={(topic) => setSelectedTopic(topic)}
-                          onAddPage={(topic) => {
-                            setSelectedTopic(topic);
-                            setAddPageOpen(true);
-                          }}
-                          onAddSubtopic={(topic) => {
-                            setParentTopicForCreate(topic);
-                            setAddTopicOpen(true);
-                          }}
-                          onOpenSettings={(topic) => {
-                            setSettingsTopic(topic);
-                            setTopicSettingsOpen(true);
-                          }}
-                          onDeleteTopic={(topic) => {
-                            setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
-                            setDeleteDialogOpen(true);
-                          }}
-                          onTopicsReordered={fetchData}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Developer Resources - API/MCP */}
-          <div className="mt-4 pt-4 border-t border-border">
-            <div className="flex items-center justify-between px-2 py-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Developer Resources
-              </span>
-            </div>
-            <div className="space-y-1">
-              <div
-                className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-                  showAPISettings
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                }`}
-                onClick={() => {
-                  setShowAPISettings(true);
-                  setShowMCPSettings(false);
-                  setShowIntegrations(false);
-                  setShowGeneralSettings(false);
-                  setSelectedProject(null);
-                  setSelectedTopic(null);
-                }}
-              >
-                <Code className="w-4 h-4" />
-                <span className="flex-1 text-left">API Reference</span>
-                {orgHasApiSpec && (
-                  <span className="w-2 h-2 rounded-full bg-green-500" title="Published" />
-                )}
-              </div>
-              <div
-                className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-                  showMCPSettings
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                }`}
-                onClick={() => {
-                  setShowMCPSettings(true);
-                  setShowAPISettings(false);
-                  setShowIntegrations(false);
-                  setShowGeneralSettings(false);
-                  setSelectedProject(null);
-                  setSelectedTopic(null);
-                }}
-              >
-                <FileJson className="w-4 h-4" />
-                <span className="flex-1 text-left">MCP Protocol</span>
-                {orgMcpEnabled && (
-                  <span className="w-2 h-2 rounded-full bg-green-500" title="Published" />
-                )}
-              </div>
-              <div
-                className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-                  showIntegrations
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                }`}
-                onClick={() => {
-                  setShowIntegrations(true);
-                  setShowMCPSettings(false);
-                  setShowAPISettings(false);
-                  setShowGeneralSettings(false);
-                  // Keep selectedProject so integrations work - only clear if none selected
-                  setSelectedTopic(null);
-                }}
-              >
-                <Plug2 className="w-4 h-4" />
-                <span className="flex-1 text-left">Integrations</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* User Section */}
-        <div className={`p-4 border-t border-border ${sidebarCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
+        <div className={`flex-1 overflow-y-auto ${sidebarCollapsed ? 'px-1' : 'px-2'}`}>
           {sidebarCollapsed ? (
-            <>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center cursor-pointer">
-                    <span className="text-sm font-medium text-primary">
-                      {user?.email?.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p>{user?.email}</p>
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setShowGeneralSettings(true)}
-                  >
-                    <Settings className="w-4 h-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right">Settings</TooltipContent>
-              </Tooltip>
+            /* Collapsed: Show project icons with tooltips */
+            <div className="py-2 space-y-1">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
+                    className="w-full h-10"
+                    onClick={() => setAddProjectOpen(true)}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Add Project</TooltipContent>
+              </Tooltip>
+              
+              {filteredProjects.slice(0, 5).map((project) => (
+                <Tooltip key={project.id}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`w-full h-10 ${
+                        selectedProject?.id === project.id
+                          ? 'bg-secondary text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      onClick={() => {
+                        setSelectedProject(project);
+                        setShowAPISettings(false);
+                        setShowMCPSettings(false);
+                        setShowIntegrations(false);
+                        setExpandedProjects(prev => new Set([...prev, project.id]));
+                      }}
+                    >
+                      <FolderTree className="w-4 h-4" />
+                      {selectedProject?.id === project.id && (
+                        <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p className="font-medium">{project.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {project.is_published ? 'Published' : 'Draft'}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+              
+              {filteredProjects.length > 5 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-full h-10 text-muted-foreground"
+                      onClick={() => setSidebarCollapsed(false)}
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    +{filteredProjects.length - 5} more projects
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between px-2 py-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Projects
+                </span>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={handleSyncFromDrive}
+                    disabled={isSyncing || !rootFolderId}
+                    className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    title="Sync from Google Drive"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  </button>
+                  <Button 
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setAddProjectOpen(true)}
+                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              {/* Connect Drive Banner */}
+              {needsDriveAccess && rootFolderId && (
+                <div className="mx-2 mb-2 p-3 rounded-lg bg-primary/10 border border-primary/20">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Connect Google Drive to sync your folders
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={handleConnectDrive}
+                    disabled={isConnectingDrive}
+                    className="w-full"
+                  >
+                    {isConnectingDrive ? "Connecting..." : "Connect Google Drive"}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Projects List - only shown when expanded */}
+          {!sidebarCollapsed && (
+            <div className="space-y-1">
+              {filteredProjects.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-muted-foreground">
+                  {searchQuery ? "No matching projects" : "No projects yet"}
+                </p>
+              ) : (
+                filteredProjects.map((project) => {
+                  const projectTopics = filteredTopics.filter(t => t.project_id === project.id);
+                  const isExpanded = expandedProjects.has(project.id) || !!searchQuery;
+                  
+                  return (
+                    <div key={project.id}>
+                      <div
+                        className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer relative ${
+                          selectedProject?.id === project.id
+                            ? "bg-secondary text-foreground"
+                            : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                        }`}
+                        onClick={() => {
+                          setSelectedProject(project);
+                          setShowAPISettings(false);
+                          setShowMCPSettings(false);
+                          setExpandedProjects(prev => {
+                            const next = new Set(prev);
+                            if (next.has(project.id)) {
+                              next.delete(project.id);
+                            } else {
+                              next.add(project.id);
+                            }
+                            return next;
+                          });
+                        }}
+                      >
+                        {selectedProject?.id === project.id && (
+                          <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                        )}
+                        <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        <FolderTree className="w-4 h-4" />
+                        <span className="flex-1 text-left truncate">{project.name}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedProject(project);
+                            setAddTopicOpen(true);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                          title="Add topic"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                            >
+                              <MoreHorizontal className="w-3 h-3" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            {permissions.canManageMembers && (
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation();
+                                handleShareProject(e as unknown as React.MouseEvent, project);
+                              }}>
+                                <Share2 className="w-3 h-3 mr-2" />
+                                Share
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => {
+                              window.open(`/docs/${project.id}`, '_blank');
+                            }}>
+                              <Eye className="w-3 h-3 mr-2" />
+                              Preview Docs
+                            </DropdownMenuItem>
+                            {project.is_published && (
+                              <DropdownMenuItem onClick={() => {
+                                window.open(`/docs/${project.id}`, '_blank');
+                              }}>
+                                <BookOpen className="w-3 h-3 mr-2" />
+                                Published Docs
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            {permissions.canEditProjectSettings && (
+                              <DropdownMenuItem onClick={() => {
+                                setSelectedProject(project);
+                                setProjectSettingsOpen(true);
+                              }}>
+                                <Settings className="w-3 h-3 mr-2" />
+                                Settings
+                              </DropdownMenuItem>
+                            )}
+                            {permissions.canMoveTopic && (
+                              <DropdownMenuItem 
+                                onClick={() => handleNormalizeStructure(project.id)}
+                                disabled={isNormalizing}
+                              >
+                                <Layers className="w-3 h-3 mr-2" />
+                                {isNormalizing ? "Normalizing..." : "Normalize Structure"}
+                              </DropdownMenuItem>
+                            )}
+                            {permissions.canViewAuditLogs && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setAuditLogOpen(true)}>
+                                  <History className="w-3 h-3 mr-2" />
+                                  Audit Logs
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            {permissions.canDeleteProject && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => {
+                                    setItemToDelete({ type: 'project', id: project.id, name: project.name });
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                >
+                                  <Trash2 className="w-3 h-3 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                      
+                      {/* Topics under this project */}
+                      {isExpanded && (
+                        <div className="ml-2 mt-1">
+                          <SidebarTopicsTree
+                            topics={projectTopics}
+                            selectedTopic={selectedTopic}
+                            onSelectTopic={(topic) => setSelectedTopic(topic)}
+                            onAddPage={(topic) => {
+                              setSelectedTopic(topic);
+                              setAddPageOpen(true);
+                            }}
+                            onAddSubtopic={(topic) => {
+                              setParentTopicForCreate(topic);
+                              setAddTopicOpen(true);
+                            }}
+                            onOpenSettings={(topic) => {
+                              setSettingsTopic(topic);
+                              setTopicSettingsOpen(true);
+                            }}
+                            onDeleteTopic={(topic) => {
+                              setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
+                              setDeleteDialogOpen(true);
+                            }}
+                            onTopicsReordered={fetchData}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* Developer Resources - API/MCP */}
+          <div className={`mt-4 pt-4 border-t border-border ${sidebarCollapsed ? 'py-2' : ''}`}>
+            {!sidebarCollapsed && (
+              <div className="flex items-center justify-between px-2 py-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Developer Resources
+                </span>
+              </div>
+            )}
+            <div className="space-y-1">
+              {sidebarCollapsed ? (
+                /* Collapsed: Icon buttons with tooltips */
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={`w-full h-10 relative ${
+                          showAPISettings
+                            ? 'bg-secondary text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                        onClick={() => {
+                          setShowAPISettings(true);
+                          setShowMCPSettings(false);
+                          setShowIntegrations(false);
+                          setShowGeneralSettings(false);
+                          setSelectedProject(null);
+                          setSelectedTopic(null);
+                        }}
+                      >
+                        <Code className="w-4 h-4" />
+                        {showAPISettings && (
+                          <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                        )}
+                        {orgHasApiSpec && (
+                          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-green-500" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p className="font-medium">API Reference</p>
+                      {orgHasApiSpec && <p className="text-xs text-green-400">Published</p>}
+                    </TooltipContent>
+                  </Tooltip>
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={`w-full h-10 relative ${
+                          showMCPSettings
+                            ? 'bg-secondary text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                        onClick={() => {
+                          setShowMCPSettings(true);
+                          setShowAPISettings(false);
+                          setShowIntegrations(false);
+                          setShowGeneralSettings(false);
+                          setSelectedProject(null);
+                          setSelectedTopic(null);
+                        }}
+                      >
+                        <FileJson className="w-4 h-4" />
+                        {showMCPSettings && (
+                          <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                        )}
+                        {orgMcpEnabled && (
+                          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-green-500" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p className="font-medium">MCP Protocol</p>
+                      {orgMcpEnabled && <p className="text-xs text-green-400">Enabled</p>}
+                    </TooltipContent>
+                  </Tooltip>
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={`w-full h-10 relative ${
+                          showIntegrations
+                            ? 'bg-secondary text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                        onClick={() => {
+                          setShowIntegrations(true);
+                          setShowMCPSettings(false);
+                          setShowAPISettings(false);
+                          setShowGeneralSettings(false);
+                          setSelectedTopic(null);
+                        }}
+                      >
+                        <Plug2 className="w-4 h-4" />
+                        {showIntegrations && (
+                          <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Integrations</TooltipContent>
+                  </Tooltip>
+                </>
+              ) : (
+                /* Expanded: Full navigation items */
+                <>
+                  <div
+                    className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer relative ${
+                      showAPISettings
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      setShowAPISettings(true);
+                      setShowMCPSettings(false);
+                      setShowIntegrations(false);
+                      setShowGeneralSettings(false);
+                      setSelectedProject(null);
+                      setSelectedTopic(null);
+                    }}
+                  >
+                    {showAPISettings && (
+                      <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                    )}
+                    <Code className="w-4 h-4" />
+                    <span className="flex-1 text-left">API Reference</span>
+                    {orgHasApiSpec && (
+                      <span className="w-2 h-2 rounded-full bg-green-500" title="Published" />
+                    )}
+                  </div>
+                  <div
+                    className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer relative ${
+                      showMCPSettings
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      setShowMCPSettings(true);
+                      setShowAPISettings(false);
+                      setShowIntegrations(false);
+                      setShowGeneralSettings(false);
+                      setSelectedProject(null);
+                      setSelectedTopic(null);
+                    }}
+                  >
+                    {showMCPSettings && (
+                      <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                    )}
+                    <FileJson className="w-4 h-4" />
+                    <span className="flex-1 text-left">MCP Protocol</span>
+                    {orgMcpEnabled && (
+                      <span className="w-2 h-2 rounded-full bg-green-500" title="Published" />
+                    )}
+                  </div>
+                  <div
+                    className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer relative ${
+                      showIntegrations
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      setShowIntegrations(true);
+                      setShowMCPSettings(false);
+                      setShowAPISettings(false);
+                      setShowGeneralSettings(false);
+                      setSelectedTopic(null);
+                    }}
+                  >
+                    {showIntegrations && (
+                      <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                    )}
+                    <Plug2 className="w-4 h-4" />
+                    <span className="flex-1 text-left">Integrations</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* User Section */}
+        <div className={`border-t border-border ${sidebarCollapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-4'}`}>
+          {sidebarCollapsed ? (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-full h-10"
                     onClick={() => setSidebarCollapsed(false)}
                   >
                     <PanelLeft className="w-4 h-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">Expand sidebar</TooltipContent>
+              </Tooltip>
+              
+              <div className="w-full h-px bg-border my-1" />
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    className={`w-full h-10 relative ${
+                      showGeneralSettings
+                        ? 'bg-secondary text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    onClick={() => setShowGeneralSettings(true)}
+                  >
+                    <Settings className="w-4 h-4" />
+                    {showGeneralSettings && (
+                      <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Settings</TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center cursor-pointer hover:bg-primary/30 transition-colors">
+                    <span className="text-sm font-medium text-primary">
+                      {user?.email?.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="font-medium">{user?.email?.split("@")[0]}</p>
+                  <p className="text-xs text-muted-foreground">{user?.email}</p>
+                </TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-full h-10 text-muted-foreground hover:text-destructive"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Sign out</TooltipContent>
               </Tooltip>
             </>
           ) : (
