@@ -46,10 +46,6 @@ const CTA = () => {
               </>
             )}
           </div>
-
-          <p className="mt-8 text-sm text-muted-foreground">
-            Get started for free. No credit card required.
-          </p>
         </div>
       </div>
     </section>
