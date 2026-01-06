@@ -48,15 +48,19 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
       if (!user?.email) return;
 
-      const emailDomain = user.email.split("@")[1]?.toLowerCase();
+      const emailDomain = user.email.split("@")[1]?.trim().toLowerCase();
       if (!emailDomain || PERSONAL_DOMAINS.includes(emailDomain)) return;
 
       // Check for existing org with same domain (for business emails)
-      const { data: orgByDomain } = await supabase
+      const { data: orgByDomain, error: orgError } = await supabase
         .from("organizations")
         .select("id, name, domain")
-        .eq("domain", emailDomain)
+        .ilike("domain", emailDomain)
         .maybeSingle();
+
+      if (orgError) {
+        console.warn("Failed to check existing org by domain:", orgError);
+      }
 
       if (orgByDomain) {
         setExistingOrg(orgByDomain);
