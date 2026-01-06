@@ -9,6 +9,8 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   googleAccessToken: string | null;
+  profileOrganizationId: string | null;
+  profileLoading: boolean;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   requestDriveAccess: () => Promise<{ error: Error | null }>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -41,6 +43,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Initialize from localStorage
     return localStorage.getItem(GOOGLE_TOKEN_KEY);
   });
+  const [profileOrganizationId, setProfileOrganizationId] = useState<string | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   // Track if we've already tried to store refresh token for the current Drive-consent flow
   const hasAttemptedStoreTokenRef = useRef(false);
@@ -120,6 +124,34 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    const fetchProfile = async () => {
+      if (!user?.id) {
+        setProfileOrganizationId(null);
+        setProfileLoading(false);
+        return;
+      }
+
+      setProfileLoading(true);
+      const { data } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!active) return;
+      setProfileOrganizationId(data?.organization_id ?? null);
+      setProfileLoading(false);
+    };
+
+    fetchProfile();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
   const signInWithGoogle = async () => {
     const redirectUrl = `${window.location.origin}/dashboard`;
     
@@ -196,6 +228,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         session,
         loading,
         googleAccessToken,
+        profileOrganizationId,
+        profileLoading,
         signInWithGoogle,
         requestDriveAccess,
         signInWithEmail,

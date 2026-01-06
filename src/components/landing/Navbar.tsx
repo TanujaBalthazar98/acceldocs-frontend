@@ -5,9 +5,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 const Navbar = () => {
-  const { user } = useAuth();
+  const { user, profileOrganizationId, profileLoading } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const needsOnboarding = !!user && !profileLoading && !profileOrganizationId;
+  const dashboardCtaLabel = needsOnboarding ? "Complete Sign-Up" : "Go to Dashboard";
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
@@ -38,7 +41,7 @@ const Navbar = () => {
           <div className="hidden md:flex items-center gap-3">
             {user ? (
               <Button variant="hero" size="sm" onClick={() => navigate("/dashboard")}>
-                Go to Dashboard
+                {dashboardCtaLabel}
               </Button>
             ) : (
               <>
@@ -78,7 +81,7 @@ const Navbar = () => {
             <div className="flex flex-col gap-2 pt-4 border-t border-border/50">
               {user ? (
                 <Button variant="hero" className="w-full justify-center" onClick={() => navigate("/dashboard")}>
-                  Go to Dashboard
+                  {dashboardCtaLabel}
                 </Button>
               ) : (
                 <>

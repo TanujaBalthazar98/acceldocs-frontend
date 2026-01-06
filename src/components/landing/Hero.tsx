@@ -5,8 +5,10 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Hero = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profileOrganizationId, profileLoading } = useAuth();
 
+  const needsOnboarding = !!user && !profileLoading && !profileOrganizationId;
+  const dashboardCtaLabel = needsOnboarding ? "Complete Sign-Up" : "Go to Dashboard";
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
       {/* Background Effects */}
@@ -46,7 +48,7 @@ const Hero = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16 animate-fade-in opacity-0" style={{ animationDelay: '0.4s' }}>
             {user ? (
               <Button variant="hero" size="xl" onClick={() => navigate("/dashboard")}>
-                Go to Dashboard
+                {dashboardCtaLabel}
                 <ArrowRight className="w-4 h-4" />
               </Button>
             ) : (
