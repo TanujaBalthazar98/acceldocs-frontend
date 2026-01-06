@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -31,70 +31,71 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
   const [isLoading, setIsLoading] = useState(true);
   const [isSwitching, setIsSwitching] = useState(false);
 
-  useEffect(() => {
-    const fetchWorkspaces = async () => {
-      if (!user) {
+  const fetchWorkspaces = useCallback(async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      // Get all organizations where the user has a role
+      const { data: userRoles, error: rolesError } = await supabase
+        .from("user_roles")
+        .select("organization_id, role")
+        .eq("user_id", user.id);
+
+      if (rolesError) {
+        console.error("Error fetching user roles:", rolesError);
         setIsLoading(false);
         return;
       }
 
-      try {
-        // Get all organizations where the user has a role
-        const { data: userRoles, error: rolesError } = await supabase
-          .from("user_roles")
-          .select("organization_id, role")
-          .eq("user_id", user.id);
-
-        if (rolesError) {
-          console.error("Error fetching user roles:", rolesError);
-          setIsLoading(false);
-          return;
-        }
-
-        if (!userRoles || userRoles.length === 0) {
-          setIsLoading(false);
-          return;
-        }
-
-        // Get organization details for each role
-        const orgIds = userRoles.map(r => r.organization_id);
-        const { data: orgs, error: orgsError } = await supabase
-          .from("organizations")
-          .select("id, name")
-          .in("id", orgIds);
-
-        if (orgsError) {
-          console.error("Error fetching organizations:", orgsError);
-          setIsLoading(false);
-          return;
-        }
-
-        // Combine org info with roles
-        const workspaceList: Workspace[] = (orgs || []).map(org => {
-          const role = userRoles.find(r => r.organization_id === org.id)?.role || "viewer";
-          return {
-            id: org.id,
-            name: org.name,
-            role,
-          };
-        });
-
-        setWorkspaces(workspaceList);
-
-        // Set current workspace
-        if (currentOrganizationId) {
-          const current = workspaceList.find(w => w.id === currentOrganizationId);
-          setCurrentWorkspace(current || null);
-        }
-      } catch (error) {
-        console.error("Error fetching workspaces:", error);
-      } finally {
+      if (!userRoles || userRoles.length === 0) {
+        setWorkspaces([]);
         setIsLoading(false);
+        return;
       }
-    };
 
-    fetchWorkspaces();
+      // Get organization details for each role
+      const orgIds = userRoles.map(r => r.organization_id);
+      const { data: orgs, error: orgsError } = await supabase
+        .from("organizations")
+        .select("id, name")
+        .in("id", orgIds);
+
+      if (orgsError) {
+        console.error("Error fetching organizations:", orgsError);
+        setIsLoading(false);
+        return;
+      }
+
+      // Combine org info with roles
+      const workspaceList: Workspace[] = (orgs || []).map(org => {
+        const role = userRoles.find(r => r.organization_id === org.id)?.role || "viewer";
+        return {
+          id: org.id,
+          name: org.name,
+          role,
+        };
+      });
+
+      setWorkspaces(workspaceList);
+
+      // Set current workspace
+      if (currentOrganizationId) {
+        const current = workspaceList.find(w => w.id === currentOrganizationId);
+        setCurrentWorkspace(current || null);
+      }
+    } catch (error) {
+      console.error("Error fetching workspaces:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [user, currentOrganizationId]);
+
+  useEffect(() => {
+    fetchWorkspaces();
+  }, [fetchWorkspaces]);
 
   const handleSwitchWorkspace = async (workspace: Workspace) => {
     if (workspace.id === currentOrganizationId) return;
@@ -128,8 +129,15 @@ export const WorkspaceSwitcher = ({ currentOrganizationId, onWorkspaceChange }: 
     }
   };
 
+  // Show loading skeleton while fetching
+  if (isLoading) {
+    return (
+      <div className="h-10 bg-secondary/50 rounded-lg animate-pulse" />
+    );
+  }
+
   // Don't show if user only has one workspace
-  if (isLoading || workspaces.length <= 1) {
+  if (workspaces.length <= 1) {
     return null;
   }
 
