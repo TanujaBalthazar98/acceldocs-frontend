@@ -21,7 +21,7 @@ const Navbar = () => {
             <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
               <FileText className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="text-lg font-semibold text-foreground">DocLayer</span>
+            <span className="text-lg font-semibold text-foreground">Docspeare</span>
           </div>
 
           {/* Desktop Navigation */}
@@ -31,9 +31,6 @@ const Navbar = () => {
             </a>
             <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               How it works
-            </a>
-            <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Pricing
             </a>
           </div>
 
@@ -74,9 +71,6 @@ const Navbar = () => {
             </a>
             <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">
               How it works
-            </a>
-            <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">
-              Pricing
             </a>
             <div className="flex flex-col gap-2 pt-4 border-t border-border/50">
               {user ? (

@@ -48,7 +48,7 @@ const CTA = () => {
           </div>
 
           <p className="mt-8 text-sm text-muted-foreground">
-            Free for teams up to 5 people. No credit card required.
+            Get started for free. No credit card required.
           </p>
         </div>
       </div>
