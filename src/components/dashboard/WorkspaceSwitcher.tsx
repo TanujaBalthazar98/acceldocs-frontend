@@ -124,19 +124,9 @@ export const WorkspaceSwitcher = ({
     }
   };
 
-  if (isLoading) {
-    return (
-      <div
-        className={
-          collapsed
-            ? "h-10 w-10 bg-secondary/50 rounded-lg animate-pulse"
-            : "h-10 bg-secondary/50 rounded-lg animate-pulse"
-        }
-      />
-    );
-  }
-
-  if (workspaces.length <= 1) {
+  // Don't render anything during initial load - prevents flickering
+  // Also don't render if user only has one workspace
+  if (isLoading || workspaces.length <= 1) {
     return null;
   }
 
