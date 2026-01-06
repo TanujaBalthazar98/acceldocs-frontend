@@ -952,22 +952,45 @@ const Dashboard = () => {
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
       <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} border-r border-border flex flex-col transition-all duration-300`}>
-        {/* Logo */}
+        {/* Logo & Collapse Toggle */}
         <div className={`border-b border-border ${sidebarCollapsed ? 'p-2' : 'p-4'}`}>
-          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2 mb-3'}`}>
+          <div className={`flex items-center ${sidebarCollapsed ? 'flex-col gap-2' : 'justify-between mb-3'}`}>
+            <div className={`flex items-center ${sidebarCollapsed ? '' : 'gap-2'}`}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow flex-shrink-0 cursor-pointer">
+                    <FileText className="w-4 h-4 text-primary-foreground" />
+                  </div>
+                </TooltipTrigger>
+                {sidebarCollapsed && (
+                  <TooltipContent side="right">
+                    <p className="font-semibold">{organizationName || 'DocLayer'}</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              {!sidebarCollapsed && <span className="text-lg font-semibold text-foreground">DocLayer</span>}
+            </div>
+            
+            {/* Collapse/Expand Toggle - Always visible at top */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow flex-shrink-0 cursor-pointer">
-                  <FileText className="w-4 h-4 text-primary-foreground" />
-                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                >
+                  {sidebarCollapsed ? (
+                    <PanelLeft className="w-4 h-4" />
+                  ) : (
+                    <PanelLeftClose className="w-4 h-4" />
+                  )}
+                </Button>
               </TooltipTrigger>
-              {sidebarCollapsed && (
-                <TooltipContent side="right">
-                  <p className="font-semibold">{organizationName || 'DocLayer'}</p>
-                </TooltipContent>
-              )}
+              <TooltipContent side="right">
+                {sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              </TooltipContent>
             </Tooltip>
-            {!sidebarCollapsed && <span className="text-lg font-semibold text-foreground">DocLayer</span>}
           </div>
           {!sidebarCollapsed && (
             <WorkspaceSwitcher 
@@ -1509,25 +1532,9 @@ const Dashboard = () => {
         </div>
 
         {/* User Section */}
-        <div className={`border-t border-border ${sidebarCollapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-4'}`}>
+        <div className={`border-t border-border ${sidebarCollapsed ? 'p-2 flex flex-col items-center gap-2' : 'p-4'}`}>
           {sidebarCollapsed ? (
             <>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-full h-10"
-                    onClick={() => setSidebarCollapsed(false)}
-                  >
-                    <PanelLeft className="w-4 h-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right">Expand sidebar</TooltipContent>
-              </Tooltip>
-              
-              <div className="w-full h-px bg-border my-1" />
-              
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button 
@@ -1603,15 +1610,6 @@ const Dashboard = () => {
                 >
                   <Settings className="w-4 h-4" />
                   Settings
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setSidebarCollapsed(true)}
-                  title="Collapse sidebar"
-                >
-                  <PanelLeftClose className="w-4 h-4" />
                 </Button>
                 <Button
                   variant="ghost"
