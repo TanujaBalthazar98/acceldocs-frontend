@@ -300,105 +300,77 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         {existingOrg && !joinChoice ? (
           <div className="glass rounded-2xl p-8">
             <div className="text-center max-w-md mx-auto">
-              {/* Show pending/rejected state */}
-              {pendingRequest?.status === 'pending' || requestSent ? (
-                <>
-                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-6">
-                    <Clock className="w-8 h-8 text-amber-500" />
-                  </div>
-                  <h2 className="text-2xl font-bold mb-3">Request pending</h2>
-                  <p className="text-muted-foreground mb-6">
-                    Your request to join <span className="font-medium text-foreground">{existingOrg.name}</span> is waiting for admin approval.
-                  </p>
-                  <p className="text-sm text-muted-foreground mb-6">
-                    You'll get access once an admin approves your request. In the meantime, you can create your own workspace.
-                  </p>
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                <Building2 className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold mb-3">We found your team!</h2>
+              <p className="text-muted-foreground mb-6">
+                <span className="font-medium text-foreground">{existingOrg.name}</span> already has a workspace on DocLayer.
+              </p>
+              
+              {/* Show status badge if request exists */}
+              {(pendingRequest?.status === 'pending' || requestSent) && (
+                <div className="flex items-center justify-center gap-2 mb-6 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <Clock className="w-4 h-4 text-amber-500" />
+                  <span className="text-sm text-amber-600 dark:text-amber-400">
+                    Join request pending admin approval
+                  </span>
+                </div>
+              )}
+              
+              {pendingRequest?.status === 'rejected' && (
+                <div className="flex items-center justify-center gap-2 mb-6 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                  <Building2 className="w-4 h-4 text-destructive" />
+                  <span className="text-sm text-destructive">
+                    Your join request was declined
+                  </span>
+                </div>
+              )}
+              
+              <div className="space-y-3">
+                {/* Show request button only if no pending/approved request */}
+                {!pendingRequest && !requestSent && (
                   <Button 
                     variant="outline" 
                     size="lg" 
-                    onClick={() => {
-                      setJoinChoice("create");
-                      setStep(1);
-                    }}
+                    onClick={handleRequestToJoin}
+                    disabled={isJoining}
                     className="w-full gap-2"
                   >
-                    <Building2 className="w-4 h-4" />
-                    Create my own workspace instead
+                    {isJoining ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Sending request...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Request to join {existingOrg.name}
+                      </>
+                    )}
                   </Button>
-                </>
-              ) : pendingRequest?.status === 'rejected' ? (
-                <>
-                  <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto mb-6">
-                    <Building2 className="w-8 h-8 text-destructive" />
-                  </div>
-                  <h2 className="text-2xl font-bold mb-3">Request declined</h2>
-                  <p className="text-muted-foreground mb-6">
-                    Your request to join <span className="font-medium text-foreground">{existingOrg.name}</span> was not approved.
-                  </p>
-                  <Button 
-                    variant="hero" 
-                    size="lg" 
-                    onClick={() => {
-                      setJoinChoice("create");
-                      setStep(1);
-                    }}
-                    className="w-full gap-2"
-                  >
-                    <Building2 className="w-4 h-4" />
-                    Create my own workspace
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
-                    <Building2 className="w-8 h-8 text-primary" />
-                  </div>
-                  <h2 className="text-2xl font-bold mb-3">We found your team!</h2>
-                  <p className="text-muted-foreground mb-6">
-                    <span className="font-medium text-foreground">{existingOrg.name}</span> already has a workspace on DocLayer. 
-                    Would you like to request to join?
-                  </p>
-                  
-                  <div className="space-y-3">
-                    <Button 
-                      variant="hero" 
-                      size="lg" 
-                      onClick={handleRequestToJoin}
-                      disabled={isJoining}
-                      className="w-full gap-2"
-                    >
-                      {isJoining ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Sending request...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-4 h-4" />
-                          Request to join {existingOrg.name}
-                        </>
-                      )}
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="lg" 
-                      onClick={() => {
-                        setJoinChoice("create");
-                        setStep(1);
-                      }}
-                      className="w-full gap-2"
-                    >
-                      <Building2 className="w-4 h-4" />
-                      Create my own workspace
-                    </Button>
-                  </div>
-                  
-                  <p className="text-xs text-muted-foreground mt-6">
-                    An admin will review your request. Creating your own workspace will be separate from {existingOrg.name}.
-                  </p>
-                </>
-              )}
+                )}
+                
+                <Button 
+                  variant="hero" 
+                  size="lg" 
+                  onClick={() => {
+                    setJoinChoice("create");
+                    setStep(1);
+                  }}
+                  className="w-full gap-2"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                  Continue with my own workspace
+                </Button>
+              </div>
+              
+              <p className="text-xs text-muted-foreground mt-6">
+                {pendingRequest?.status === 'pending' || requestSent 
+                  ? `You'll be notified when an admin approves your request. Meanwhile, you can set up your own workspace.`
+                  : `You can request to join ${existingOrg.name} or create your own separate workspace.`
+                }
+              </p>
             </div>
           </div>
         ) : (
