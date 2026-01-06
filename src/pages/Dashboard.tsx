@@ -954,78 +954,72 @@ const Dashboard = () => {
       <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} border-r border-border flex flex-col transition-all duration-300`}>
         {/* Logo, Workspace, Notifications & Collapse Toggle */}
         <div className={`border-b border-border ${sidebarCollapsed ? 'p-2' : 'p-4'}`}>
-          <div className={`flex items-center ${sidebarCollapsed ? 'justify-between' : 'justify-between mb-3'}`}>
-            <div className={`flex items-center ${sidebarCollapsed ? '' : 'gap-2'}`}>
+          {sidebarCollapsed ? (
+            /* Collapsed: Stack items vertically */
+            <div className="flex flex-col items-center gap-2">
+              {/* Logo */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow flex-shrink-0 cursor-pointer">
-                    <FileText className="w-4 h-4 text-primary-foreground" />
+                  <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow cursor-pointer">
+                    <FileText className="w-5 h-5 text-primary-foreground" />
                   </div>
                 </TooltipTrigger>
-                {sidebarCollapsed && (
-                  <TooltipContent side="right">
-                    <p className="font-semibold">{organizationName || 'DocLayer'}</p>
-                  </TooltipContent>
-                )}
+                <TooltipContent side="right">
+                  <p className="font-semibold">{organizationName || 'DocLayer'}</p>
+                </TooltipContent>
               </Tooltip>
-              {!sidebarCollapsed && <span className="text-lg font-semibold text-foreground">DocLayer</span>}
-            </div>
 
-            <div className={`flex items-center ${sidebarCollapsed ? 'gap-1' : 'gap-1'}`}>
-              {/* Notifications in left panel */}
-              {organizationId && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex">
-                      <NotificationCenter organizationId={organizationId} />
-                    </span>
-                  </TooltipTrigger>
-                  {sidebarCollapsed && (
-                    <TooltipContent side="right">Notifications</TooltipContent>
-                  )}
-                </Tooltip>
-              )}
-
-              {/* Collapse/Expand Toggle - Always visible at top */}
+              {/* Expand button */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                    className="h-10 w-10 text-muted-foreground hover:text-foreground"
+                    onClick={() => setSidebarCollapsed(false)}
                   >
-                    {sidebarCollapsed ? (
-                      <PanelLeft className="w-4 h-4" />
-                    ) : (
-                      <PanelLeftClose className="w-4 h-4" />
-                    )}
+                    <PanelLeft className="w-4 h-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="right">
-                  {sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                </TooltipContent>
+                <TooltipContent side="right">Expand sidebar</TooltipContent>
               </Tooltip>
             </div>
-          </div>
+          ) : (
+            /* Expanded: Horizontal layout */
+            <>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow flex-shrink-0">
+                    <FileText className="w-4 h-4 text-primary-foreground" />
+                  </div>
+                  <span className="text-lg font-semibold text-foreground">DocLayer</span>
+                </div>
 
-          {/* Workspace switcher should stay accessible in both expanded and collapsed sidebar */}
-          <div className={sidebarCollapsed ? 'mt-2 flex justify-center' : ''}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className={sidebarCollapsed ? 'inline-flex' : 'w-full'}>
-                  <WorkspaceSwitcher
-                    currentOrganizationId={organizationId}
-                    onWorkspaceChange={() => window.location.reload()}
-                    collapsed={sidebarCollapsed}
-                  />
-                </span>
-              </TooltipTrigger>
-              {sidebarCollapsed && (
-                <TooltipContent side="right">Switch workspace</TooltipContent>
-              )}
-            </Tooltip>
-          </div>
+                <div className="flex items-center gap-1">
+                  {organizationId && <NotificationCenter organizationId={organizationId} />}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => setSidebarCollapsed(true)}
+                      >
+                        <PanelLeftClose className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Collapse sidebar</TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+
+              <WorkspaceSwitcher
+                currentOrganizationId={organizationId}
+                onWorkspaceChange={() => window.location.reload()}
+                collapsed={false}
+              />
+            </>
+          )}
         </div>
 
         {/* Search - collapsed shows search icon */}
