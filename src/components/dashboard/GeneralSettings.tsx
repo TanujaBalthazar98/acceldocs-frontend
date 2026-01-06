@@ -78,11 +78,11 @@ const fontOptions = [
 ];
 
 export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
-  const { user } = useAuth();
+  const { user, profileOrganizationId, profileLoading } = useAuth();
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [orgName, setOrgName] = useState("");
   const [domain, setDomain] = useState("");
@@ -96,7 +96,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const [uploading, setUploading] = useState(false);
   const [extractingStyles, setExtractingStyles] = useState(false);
   const [websiteUrl, setWebsiteUrl] = useState("");
-  
+
   const [branding, setBranding] = useState<BrandingData>({
     logo_url: null,
     tagline: null,
@@ -113,93 +113,129 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   });
 
   useEffect(() => {
+    let active = true;
+
     const fetchOrgData = async () => {
       if (!user) {
+        if (!active) return;
         setIsLoading(false);
         return;
       }
 
-      try {
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("organization_id")
-          .eq("id", user.id)
-          .single();
+      // Wait for AuthContext to finish loading the user's profile/org
+      if (profileLoading) {
+        if (!active) return;
+        setIsLoading(true);
+        return;
+      }
 
-        if (profileError) {
-          console.error("Error fetching profile:", profileError);
-          setIsLoading(false);
+      const orgId = profileOrganizationId;
+
+      if (!orgId) {
+        if (!active) return;
+        setOrganizationId(null);
+        setOrgName("");
+        setDomain("");
+        setMembers([]);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!active) return;
+      setIsLoading(true);
+
+      try {
+        setOrganizationId(orgId);
+
+        const { data: org, error: orgError } = await supabase
+          .from("organizations")
+          .select(
+            "name, domain, drive_folder_id, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects"
+          )
+          .eq("id", orgId)
+          .maybeSingle();
+
+        if (!active) return;
+
+        if (orgError) {
+          console.error("Error fetching organization:", orgError);
+          toast({
+            title: "Couldn't load settings",
+            description: orgError.message,
+            variant: "destructive",
+          });
           return;
         }
 
-        if (profile?.organization_id) {
-          setOrganizationId(profile.organization_id);
+        if (!org) {
+          toast({
+            title: "Organization not found",
+            description: "Your account isn't connected to an organization yet.",
+            variant: "destructive",
+          });
+          return;
+        }
 
-          const { data: org, error: orgError } = await supabase
-            .from("organizations")
-            .select("name, domain, drive_folder_id, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects")
-            .eq("id", profile.organization_id)
-            .single();
+        setOrgName(org.name);
+        setDomain(org.domain);
+        setCustomDocsDomain(org.custom_docs_domain || "");
+        setRootFolderId(org.drive_folder_id || "");
+        setBranding({
+          logo_url: org.logo_url,
+          tagline: org.tagline,
+          primary_color: org.primary_color || "#3B82F6",
+          secondary_color: org.secondary_color || "#1E40AF",
+          accent_color: org.accent_color || "#F59E0B",
+          font_heading: org.font_heading || "Inter",
+          font_body: org.font_body || "Inter",
+          custom_css: org.custom_css,
+          hero_title: org.hero_title,
+          hero_description: org.hero_description,
+          show_search_on_landing: org.show_search_on_landing ?? true,
+          show_featured_projects: org.show_featured_projects ?? true,
+        });
 
-          if (orgError) {
-            console.error("Error fetching organization:", orgError);
-          }
-
-          if (org) {
-            setOrgName(org.name);
-            setDomain(org.domain);
-            if (org.custom_docs_domain) {
-              setCustomDocsDomain(org.custom_docs_domain);
-            }
-            if (org.drive_folder_id) {
-              setRootFolderId(org.drive_folder_id);
-            }
-            setBranding({
-              logo_url: org.logo_url,
-              tagline: org.tagline,
-              primary_color: org.primary_color || "#3B82F6",
-              secondary_color: org.secondary_color || "#1E40AF",
-              accent_color: org.accent_color || "#F59E0B",
-              font_heading: org.font_heading || "Inter",
-              font_body: org.font_body || "Inter",
-              custom_css: org.custom_css,
-              hero_title: org.hero_title,
-              hero_description: org.hero_description,
-              show_search_on_landing: org.show_search_on_landing ?? true,
-              show_featured_projects: org.show_featured_projects ?? true,
-            });
-          }
-
-          // Get team members
-          const { data: profiles } = await supabase
+        // Get team members
+        const [{ data: profiles }, { data: roles }] = await Promise.all([
+          supabase
             .from("profiles")
             .select("id, email, full_name")
-            .eq("organization_id", profile.organization_id);
-
-          const { data: roles } = await supabase
+            .eq("organization_id", orgId),
+          supabase
             .from("user_roles")
             .select("user_id, role")
-            .eq("organization_id", profile.organization_id);
+            .eq("organization_id", orgId),
+        ]);
 
-          if (profiles && roles) {
-            const memberList = profiles.map((p) => ({
-              id: p.id,
-              email: p.email,
-              full_name: p.full_name,
-              role: roles.find((r) => r.user_id === p.id)?.role || "viewer",
-            }));
-            setMembers(memberList);
-          }
+        if (!active) return;
+
+        if (profiles && roles) {
+          const memberList = profiles.map((p) => ({
+            id: p.id,
+            email: p.email,
+            full_name: p.full_name,
+            role: roles.find((r) => r.user_id === p.id)?.role || "viewer",
+          }));
+          setMembers(memberList);
         }
       } catch (error) {
         console.error("Error in fetchOrgData:", error);
+        toast({
+          title: "Couldn't load settings",
+          description: "Please refresh and try again.",
+          variant: "destructive",
+        });
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
 
     fetchOrgData();
-  }, [user]);
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, profileOrganizationId, profileLoading, toast]);
 
   const handleSaveCustomDomain = async () => {
     if (!organizationId) return;
