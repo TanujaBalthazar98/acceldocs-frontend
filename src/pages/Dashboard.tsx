@@ -246,11 +246,12 @@ const Dashboard = () => {
       // Onboarding is complete if the organization has a name set (not just the default domain)
       setNeedsOnboarding(false);
       
-      // Get projects
+      // Get projects - only from user's own organization (not public projects from other orgs)
       const { data: projectsData } = await supabase
         .from("projects")
         .select("id, name, drive_folder_id, visibility, is_published")
-        .eq("organization_id", profile.organization_id);
+        .eq("organization_id", profile.organization_id)
+        .order("name");
 
       if (projectsData) {
         setProjects(projectsData as Project[]);
