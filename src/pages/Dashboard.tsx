@@ -88,6 +88,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
 import { useJoinRequestNotifications } from "@/hooks/useJoinRequestNotifications";
+import docspeareIcon from "@/assets/docspeare-icon.png";
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -960,12 +961,12 @@ const Dashboard = () => {
               {/* Logo */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow cursor-pointer">
-                    <FileText className="w-5 h-5 text-primary-foreground" />
+                  <div className="w-10 h-10 rounded-xl overflow-hidden cursor-pointer">
+                    <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  <p className="font-semibold">{organizationName || 'DocLayer'}</p>
+                  <p className="font-semibold">{organizationName || 'Docspeare'}</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -989,10 +990,10 @@ const Dashboard = () => {
             <>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow flex-shrink-0">
-                    <FileText className="w-4 h-4 text-primary-foreground" />
+                  <div className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0">
+                    <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
                   </div>
-                  <span className="text-lg font-semibold text-foreground">DocLayer</span>
+                  <span className="text-lg font-semibold text-foreground">Docspeare</span>
                 </div>
 
                 <div className="flex items-center gap-1">
