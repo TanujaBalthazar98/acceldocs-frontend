@@ -116,7 +116,7 @@ export const InviteMemberDialog = ({
       if (inviteError) throw inviteError;
 
       // Send the invitation email
-      const { error: emailError } = await supabase.functions.invoke(
+      const { data: emailResult, error: emailError } = await supabase.functions.invoke(
         "send-invitation-email",
         {
           body: {
@@ -129,12 +129,20 @@ export const InviteMemberDialog = ({
         }
       );
 
-      if (emailError) {
-        console.error("Error sending email:", emailError);
-        // Still show success - invitation was created
+      // The function returns { ok: boolean, ... }
+      if (emailError || (emailResult && (emailResult as any).ok === false)) {
+        const err = (emailResult as any)?.error;
+        const message =
+          err?.message ||
+          emailError?.message ||
+          "Invitation was created but email could not be sent.";
+
+        console.error("Error sending email:", { emailError, emailResult });
+
         toast({
-          title: "Invitation created",
-          description: "Invitation was created but email could not be sent. Share the link manually.",
+          title: "Invitation created (email not delivered)",
+          description: message,
+          variant: "destructive",
         });
       } else {
         toast({
