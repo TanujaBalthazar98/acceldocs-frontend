@@ -312,6 +312,10 @@ export default function Docs() {
         setIsOrgUser(false);
       }
       
+      // Determine the target organization - from URL slug, custom domain, or user's org
+      let targetOrgId: string | null = null;
+      let targetOrg: Organization | null = currentOrg;
+      
       // Load org from URL slug if not already loaded from custom domain
       if (orgSlug && !currentOrg && !isCustomDomain) {
         const { data: orgData } = await supabase
@@ -320,28 +324,45 @@ export default function Docs() {
           .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
           .maybeSingle();
         if (orgData) {
-          setCurrentOrg(orgData as Organization);
+          targetOrg = orgData as Organization;
+          setCurrentOrg(targetOrg);
         }
       }
+      
+      // Determine the organization to scope projects to
+      if (targetOrg) {
+        targetOrgId = targetOrg.id;
+      } else if (currentOrg) {
+        targetOrgId = currentOrg.id;
+      } else if (userOrgId) {
+        // Fallback to user's organization if no URL context
+        targetOrgId = userOrgId;
+      }
+      
+      // If no organization context at all, show nothing (don't leak cross-org data)
+      if (!targetOrgId) {
+        setProjects([]);
+        setLoading(false);
+        return;
+      }
 
-      // Build project query with visibility filtering
-      let projectsQuery = supabase
+      // Build project query scoped to the target organization
+      const { data: projectsData, error: projectsError } = await supabase
         .from("projects")
         .select("id, name, slug, visibility, is_published, organization_id, mcp_enabled, openapi_spec_json, openapi_spec_url")
+        .eq("organization_id", targetOrgId)
         .eq("is_published", true)
         .order("name");
-
-      const { data: projectsData, error: projectsError } = await projectsQuery;
 
       if (projectsError) {
         console.error("Error fetching projects:", projectsError);
       } else if (projectsData) {
         // Filter projects based on visibility and user authentication
         const filteredProjects = projectsData.filter(project => {
-          // Public projects: visible to everyone
+          // Public projects: visible to everyone within this org's docs
           if (project.visibility === "public") return true;
           
-          // Internal/External projects: only visible to authenticated org users
+          // Internal/External projects: only visible to authenticated users who belong to this org
           if (currentUser && userOrgId && project.organization_id === userOrgId) {
             return true;
           }
