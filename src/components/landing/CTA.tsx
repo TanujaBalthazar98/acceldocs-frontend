@@ -6,8 +6,10 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const CTA = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profileOrganizationId, profileLoading } = useAuth();
 
+  const needsOnboarding = !!user && !profileLoading && !profileOrganizationId;
+  const dashboardCtaLabel = needsOnboarding ? "Complete Sign-Up" : "Go to Dashboard";
   return (
     <section className="py-24 relative overflow-hidden">
       {/* Background Effects */}
@@ -28,7 +30,7 @@ const CTA = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             {user ? (
               <Button variant="hero" size="xl" onClick={() => navigate("/dashboard")}>
-                Go to Dashboard
+                {dashboardCtaLabel}
                 <ArrowRight className="w-4 h-4" />
               </Button>
             ) : (
