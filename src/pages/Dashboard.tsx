@@ -9,6 +9,7 @@ import {
   Settings, 
   LogOut,
   ChevronRight,
+  ChevronLeft,
   Folder,
   AlertTriangle,
   User,
@@ -33,6 +34,9 @@ import {
   Bot,
   MessageSquare,
   ArrowRight,
+  PanelLeftClose,
+  PanelLeft,
+  UserPlus,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -51,6 +55,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { SmartSearch } from "@/components/SmartSearch";
@@ -72,6 +82,8 @@ import { AuditLogPanel } from "@/components/dashboard/AuditLogPanel";
 import { IntegrationsPanel } from "@/components/dashboard/IntegrationsPanel";
 import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
 import { WorkspaceSwitcher } from "@/components/dashboard/WorkspaceSwitcher";
+import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
+import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
@@ -170,6 +182,9 @@ const Dashboard = () => {
   const [visiblePagesCount, setVisiblePagesCount] = useState(10);
   const [auditLogOpen, setAuditLogOpen] = useState(false);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
+  const [organizationName, setOrganizationName] = useState<string>("");
   
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading } = usePermissions(selectedProject?.id || null);
@@ -248,6 +263,7 @@ const Dashboard = () => {
       // Set org-level API/MCP settings
       setOrgMcpEnabled((org as any)?.mcp_enabled ?? false);
       setOrgHasApiSpec(!!((org as any)?.openapi_spec_json || (org as any)?.openapi_spec_url));
+      setOrganizationName(org?.name || "");
       
       // Onboarding is complete if the organization has a name set (not just the default domain)
       setNeedsOnboarding(false);
@@ -932,98 +948,104 @@ const Dashboard = () => {
   }
 
   return (
+    <TooltipProvider>
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
-      <aside className="w-64 border-r border-border flex flex-col">
+      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} border-r border-border flex flex-col transition-all duration-300`}>
         {/* Logo */}
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
+            <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow flex-shrink-0">
               <FileText className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="text-lg font-semibold text-foreground">DocLayer</span>
+            {!sidebarCollapsed && <span className="text-lg font-semibold text-foreground">DocLayer</span>}
           </div>
-          <WorkspaceSwitcher 
-            currentOrganizationId={organizationId}
-            onWorkspaceChange={() => window.location.reload()}
-          />
+          {!sidebarCollapsed && (
+            <WorkspaceSwitcher 
+              currentOrganizationId={organizationId}
+              onWorkspaceChange={() => window.location.reload()}
+            />
+          )}
         </div>
 
         {/* Search */}
-        <div className="p-4">
-          <SmartSearch
-            placeholder="Search docs..."
-            documents={documents.map(d => ({
-              id: d.id,
-              title: d.title,
-              project_id: d.project_id,
-              topic_id: d.topic_id,
-              content_html: d.content_html,
-            }))}
-            topics={topics.map(t => ({
-              id: t.id,
-              name: t.name,
-              project_id: t.project_id,
-            }))}
-            projects={projects.map(p => ({
-              id: p.id,
-              name: p.name,
-            }))}
-            showAIButton={false}
-            onSearch={setSearchQuery}
-            onSelect={(result) => {
-              if (result.type === "project") {
-                const project = projects.find(p => p.id === result.id);
-                if (project) {
-                  setSelectedProject(project);
-                  setSelectedTopic(null);
-                  setExpandedProjects(prev => new Set([...prev, project.id]));
-                }
-              } else if (result.type === "topic") {
-                const topic = topics.find(t => t.id === result.id);
-                if (topic) {
-                  const project = projects.find(p => p.id === topic.project_id);
+        {!sidebarCollapsed && (
+          <div className="p-4">
+            <SmartSearch
+              placeholder="Search docs..."
+              documents={documents.map(d => ({
+                id: d.id,
+                title: d.title,
+                project_id: d.project_id,
+                topic_id: d.topic_id,
+                content_html: d.content_html,
+              }))}
+              topics={topics.map(t => ({
+                id: t.id,
+                name: t.name,
+                project_id: t.project_id,
+              }))}
+              projects={projects.map(p => ({
+                id: p.id,
+                name: p.name,
+              }))}
+              showAIButton={false}
+              onSearch={setSearchQuery}
+              onSelect={(result) => {
+                if (result.type === "project") {
+                  const project = projects.find(p => p.id === result.id);
                   if (project) {
                     setSelectedProject(project);
-                    setSelectedTopic(topic);
+                    setSelectedTopic(null);
                     setExpandedProjects(prev => new Set([...prev, project.id]));
                   }
+                } else if (result.type === "topic") {
+                  const topic = topics.find(t => t.id === result.id);
+                  if (topic) {
+                    const project = projects.find(p => p.id === topic.project_id);
+                    if (project) {
+                      setSelectedProject(project);
+                      setSelectedTopic(topic);
+                      setExpandedProjects(prev => new Set([...prev, project.id]));
+                    }
+                  }
+                } else if (result.type === "page") {
+                  navigate(`/page/${result.id}`);
                 }
-              } else if (result.type === "page") {
-                navigate(`/page/${result.id}`);
-              }
-            }}
-          />
-        </div>
+              }}
+            />
+          </div>
+        )}
 
         {/* Projects */}
         <div className="flex-1 overflow-y-auto px-2">
-          <div className="flex items-center justify-between px-2 py-2">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Projects
-            </span>
-            <div className="flex items-center gap-1">
-              <button 
-                onClick={handleSyncFromDrive}
-                disabled={isSyncing || !rootFolderId}
-                className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                title="Sync from Google Drive"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              </button>
-              <Button 
-                variant="ghost"
-                size="icon"
-                onClick={() => setAddProjectOpen(true)}
-                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
+          {!sidebarCollapsed && (
+            <div className="flex items-center justify-between px-2 py-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Projects
+              </span>
+              <div className="flex items-center gap-1">
+                <button 
+                  onClick={handleSyncFromDrive}
+                  disabled={isSyncing || !rootFolderId}
+                  className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  title="Sync from Google Drive"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                </button>
+                <Button 
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setAddProjectOpen(true)}
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
-          </div>
-
+          )}
           {/* Connect Drive Banner */}
-          {needsDriveAccess && rootFolderId && (
+          {!sidebarCollapsed && needsDriveAccess && rootFolderId && (
             <div className="mx-2 mb-2 p-3 rounded-lg bg-primary/10 border border-primary/20">
               <p className="text-xs text-muted-foreground mb-2">
                 Connect Google Drive to sync your folders
@@ -1272,41 +1294,95 @@ const Dashboard = () => {
         </div>
 
         {/* User Section */}
-        <div className="p-4 border-t border-border">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-              <span className="text-sm font-medium text-primary">
-                {user?.email?.charAt(0).toUpperCase()}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">
-                {user?.email?.split("@")[0]}
-              </p>
-              <p className="text-xs text-muted-foreground truncate">
-                {user?.email}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="flex-1 justify-start gap-2"
-              onClick={() => setShowGeneralSettings(true)}
-            >
-              <Settings className="w-4 h-4" />
-              Settings
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleSignOut}
-              className="text-muted-foreground hover:text-destructive"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
-          </div>
+        <div className={`p-4 border-t border-border ${sidebarCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
+          {sidebarCollapsed ? (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center cursor-pointer">
+                    <span className="text-sm font-medium text-primary">
+                      {user?.email?.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>{user?.email}</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setShowGeneralSettings(true)}
+                  >
+                    <Settings className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Settings</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setSidebarCollapsed(false)}
+                  >
+                    <PanelLeft className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Expand sidebar</TooltipContent>
+              </Tooltip>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                  <span className="text-sm font-medium text-primary">
+                    {user?.email?.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {user?.email?.split("@")[0]}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {user?.email}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="flex-1 justify-start gap-2"
+                  onClick={() => setShowGeneralSettings(true)}
+                >
+                  <Settings className="w-4 h-4" />
+                  Settings
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setSidebarCollapsed(true)}
+                  title="Collapse sidebar"
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSignOut}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </aside>
 
@@ -1352,6 +1428,16 @@ const Dashboard = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <NotificationCenter organizationId={organizationId} />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setInviteMemberOpen(true)}
+              >
+                <UserPlus className="w-4 h-4" />
+                <span className="hidden sm:inline">Invite</span>
+              </Button>
               <Button 
                 variant={showAIAssistant ? "secondary" : "outline"}
                 size="sm" 
@@ -1830,7 +1916,18 @@ const Dashboard = () => {
           projectId={selectedProject.id}
         />
       )}
+      
+      {/* Invite Member Dialog */}
+      {organizationId && (
+        <InviteMemberDialog
+          open={inviteMemberOpen}
+          onOpenChange={setInviteMemberOpen}
+          organizationId={organizationId}
+          organizationName={organizationName}
+        />
+      )}
     </div>
+    </TooltipProvider>
   );
 };
 
