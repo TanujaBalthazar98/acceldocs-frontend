@@ -3,21 +3,21 @@ import { ArrowRight, Check } from "lucide-react";
 const steps = [
   {
     number: "01",
-    title: "Sign in with Google",
-    description: "One click to connect. Grant access to your Google Drive. That's the entire onboarding.",
-    highlights: ["No uploads", "No imports", "No migrations"],
+    title: "Connect Your Google Drive",
+    description: "Sign in with Google and grant access to your Drive. Select a folder to use as your knowledge base—no uploads or migrations needed.",
+    highlights: ["Google SSO", "Folder-based setup", "Your docs stay in Drive"],
   },
   {
     number: "02",
-    title: "Add Structure",
-    description: "Group your existing Google Docs into Projects and Topics. Assign owners and track states.",
-    highlights: ["Projects → Topics → Pages", "Ownership tracking", "Lifecycle states"],
+    title: "Organize Into Projects & Topics",
+    description: "Create Projects to group related documentation. Add Topics within projects to build a clear hierarchy from your existing Google Docs.",
+    highlights: ["Projects → Topics → Pages", "Link existing Google Docs", "Custom slugs & URLs"],
   },
   {
     number: "03",
-    title: "Trust & Publish",
-    description: "Surface knowledge health. Publish externally when ready. Internal or public—your choice.",
-    highlights: ["Health dashboards", "External publishing", "Version control"],
+    title: "Publish & Share",
+    description: "Publish documentation internally for your team or externally with custom branding. Control visibility per page—internal, external, or public.",
+    highlights: ["Custom domains", "Branded docs portal", "Visibility controls"],
   },
 ];
 
