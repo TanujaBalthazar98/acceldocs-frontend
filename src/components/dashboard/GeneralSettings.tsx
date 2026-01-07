@@ -26,12 +26,14 @@ import {
   Globe,
   Loader2,
   Wand2,
+  UserPlus,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
 import { JoinRequestsPanel } from "./JoinRequestsPanel";
+import { InviteMemberDialog } from "./InviteMemberDialog";
 import docspeareIcon from "@/assets/docspeare-icon.png";
 
 interface GeneralSettingsProps {
@@ -96,6 +98,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const [uploading, setUploading] = useState(false);
   const [extractingStyles, setExtractingStyles] = useState(false);
   const [websiteUrl, setWebsiteUrl] = useState("");
+  const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
 
   const [branding, setBranding] = useState<BrandingData>({
     logo_url: null,
@@ -658,7 +661,8 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                   <Users className="w-5 h-5 text-primary" />
                   <h2 className="text-lg font-semibold text-foreground">Team Members</h2>
                 </div>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => setInviteMemberOpen(true)}>
+                  <UserPlus className="w-4 h-4 mr-2" />
                   Invite Member
                 </Button>
               </div>
@@ -1118,6 +1122,16 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Invite Member Dialog */}
+      {organizationId && (
+        <InviteMemberDialog
+          open={inviteMemberOpen}
+          onOpenChange={setInviteMemberOpen}
+          organizationId={organizationId}
+          organizationName={orgName}
+        />
+      )}
     </div>
   );
 };
