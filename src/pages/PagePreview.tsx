@@ -116,25 +116,33 @@ export default function PagePreview() {
   };
 
   const fetchDocContent = async () => {
+    if (!document?.google_doc_id) return;
+
     const token = getGoogleToken();
-    if (!token || !document?.google_doc_id) {
-      setNeedsReconnect(true);
-      return;
-    }
 
     setLoadingContent(true);
     setNeedsReconnect(false);
     setFileTooLarge(false);
     try {
-      const { data, error } = await supabase.functions.invoke("google-drive", {
+      const invokeArgs: {
+        body: { action: "get_doc_content"; docId: string };
+        headers?: Record<string, string>;
+      } = {
         body: {
           action: "get_doc_content",
           docId: document.google_doc_id,
         },
-        headers: {
+      };
+
+      // If we have a provider token, pass it through; otherwise the backend will try
+      // to refresh using the stored refresh token (if available).
+      if (token) {
+        invokeArgs.headers = {
           "x-google-token": token,
-        },
-      });
+        };
+      }
+
+      const { data, error } = await supabase.functions.invoke("google-drive", invokeArgs);
 
       if (error) {
         console.error("Error fetching doc content:", error);
