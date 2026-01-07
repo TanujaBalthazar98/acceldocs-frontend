@@ -23,3 +23,6 @@ verify_jwt = true
 
 [functions.docs-ai-assistant]
 verify_jwt = true
+
+[functions.sync-drive-permissions]
+verify_jwt = true

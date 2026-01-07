@@ -1,60 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { 
+  ProjectRole, 
+  ProjectPermissions, 
+  getPermissionsForRole,
+  getRoleDefinition,
+  ROLE_DEFINITIONS,
+} from '@/lib/rbac';
 
-export type ProjectRole = 'admin' | 'editor' | 'reviewer' | 'viewer' | null;
+// Re-export types from centralized RBAC module
+export type { ProjectRole, ProjectPermissions } from '@/lib/rbac';
+export { getPermissionsForRole, getRoleDefinition, ROLE_DEFINITIONS } from '@/lib/rbac';
 
-export interface ProjectPermissions {
-  // View permissions
-  canView: boolean;
-  canViewPublished: boolean;
-  canViewDraft: boolean;
-  
-  // Edit permissions
-  canEdit: boolean;
-  canEditDocument: boolean;
-  canEditMetadata: boolean;
-  
-  // Create/Delete permissions
-  canCreateDocument: boolean;
-  canDeleteDocument: boolean;
-  canCreateTopic: boolean;
-  canDeleteTopic: boolean;
-  canDeleteProject: boolean;
-  
-  // Publish permissions
-  canPublish: boolean;
-  canUnpublish: boolean;
-  
-  // Structure permissions
-  canMoveTopic: boolean;
-  canMovePage: boolean;
-  
-  // Member permissions
-  canManageMembers: boolean;
-  canInviteMembers: boolean;
-  canRemoveMembers: boolean;
-  canChangeRoles: boolean;
-  
-  // Drive permissions
-  canEditDrive: boolean;
-  canDownloadDrive: boolean;
-  canExportDrive: boolean;
-  canShareDrive: boolean;
-  canCommentDrive: boolean;
-  
-  // Audit permissions
-  canViewAuditLogs: boolean;
-  
-  // Sync permissions
-  canSyncContent: boolean;
-  
-  // Settings permissions
-  canEditProjectSettings: boolean;
-  canEditVisibility: boolean;
-}
-
-const NO_PERMISSIONS: ProjectPermissions = {
+// Default empty permissions for initial state
+const EMPTY_PERMISSIONS: ProjectPermissions = {
   canView: false,
   canViewPublished: false,
   canViewDraft: false,
@@ -85,76 +45,17 @@ const NO_PERMISSIONS: ProjectPermissions = {
   canEditVisibility: false,
 };
 
-const VIEWER_PERMISSIONS: ProjectPermissions = {
-  ...NO_PERMISSIONS,
-  canView: true,
-  canViewPublished: true,
-};
-
-const REVIEWER_PERMISSIONS: ProjectPermissions = {
-  ...VIEWER_PERMISSIONS,
-  canViewDraft: true,
-  canCommentDrive: true,
-};
-
-const EDITOR_PERMISSIONS: ProjectPermissions = {
-  ...REVIEWER_PERMISSIONS,
-  canEdit: true,
-  canEditDocument: true,
-  canEditMetadata: true,
-  canCreateDocument: true,
-  canDeleteDocument: true,
-  canCreateTopic: true,
-  canDeleteTopic: true,
-  canPublish: true,
-  canUnpublish: true,
-  canMoveTopic: true,
-  canMovePage: true,
-  canEditDrive: true,
-  canDownloadDrive: true,
-  canExportDrive: true,
-  canSyncContent: true,
-};
-
-const ADMIN_PERMISSIONS: ProjectPermissions = {
-  ...EDITOR_PERMISSIONS,
-  canDeleteProject: true,
-  canManageMembers: true,
-  canInviteMembers: true,
-  canRemoveMembers: true,
-  canChangeRoles: true,
-  canShareDrive: true,
-  canViewAuditLogs: true,
-  canEditProjectSettings: true,
-  canEditVisibility: true,
-};
-
-export function getPermissionsForRole(role: ProjectRole): ProjectPermissions {
-  switch (role) {
-    case 'admin':
-      return ADMIN_PERMISSIONS;
-    case 'editor':
-      return EDITOR_PERMISSIONS;
-    case 'reviewer':
-      return REVIEWER_PERMISSIONS;
-    case 'viewer':
-      return VIEWER_PERMISSIONS;
-    default:
-      return NO_PERMISSIONS;
-  }
-}
-
 export function usePermissions(projectId: string | null) {
   const { user } = useAuth();
   const [role, setRole] = useState<ProjectRole>(null);
-  const [permissions, setPermissions] = useState<ProjectPermissions>(NO_PERMISSIONS);
+  const [permissions, setPermissions] = useState<ProjectPermissions>(EMPTY_PERMISSIONS);
   const [loading, setLoading] = useState(true);
   const [isOrgOwner, setIsOrgOwner] = useState(false);
 
   const fetchRole = useCallback(async () => {
     if (!user || !projectId) {
       setRole(null);
-      setPermissions(NO_PERMISSIONS);
+      setPermissions(EMPTY_PERMISSIONS);
       setLoading(false);
       return;
     }
@@ -178,8 +79,9 @@ export function usePermissions(projectId: string | null) {
         setIsOrgOwner(orgOwner);
         
         if (orgOwner) {
+          // Org owner gets full admin permissions
           setRole('admin');
-          setPermissions(ADMIN_PERMISSIONS);
+          setPermissions(getPermissionsForRole('admin', true));
           setLoading(false);
           return;
         }
@@ -196,7 +98,7 @@ export function usePermissions(projectId: string | null) {
       if (membership) {
         const userRole = membership.role as ProjectRole;
         setRole(userRole);
-        setPermissions(getPermissionsForRole(userRole));
+        setPermissions(getPermissionsForRole(userRole, false));
       } else {
         // Check if project is public
         const { data: publicProject } = await supabase
@@ -207,16 +109,16 @@ export function usePermissions(projectId: string | null) {
 
         if (publicProject?.is_published && publicProject?.visibility === 'public') {
           setRole('viewer');
-          setPermissions(VIEWER_PERMISSIONS);
+          setPermissions(getPermissionsForRole('viewer', false));
         } else {
           setRole(null);
-          setPermissions(NO_PERMISSIONS);
+          setPermissions(EMPTY_PERMISSIONS);
         }
       }
     } catch (error) {
       console.error('Error fetching permissions:', error);
       setRole(null);
-      setPermissions(NO_PERMISSIONS);
+      setPermissions(EMPTY_PERMISSIONS);
     } finally {
       setLoading(false);
     }
@@ -238,6 +140,19 @@ export function usePermissions(projectId: string | null) {
     return true;
   }, [permissions]);
 
+  // Sync Drive permissions when role changes
+  const syncDrivePermissions = useCallback(async () => {
+    if (!projectId) return;
+    
+    try {
+      await supabase.functions.invoke('sync-drive-permissions', {
+        body: { projectId }
+      });
+    } catch (error) {
+      console.error('Failed to sync drive permissions:', error);
+    }
+  }, [projectId]);
+
   return {
     role,
     permissions,
@@ -246,6 +161,7 @@ export function usePermissions(projectId: string | null) {
     checkPermission,
     requirePermission,
     refetch: fetchRole,
+    syncDrivePermissions,
   };
 }
 

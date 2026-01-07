@@ -17,6 +17,9 @@ import {
   Eye,
   BookOpen,
   ExternalLink,
+  Info,
+  RefreshCw,
+  Shield,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -24,9 +27,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { ROLE_DEFINITIONS } from "@/lib/rbac";
+import { RoleCapabilitiesDialog } from "./RoleCapabilitiesDialog";
 
 interface ProjectSharePanelProps {
   open: boolean;
@@ -52,11 +63,32 @@ interface PendingInvitation {
   expires_at: string;
 }
 
-const roleConfig: Record<ProjectRole, { label: string; description: string }> = {
-  admin: { label: "Admin", description: "Full access and can manage members" },
-  editor: { label: "Editor", description: "Can edit and publish pages" },
-  reviewer: { label: "Reviewer", description: "Can comment only" },
-  viewer: { label: "Viewer", description: "Read-only access" },
+// Use centralized role config
+const roleConfig: Record<ProjectRole, { label: string; description: string; driveRole: string; color: string }> = {
+  admin: { 
+    label: "Admin", 
+    description: ROLE_DEFINITIONS.admin.description,
+    driveRole: "writer",
+    color: ROLE_DEFINITIONS.admin.color,
+  },
+  editor: { 
+    label: "Editor", 
+    description: ROLE_DEFINITIONS.editor.description,
+    driveRole: "writer",
+    color: ROLE_DEFINITIONS.editor.color,
+  },
+  reviewer: { 
+    label: "Reviewer", 
+    description: ROLE_DEFINITIONS.reviewer.description,
+    driveRole: "commenter",
+    color: ROLE_DEFINITIONS.reviewer.color,
+  },
+  viewer: { 
+    label: "Viewer", 
+    description: ROLE_DEFINITIONS.viewer.description,
+    driveRole: "reader",
+    color: ROLE_DEFINITIONS.viewer.color,
+  },
 };
 
 export const ProjectSharePanel = ({ 
@@ -74,12 +106,48 @@ export const ProjectSharePanel = ({
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
   const [loading, setLoading] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const [showRoleCapabilities, setShowRoleCapabilities] = useState(false);
+  const [syncingDrive, setSyncingDrive] = useState(false);
 
   useEffect(() => {
     if (open && projectId) {
       fetchMembers();
     }
   }, [open, projectId]);
+
+  // Sync Drive permissions when members change
+  const syncDrivePermissions = async () => {
+    setSyncingDrive(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-drive-permissions', {
+        body: { projectId }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.synced > 0) {
+        toast({ 
+          title: "Drive permissions synced", 
+          description: `${data.synced} permission(s) updated in Google Drive.` 
+        });
+      } else if (data?.failed > 0) {
+        toast({ 
+          title: "Some syncs failed", 
+          description: `${data.failed} permission(s) could not be synced. Check if org owner has Drive access.`,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error("Drive sync error:", error);
+      toast({ 
+        title: "Sync failed", 
+        description: "Could not sync Drive permissions. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setSyncingDrive(false);
+    }
+  };
 
   const fetchMembers = async () => {
     setLoading(true);
@@ -281,11 +349,45 @@ export const ProjectSharePanel = ({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md bg-card border-border">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            Share Project: {projectName}
+          <DialogTitle className="text-lg font-semibold text-foreground flex items-center justify-between">
+            <span>Share Project: {projectName}</span>
+            <div className="flex gap-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setShowRoleCapabilities(true)}
+                    >
+                      <Shield className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>View role permissions</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={syncDrivePermissions}
+                      disabled={syncingDrive}
+                    >
+                      <RefreshCw className={`w-4 h-4 ${syncingDrive ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Sync Drive permissions</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </DialogTitle>
         </DialogHeader>
 
@@ -484,5 +586,7 @@ export const ProjectSharePanel = ({
         </div>
       </DialogContent>
     </Dialog>
+    <RoleCapabilitiesDialog open={showRoleCapabilities} onOpenChange={setShowRoleCapabilities} />
+    </>
   );
 };
