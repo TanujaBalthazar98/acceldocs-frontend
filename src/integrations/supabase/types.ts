@@ -364,6 +364,66 @@ export type Database = {
           },
         ]
       }
+      domains: {
+        Row: {
+          created_at: string
+          domain: string
+          domain_type: string
+          id: string
+          is_primary: boolean
+          is_verified: boolean
+          organization_id: string | null
+          project_id: string | null
+          ssl_status: string | null
+          updated_at: string
+          verification_token: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          domain: string
+          domain_type?: string
+          id?: string
+          is_primary?: boolean
+          is_verified?: boolean
+          organization_id?: string | null
+          project_id?: string | null
+          ssl_status?: string | null
+          updated_at?: string
+          verification_token?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          domain?: string
+          domain_type?: string
+          id?: string
+          is_primary?: boolean
+          is_verified?: boolean
+          organization_id?: string | null
+          project_id?: string | null
+          ssl_status?: string | null
+          updated_at?: string
+          verification_token?: string | null
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "domains_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "domains_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_jobs: {
         Row: {
           completed_at: string | null
@@ -535,6 +595,7 @@ export type Database = {
           show_featured_projects: boolean | null
           show_search_on_landing: boolean | null
           slug: string | null
+          subdomain: string | null
           tagline: string | null
           updated_at: string
         }
@@ -561,6 +622,7 @@ export type Database = {
           show_featured_projects?: boolean | null
           show_search_on_landing?: boolean | null
           slug?: string | null
+          subdomain?: string | null
           tagline?: string | null
           updated_at?: string
         }
@@ -587,6 +649,7 @@ export type Database = {
           show_featured_projects?: boolean | null
           show_search_on_landing?: boolean | null
           slug?: string | null
+          subdomain?: string | null
           tagline?: string | null
           updated_at?: string
         }
@@ -650,6 +713,7 @@ export type Database = {
           google_token_refreshed_at: string | null
           id: string
           organization_id: string | null
+          subdomain: string | null
           updated_at: string
         }
         Insert: {
@@ -662,6 +726,7 @@ export type Database = {
           google_token_refreshed_at?: string | null
           id: string
           organization_id?: string | null
+          subdomain?: string | null
           updated_at?: string
         }
         Update: {
@@ -674,6 +739,7 @@ export type Database = {
           google_token_refreshed_at?: string | null
           id?: string
           organization_id?: string | null
+          subdomain?: string | null
           updated_at?: string
         }
         Relationships: [

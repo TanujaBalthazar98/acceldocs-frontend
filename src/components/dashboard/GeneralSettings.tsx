@@ -34,6 +34,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
 import { JoinRequestsPanel } from "./JoinRequestsPanel";
 import { InviteMemberDialog } from "./InviteMemberDialog";
+import { DomainSettings } from "./DomainSettings";
 import docspeareIcon from "@/assets/docspeare-icon.png";
 
 interface GeneralSettingsProps {
@@ -87,6 +88,8 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [orgName, setOrgName] = useState("");
+  const [orgSlug, setOrgSlug] = useState<string | null>(null);
+  const [orgSubdomain, setOrgSubdomain] = useState<string | null>(null);
   const [domain, setDomain] = useState("");
   const [customDocsDomain, setCustomDocsDomain] = useState("");
   const [savingCustomDomain, setSavingCustomDomain] = useState(false);
@@ -153,7 +156,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         const { data: org, error: orgError } = await supabase
           .from("organizations")
           .select(
-            "name, domain, drive_folder_id, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects"
+            "name, domain, slug, subdomain, drive_folder_id, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects"
           )
           .eq("id", orgId)
           .maybeSingle();
@@ -180,6 +183,8 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         }
 
         setOrgName(org.name);
+        setOrgSlug(org.slug || null);
+        setOrgSubdomain(org.subdomain || null);
         setDomain(org.domain);
         setCustomDocsDomain(org.custom_docs_domain || "");
         setRootFolderId(org.drive_folder_id || "");
@@ -493,8 +498,9 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         </div>
 
         <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="domains">Domains</TabsTrigger>
             <TabsTrigger value="branding">Branding</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
           </TabsList>
@@ -532,66 +538,6 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                     Users with this email domain automatically join your organization.
                   </p>
                 </div>
-              </div>
-            </section>
-
-            {/* Custom Documentation Domain */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Globe className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Custom Documentation Domain</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Set a custom domain for your published documentation (e.g., docs.yourcompany.com).
-                  Your documentation will be accessible directly at this domain.
-                </p>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Documentation Domain
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={customDocsDomain}
-                      onChange={(e) => setCustomDocsDomain(e.target.value.toLowerCase())}
-                      placeholder="e.g., docs.yourcompany.com"
-                      className="flex-1 px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                    />
-                    <Button 
-                      onClick={handleSaveCustomDomain}
-                      disabled={savingCustomDomain}
-                    >
-                      {savingCustomDomain ? "Saving..." : "Save"}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    After saving, configure your DNS to point this domain to Lovable's servers.
-                  </p>
-                </div>
-
-                {customDocsDomain && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary">
-                    <Globe className="w-5 h-5 text-primary" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        Custom domain configured
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {customDocsDomain}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => window.open(`https://${customDocsDomain}`, "_blank")}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
               </div>
             </section>
 
@@ -736,6 +682,19 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                 </div>
               </div>
             </section>
+          </TabsContent>
+
+          {/* Domains Tab */}
+          <TabsContent value="domains" className="space-y-6">
+            {organizationId && (
+              <DomainSettings
+                organizationId={organizationId}
+                organizationName={orgName}
+                organizationSlug={orgSlug}
+                currentSubdomain={orgSubdomain}
+                onSubdomainChange={(subdomain) => setOrgSubdomain(subdomain)}
+              />
+            )}
           </TabsContent>
 
           {/* Branding Tab */}
