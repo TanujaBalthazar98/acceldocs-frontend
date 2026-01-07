@@ -287,6 +287,7 @@ export default function Docs() {
       const currentUser = session?.user;
       
       let userOrgId: string | null = null;
+      let userProjectMemberships: string[] = [];
       
       if (currentUser) {
         const { data: profile } = await supabase
@@ -296,20 +297,14 @@ export default function Docs() {
           .single();
         
         userOrgId = profile?.organization_id || null;
-        setIsOrgUser(!!userOrgId);
         
-        if (userOrgId) {
-          const { data: orgData } = await supabase
-            .from("organizations")
-            .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
-            .eq("id", userOrgId)
-            .single();
-          if (orgData) {
-            setCurrentOrg(orgData as Organization);
-          }
-        }
-      } else {
-        setIsOrgUser(false);
+        // Fetch projects the user has been invited to (for external access)
+        const { data: memberships } = await supabase
+          .from("project_members")
+          .select("project_id")
+          .eq("user_id", currentUser.id);
+        
+        userProjectMemberships = memberships?.map(m => m.project_id) || [];
       }
       
       // Determine the target organization - from URL slug, custom domain, or user's org
@@ -337,7 +332,23 @@ export default function Docs() {
       } else if (userOrgId) {
         // Fallback to user's organization if no URL context
         targetOrgId = userOrgId;
+        // Load org data if not already loaded
+        if (!targetOrg) {
+          const { data: orgData } = await supabase
+            .from("organizations")
+            .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
+            .eq("id", userOrgId)
+            .single();
+          if (orgData) {
+            targetOrg = orgData as Organization;
+            setCurrentOrg(targetOrg);
+          }
+        }
       }
+      
+      // Set isOrgUser based on whether user belongs to the target organization
+      const userBelongsToTargetOrg = currentUser && userOrgId && targetOrgId && userOrgId === targetOrgId;
+      setIsOrgUser(!!userBelongsToTargetOrg);
       
       // If no organization context at all, show nothing (don't leak cross-org data)
       if (!targetOrgId) {
@@ -359,12 +370,20 @@ export default function Docs() {
       } else if (projectsData) {
         // Filter projects based on visibility and user authentication
         const filteredProjects = projectsData.filter(project => {
-          // Public projects: visible to everyone within this org's docs
+          // PUBLIC projects: visible to everyone (no auth required)
           if (project.visibility === "public") return true;
           
-          // Internal/External projects: only visible to authenticated users who belong to this org
-          if (currentUser && userOrgId && project.organization_id === userOrgId) {
-            return true;
+          // For internal/external, user must be authenticated
+          if (!currentUser) return false;
+          
+          // INTERNAL projects: only visible to org members
+          if (project.visibility === "internal") {
+            return userBelongsToTargetOrg;
+          }
+          
+          // EXTERNAL projects: visible to org members OR users invited to this specific project
+          if (project.visibility === "external") {
+            return userBelongsToTargetOrg || userProjectMemberships.includes(project.id);
           }
           
           return false;
@@ -612,8 +631,8 @@ export default function Docs() {
         )}
       </ScrollArea>
 
-      {/* Footer - only show for internal users viewing non-public projects */}
-      {user && selectedProject?.visibility !== "public" && (
+      {/* Footer - show Dashboard link for org members */}
+      {user && isOrgUser && (
         <div className="p-3 border-t border-border">
           <Link to="/dashboard">
             <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground">
@@ -657,17 +676,20 @@ export default function Docs() {
               <span className="font-bold text-lg text-foreground brand-heading">{currentOrg.name}</span>
             </div>
             <div className="flex items-center gap-2">
+              <ThemeToggle />
               {user && isOrgUser ? (
                 /* Only show Dashboard for authenticated org users */
                 <Link to="/dashboard">
                   <Button variant="ghost" size="sm">Dashboard</Button>
                 </Link>
               ) : !user ? (
-                /* Show auth options for unauthenticated users */
-                <>
-                  <Link to="/auth"><Button variant="ghost" size="sm">Sign in</Button></Link>
-                  <Link to="/auth"><Button size="sm" className="brand-primary-bg text-white">Create account</Button></Link>
-                </>
+                /* Show Sign in for unauthenticated users viewing internal/external docs */
+                projects.some(p => p.visibility !== "public") ? (
+                  <>
+                    <Link to="/auth"><Button variant="ghost" size="sm">Sign in</Button></Link>
+                    <Link to="/auth"><Button size="sm" className="brand-primary-bg text-white">Create account</Button></Link>
+                  </>
+                ) : null
               ) : null}
             </div>
           </div>
@@ -704,6 +726,8 @@ export default function Docs() {
           }}
           onAskAI={() => setAskAIOpen(true)}
           isAuthenticated={!!user}
+          isOrgMember={isOrgUser}
+          hasNonPublicContent={projects.some(p => p.visibility !== "public")}
         />
 
         {/* Ask AI Dialog (landing page) */}
@@ -791,19 +815,21 @@ export default function Docs() {
                 </Button>
               </Link>
             ) : !user ? (
-              /* Show auth options for unauthenticated users */
-              <>
-                <Link to="/auth">
-                  <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
-                    Sign in
-                  </Button>
-                </Link>
-                <Link to="/auth">
-                  <Button size="sm" className="hidden md:inline-flex" style={{ backgroundColor: currentOrg?.primary_color }}>
-                    Create account
-                  </Button>
-                </Link>
-              </>
+              /* Only show auth options if current project is not public (requires login) */
+              selectedProject?.visibility !== "public" ? (
+                <>
+                  <Link to="/auth">
+                    <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
+                      Sign in
+                    </Button>
+                  </Link>
+                  <Link to="/auth">
+                    <Button size="sm" className="hidden md:inline-flex" style={{ backgroundColor: currentOrg?.primary_color }}>
+                      Create account
+                    </Button>
+                  </Link>
+                </>
+              ) : null
             ) : null}
 
             {/* Mobile menu trigger */}

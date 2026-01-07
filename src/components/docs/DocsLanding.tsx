@@ -56,6 +56,8 @@ interface DocsLandingProps {
   onTopicSelect?: (topicId: string) => void;
   onAskAI?: () => void;
   isAuthenticated: boolean;
+  isOrgMember?: boolean;
+  hasNonPublicContent?: boolean;
 }
 
 export const DocsLanding = ({
@@ -70,6 +72,8 @@ export const DocsLanding = ({
   onTopicSelect,
   onAskAI,
   isAuthenticated,
+  isOrgMember = false,
+  hasNonPublicContent = false,
 }: DocsLandingProps) => {
   const orgIdentifier = organization.slug || organization.domain;
 
@@ -321,15 +325,15 @@ export const DocsLanding = ({
             )}
           </div>
           <div>
-            {isAuthenticated ? (
+            {isAuthenticated && isOrgMember ? (
               <Link to="/dashboard" className="hover:text-foreground transition-colors">
                 Dashboard
               </Link>
-            ) : (
+            ) : !isAuthenticated && hasNonPublicContent ? (
               <Link to="/auth" className="hover:text-foreground transition-colors">
                 Sign in
               </Link>
-            )}
+            ) : null}
           </div>
         </div>
       </footer>
