@@ -213,28 +213,38 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           show_featured_projects: org.show_featured_projects ?? true,
         });
 
-        // Get team members
-        const [{ data: profiles }, { data: roles }] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id, email, full_name")
-            .eq("organization_id", orgId),
-          supabase
-            .from("user_roles")
-            .select("user_id, role")
-            .eq("organization_id", orgId),
-        ]);
+        // Get team members - use user_roles as source of truth for org membership
+        const { data: roles } = await supabase
+          .from("user_roles")
+          .select("user_id, role")
+          .eq("organization_id", orgId);
 
         if (!active) return;
 
-        if (profiles && roles) {
-          const memberList = profiles.map((p) => ({
-            id: p.id,
-            email: p.email,
-            full_name: p.full_name,
-            role: roles.find((r) => r.user_id === p.id)?.role || "viewer",
-          }));
-          setMembers(memberList);
+        if (roles && roles.length > 0) {
+          // Fetch profiles for all users in user_roles
+          const userIds = roles.map((r) => r.user_id);
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, email, full_name")
+            .in("id", userIds);
+
+          if (!active) return;
+
+          if (profiles) {
+            const memberList = roles.map((r) => {
+              const profile = profiles.find((p) => p.id === r.user_id);
+              return {
+                id: r.user_id,
+                email: profile?.email || "Unknown",
+                full_name: profile?.full_name || null,
+                role: r.role,
+              };
+            });
+            setMembers(memberList);
+          }
+        } else {
+          setMembers([]);
         }
       } catch (error) {
         console.error("Error in fetchOrgData:", error);
