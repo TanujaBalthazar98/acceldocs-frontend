@@ -1045,6 +1045,10 @@ export type Database = {
         Args: { _connector_id: string; _user_id: string }
         Returns: boolean
       }
+      can_view_project_members: {
+        Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
       check_project_permission: {
         Args: { _action: string; _project_id: string; _user_id: string }
         Returns: boolean
@@ -1091,6 +1095,10 @@ export type Database = {
       }
       is_personal_email_domain: {
         Args: { email_domain: string }
+        Returns: boolean
+      }
+      is_project_member: {
+        Args: { _project_id: string; _user_id: string }
         Returns: boolean
       }
       log_audit_action: {
