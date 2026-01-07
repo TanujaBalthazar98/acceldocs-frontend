@@ -115,7 +115,7 @@ function getOperationForAction(action: string): string {
 async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
-  
+
   if (!clientId || !clientSecret) {
     console.error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET");
     return null;
@@ -153,38 +153,24 @@ async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: 
   }
 }
 
-// Get valid access token - either from header or by refreshing
-async function getValidAccessToken(
-  providerToken: string | null,
-  userId: string,
-  supabaseUrl: string,
-  supabaseKey: string
-): Promise<{ token: string | null; needsReauth: boolean }> {
-  if (providerToken) {
-    console.log("Using provided access token");
-    return { token: providerToken, needsReauth: false };
-  }
-
-  console.log("No provider token provided, checking for stored refresh token");
-  
-  const supabase = createClient(supabaseUrl, supabaseKey);
+async function refreshUserAccessToken(supabase: any, userId: string): Promise<string | null> {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("google_refresh_token")
     .eq("id", userId)
     .single();
 
-  const profileData = profile as { google_refresh_token: string | null } | null;
+  const refreshToken = (profile as { google_refresh_token: string | null } | null)?.google_refresh_token ?? null;
 
-  if (profileError || !profileData?.google_refresh_token) {
+  if (profileError || !refreshToken) {
     console.log("No refresh token available for user");
-    return { token: null, needsReauth: true };
+    return null;
   }
 
-  const refreshResult = await refreshGoogleToken(profileData.google_refresh_token);
+  const refreshResult = await refreshGoogleToken(refreshToken);
   if (!refreshResult) {
     console.log("Token refresh failed");
-    return { token: null, needsReauth: true };
+    return null;
   }
 
   await supabase
@@ -192,7 +178,27 @@ async function getValidAccessToken(
     .update({ google_token_refreshed_at: new Date().toISOString() } as Record<string, unknown>)
     .eq("id", userId);
 
-  return { token: refreshResult.accessToken, needsReauth: false };
+  return refreshResult.accessToken;
+}
+
+// Get valid access token - either from header or by refreshing
+async function getValidAccessToken(
+  providerToken: string | null,
+  userId: string,
+  supabase: any
+): Promise<{ token: string | null; needsReauth: boolean }> {
+  if (providerToken) {
+    console.log("Using provided access token");
+    return { token: providerToken, needsReauth: false };
+  }
+
+  console.log("No provider token provided, attempting refresh token flow");
+  const refreshed = await refreshUserAccessToken(supabase, userId);
+  if (!refreshed) {
+    return { token: null, needsReauth: true };
+  }
+
+  return { token: refreshed, needsReauth: false };
 }
 
 Deno.serve(async (req) => {
@@ -250,24 +256,49 @@ Deno.serve(async (req) => {
     }
 
     const providerTokenFromHeader = req.headers.get("x-google-token");
-    
-    const { token: googleToken, needsReauth } = await getValidAccessToken(
+
+    const { token: initialGoogleToken, needsReauth } = await getValidAccessToken(
       providerTokenFromHeader,
       user.id,
-      supabaseUrl,
-      supabaseKey
+      supabase
     );
 
-    if (!googleToken || needsReauth) {
+    if (!initialGoogleToken || needsReauth) {
       console.error("No valid Google token available");
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: "Google access token not available. Please re-authenticate with Google.",
-          needsReauth: true 
+          needsReauth: true,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const tokenRef = { token: initialGoogleToken };
+
+    const fetchWithRefresh = async (url: string, init: RequestInit = {}) => {
+      const doFetch = (t: string) =>
+        fetch(url, {
+          ...init,
+          headers: {
+            ...(init.headers || {}),
+            Authorization: `Bearer ${t}`,
+          },
+        });
+
+      let res = await doFetch(tokenRef.token);
+
+      if (res.status === 401 || res.status === 403) {
+        console.log("Google token rejected, attempting refresh...");
+        const refreshed = await refreshUserAccessToken(supabase, user.id);
+        if (refreshed) {
+          tokenRef.token = refreshed;
+          res = await doFetch(refreshed);
+        }
+      }
+
+      return res;
+    };
 
     // List folder contents
     if (body.action === "list_folder") {
@@ -276,13 +307,8 @@ Deno.serve(async (req) => {
       const query = encodeURIComponent(`'${body.folderId}' in parents and trashed = false`);
       const fields = encodeURIComponent("files(id,name,mimeType,modifiedTime,createdTime)");
       
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=name`,
-        {
-          headers: {
-            Authorization: `Bearer ${googleToken}`,
-          },
-        }
+      const response = await fetchWithRefresh(
+        `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=name`
       );
 
       if (!response.ok) {
@@ -326,13 +352,8 @@ Deno.serve(async (req) => {
     if (body.action === "get_doc_content") {
       console.log("Getting doc content via Drive export:", body.docId);
       
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${body.docId}/export?mimeType=text/html`,
-        {
-          headers: {
-            Authorization: `Bearer ${googleToken}`,
-          },
-        }
+      const response = await fetchWithRefresh(
+        `https://www.googleapis.com/drive/v3/files/${body.docId}/export?mimeType=text/html`
       );
 
       if (!response.ok) {
@@ -382,13 +403,8 @@ Deno.serve(async (req) => {
     if (body.action === "sync_doc_content") {
       console.log("Syncing doc content:", body.googleDocId, "to document:", body.documentId);
       
-      const metadataResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}?fields=modifiedTime,name`,
-        {
-          headers: {
-            Authorization: `Bearer ${googleToken}`,
-          },
-        }
+      const metadataResponse = await fetchWithRefresh(
+        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}?fields=modifiedTime,name`
       );
 
       let googleModifiedAt: string | null = null;
@@ -400,13 +416,8 @@ Deno.serve(async (req) => {
         console.warn("Failed to fetch file metadata, continuing without modifiedTime");
       }
       
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}/export?mimeType=text/html`,
-        {
-          headers: {
-            Authorization: `Bearer ${googleToken}`,
-          },
-        }
+      const response = await fetchWithRefresh(
+        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}/export?mimeType=text/html`
       );
 
       if (!response.ok) {
@@ -496,10 +507,9 @@ Deno.serve(async (req) => {
         parents: [body.parentFolderId],
       };
 
-      const response = await fetch("https://www.googleapis.com/drive/v3/files", {
+      const response = await fetchWithRefresh("https://www.googleapis.com/drive/v3/files", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${googleToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(folderMetadata),
@@ -556,10 +566,9 @@ Deno.serve(async (req) => {
         parents: [body.parentFolderId],
       };
 
-      const response = await fetch("https://www.googleapis.com/drive/v3/files", {
+      const response = await fetchWithRefresh("https://www.googleapis.com/drive/v3/files", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${googleToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(docMetadata),
@@ -610,17 +619,13 @@ Deno.serve(async (req) => {
     if (body.action === "trash_file") {
       console.log("Trashing file/folder:", body.fileId);
       
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${body.fileId}`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${googleToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ trashed: true }),
-        }
-      );
+      const response = await fetchWithRefresh(`https://www.googleapis.com/drive/v3/files/${body.fileId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ trashed: true }),
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
