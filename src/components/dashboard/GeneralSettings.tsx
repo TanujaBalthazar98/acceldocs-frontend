@@ -27,6 +27,8 @@ import {
   Loader2,
   Wand2,
   UserPlus,
+  RefreshCw,
+  ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -35,6 +37,12 @@ import { useToast } from "@/hooks/use-toast";
 import { JoinRequestsPanel } from "./JoinRequestsPanel";
 import { InviteMemberDialog } from "./InviteMemberDialog";
 import { DomainSettings } from "./DomainSettings";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import docspeareIcon from "@/assets/docspeare-icon.png";
 
 interface GeneralSettingsProps {
@@ -81,7 +89,7 @@ const fontOptions = [
 ];
 
 export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
-  const { user, profileOrganizationId, profileLoading } = useAuth();
+  const { user, profileOrganizationId, profileLoading, requestDriveAccess } = useAuth();
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +110,8 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const [extractingStyles, setExtractingStyles] = useState(false);
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
+  const [reconnectingDrive, setReconnectingDrive] = useState(false);
+  const [updatingRole, setUpdatingRole] = useState<string | null>(null);
 
   const [branding, setBranding] = useState<BrandingData>({
     logo_url: null,
@@ -311,6 +321,61 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
     }
 
     setIsSavingFolder(false);
+  };
+
+  const handleReconnectDrive = async () => {
+    setReconnectingDrive(true);
+    try {
+      const { error } = await requestDriveAccess();
+      if (error) {
+        toast({
+          title: "Error reconnecting",
+          description: error.message,
+          variant: "destructive",
+        });
+        setReconnectingDrive(false);
+      }
+      // If successful, the page will redirect for OAuth
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reconnect Google Drive",
+        variant: "destructive",
+      });
+      setReconnectingDrive(false);
+    }
+  };
+
+  const handleUpdateMemberRole = async (memberId: string, newRole: string) => {
+    if (!organizationId || memberId === user?.id) return;
+
+    setUpdatingRole(memberId);
+    try {
+      const { error } = await supabase
+        .from("user_roles")
+        .update({ role: newRole as "owner" | "admin" | "editor" | "viewer" })
+        .eq("user_id", memberId)
+        .eq("organization_id", organizationId);
+
+      if (error) throw error;
+
+      setMembers(prev => prev.map(m => 
+        m.id === memberId ? { ...m, role: newRole } : m
+      ));
+
+      toast({
+        title: "Role updated",
+        description: `Member role changed to ${newRole}.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error updating role",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingRole(null);
+    }
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -597,6 +662,40 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                     </Button>
                   </div>
                 )}
+
+                {/* Reconnect Drive */}
+                <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                  <div className="flex items-start gap-3">
+                    <RefreshCw className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-foreground">
+                        Having trouble creating folders or files?
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        If you're getting permission errors, reconnect Google Drive to grant write access.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        onClick={handleReconnectDrive}
+                        disabled={reconnectingDrive}
+                      >
+                        {reconnectingDrive ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Reconnecting...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            Reconnect Google Drive
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -640,9 +739,43 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                             </p>
                           </div>
                         </div>
-                        <span className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground bg-secondary capitalize">
-                          {member.role}
-                        </span>
+                        {member.role === "owner" || member.id === user?.id ? (
+                          <span className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground bg-secondary capitalize">
+                            {member.role}
+                            {member.id === user?.id && " (you)"}
+                          </span>
+                        ) : (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-8 gap-1 text-xs capitalize"
+                                disabled={updatingRole === member.id}
+                              >
+                                {updatingRole === member.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <>
+                                    {member.role}
+                                    <ChevronDown className="w-3 h-3" />
+                                  </>
+                                )}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {["admin", "editor", "viewer"].map((role) => (
+                                <DropdownMenuItem
+                                  key={role}
+                                  onClick={() => handleUpdateMemberRole(member.id, role)}
+                                  className="capitalize"
+                                >
+                                  {role}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                     ))
                   )}
