@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,52 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
+  const [seenRequestIds, setSeenRequestIds] = useState<Set<string>>(new Set());
+
+  const addNotification = useCallback((notification: Omit<Notification, "id" | "timestamp" | "read">) => {
+    const newNotification: Notification = {
+      ...notification,
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      read: false,
+    };
+    setNotifications((prev) => [newNotification, ...prev].slice(0, 50));
+  }, []);
+
+  // Fetch pending join requests on mount to show unread badge
+  useEffect(() => {
+    if (!user || !organizationId) return;
+
+    const fetchPendingRequests = async () => {
+      const { data } = await supabase
+        .from("join_requests")
+        .select("id, user_email, user_name, requested_at")
+        .eq("organization_id", organizationId)
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false })
+        .limit(10);
+
+      if (data && data.length > 0) {
+        const newIds = new Set<string>();
+        data.forEach((req) => {
+          if (!seenRequestIds.has(req.id)) {
+            newIds.add(req.id);
+            addNotification({
+              type: "join_request",
+              title: "Pending Join Request",
+              message: `${req.user_name || req.user_email} wants to join your workspace`,
+              metadata: { requestId: req.id },
+            });
+          }
+        });
+        if (newIds.size > 0) {
+          setSeenRequestIds((prev) => new Set([...prev, ...newIds]));
+        }
+      }
+    };
+
+    fetchPendingRequests();
+  }, [user, organizationId, addNotification]);
 
   // Subscribe to real-time events
   useEffect(() => {
@@ -45,7 +91,7 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
 
     // Listen for new join requests
     const joinRequestChannel = supabase
-      .channel("join-requests-notifications")
+      .channel(`join-requests-notifications-${organizationId}`)
       .on(
         "postgres_changes",
         {
@@ -56,19 +102,22 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
         },
         (payload) => {
           const newRequest = payload.new as any;
-          addNotification({
-            type: "join_request",
-            title: "New Join Request",
-            message: `${newRequest.user_name || newRequest.user_email} wants to join your workspace`,
-            metadata: { requestId: newRequest.id },
-          });
+          if (!seenRequestIds.has(newRequest.id)) {
+            setSeenRequestIds((prev) => new Set([...prev, newRequest.id]));
+            addNotification({
+              type: "join_request",
+              title: "New Join Request",
+              message: `${newRequest.user_name || newRequest.user_email} wants to join your workspace`,
+              metadata: { requestId: newRequest.id },
+            });
+          }
         }
       )
       .subscribe();
 
     // Listen for project invitations being accepted
     const invitationChannel = supabase
-      .channel("invitation-notifications")
+      .channel(`invitation-notifications-${organizationId}`)
       .on(
         "postgres_changes",
         {
@@ -92,7 +141,7 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
 
     // Listen for new projects
     const projectChannel = supabase
-      .channel("project-notifications")
+      .channel(`project-notifications-${organizationId}`)
       .on(
         "postgres_changes",
         {
@@ -120,17 +169,8 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
       supabase.removeChannel(invitationChannel);
       supabase.removeChannel(projectChannel);
     };
-  }, [user, organizationId]);
+  }, [user, organizationId, seenRequestIds, addNotification]);
 
-  const addNotification = (notification: Omit<Notification, "id" | "timestamp" | "read">) => {
-    const newNotification: Notification = {
-      ...notification,
-      id: crypto.randomUUID(),
-      timestamp: new Date(),
-      read: false,
-    };
-    setNotifications((prev) => [newNotification, ...prev].slice(0, 50)); // Keep max 50
-  };
 
   const markAsRead = (id: string) => {
     setNotifications((prev) =>

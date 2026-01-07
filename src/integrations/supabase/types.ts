@@ -1105,6 +1105,10 @@ export type Database = {
         }
         Returns: string
       }
+      org_has_public_published_projects: {
+        Args: { _org_id: string }
+        Returns: boolean
+      }
       reject_join_request: {
         Args: { _reason?: string; _request_id: string }
         Returns: boolean
