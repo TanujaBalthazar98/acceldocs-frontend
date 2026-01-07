@@ -8,9 +8,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bell, Check, UserPlus, FileText, Settings, Info } from "lucide-react";
+import { Bell, Check, UserPlus, FileText, Settings, Info, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { Separator } from "@/components/ui/separator";
 
 interface Notification {
   id: string;
@@ -24,6 +26,7 @@ interface Notification {
 
 interface NotificationCenterProps {
   organizationId: string | null;
+  onWorkspaceChange?: () => void;
 }
 
 const iconMap = {
@@ -34,11 +37,12 @@ const iconMap = {
   info: Info,
 };
 
-export const NotificationCenter = ({ organizationId }: NotificationCenterProps) => {
+export const NotificationCenter = ({ organizationId, onWorkspaceChange }: NotificationCenterProps) => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [seenRequestIds, setSeenRequestIds] = useState<Set<string>>(new Set());
+  const [hasMultipleWorkspaces, setHasMultipleWorkspaces] = useState(false);
 
   const addNotification = useCallback((notification: Omit<Notification, "id" | "timestamp" | "read">) => {
     const newNotification: Notification = {
@@ -49,6 +53,24 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
     };
     setNotifications((prev) => [newNotification, ...prev].slice(0, 50));
   }, []);
+
+  // Check if user has multiple workspaces
+  useEffect(() => {
+    if (!user) return;
+
+    const checkWorkspaces = async () => {
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("organization_id")
+        .eq("user_id", user.id);
+
+      if (!error && data) {
+        setHasMultipleWorkspaces(data.length > 1);
+      }
+    };
+
+    checkWorkspaces();
+  }, [user]);
 
   // Fetch pending join requests on mount to show unread badge
   useEffect(() => {
@@ -171,7 +193,6 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
     };
   }, [user, organizationId, seenRequestIds, addNotification]);
 
-
   const markAsRead = (id: string) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
@@ -199,7 +220,8 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0">
+      <PopoverContent align="start" sideOffset={8} className="w-80 p-0">
+        {/* Header */}
         <div className="flex items-center justify-between p-3 border-b">
           <h4 className="font-semibold text-sm">Notifications</h4>
           {unreadCount > 0 && (
@@ -214,7 +236,26 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
             </Button>
           )}
         </div>
-        <ScrollArea className="h-[300px]">
+
+        {/* Workspace Switcher Section */}
+        {hasMultipleWorkspaces && onWorkspaceChange && (
+          <>
+            <div className="p-3">
+              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
+                <Building2 className="w-3 h-3" />
+                Switch Workspace
+              </p>
+              <WorkspaceSwitcher
+                currentOrganizationId={organizationId}
+                onWorkspaceChange={onWorkspaceChange}
+              />
+            </div>
+            <Separator />
+          </>
+        )}
+
+        {/* Notifications List */}
+        <ScrollArea className="h-[280px]">
           {notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
               <Bell className="h-8 w-8 mb-2 opacity-50" />
@@ -244,13 +285,13 @@ export const NotificationCenter = ({ organizationId }: NotificationCenterProps) 
                       </div>
                       <div className="flex-1 min-w-0">
                         <p
-                          className={`text-sm ${
+                          className={`text-sm leading-tight ${
                             !notification.read ? "font-medium" : ""
                           }`}
                         >
                           {notification.title}
                         </p>
-                        <p className="text-xs text-muted-foreground truncate">
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                           {notification.message}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">

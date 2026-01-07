@@ -115,6 +115,40 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           title: "Request sent!",
           description: `Your request to join ${existingOrg.name} has been sent to the admins.`,
         });
+
+        // Send email notification to admins
+        try {
+          // Fetch admin emails for this organization
+          const { data: adminRoles } = await supabase
+            .from("user_roles")
+            .select("user_id")
+            .eq("organization_id", existingOrg.id)
+            .in("role", ["owner", "admin"]);
+
+          if (adminRoles && adminRoles.length > 0) {
+            const { data: adminProfiles } = await supabase
+              .from("profiles")
+              .select("email")
+              .in("id", adminRoles.map(r => r.user_id));
+
+            if (adminProfiles && adminProfiles.length > 0) {
+              const adminEmails = adminProfiles.map(p => p.email).filter(Boolean);
+              
+              // Send email notification (fire and forget)
+              supabase.functions.invoke("send-join-request-email", {
+                body: {
+                  adminEmails,
+                  requesterName: user.user_metadata?.full_name || user.email?.split("@")[0] || "",
+                  requesterEmail: user.email || "",
+                  organizationName: existingOrg.name,
+                },
+              }).catch(console.error);
+            }
+          }
+        } catch (emailError) {
+          // Non-blocking - don't fail the join request if email fails
+          console.error("Failed to send admin notification email:", emailError);
+        }
       }
     } catch (error: any) {
       console.error("Error requesting to join:", error);
