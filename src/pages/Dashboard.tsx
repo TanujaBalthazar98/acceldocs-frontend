@@ -997,7 +997,7 @@ const Dashboard = () => {
                 </div>
 
                 <div className="flex items-center gap-1">
-                  {organizationId && <NotificationCenter organizationId={organizationId} />}
+                  {organizationId && <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => window.location.reload()} />}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
