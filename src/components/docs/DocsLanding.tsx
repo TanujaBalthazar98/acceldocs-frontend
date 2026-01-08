@@ -325,15 +325,18 @@ export const DocsLanding = ({
             )}
           </div>
           <div>
-            {isAuthenticated && isOrgMember ? (
-              <Link to="/dashboard" className="hover:text-foreground transition-colors">
-                Dashboard
-              </Link>
-            ) : !isAuthenticated && hasNonPublicContent ? (
-              <Link to="/auth" className="hover:text-foreground transition-colors">
-                Sign in
-              </Link>
-            ) : null}
+            {/* Only show Dashboard/Sign in if there's non-public content */}
+            {hasNonPublicContent && (
+              isAuthenticated && isOrgMember ? (
+                <Link to="/dashboard" className="hover:text-foreground transition-colors">
+                  Dashboard
+                </Link>
+              ) : !isAuthenticated ? (
+                <Link to="/auth" className="hover:text-foreground transition-colors">
+                  Sign in
+                </Link>
+              ) : null
+            )}
           </div>
         </div>
       </footer>
