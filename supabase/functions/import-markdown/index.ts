@@ -693,9 +693,10 @@ async function createTopicsRecursively(
             continue;
           }
 
+          // Use upsert to handle duplicate documents gracefully
           const { error: docError } = await supabase
             .from("documents")
-            .insert({
+            .upsert({
               title,
               slug: generateSlug(title),
               google_doc_id: docResult.id,
@@ -705,6 +706,9 @@ async function createTopicsRecursively(
               owner_id: userId,
               visibility: "internal",
               is_published: false,
+            }, {
+              onConflict: 'project_id,google_doc_id',
+              ignoreDuplicates: true
             });
 
           if (docError) {
@@ -822,9 +826,10 @@ async function processImportWithProgress(
         continue;
       }
 
+      // Use upsert to handle duplicate documents gracefully
       const { error: docError } = await supabase
         .from("documents")
-        .insert({
+        .upsert({
           title,
           slug: generateSlug(title),
           google_doc_id: docResult.id,
@@ -834,6 +839,9 @@ async function processImportWithProgress(
           owner_id: userId,
           visibility: "internal",
           is_published: false,
+        }, {
+          onConflict: 'project_id,google_doc_id',
+          ignoreDuplicates: true
         });
 
       if (docError) {
