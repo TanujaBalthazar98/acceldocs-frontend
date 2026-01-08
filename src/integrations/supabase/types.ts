@@ -910,6 +910,7 @@ export type Database = {
           openapi_spec_json: Json | null
           openapi_spec_url: string | null
           organization_id: string
+          parent_id: string | null
           slug: string | null
           updated_at: string
           visibility: Database["public"]["Enums"]["visibility_level"]
@@ -932,6 +933,7 @@ export type Database = {
           openapi_spec_json?: Json | null
           openapi_spec_url?: string | null
           organization_id: string
+          parent_id?: string | null
           slug?: string | null
           updated_at?: string
           visibility?: Database["public"]["Enums"]["visibility_level"]
@@ -954,6 +956,7 @@ export type Database = {
           openapi_spec_json?: Json | null
           openapi_spec_url?: string | null
           organization_id?: string
+          parent_id?: string | null
           slug?: string | null
           updated_at?: string
           visibility?: Database["public"]["Enums"]["visibility_level"]
@@ -964,6 +967,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
