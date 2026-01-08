@@ -24,14 +24,28 @@ const Auth = () => {
     }
   }, [user, navigate, from]);
 
+  const isEmbedded = (() => {
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  })();
+
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     setAuthError(null);
 
-    const { error } = await signInWithGoogle();
+    try {
+      const { error } = await signInWithGoogle();
 
-    if (error) {
-      setAuthError(error.message || "Failed to sign in with Google. Please try again.");
+      if (error) {
+        setAuthError(error.message || "Failed to sign in with Google. Please try again.");
+      } else if (isEmbedded) {
+        // In preview (iframe), OAuth opens in a new tab to avoid Okta iframe blocking.
+        setAuthError("OAuth opened in a new tab. Complete sign-in there, then refresh this preview.");
+      }
+    } finally {
       setIsLoading(false);
     }
   };
@@ -82,6 +96,7 @@ const Auth = () => {
               <h2 className="text-2xl font-semibold mb-2">Welcome</h2>
               <p className="text-muted-foreground">
                 Sign in with your Acceldata Google account (you may need to pick the right account)
+                {isEmbedded ? " — in preview, the sign-in opens in a new tab." : ""}
               </p>
             </div>
 

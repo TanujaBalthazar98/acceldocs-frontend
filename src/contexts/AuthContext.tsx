@@ -152,11 +152,31 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     };
   }, [user?.id]);
 
+  const isEmbedded = (): boolean => {
+    try {
+      return window.self !== window.top;
+    } catch {
+      // Accessing window.top can throw in cross-origin / sandboxed iframes
+      return true;
+    }
+  };
+
+  const navigateToOAuth = (url: string) => {
+    // Okta/SSO pages often refuse to render in iframes; the preview runs in an iframe.
+    // Open OAuth in a new tab when embedded.
+    if (isEmbedded()) {
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (opened) return;
+    }
+
+    window.location.assign(url);
+  };
+
   const signInWithGoogle = async () => {
     const redirectUrl = `${window.location.origin}/dashboard`;
 
     // Restrict account chooser to acceldata.io and force account selection.
-    // Use skipBrowserRedirect so we can reliably navigate even in embedded previews.
+    // Use skipBrowserRedirect so we can control navigation (new tab in preview iframe).
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -170,12 +190,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
 
     if (!error && data?.url) {
-      try {
-        // Prefer top-level navigation when embedded
-        (window.top ?? window).location.assign(data.url);
-      } catch {
-        window.location.assign(data.url);
-      }
+      navigateToOAuth(data.url);
     }
 
     return { error };
@@ -205,11 +220,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
 
     if (!error && data?.url) {
-      try {
-        (window.top ?? window).location.assign(data.url);
-      } catch {
-        window.location.assign(data.url);
-      }
+      navigateToOAuth(data.url);
     }
 
     return { error };
