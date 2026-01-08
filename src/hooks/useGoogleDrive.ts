@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,7 +15,8 @@ const GOOGLE_TOKEN_KEY = "google_access_token";
 
 export const useGoogleDrive = () => {
   const { toast } = useToast();
-  const { googleAccessToken, requestDriveAccess, signOut } = useAuth();
+  const { googleAccessToken, requestDriveAccess } = useAuth();
+  const reauthInFlightRef = useRef(false);
 
   const getGoogleToken = (): string | null => {
     // First try from context, then from localStorage
@@ -37,46 +39,58 @@ export const useGoogleDrive = () => {
     return true;
   };
 
-  // Handle re-authentication automatically: prompt user to sign out and back in
-  const handleReauthRequired = () => {
+  // Handle re-authentication automatically by triggering the Drive-consent OAuth flow.
+  // This is the only reliable way to recover if the backend can't refresh the Google access token.
+  const handleReauthRequired = async () => {
+    if (reauthInFlightRef.current) return;
+    reauthInFlightRef.current = true;
+
     toast({
-      title: "Session expired",
-      description: "Your Google session has expired. Signing you out so you can sign back in.",
+      title: "Reconnect required",
+      description: "Reconnecting to Google Drive to refresh your access…",
+      duration: 12000,
       variant: "destructive",
     });
-    // Give user time to read the message, then sign out
-    setTimeout(() => {
-      signOut();
-    }, 2000);
-  };
 
-  const listFolder = async (folderId: string): Promise<{ files: DriveFile[] | null; needsDriveAccess?: boolean }> => {
-    const token = getGoogleToken();
-    if (!token) {
+    const { error } = await requestDriveAccess();
+    if (error) {
+      reauthInFlightRef.current = false;
       toast({
-        title: "Authentication required",
-        description: "Please sign in with Google again to access Drive.",
+        title: "Reconnect failed",
+        description: error.message,
+        duration: 12000,
         variant: "destructive",
       });
-      return { files: null };
     }
+  };
+
+  const listFolder = async (
+    folderId: string,
+  ): Promise<{ files: DriveFile[] | null; needsDriveAccess?: boolean }> => {
+    const token = getGoogleToken();
 
     // Ensure session is fresh
     const sessionValid = await ensureFreshSession();
     if (!sessionValid) {
-      handleReauthRequired();
-      return { files: null };
+      await handleReauthRequired();
+      return { files: null, needsDriveAccess: true };
     }
 
-    const { data, error } = await supabase.functions.invoke("google-drive", {
+    const invokeOptions = {
       body: {
         action: "list_folder",
         folderId,
       },
-      headers: {
-        "x-google-token": token,
-      },
-    });
+      ...(token
+        ? {
+            headers: {
+              "x-google-token": token,
+            },
+          }
+        : {}),
+    };
+
+    const { data, error } = await supabase.functions.invoke("google-drive", invokeOptions);
 
     if (error) {
       console.error("List folder error:", error);
@@ -84,13 +98,14 @@ export const useGoogleDrive = () => {
         title: "Failed to list folder",
         description: error.message,
         variant: "destructive",
+        duration: 12000,
       });
       return { files: null };
     }
 
     // Check for reauth needed - automatically handle it
     if (data?.needsReauth) {
-      handleReauthRequired();
+      await handleReauthRequired();
       return { files: null, needsDriveAccess: true };
     }
 
@@ -102,34 +117,35 @@ export const useGoogleDrive = () => {
     return { files: data?.files || [] };
   };
 
-  const createFolder = async (name: string, parentFolderId: string): Promise<{ id: string; name: string } | null> => {
+  const createFolder = async (
+    name: string,
+    parentFolderId: string,
+  ): Promise<{ id: string; name: string } | null> => {
     const token = getGoogleToken();
-    if (!token) {
-      toast({
-        title: "Authentication required",
-        description: "Please sign in with Google again to access Drive.",
-        variant: "destructive",
-      });
-      return null;
-    }
 
     // Ensure session is fresh
     const sessionValid = await ensureFreshSession();
     if (!sessionValid) {
-      handleReauthRequired();
+      await handleReauthRequired();
       return null;
     }
 
-    const { data, error } = await supabase.functions.invoke("google-drive", {
+    const invokeOptions = {
       body: {
         action: "create_folder",
         name,
         parentFolderId,
       },
-      headers: {
-        "x-google-token": token,
-      },
-    });
+      ...(token
+        ? {
+            headers: {
+              "x-google-token": token,
+            },
+          }
+        : {}),
+    };
+
+    const { data, error } = await supabase.functions.invoke("google-drive", invokeOptions);
 
     if (error) {
       console.error("Create folder error:", error);
@@ -137,20 +153,27 @@ export const useGoogleDrive = () => {
         title: "Failed to create folder",
         description: error.message,
         variant: "destructive",
+        duration: 12000,
       });
       return null;
     }
 
     if (data?.needsReauth) {
-      handleReauthRequired();
+      await handleReauthRequired();
       return null;
     }
-    
+
+    if (data?.needsDriveAccess) {
+      await handleReauthRequired();
+      return null;
+    }
+
     if (data?.error) {
       toast({
         title: "Failed to create folder",
         description: data.error,
         variant: "destructive",
+        duration: 12000,
       });
       return null;
     }
@@ -160,32 +183,30 @@ export const useGoogleDrive = () => {
 
   const createDoc = async (title: string, parentFolderId: string) => {
     const token = getGoogleToken();
-    if (!token) {
-      toast({
-        title: "Authentication required",
-        description: "Please sign in with Google again to access Drive.",
-        variant: "destructive",
-      });
-      return null;
-    }
 
     // Ensure session is fresh
     const sessionValid = await ensureFreshSession();
     if (!sessionValid) {
-      handleReauthRequired();
+      await handleReauthRequired();
       return null;
     }
 
-    const { data, error } = await supabase.functions.invoke("google-drive", {
+    const invokeOptions = {
       body: {
         action: "create_doc",
         title,
         parentFolderId,
       },
-      headers: {
-        "x-google-token": token,
-      },
-    });
+      ...(token
+        ? {
+            headers: {
+              "x-google-token": token,
+            },
+          }
+        : {}),
+    };
+
+    const { data, error } = await supabase.functions.invoke("google-drive", invokeOptions);
 
     if (error) {
       console.error("Create doc error:", error);
@@ -193,59 +214,64 @@ export const useGoogleDrive = () => {
         title: "Failed to create document",
         description: error.message,
         variant: "destructive",
+        duration: 12000,
       });
       return null;
     }
 
-    if (data?.needsReauth) {
-      handleReauthRequired();
+    if (data?.needsReauth || data?.needsDriveAccess) {
+      await handleReauthRequired();
       return null;
     }
 
     return data?.doc || null;
   };
 
-  const trashFile = async (fileId: string): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
+  const trashFile = async (
+    fileId: string,
+  ): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     const token = getGoogleToken();
-    if (!token) {
-      console.log("No Google token for trash operation");
-      return { success: false, error: "No authentication token", errorCode: "NO_TOKEN" };
-    }
 
     // Ensure session is fresh
     const sessionValid = await ensureFreshSession();
     if (!sessionValid) {
-      handleReauthRequired();
+      await handleReauthRequired();
       return { success: false, error: "Session expired", errorCode: "SESSION_EXPIRED" };
     }
 
-    const { data, error } = await supabase.functions.invoke("google-drive", {
+    const invokeOptions = {
       body: {
         action: "trash_file",
         fileId,
       },
-      headers: {
-        "x-google-token": token,
-      },
-    });
+      ...(token
+        ? {
+            headers: {
+              "x-google-token": token,
+            },
+          }
+        : {}),
+    };
+
+    const { data, error } = await supabase.functions.invoke("google-drive", invokeOptions);
 
     if (error) {
       console.error("Trash file error:", error);
       return { success: false, error: error.message, errorCode: "INVOKE_ERROR" };
     }
 
-    if (data?.needsReauth) {
-      handleReauthRequired();
-      return { success: false, error: "Session expired", errorCode: "NEEDS_REAUTH" };
+    if (data?.needsReauth || data?.needsDriveAccess) {
+      await handleReauthRequired();
+      return { success: false, error: "Reconnect required", errorCode: "NEEDS_REAUTH" };
     }
 
     if (data?.error) {
       // Check for specific Google Drive error
       const errorReason = data.errorReason || "";
-      return { 
-        success: false, 
-        error: data.error, 
-        errorCode: errorReason === "appNotAuthorizedToChild" ? "NOT_AUTHORIZED" : "DRIVE_ERROR" 
+      return {
+        success: false,
+        error: data.error,
+        errorCode: errorReason === "appNotAuthorizedToChild" ? "NOT_AUTHORIZED" : "DRIVE_ERROR",
       };
     }
 
