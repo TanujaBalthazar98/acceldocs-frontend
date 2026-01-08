@@ -353,7 +353,7 @@ export function SidebarTopicsTree({
   };
 
   if (topicTree.length === 0) {
-    return <p className="text-xs text-muted-foreground py-1 px-3">No topics yet</p>;
+    return <p className="text-xs text-muted-foreground py-1 px-3 italic">No topics yet</p>;
   }
 
   return (

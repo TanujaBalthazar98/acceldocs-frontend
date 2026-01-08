@@ -1274,7 +1274,7 @@ const Dashboard = () => {
 
   return (
     <TooltipProvider>
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex w-full">
       {/* Mobile sidebar overlay */}
       {mobileSidebarOpen && (
         <div 
@@ -1284,16 +1284,24 @@ const Dashboard = () => {
       )}
       
       {/* Mobile header */}
-      <div className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-border flex items-center justify-between px-4 z-30 lg:hidden">
+      <div className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-border flex items-center justify-between px-3 z-30 lg:hidden">
         <Button
           variant="ghost"
           size="icon"
+          className="shrink-0"
           onClick={() => setMobileSidebarOpen(true)}
         >
           <PanelLeft className="h-5 w-5" />
         </Button>
-        <span className="font-semibold">Acceldocs</span>
-        <div className="w-10" /> {/* Spacer for balance */}
+        <span className="font-semibold text-sm truncate">Acceldocs</span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          onClick={() => setMobileSidebarOpen(false)}
+        >
+          <X className="h-5 w-5 opacity-0" /> {/* Invisible spacer for balance */}
+        </Button>
       </div>
       
       {/* Sidebar */}
@@ -2051,27 +2059,31 @@ const Dashboard = () => {
           }}
         />
       ) : (
-        <main className="flex-1 flex flex-col pt-14 lg:pt-0">
+        <main className="flex-1 flex flex-col pt-14 lg:pt-0 min-w-0">
           {/* Header */}
-          <header className="h-14 border-b border-border flex items-center justify-between px-4 lg:px-6">
-            <div className="flex items-center gap-3">
-              <span className="font-medium text-foreground">{organizationName || "Workspace"}</span>
-              <ChevronRight className="w-3 h-3 text-muted-foreground" />
-              <span className="text-muted-foreground">{selectedProject?.name || "Select a project"}</span>
+          <header className="h-auto min-h-14 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between px-3 py-2 sm:px-4 lg:px-6 gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="font-medium text-foreground text-sm truncate">{organizationName || "Workspace"}</span>
+              {selectedProject && (
+                <>
+                  <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground text-sm truncate">{selectedProject?.name}</span>
+                </>
+              )}
               {selectedTopic && (
                 <>
-                  <ChevronRight className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-muted-foreground">{selectedTopic.name}</span>
+                  <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0 hidden sm:block" />
+                  <span className="text-muted-foreground text-sm truncate hidden sm:block">{selectedTopic.name}</span>
                 </>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
               <DriveStatusIndicator onStatusChange={(connected) => setNeedsDriveAccess(!connected)} />
               {organizationId && <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => window.location.reload()} />}
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2"
+                className="gap-1.5 h-8 px-2 sm:px-3"
                 onClick={() => setInviteMemberOpen(true)}
               >
                 <UserPlus className="w-4 h-4" />
@@ -2080,33 +2092,33 @@ const Dashboard = () => {
               <Button 
                 variant={showAIAssistant ? "secondary" : "outline"}
                 size="sm" 
-                className="gap-2" 
+                className="gap-1.5 h-8 px-2 sm:px-3" 
                 onClick={() => setShowAIAssistant(!showAIAssistant)}
               >
                 <Bot className="w-4 h-4" />
-                <span className="hidden sm:inline">AI Assistant</span>
+                <span className="hidden md:inline">AI Assistant</span>
               </Button>
               {organizationSlug && (
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="gap-2" 
+                  className="gap-1.5 h-8 px-2 sm:px-3 hidden sm:flex" 
                   onClick={() => window.open(`/docs/${organizationSlug}`, '_blank')}
                 >
                   <BookOpen className="w-4 h-4" />
-                  View Docs
+                  <span className="hidden lg:inline">View Docs</span>
                 </Button>
               )}
               <Button 
                 variant="hero" 
                 size="sm" 
-                className="gap-2" 
+                className="gap-1.5 h-8 px-2 sm:px-3" 
                 onClick={() => setAddPageOpen(true)}
                 disabled={!selectedTopic}
                 title={!selectedTopic ? "Select a topic first" : "Add page"}
               >
                 <Plus className="w-4 h-4" />
-                Add Page
+                <span className="hidden sm:inline">Add Page</span>
               </Button>
             </div>
           </header>
@@ -2114,7 +2126,7 @@ const Dashboard = () => {
         {/* Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Main content area */}
-          <div className="flex-1 p-6 overflow-y-auto">
+          <div className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto overflow-x-hidden">
           
           {/* Workspace switch banner */}
           {approvedOrgId && (
@@ -2164,51 +2176,51 @@ const Dashboard = () => {
               : 0;
             
             return (
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                <div className="p-4 rounded-xl glass">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-2xl font-bold text-foreground">{filteredDocuments.length}</p>
-                    <span className="text-xs text-muted-foreground">{projects.length} projects</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 mb-4 sm:mb-6">
+                <div className="p-3 sm:p-4 rounded-xl glass">
+                  <div className="flex items-baseline justify-between gap-1">
+                    <p className="text-xl sm:text-2xl font-bold text-foreground">{filteredDocuments.length}</p>
+                    <span className="text-[10px] sm:text-xs text-muted-foreground">{projects.length} proj</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">Total Pages</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Total Pages</p>
                 </div>
-                <div className="p-4 rounded-xl glass">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-2xl font-bold text-state-active">{publishedCount}</p>
-                    <span className="text-xs text-state-active">{publishRate}%</span>
+                <div className="p-3 sm:p-4 rounded-xl glass">
+                  <div className="flex items-baseline justify-between gap-1">
+                    <p className="text-xl sm:text-2xl font-bold text-state-active">{publishedCount}</p>
+                    <span className="text-[10px] sm:text-xs text-state-active">{publishRate}%</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">Published</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Published</p>
                 </div>
-                <div className="p-4 rounded-xl glass">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-2xl font-bold text-blue-500">{recentlyUpdated}</p>
-                    <span className="text-xs text-muted-foreground">7 days</span>
+                <div className="p-3 sm:p-4 rounded-xl glass hidden sm:block">
+                  <div className="flex items-baseline justify-between gap-1">
+                    <p className="text-xl sm:text-2xl font-bold text-blue-500">{recentlyUpdated}</p>
+                    <span className="text-[10px] sm:text-xs text-muted-foreground">7 days</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">Recently Updated</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Recently Updated</p>
                 </div>
-                <div className="p-4 rounded-xl glass">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-2xl font-bold text-amber-500">{pendingRepublishCount}</p>
+                <div className="p-3 sm:p-4 rounded-xl glass">
+                  <div className="flex items-baseline justify-between gap-1">
+                    <p className="text-xl sm:text-2xl font-bold text-amber-500">{pendingRepublishCount}</p>
                     {pendingRepublishCount > 0 && <RefreshCw className="w-3 h-3 text-amber-500" />}
                   </div>
-                  <p className="text-sm text-muted-foreground">Pending Republish</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Pending</p>
                 </div>
-                <div className="p-4 rounded-xl glass">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-2xl font-bold text-primary">{readyToPublish}</p>
+                <div className="p-3 sm:p-4 rounded-xl glass hidden lg:block">
+                  <div className="flex items-baseline justify-between gap-1">
+                    <p className="text-xl sm:text-2xl font-bold text-primary">{readyToPublish}</p>
                     {readyToPublish > 0 && <Send className="w-3 h-3 text-primary" />}
                   </div>
-                  <p className="text-sm text-muted-foreground">Ready to Publish</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Ready to Publish</p>
                 </div>
               </div>
             );
           })()}
 
           {/* Topics */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold">Topics</h2>
+          <div className="mb-4 sm:mb-6">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <h2 className="text-base sm:text-lg font-semibold shrink-0">Topics</h2>
                 {selectedTopic && (
                   <div className="flex items-center text-sm text-muted-foreground">
                     <ChevronRight className="w-4 h-4" />
@@ -2265,11 +2277,11 @@ const Dashboard = () => {
 
           {/* Pages Table */}
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Recent Pages</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 sm:mb-4">
+              <h2 className="text-base sm:text-lg font-semibold">Recent Pages</h2>
               {/* Bulk Actions Bar */}
               {selectedDocIds.size > 0 && (
-                <div className="flex items-center gap-2 bg-primary/10 px-3 py-1.5 rounded-lg animate-in slide-in-from-right-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 bg-primary/10 px-2 sm:px-3 py-1.5 rounded-lg animate-in slide-in-from-right-2 overflow-x-auto">
                   <span className="text-sm font-medium text-primary">
                     {selectedDocIds.size} selected
                   </span>
@@ -2305,11 +2317,11 @@ const Dashboard = () => {
                 </div>
               )}
             </div>
-            <div className="rounded-xl border border-border overflow-hidden">
-              <table className="w-full">
+            <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
+              <table className="w-full min-w-[400px]">
                 <thead>
                   <tr className="bg-secondary/50">
-                    <th className="w-10 px-4 py-3">
+                    <th className="w-8 sm:w-10 px-2 sm:px-4 py-2 sm:py-3">
                       <button
                         onClick={handleSelectAll}
                         className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
@@ -2324,26 +2336,26 @@ const Dashboard = () => {
                         )}
                       </button>
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="text-left px-2 sm:px-4 py-2 sm:py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Page
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden sm:table-cell">
-                      Published
+                    <th className="text-left px-2 sm:px-4 py-2 sm:py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden sm:table-cell">
+                      Status
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden md:table-cell">
+                    <th className="text-left px-2 sm:px-4 py-2 sm:py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden md:table-cell">
                       Owner
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden lg:table-cell">
-                      Last Modified
+                    <th className="text-left px-2 sm:px-4 py-2 sm:py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden lg:table-cell">
+                      Modified
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {visibleDocuments.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                      <td colSpan={5} className="px-3 sm:px-4 py-6 sm:py-8 text-center text-sm text-muted-foreground">
                         {selectedTopic 
-                          ? "No pages in this topic yet. Add a page to get started."
+                          ? "No pages in this topic yet."
                           : selectedProject
                             ? "Select a topic to view pages."
                             : "Select a project to view pages."}
@@ -2361,7 +2373,7 @@ const Dashboard = () => {
                           )}
                           onClick={() => navigate(`/page/${doc.id}`)}
                         >
-                          <td className="w-10 px-4 py-3">
+                          <td className="w-8 sm:w-10 px-2 sm:px-4 py-2 sm:py-3">
                             <button
                               onClick={(e) => handleSelectDoc(doc.id, e)}
                               className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
@@ -2373,15 +2385,15 @@ const Dashboard = () => {
                               )}
                             </button>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <FileText className="w-4 h-4 text-muted-foreground" />
-                              <div className="flex-1">
-                                <span className="text-sm font-medium text-foreground">
+                          <td className="px-2 sm:px-4 py-2 sm:py-3">
+                            <div className="flex items-center gap-2 sm:gap-3">
+                              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs sm:text-sm font-medium text-foreground line-clamp-1">
                                   {doc.title}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-1 mr-3">
+                              <div className="flex items-center gap-1 shrink-0">
                                 {doc.is_published ? (
                                   <CheckCircle className="w-3.5 h-3.5 text-green-500" />
                                 ) : null}
