@@ -405,15 +405,16 @@ const Dashboard = () => {
     // Get the project's drive folder ID first
     const project = projects.find(p => p.id === projectId);
     
-    // Trash the Drive folder if it exists
+    // Trash the Drive folder if it exists - block deletion if it fails
     if (project?.drive_folder_id) {
       const trashed = await trashFile(project.drive_folder_id);
       if (!trashed) {
         toast({ 
-          title: "Warning", 
-          description: "Could not move Drive folder to trash, but project will be deleted from the app.", 
+          title: "Cannot Delete Project", 
+          description: "Failed to trash the Drive folder. Please reconnect to Google Drive and try again.", 
           variant: "destructive" 
         });
+        return;
       }
     }
     
@@ -448,15 +449,16 @@ const Dashboard = () => {
     // Get the topic's drive folder ID first
     const topic = topics.find(t => t.id === topicId);
     
-    // Trash the Drive folder if it exists
+    // Trash the Drive folder if it exists - block deletion if it fails
     if (topic?.drive_folder_id) {
       const trashed = await trashFile(topic.drive_folder_id);
       if (!trashed) {
         toast({ 
-          title: "Warning", 
-          description: "Could not move Drive folder to trash, but topic will be deleted from the app.", 
+          title: "Cannot Delete Topic", 
+          description: "Failed to trash the Drive folder. Please reconnect to Google Drive and try again.", 
           variant: "destructive" 
         });
+        return;
       }
     }
     
@@ -488,15 +490,16 @@ const Dashboard = () => {
     // Get the document's google doc ID first
     const doc = filteredDocuments.find(d => d.id === docId);
     
-    // Trash the Drive file if it exists
+    // Trash the Drive file if it exists - block deletion if it fails
     if (doc?.google_doc_id) {
       const trashed = await trashFile(doc.google_doc_id);
       if (!trashed) {
         toast({ 
-          title: "Warning", 
-          description: "Could not move Drive file to trash, but page will be deleted from the app.", 
+          title: "Cannot Delete Page", 
+          description: "Failed to trash the Drive file. Please reconnect to Google Drive and try again.", 
           variant: "destructive" 
         });
+        return;
       }
     }
     
