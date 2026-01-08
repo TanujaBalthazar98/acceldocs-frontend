@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, ArrowRight, Loader2, Link2, Building2 } from "lucide-react";
+import { CheckCircle2, ArrowRight, ArrowLeft, Loader2, Link2, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
-import acceldataLogo from "@/assets/acceldata-logo.svg";
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -23,7 +22,6 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [driveConnected, setDriveConnected] = useState(false);
-  const [isJoiningOrg, setIsJoiningOrg] = useState(false);
 
   // Check if Drive is already connected
   useEffect(() => {
@@ -31,6 +29,12 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       setDriveConnected(true);
     }
   }, [session]);
+
+  const handleBack = () => {
+    if (step > 1) {
+      setStep(step - 1);
+    }
+  };
 
   const handleConnectDrive = async () => {
     setIsConnecting(true);
@@ -89,7 +93,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const handleJoinAcceldata = async () => {
     if (!user) return;
 
-    setIsJoiningOrg(true);
+    setIsCreating(true);
     try {
       const { orgId, isNewOrg, driveFolderId } = await findOrCreateAcceldataOrg();
 
@@ -144,15 +148,6 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         variant: "destructive",
       });
     } finally {
-      setIsJoiningOrg(false);
-    }
-  };
-
-  const handleFinishSetup = async () => {
-    setIsCreating(true);
-    try {
-      await handleJoinAcceldata();
-    } finally {
       setIsCreating(false);
     }
   };
@@ -160,11 +155,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="w-full max-w-3xl">
-        {/* Logo */}
-        <div className="flex items-center gap-3 mb-8 justify-center">
-          <img src={acceldataLogo} alt="Acceldata" className="h-10 w-auto" />
-          <span className="text-2xl font-bold text-foreground">Acceldocs</span>
-        </div>
+        {/* Header */}
+        <h1 className="text-3xl font-bold text-center mb-8 text-foreground">Acceldocs</h1>
 
         {/* Progress Steps */}
         <div className="flex items-center justify-center gap-2 mb-8">
@@ -198,19 +190,15 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               </div>
               <h2 className="text-2xl font-bold mb-3">Welcome to Acceldocs!</h2>
               <p className="text-muted-foreground mb-6">
-                Let's get you set up. First, we'll connect your Google Drive to manage your documentation.
+                Acceldata's internal documentation platform. Let's get you set up by connecting your Google Drive.
               </p>
-              <div className="text-sm text-muted-foreground mb-6 p-4 rounded-lg bg-secondary/50">
-                <p className="font-medium text-foreground mb-1">Signed in as:</p>
-                <p>{user?.email}</p>
-              </div>
               <Button 
                 variant="hero" 
                 size="lg" 
                 onClick={() => setStep(2)}
                 className="gap-2"
               >
-                Continue
+                Get Started
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </div>
@@ -232,15 +220,26 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                     <CheckCircle2 className="w-5 h-5" />
                     <span className="font-medium">Google Drive connected!</span>
                   </div>
-                  <Button 
-                    variant="hero" 
-                    size="lg" 
-                    onClick={() => setStep(3)}
-                    className="gap-2"
-                  >
-                    Continue
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
+                  <div className="flex gap-3 justify-center">
+                    <Button 
+                      variant="outline" 
+                      size="lg" 
+                      onClick={handleBack}
+                      className="gap-2"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      Back
+                    </Button>
+                    <Button 
+                      variant="hero" 
+                      size="lg" 
+                      onClick={() => setStep(3)}
+                      className="gap-2"
+                    >
+                      Continue
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -270,12 +269,23 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                       </>
                     )}
                   </Button>
-                  <button
-                    onClick={() => setStep(3)}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Skip for now (you can connect later)
-                  </button>
+                  <div className="flex gap-3 justify-center">
+                    <Button 
+                      variant="outline" 
+                      size="lg" 
+                      onClick={handleBack}
+                      className="gap-2"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      Back
+                    </Button>
+                    <button
+                      onClick={() => setStep(3)}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors px-4"
+                    >
+                      Skip for now
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -293,34 +303,42 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
               <div className="space-y-4">
                 <div className="p-4 rounded-lg bg-secondary/50 text-center">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <img src={acceldataLogo} alt="Acceldata" className="h-6 w-auto" />
-                    <span className="font-semibold">{ACCELDATA_WORKSPACE_NAME}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-lg">{ACCELDATA_WORKSPACE_NAME}</span>
+                  <p className="text-xs text-muted-foreground mt-1">
                     All Acceldata team members share this workspace
                   </p>
                 </div>
 
-                <Button 
-                  variant="hero" 
-                  size="lg" 
-                  onClick={handleFinishSetup}
-                  disabled={isCreating}
-                  className="w-full gap-2"
-                >
-                  {isCreating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Setting up...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      Complete Setup
-                    </>
-                  )}
-                </Button>
+                <div className="flex gap-3 justify-center">
+                  <Button 
+                    variant="outline" 
+                    size="lg" 
+                    onClick={handleBack}
+                    className="gap-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back
+                  </Button>
+                  <Button 
+                    variant="hero" 
+                    size="lg" 
+                    onClick={handleJoinAcceldata}
+                    disabled={isCreating}
+                    className="gap-2"
+                  >
+                    {isCreating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Setting up...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        Complete Setup
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
