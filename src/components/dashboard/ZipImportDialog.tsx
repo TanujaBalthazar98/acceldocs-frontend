@@ -8,13 +8,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { parseZipFile, parseFolderFiles, ParsedImport } from "@/lib/zipImporter";
 import { 
   Upload, 
@@ -22,12 +18,10 @@ import {
   FolderOpen, 
   FileText, 
   CheckCircle2, 
-  AlertCircle,
   Loader2,
   FileJson,
   X
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface ZipImportDialogProps {
   open: boolean;
@@ -38,8 +32,6 @@ interface ZipImportDialogProps {
   organizationId: string;
   onImported: () => void;
 }
-
-const BATCH_SIZE = 25; // Process files in batches of 25
 
 export function ZipImportDialog({
   open,
@@ -52,21 +44,16 @@ export function ZipImportDialog({
 }: ZipImportDialogProps) {
   const [parsedImport, setParsedImport] = useState<ParsedImport | null>(null);
   const [importing, setImporting] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0, currentFile: "" });
-  const [results, setResults] = useState<{ topics: number; pages: number; errors: string[] } | null>(null);
   
   const zipInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   
   const { toast } = useToast();
   const { user, googleAccessToken } = useAuth();
-  const { createFolder } = useGoogleDrive();
 
   const resetState = useCallback(() => {
     setParsedImport(null);
     setImporting(false);
-    setProgress({ current: 0, total: 0, currentFile: "" });
-    setResults(null);
     if (zipInputRef.current) zipInputRef.current.value = '';
     if (folderInputRef.current) folderInputRef.current.value = '';
   }, []);
@@ -112,159 +99,40 @@ export function ZipImportDialog({
     if (!parsedImport || parsedImport.files.length === 0 || !user || !googleAccessToken) return;
     
     setImporting(true);
-    setProgress({ current: 0, total: parsedImport.files.length, currentFile: "Starting import..." });
-    
-    const results = { topics: 0, pages: 0, errors: [] as string[] };
-    const createdFolders = new Map<string, string>(); // path -> Google Drive folder ID
-    const createdTopics = new Map<string, string>(); // path -> topic ID
     
     try {
-      // Group files by folder
-      const filesByFolder = new Map<string, typeof parsedImport.files>();
-      for (const file of parsedImport.files) {
-        const folderPath = file.path.split('/').slice(0, -1).join('/');
-        if (!filesByFolder.has(folderPath)) {
-          filesByFolder.set(folderPath, []);
-        }
-        filesByFolder.get(folderPath)!.push(file);
+      // Prepare files for the edge function
+      const filesToImport = parsedImport.files.map(f => ({
+        path: f.path,
+        content: f.content,
+      }));
+      
+      // Call the edge function to start background import
+      const { data, error } = await supabase.functions.invoke('import-markdown', {
+        body: {
+          files: filesToImport,
+          projectId,
+          organizationId,
+        },
+        headers: {
+          'x-google-token': googleAccessToken,
+        },
+      });
+      
+      if (error) {
+        throw new Error(error.message || 'Failed to start import');
       }
       
-      // Sort folders by depth (create parents first)
-      const sortedFolders = Array.from(filesByFolder.keys()).sort((a, b) => 
-        a.split('/').length - b.split('/').length
-      );
+      // Import started successfully - close dialog and let GlobalImportProgress show status
+      toast({
+        title: "Import started",
+        description: `Importing ${parsedImport.files.length} files in the background. Progress will be shown in the corner.`,
+      });
       
-      let processedCount = 0;
-      
-      // Create folders/topics and process files
-      for (const folderPath of sortedFolders) {
-        const files = filesByFolder.get(folderPath)!;
-        let parentFolderId = projectFolderId;
-        let parentTopicId: string | null = null;
-        
-        // Create nested folders if needed
-        if (folderPath) {
-          const pathParts = folderPath.split('/');
-          let currentPath = '';
-          
-          for (const part of pathParts) {
-            currentPath = currentPath ? `${currentPath}/${part}` : part;
-            
-            if (!createdFolders.has(currentPath)) {
-              setProgress({ 
-                current: processedCount, 
-                total: parsedImport.files.length, 
-                currentFile: `Creating folder: ${part}` 
-              });
-              
-              // Create Google Drive folder
-              const folder = await createFolder(part, parentFolderId);
-              if (!folder) {
-                results.errors.push(`Failed to create folder: ${part}`);
-                break;
-              }
-              createdFolders.set(currentPath, folder.id);
-              
-              // Create topic in database
-              const { data: topic, error: topicError } = await supabase
-                .from('topics')
-                .insert({
-                  name: part,
-                  project_id: projectId,
-                  drive_folder_id: folder.id,
-                  parent_id: parentTopicId,
-                  display_order: results.topics,
-                })
-                .select('id')
-                .single();
-              
-              if (topicError) {
-                results.errors.push(`Failed to create topic: ${part}`);
-              } else {
-                createdTopics.set(currentPath, topic.id);
-                results.topics++;
-              }
-            }
-            
-            parentFolderId = createdFolders.get(currentPath) || parentFolderId;
-            parentTopicId = createdTopics.get(currentPath) || null;
-          }
-        }
-        
-        // Process files in this folder in batches
-        for (let i = 0; i < files.length; i += BATCH_SIZE) {
-          const batch = files.slice(i, i + BATCH_SIZE);
-          
-          // Process batch in parallel
-          await Promise.all(batch.map(async (file) => {
-            const fileName = file.path.split('/').pop() || 'Untitled';
-            const title = file.title || extractTitle(file.content, fileName);
-            
-            setProgress({ 
-              current: processedCount, 
-              total: parsedImport.files.length, 
-              currentFile: `Creating: ${title}` 
-            });
-            
-            try {
-              // Convert markdown to HTML
-              const htmlContent = markdownToHtml(file.content);
-              
-              // Create Google Doc
-              const docId = await createGoogleDoc(googleAccessToken, title, htmlContent, parentFolderId);
-              
-              if (!docId) {
-                results.errors.push(`Failed to create: ${title}`);
-                processedCount++;
-                return;
-              }
-              
-              // Save to database
-              const { error: docError } = await supabase
-                .from('documents')
-                .upsert({
-                  title,
-                  google_doc_id: docId,
-                  project_id: projectId,
-                  topic_id: parentTopicId,
-                  content_html: htmlContent,
-                  owner_id: user.id,
-                  visibility: 'internal',
-                  is_published: false,
-                }, {
-                  onConflict: 'project_id,google_doc_id',
-                  ignoreDuplicates: true
-                });
-              
-              if (docError) {
-                results.errors.push(`Failed to save: ${title}`);
-              } else {
-                results.pages++;
-              }
-            } catch (e) {
-              results.errors.push(`Error: ${fileName}`);
-            }
-            
-            processedCount++;
-          }));
-          
-          // Small delay between batches to avoid rate limiting
-          if (i + BATCH_SIZE < files.length) {
-            await new Promise(r => setTimeout(r, 200));
-          }
-        }
-      }
-      
-      setResults(results);
-      setProgress({ current: parsedImport.files.length, total: parsedImport.files.length, currentFile: "Complete!" });
-      
-      if (results.pages > 0) {
-        toast({
-          title: "Import complete!",
-          description: `Created ${results.topics} topics and ${results.pages} pages`,
-        });
-        onImported();
-      }
+      // Close the dialog - GlobalImportProgress will track the job
+      resetState();
+      onOpenChange(false);
+      onImported();
       
     } catch (error) {
       console.error('Import error:', error);
@@ -273,7 +141,6 @@ export function ZipImportDialog({
         description: error instanceof Error ? error.message : "Unknown error",
         variant: "destructive"
       });
-    } finally {
       setImporting(false);
     }
   };
@@ -284,10 +151,6 @@ export function ZipImportDialog({
       onOpenChange(false);
     }
   };
-
-  const progressPercent = progress.total > 0 
-    ? Math.round((progress.current / progress.total) * 100) 
-    : 0;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -304,7 +167,7 @@ export function ZipImportDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {!parsedImport && !importing && !results && (
+          {!parsedImport && !importing && (
             <>
               {/* Upload options */}
               <div className="grid grid-cols-2 gap-3">
@@ -362,7 +225,7 @@ export function ZipImportDialog({
           )}
 
           {/* Parsed preview */}
-          {parsedImport && !importing && !results && (
+          {parsedImport && !importing && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium">
@@ -406,225 +269,42 @@ export function ZipImportDialog({
             </div>
           )}
 
-          {/* Import progress */}
+          {/* Import in progress */}
           {importing && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <span className="text-sm font-medium">Importing files...</span>
-                <span className="ml-auto text-sm font-bold">{progressPercent}%</span>
+            <div className="flex flex-col items-center justify-center py-8 gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="font-medium">Starting background import...</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  You can close this dialog. Progress will appear in the corner.
+                </p>
               </div>
-              <Progress value={progressPercent} className="h-2" />
-              <p className="text-xs text-muted-foreground truncate">{progress.currentFile}</p>
-            </div>
-          )}
-
-          {/* Results */}
-          {results && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                {results.errors.length === 0 ? (
-                  <CheckCircle2 className="h-5 w-5 text-green-500" />
-                ) : (
-                  <AlertCircle className="h-5 w-5 text-amber-500" />
-                )}
-                <span className="font-medium">Import complete</span>
-              </div>
-              
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-2xl font-bold">{results.topics}</p>
-                  <p className="text-xs text-muted-foreground">Topics</p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-2xl font-bold">{results.pages}</p>
-                  <p className="text-xs text-muted-foreground">Pages</p>
-                </div>
-                <div className={cn(
-                  "rounded-lg p-3",
-                  results.errors.length > 0 ? "bg-destructive/10" : "bg-muted/50"
-                )}>
-                  <p className={cn(
-                    "text-2xl font-bold",
-                    results.errors.length > 0 && "text-destructive"
-                  )}>{results.errors.length}</p>
-                  <p className="text-xs text-muted-foreground">Errors</p>
-                </div>
-              </div>
-              
-              {results.errors.length > 0 && (
-                <details className="text-xs">
-                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                    View errors
-                  </summary>
-                  <ul className="mt-2 space-y-1 max-h-24 overflow-y-auto">
-                    {results.errors.map((err, i) => (
-                      <li key={i} className="text-destructive">• {err}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
             </div>
           )}
         </div>
 
         <DialogFooter>
-          {!results ? (
-            <>
-              <Button variant="outline" onClick={handleClose} disabled={importing}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleImport} 
-                disabled={!parsedImport || parsedImport.files.length === 0 || importing}
-              >
-                {importing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Importing...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Import {parsedImport?.files.length || 0} files
-                  </>
-                )}
-              </Button>
-            </>
-          ) : (
-            <Button onClick={handleClose}>Done</Button>
-          )}
+          <Button variant="outline" onClick={handleClose} disabled={importing}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleImport} 
+            disabled={!parsedImport || parsedImport.files.length === 0 || importing}
+          >
+            {importing ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Starting...
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4 mr-2" />
+                Import {parsedImport?.files.length || 0} files
+              </>
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
-}
-
-// Helper functions
-function extractTitle(content: string, filename: string): string {
-  // Try to get title from frontmatter
-  const frontmatterMatch = content.match(/^---[\s\S]*?title:\s*["']?([^"'\n]+)["']?[\s\S]*?---/m);
-  if (frontmatterMatch) return frontmatterMatch[1].trim();
-  
-  // Try first H1
-  const h1Match = content.match(/^#\s+(.+)$/m);
-  if (h1Match) return h1Match[1].trim();
-  
-  // Fall back to filename
-  return filename.replace(/\.(md|mdx|markdown)$/i, '').replace(/[-_]/g, ' ');
-}
-
-function markdownToHtml(markdown: string): string {
-  let html = markdown;
-  
-  // Remove frontmatter
-  html = html.replace(/^---[\s\S]*?---\n*/m, '');
-  
-  // Code blocks
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    return `<pre style="background-color:#f4f4f4;padding:12px;border-radius:4px;overflow-x:auto;font-family:monospace;"><code>${escapeHtml(code.trim())}</code></pre>`;
-  });
-  
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code style="background-color:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:monospace;">$1</code>');
-  
-  // Headers
-  html = html.replace(/^###### (.+)$/gm, '<h6>$1</h6>');
-  html = html.replace(/^##### (.+)$/gm, '<h5>$1</h5>');
-  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  
-  // Bold and italic
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  
-  // Links and images
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;" />');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-  
-  // Blockquotes
-  html = html.replace(/^> (.+)$/gm, '<blockquote style="border-left:4px solid #ddd;padding-left:16px;margin:16px 0;color:#666;">$1</blockquote>');
-  
-  // Horizontal rules
-  html = html.replace(/^---$/gm, '<hr />');
-  
-  // Paragraphs
-  const lines = html.split('\n');
-  html = lines.map(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return '';
-    if (trimmed.startsWith('<')) return line;
-    return `<p>${line}</p>`;
-  }).join('\n');
-  
-  // Clean up
-  html = html.replace(/<p>\s*<\/p>/g, '');
-  
-  return html.trim();
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-async function createGoogleDoc(
-  token: string,
-  title: string,
-  htmlContent: string,
-  parentFolderId: string
-): Promise<string | null> {
-  const fullHtml = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>${escapeHtml(title)}</title></head>
-<body>${htmlContent}</body>
-</html>`;
-
-  const metadata = {
-    name: title,
-    mimeType: 'application/vnd.google-apps.document',
-    parents: [parentFolderId],
-  };
-
-  const boundary = '-------314159265358979323846';
-  const multipartBody = 
-    `\r\n--${boundary}\r\n` +
-    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-    JSON.stringify(metadata) +
-    `\r\n--${boundary}\r\n` +
-    'Content-Type: text/html; charset=UTF-8\r\n\r\n' +
-    fullHtml +
-    `\r\n--${boundary}--`;
-
-  try {
-    const response = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&convert=true',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': `multipart/related; boundary=${boundary}`,
-        },
-        body: multipartBody,
-      }
-    );
-
-    if (!response.ok) {
-      console.error('Failed to create doc:', await response.text());
-      return null;
-    }
-
-    const doc = await response.json();
-    return doc.id;
-  } catch (error) {
-    console.error('Error creating doc:', error);
-    return null;
-  }
 }

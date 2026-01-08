@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -37,22 +37,79 @@ const iconMap = {
   info: Info,
 };
 
+// LocalStorage keys for persistence
+const SEEN_NOTIFICATIONS_KEY = "docspeare_seen_notifications";
+const READ_NOTIFICATIONS_KEY = "docspeare_read_notifications";
+
+// Helper functions for persistence
+const loadPersistedSet = (key: string): Set<string> => {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed);
+      }
+    }
+  } catch (e) {
+    console.error(`Failed to load ${key}:`, e);
+  }
+  return new Set();
+};
+
+const persistSet = (key: string, set: Set<string>) => {
+  try {
+    // Keep only the last 200 entries to prevent unbounded growth
+    const arr = Array.from(set).slice(-200);
+    localStorage.setItem(key, JSON.stringify(arr));
+  } catch (e) {
+    console.error(`Failed to persist ${key}:`, e);
+  }
+};
+
 export const NotificationCenter = ({ organizationId, onWorkspaceChange }: NotificationCenterProps) => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
-  const [seenRequestIds, setSeenRequestIds] = useState<Set<string>>(new Set());
+  // Initialize from localStorage
+  const [seenRequestIds, setSeenRequestIds] = useState<Set<string>>(() => loadPersistedSet(SEEN_NOTIFICATIONS_KEY));
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => loadPersistedSet(READ_NOTIFICATIONS_KEY));
   const [hasMultipleWorkspaces, setHasMultipleWorkspaces] = useState(false);
+  const initialFetchDone = useRef(false);
 
-  const addNotification = useCallback((notification: Omit<Notification, "id" | "timestamp" | "read">) => {
+  // Persist seen IDs when they change
+  useEffect(() => {
+    persistSet(SEEN_NOTIFICATIONS_KEY, seenRequestIds);
+  }, [seenRequestIds]);
+
+  // Persist read IDs when they change
+  useEffect(() => {
+    persistSet(READ_NOTIFICATIONS_KEY, readNotificationIds);
+  }, [readNotificationIds]);
+
+  const addNotification = useCallback((notification: Omit<Notification, "id" | "timestamp" | "read">, entityId?: string) => {
+    // Use entity ID (like request ID) as the notification ID if provided
+    const notificationId = entityId || crypto.randomUUID();
+    
+    // Skip if we've already seen this notification before
+    if (readNotificationIds.has(notificationId)) {
+      return;
+    }
+    
     const newNotification: Notification = {
       ...notification,
-      id: crypto.randomUUID(),
+      id: notificationId,
       timestamp: new Date(),
       read: false,
     };
-    setNotifications((prev) => [newNotification, ...prev].slice(0, 50));
-  }, []);
+    setNotifications((prev) => {
+      // Avoid duplicate notifications
+      if (prev.some(n => n.id === notificationId)) {
+        return prev;
+      }
+      return [newNotification, ...prev].slice(0, 50);
+    });
+  }, [readNotificationIds]);
 
   // Check if user has multiple workspaces
   useEffect(() => {
@@ -72,9 +129,9 @@ export const NotificationCenter = ({ organizationId, onWorkspaceChange }: Notifi
     checkWorkspaces();
   }, [user]);
 
-  // Fetch pending join requests on mount to show unread badge
+  // Fetch pending join requests on mount - only once
   useEffect(() => {
-    if (!user || !organizationId) return;
+    if (!user || !organizationId || initialFetchDone.current) return;
 
     const fetchPendingRequests = async () => {
       const { data } = await supabase
@@ -86,26 +143,24 @@ export const NotificationCenter = ({ organizationId, onWorkspaceChange }: Notifi
         .limit(10);
 
       if (data && data.length > 0) {
-        const newIds = new Set<string>();
         data.forEach((req) => {
-          if (!seenRequestIds.has(req.id)) {
-            newIds.add(req.id);
+          // Only add if not already seen/read
+          if (!seenRequestIds.has(req.id) && !readNotificationIds.has(req.id)) {
+            setSeenRequestIds((prev) => new Set([...prev, req.id]));
             addNotification({
               type: "join_request",
               title: "Pending Join Request",
               message: `${req.user_name || req.user_email} wants to join your workspace`,
               metadata: { requestId: req.id },
-            });
+            }, req.id);
           }
         });
-        if (newIds.size > 0) {
-          setSeenRequestIds((prev) => new Set([...prev, ...newIds]));
-        }
       }
+      initialFetchDone.current = true;
     };
 
     fetchPendingRequests();
-  }, [user, organizationId, addNotification]);
+  }, [user, organizationId, addNotification, seenRequestIds, readNotificationIds]);
 
   // Subscribe to real-time events
   useEffect(() => {
@@ -197,10 +252,18 @@ export const NotificationCenter = ({ organizationId, onWorkspaceChange }: Notifi
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
+    // Persist that this notification was read
+    setReadNotificationIds((prev) => new Set([...prev, id]));
   };
 
   const markAllAsRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    // Persist all as read
+    setReadNotificationIds((prev) => {
+      const newSet = new Set([...prev]);
+      notifications.forEach(n => newSet.add(n.id));
+      return newSet;
+    });
   };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
