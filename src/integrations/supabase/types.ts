@@ -1088,7 +1088,19 @@ export type Database = {
         Args: { invitation_token: string }
         Returns: boolean
       }
-      approve_join_request: { Args: { _request_id: string }; Returns: boolean }
+      approve_join_request:
+        | {
+            Args: { _request_id: string }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.approve_join_request(_request_id => text), public.approve_join_request(_request_id => uuid). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
+          }
+        | {
+            Args: { _request_id: string }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.approve_join_request(_request_id => text), public.approve_join_request(_request_id => uuid). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
+          }
       can_access_drive: {
         Args: { _operation: string; _project_id: string; _user_id: string }
         Returns: boolean
