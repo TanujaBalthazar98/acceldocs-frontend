@@ -44,7 +44,9 @@ import {
   X,
   Loader2,
   Home,
+  GitBranch,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1446,6 +1448,22 @@ const Dashboard = () => {
               {selectedProject.is_published && (
                 <span className="w-2 h-2 rounded-full bg-green-500 ml-auto" />
               )}
+            </div>
+
+            {/* Version */}
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+              onClick={() => {
+                // TODO: Open version management
+                toast({
+                  title: "Coming Soon",
+                  description: "Version management will be available soon.",
+                });
+              }}
+            >
+              <GitBranch className="w-4 h-4" />
+              <span>Version</span>
+              <Badge variant="outline" className="ml-auto text-xs py-0 h-5">v1.0</Badge>
             </div>
 
             {/* Project Settings */}
