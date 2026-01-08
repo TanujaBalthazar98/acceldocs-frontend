@@ -507,15 +507,37 @@ const getTopicDocuments = (topicId: string) =>
       .filter(d => !d.topic_id)
       .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
 
+  // Check if a topic should be "invisible" (same name as project, only child topic)
+  const isInvisibleTopic = (topic: Topic) => {
+    if (!selectedProject) return false;
+    // Root topic with same name as project AND it's the only root topic
+    const rootTopics = projectTopics.filter(t => !t.parent_id);
+    return !topic.parent_id && 
+           topic.name.toLowerCase() === selectedProject.name.toLowerCase() &&
+           rootTopics.length === 1;
+  };
+
+  // Get documents from invisible topics (treat them as project-level)
+  const getInvisibleTopicDocuments = () => {
+    const invisibleTopics = projectTopics.filter(isInvisibleTopic);
+    if (invisibleTopics.length === 0) return [];
+    return filteredDocuments
+      .filter(d => invisibleTopics.some(t => t.id === d.topic_id))
+      .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
+  };
+
+  const twoLineClampClass =
+    "min-w-0 flex-1 text-left overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] leading-snug";
+
   // Recursive topic renderer component
   const renderTopic = (topic: Topic, depth: number = 0) => {
+    // Skip rendering invisible topics (handled separately)
+    if (isInvisibleTopic(topic)) return null;
+
     const topicDocs = getTopicDocuments(topic.id);
     const childTopics = getChildTopics(topic.id);
     const isTopicExpanded = expandedTopics.has(topic.id);
     const hasChildren = topicDocs.length > 0 || childTopics.length > 0;
-
-    const twoLineClampClass =
-      "min-w-0 flex-1 text-left overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] leading-snug";
 
     return (
       <div key={topic.id} className="min-w-0" style={{ paddingLeft: `${depth * 12}px` }}>
@@ -604,16 +626,34 @@ const getTopicDocuments = (topicId: string) =>
           <div className="p-4 text-center text-muted-foreground text-sm">
             Select a project above
           </div>
-        ) : getRootTopics().length === 0 && getProjectLevelDocuments().length === 0 ? (
+        ) : getRootTopics().filter(t => !isInvisibleTopic(t)).length === 0 && getProjectLevelDocuments().length === 0 && getInvisibleTopicDocuments().length === 0 ? (
           <div className="p-4 text-center text-muted-foreground text-sm">
             No pages found
           </div>
         ) : (
           <nav className="py-2 pr-3">
-            {/* Root topics (hierarchical) */}
+            {/* Root topics (hierarchical) - excluding invisible topics */}
             {getRootTopics()
               .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
               .map(topic => renderTopic(topic, 0))}
+
+            {/* Documents from invisible topics (shown as if project-level) */}
+            {getInvisibleTopicDocuments().map(doc => (
+              <button
+                key={doc.id}
+                onClick={() => selectDocument(doc)}
+                className={cn(
+                  "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                  "hover:bg-accent hover:text-accent-foreground",
+                  selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
+                )}
+              >
+                <FileText className="h-4 w-4 shrink-0 mt-0.5" />
+                <span className={twoLineClampClass}>
+                  {doc.title}
+                </span>
+              </button>
+            ))}
 
             {/* Project-level documents (no topic) */}
             {getProjectLevelDocuments().map(doc => (
@@ -627,7 +667,7 @@ const getTopicDocuments = (topicId: string) =>
                 )}
               >
                 <FileText className="h-4 w-4 shrink-0 mt-0.5" />
-                <span className="min-w-0 flex-1 text-left overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] leading-snug">
+                <span className={twoLineClampClass}>
                   {doc.title}
                 </span>
               </button>
@@ -954,8 +994,8 @@ const getTopicDocuments = (topicId: string) =>
                   <span>{selectedProject?.name}</span>
                   {selectedDocument.topic_id && (() => {
                     const topic = topics.find(t => t.id === selectedDocument.topic_id);
-                    // Hide topic from breadcrumb if it has the same name as the project
-                    if (topic && topic.name.toLowerCase() !== selectedProject?.name.toLowerCase()) {
+                    // Hide topic from breadcrumb if it's an "invisible" topic (same name as project)
+                    if (topic && !isInvisibleTopic(topic)) {
                       return (
                         <>
                           <span>/</span>
