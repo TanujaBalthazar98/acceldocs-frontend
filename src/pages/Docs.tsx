@@ -417,10 +417,11 @@ export default function Docs() {
     const { data: docsData, error: docsError } = await supabase
       .from("documents")
       .select(
-        "id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, published_content_html, created_at, updated_at, owner_id"
+        "id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, published_content_html, created_at, updated_at, owner_id, display_order"
       )
       .in("project_id", projectIds)
       .not("published_content_html", "is", null)
+      .order("display_order")
       .order("title");
 
     if (docsError) {
@@ -496,11 +497,15 @@ export default function Docs() {
     filteredTopics.filter(t => t.parent_id === parentId)
       .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
 
-  const getTopicDocuments = (topicId: string) =>
-    filteredDocuments.filter(d => d.topic_id === topicId);
+const getTopicDocuments = (topicId: string) =>
+    filteredDocuments
+      .filter(d => d.topic_id === topicId)
+      .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
 
   const getProjectLevelDocuments = () =>
-    filteredDocuments.filter(d => !d.topic_id);
+    filteredDocuments
+      .filter(d => !d.topic_id)
+      .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
 
   // Recursive topic renderer component
   const renderTopic = (topic: Topic, depth: number = 0) => {
@@ -947,12 +952,19 @@ export default function Docs() {
                 {/* Breadcrumb */}
                 <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
                   <span>{selectedProject?.name}</span>
-                  {selectedDocument.topic_id && (
-                    <>
-                      <span>/</span>
-                      <span>{topics.find(t => t.id === selectedDocument.topic_id)?.name}</span>
-                    </>
-                  )}
+                  {selectedDocument.topic_id && (() => {
+                    const topic = topics.find(t => t.id === selectedDocument.topic_id);
+                    // Hide topic from breadcrumb if it has the same name as the project
+                    if (topic && topic.name.toLowerCase() !== selectedProject?.name.toLowerCase()) {
+                      return (
+                        <>
+                          <span>/</span>
+                          <span>{topic.name}</span>
+                        </>
+                      );
+                    }
+                    return null;
+                  })()}
                 </nav>
 
                 {/* Title */}
