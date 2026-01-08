@@ -237,18 +237,19 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
                 )}
               </div>
               
-              <span className="text-sm font-semibold">{progress}%</span>
+              <span className="text-sm font-semibold whitespace-nowrap">{progress}%</span>
               
-              {/* Stop button - only show when processing */}
+              {/* Stop button - always visible when processing */}
               {isProcessing && !isStopping && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      variant="destructive"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
                     >
-                      <StopCircle className="h-4 w-4" />
+                      <StopCircle className="h-3 w-3 mr-1" />
+                      Stop
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
