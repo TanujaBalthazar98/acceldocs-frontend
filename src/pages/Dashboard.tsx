@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { 
   FileText, 
   FolderTree, 
@@ -37,6 +38,11 @@ import {
   PanelLeftClose,
   PanelLeft,
   UserPlus,
+  CheckSquare,
+  Square,
+  XCircle,
+  X,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -188,6 +194,9 @@ const Dashboard = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
   const [organizationName, setOrganizationName] = useState<string>("");
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [isBulkPublishing, setIsBulkPublishing] = useState(false);
+  const [isBulkUnpublishing, setIsBulkUnpublishing] = useState(false);
   
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading } = usePermissions(selectedProject?.id || null);
@@ -630,6 +639,104 @@ const Dashboard = () => {
     }
   };
 
+  // Bulk action handlers
+  const handleSelectDoc = (docId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedDocIds(prev => {
+      const next = new Set(prev);
+      if (next.has(docId)) {
+        next.delete(docId);
+      } else {
+        next.add(docId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedDocIds.size === visibleDocuments.length) {
+      setSelectedDocIds(new Set());
+    } else {
+      setSelectedDocIds(new Set(visibleDocuments.map(d => d.id)));
+    }
+  };
+
+  const handleBulkPublish = async () => {
+    if (!permissions.canPublish) {
+      toast({ title: "Permission Denied", description: "You don't have permission to publish pages.", variant: "destructive" });
+      return;
+    }
+    
+    setIsBulkPublishing(true);
+    const docsToPublish = documents.filter(d => selectedDocIds.has(d.id) && d.content_html && !d.is_published);
+    
+    let successCount = 0;
+    for (const doc of docsToPublish) {
+      const { error } = await supabase
+        .from("documents")
+        .update({ 
+          is_published: true,
+          published_content_html: doc.content_html 
+        })
+        .eq("id", doc.id);
+      
+      if (!error) {
+        successCount++;
+        await logAction('publish', 'document', doc.id, doc.project_id, { documentTitle: doc.title, bulk: true });
+      }
+    }
+    
+    if (successCount > 0) {
+      toast({
+        title: "Bulk Publish Complete",
+        description: `Published ${successCount} page${successCount > 1 ? 's' : ''} successfully.`,
+      });
+      setSelectedDocIds(new Set());
+      fetchData();
+    } else {
+      toast({ title: "No pages published", description: "Selected pages are already published or have no content.", variant: "destructive" });
+    }
+    setIsBulkPublishing(false);
+  };
+
+  const handleBulkUnpublish = async () => {
+    if (!permissions.canPublish) {
+      toast({ title: "Permission Denied", description: "You don't have permission to unpublish pages.", variant: "destructive" });
+      return;
+    }
+    
+    setIsBulkUnpublishing(true);
+    const docsToUnpublish = documents.filter(d => selectedDocIds.has(d.id) && d.is_published);
+    
+    let successCount = 0;
+    for (const doc of docsToUnpublish) {
+      const { error } = await supabase
+        .from("documents")
+        .update({ is_published: false })
+        .eq("id", doc.id);
+      
+      if (!error) {
+        successCount++;
+        await logAction('unpublish', 'document', doc.id, doc.project_id, { documentTitle: doc.title, bulk: true });
+      }
+    }
+    
+    if (successCount > 0) {
+      toast({
+        title: "Bulk Unpublish Complete",
+        description: `Unpublished ${successCount} page${successCount > 1 ? 's' : ''} successfully.`,
+      });
+      setSelectedDocIds(new Set());
+      fetchData();
+    } else {
+      toast({ title: "No pages unpublished", description: "No published pages were selected.", variant: "destructive" });
+    }
+    setIsBulkUnpublishing(false);
+  };
+
+  const clearSelection = () => {
+    setSelectedDocIds(new Set());
+  };
   const handleSignOut = async () => {
     await signOut();
     toast({
@@ -1738,7 +1845,7 @@ const Dashboard = () => {
         {/* Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Main content area */}
-          <div className={`flex-1 p-6 overflow-y-auto ${showAIAssistant ? 'pr-3' : ''}`}>
+          <div className="flex-1 p-6 overflow-y-auto">
           
           {/* Workspace switch banner */}
           {approvedOrgId && (
@@ -1889,11 +1996,65 @@ const Dashboard = () => {
 
           {/* Pages Table */}
           <div>
-            <h2 className="text-lg font-semibold mb-4">Recent Pages</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Recent Pages</h2>
+              {/* Bulk Actions Bar */}
+              {selectedDocIds.size > 0 && (
+                <div className="flex items-center gap-2 bg-primary/10 px-3 py-1.5 rounded-lg animate-in slide-in-from-right-2">
+                  <span className="text-sm font-medium text-primary">
+                    {selectedDocIds.size} selected
+                  </span>
+                  <div className="h-4 w-px bg-border" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 text-green-600 hover:text-green-700 hover:bg-green-500/10"
+                    onClick={handleBulkPublish}
+                    disabled={isBulkPublishing}
+                  >
+                    {isBulkPublishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                    Publish
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
+                    onClick={handleBulkUnpublish}
+                    disabled={isBulkUnpublishing}
+                  >
+                    {isBulkUnpublishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+                    Unpublish
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    onClick={clearSelection}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
             <div className="rounded-xl border border-border overflow-hidden">
               <table className="w-full">
                 <thead>
                   <tr className="bg-secondary/50">
+                    <th className="w-10 px-4 py-3">
+                      <button
+                        onClick={handleSelectAll}
+                        className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                        title={selectedDocIds.size === visibleDocuments.length ? "Deselect all" : "Select all"}
+                      >
+                        {selectedDocIds.size === visibleDocuments.length && visibleDocuments.length > 0 ? (
+                          <CheckSquare className="w-4 h-4 text-primary" />
+                        ) : selectedDocIds.size > 0 ? (
+                          <div className="w-4 h-4 border-2 border-primary rounded bg-primary/20" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    </th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Page
                     </th>
@@ -1911,7 +2072,7 @@ const Dashboard = () => {
                 <tbody className="divide-y divide-border">
                   {visibleDocuments.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                         {selectedTopic 
                           ? "No pages in this topic yet. Add a page to get started."
                           : selectedProject
@@ -1925,9 +2086,24 @@ const Dashboard = () => {
                       return (
                         <tr
                           key={doc.id}
-                          className="hover:bg-secondary/30 transition-colors cursor-pointer group"
+                          className={cn(
+                            "hover:bg-secondary/30 transition-colors cursor-pointer group",
+                            selectedDocIds.has(doc.id) && "bg-primary/5"
+                          )}
                           onClick={() => navigate(`/page/${doc.id}`)}
                         >
+                          <td className="w-10 px-4 py-3">
+                            <button
+                              onClick={(e) => handleSelectDoc(doc.id, e)}
+                              className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              {selectedDocIds.has(doc.id) ? (
+                                <CheckSquare className="w-4 h-4 text-primary" />
+                              ) : (
+                                <Square className="w-4 h-4" />
+                              )}
+                            </button>
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <FileText className="w-4 h-4 text-muted-foreground" />
@@ -2058,17 +2234,15 @@ const Dashboard = () => {
           </div>
           </div>
           
-          {/* AI Assistant Panel */}
-          {showAIAssistant && (
-            <div className="w-[400px] border-l border-border p-4 overflow-hidden flex-shrink-0">
-              <DocAssistantChat
-                currentProject={selectedProject ? { id: selectedProject.id, name: selectedProject.name } : null}
-                currentTopic={selectedTopic ? { id: selectedTopic.id, name: selectedTopic.name } : null}
-                onRefresh={fetchData}
-                googleToken={getGoogleToken()}
-              />
-            </div>
-          )}
+          {/* AI Assistant Panel - Now as Sheet */}
+          <DocAssistantChat
+            open={showAIAssistant}
+            onOpenChange={setShowAIAssistant}
+            currentProject={selectedProject ? { id: selectedProject.id, name: selectedProject.name } : null}
+            currentTopic={selectedTopic ? { id: selectedTopic.id, name: selectedTopic.name } : null}
+            onRefresh={fetchData}
+            googleToken={getGoogleToken()}
+          />
         </div>
         </main>
       )}

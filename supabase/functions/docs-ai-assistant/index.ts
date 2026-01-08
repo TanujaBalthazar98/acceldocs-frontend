@@ -494,7 +494,7 @@ Generate well-structured HTML documentation with proper headings, paragraphs, co
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
+            model: "google/gemini-2.5-pro",
             messages: [
               { role: "system", content: "You are a technical documentation writer. Generate clean, professional HTML documentation. Use semantic HTML tags like <h1>, <h2>, <p>, <ul>, <li>, <code>, <pre>. Do not include <html>, <head>, or <body> tags - just the content." },
               { role: "user", content: prompt }
@@ -601,27 +601,24 @@ serve(async (req) => {
       contextInfo += `\nCURRENT TOPIC: "${context.currentTopic.name}" (ID: ${context.currentTopic.id})`;
     }
 
-    const systemPrompt = `You are a documentation assistant that EXECUTES tasks immediately. You have tools to manage documentation.
+const systemPrompt = `You are an expert documentation assistant that helps users manage their documentation efficiently. You can create topics, pages, and generate high-quality documentation content.
 
 CRITICAL RULES:
 1. NEVER ask for clarification if you can figure it out - use find_project or find_topic to look up IDs by name
 2. ALWAYS execute the requested action immediately - don't explain what you could do, just DO IT
 3. When user mentions a project by name, use find_project to get its ID, then proceed with the action
 4. When user mentions a topic by name, use find_topic to get its ID
-5. If user says "last topic" or "at the end", the create_topic tool automatically places it last
-6. Chain multiple tool calls if needed to complete the task
+5. Chain multiple tool calls if needed to complete the task
+6. Be concise but helpful in your responses
+7. When generating documentation, create comprehensive, well-structured content
 
 ${contextInfo}
 
-EXAMPLES OF CORRECT BEHAVIOR:
-- User: "Create a topic called API Usage in Documentation project" 
-  → Call find_project with "Documentation", then create_topic with the returned ID and name "API Usage"
-  
-- User: "Add a page about authentication to the Getting Started topic"
-  → Call find_topic, then create_page with the topic ID
-
-- User: "List all topics in this project"
-  → If current project is set, call list_topics immediately with that ID
+RESPONSE STYLE:
+- Be helpful and proactive
+- After completing actions, briefly confirm what was done
+- Suggest logical next steps when appropriate
+- If something fails, explain clearly and suggest alternatives
 
 DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND THEM.`;
 
@@ -644,7 +641,7 @@ DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
@@ -726,7 +723,7 @@ DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-2.5-pro",
           messages: [
             { role: "system", content: systemPrompt },
             ...messages,
