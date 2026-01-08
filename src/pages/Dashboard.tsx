@@ -81,7 +81,7 @@ import { MCPSettingsPanel } from "@/components/dashboard/MCPSettingsPanel";
 import { AuditLogPanel } from "@/components/dashboard/AuditLogPanel";
 import { IntegrationsPanel } from "@/components/dashboard/IntegrationsPanel";
 import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
-import { WorkspaceSwitcher } from "@/components/dashboard/WorkspaceSwitcher";
+
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -1014,11 +1014,6 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              <WorkspaceSwitcher
-                currentOrganizationId={organizationId}
-                onWorkspaceChange={() => window.location.reload()}
-                collapsed={false}
-              />
             </>
           )}
         </div>
