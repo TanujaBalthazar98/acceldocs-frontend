@@ -9,9 +9,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Link2 } from "lucide-react";
+import { Link2, FolderPlus } from "lucide-react";
+import { ConvertTopicDialog } from "./ConvertTopicDialog";
 
 interface TopicSettingsDialogProps {
   open: boolean;
@@ -19,6 +21,7 @@ interface TopicSettingsDialogProps {
   topicId: string | null;
   topicName: string | null;
   projectId: string | null;
+  organizationId?: string | null;
   onUpdate?: () => void;
 }
 
@@ -28,6 +31,7 @@ export const TopicSettingsDialog = ({
   topicId,
   topicName,
   projectId,
+  organizationId,
   onUpdate,
 }: TopicSettingsDialogProps) => {
   const { toast } = useToast();
@@ -36,6 +40,7 @@ export const TopicSettingsDialog = ({
   const [slug, setSlug] = useState("");
   const [slugError, setSlugError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
 
   // Fetch topic data when opened
   useEffect(() => {
@@ -132,82 +137,124 @@ export const TopicSettingsDialog = ({
     }
   };
 
+  const handleConvertSuccess = () => {
+    setShowConvertDialog(false);
+    onUpdate?.();
+    onOpenChange(false);
+  };
+
   if (!topicId) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-card border-border">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            Topic Settings
-          </DialogTitle>
-          <DialogDescription className="text-muted-foreground">
-            Configure settings for this topic
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-foreground">
+              Topic Settings
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Configure settings for this topic
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-6 mt-4">
-          {/* Name */}
-          <div className="space-y-2">
-            <Label htmlFor="name">Topic Name</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="bg-secondary"
-            />
-          </div>
-
-          {/* URL Slug */}
-          <div className="space-y-2">
-            <Label htmlFor="slug" className="flex items-center gap-2">
-              <Link2 className="w-4 h-4" />
-              URL Slug
-            </Label>
+          <div className="space-y-6 mt-4">
+            {/* Name */}
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground shrink-0">/.../project/</span>
-                <Input
-                  id="slug"
-                  value={slug}
-                  onChange={(e) => {
-                    const value = e.target.value.toLowerCase().replace(/\s+/g, "-");
-                    setSlug(value);
-                    validateSlug(value);
-                  }}
-                  placeholder="auto-generated"
-                  className={`bg-secondary ${slugError ? "border-destructive" : ""}`}
-                />
-                <span className="text-sm text-muted-foreground shrink-0">/page</span>
+              <Label htmlFor="name">Topic Name</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="bg-secondary"
+              />
+            </div>
+
+            {/* URL Slug */}
+            <div className="space-y-2">
+              <Label htmlFor="slug" className="flex items-center gap-2">
+                <Link2 className="w-4 h-4" />
+                URL Slug
+              </Label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground shrink-0">/.../project/</span>
+                  <Input
+                    id="slug"
+                    value={slug}
+                    onChange={(e) => {
+                      const value = e.target.value.toLowerCase().replace(/\s+/g, "-");
+                      setSlug(value);
+                      validateSlug(value);
+                    }}
+                    placeholder="auto-generated"
+                    className={`bg-secondary ${slugError ? "border-destructive" : ""}`}
+                  />
+                  <span className="text-sm text-muted-foreground shrink-0">/page</span>
+                </div>
+                {slugError && (
+                  <p className="text-xs text-destructive">{slugError}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Customize the URL segment for this topic. Leave empty to auto-generate from name.
+                </p>
               </div>
-              {slugError && (
-                <p className="text-xs text-destructive">{slugError}</p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Customize the URL segment for this topic. Leave empty to auto-generate from name.
-              </p>
+            </div>
+
+            {/* Convert to Project */}
+            {organizationId && projectId && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <Label>Advanced Actions</Label>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-2"
+                    onClick={() => setShowConvertDialog(true)}
+                  >
+                    <FolderPlus className="w-4 h-4 text-primary" />
+                    Convert to Project
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Promote this topic to a standalone project with all its pages and subtopics.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex-1"
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex-1"
-            >
-              {isSaving ? "Saving..." : "Save Changes"}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+      {/* Convert Topic Dialog */}
+      {topicId && projectId && organizationId && (
+        <ConvertTopicDialog
+          open={showConvertDialog}
+          onOpenChange={setShowConvertDialog}
+          topicId={topicId}
+          topicName={name || topicName || ""}
+          projectId={projectId}
+          organizationId={organizationId}
+          onSuccess={handleConvertSuccess}
+        />
+      )}
+    </>
   );
 };

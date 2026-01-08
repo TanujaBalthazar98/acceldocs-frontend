@@ -1,9 +1,21 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, XCircle, Loader2, FileText, FolderTree, FileStack, AlertCircle, X } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, FileText, FolderTree, FileStack, AlertCircle, X, StopCircle, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface ImportJob {
   id: string;
@@ -17,6 +29,7 @@ interface ImportJob {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  project_id: string;
 }
 
 interface ImportProgressIndicatorProps {
@@ -31,18 +44,102 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
   const [job, setJob] = useState<ImportJob | null>(null);
   const [isStalled, setIsStalled] = useState(false);
   const [lastProgress, setLastProgress] = useState<{ files: number; time: number } | null>(null);
+  const [isStopping, setIsStopping] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
+  const { toast } = useToast();
 
   // Mark job as failed
-  const markAsFailed = useCallback(async () => {
+  const markAsFailed = useCallback(async (reason?: string) => {
     await supabase
       .from("import_jobs")
       .update({
         status: 'failed',
         completed_at: new Date().toISOString(),
-        errors: [...(job?.errors || []), 'Import timed out - background task may have been terminated'],
+        errors: [...(job?.errors || []), reason || 'Import timed out - background task may have been terminated'],
       })
       .eq("id", jobId);
   }, [jobId, job?.errors]);
+
+  // Stop import and cleanup partial content
+  const stopAndCleanup = useCallback(async () => {
+    if (!job) return;
+    
+    setIsStopping(true);
+    setIsCleaning(true);
+    
+    try {
+      // Mark job as stopped
+      await supabase
+        .from("import_jobs")
+        .update({
+          status: 'stopped',
+          completed_at: new Date().toISOString(),
+          errors: [...(job.errors || []), 'Import stopped by user - cleaning up partial content'],
+        })
+        .eq("id", jobId);
+
+      // Get documents created by this import (created after job started)
+      const jobStartTime = job.created_at;
+      const { data: docsToDelete, error: fetchDocsError } = await supabase
+        .from("documents")
+        .select("id, google_doc_id")
+        .eq("project_id", job.project_id)
+        .gte("created_at", jobStartTime);
+
+      if (fetchDocsError) {
+        console.error("Error fetching documents:", fetchDocsError);
+      } else if (docsToDelete && docsToDelete.length > 0) {
+        // Delete documents created during this import
+        const { error: deleteDocsError } = await supabase
+          .from("documents")
+          .delete()
+          .in("id", docsToDelete.map(d => d.id));
+
+        if (deleteDocsError) {
+          console.error("Error deleting documents:", deleteDocsError);
+        }
+      }
+
+      // Get topics created by this import
+      const { data: topicsToDelete, error: fetchTopicsError } = await supabase
+        .from("topics")
+        .select("id")
+        .eq("project_id", job.project_id)
+        .gte("created_at", jobStartTime);
+
+      if (fetchTopicsError) {
+        console.error("Error fetching topics:", fetchTopicsError);
+      } else if (topicsToDelete && topicsToDelete.length > 0) {
+        // Delete topics created during this import (children first via cascade)
+        const { error: deleteTopicsError } = await supabase
+          .from("topics")
+          .delete()
+          .in("id", topicsToDelete.map(t => t.id));
+
+        if (deleteTopicsError) {
+          console.error("Error deleting topics:", deleteTopicsError);
+        }
+      }
+
+      toast({
+        title: "Import Stopped",
+        description: `Cleaned up ${docsToDelete?.length || 0} pages and ${topicsToDelete?.length || 0} topics.`,
+      });
+
+      onComplete?.();
+      onDismiss?.();
+    } catch (error) {
+      console.error("Error stopping import:", error);
+      toast({
+        title: "Error",
+        description: "Failed to stop import. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsStopping(false);
+      setIsCleaning(false);
+    }
+  }, [job, jobId, toast, onComplete, onDismiss]);
 
   useEffect(() => {
     let pollInterval: NodeJS.Timeout | null = null;
@@ -87,7 +184,7 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
           });
         }
         
-        if (jobData.status === 'completed' || jobData.status === 'failed') {
+        if (jobData.status === 'completed' || jobData.status === 'failed' || jobData.status === 'stopped') {
           setIsStalled(false);
           onComplete?.();
           if (pollInterval) {
@@ -126,7 +223,7 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
           const updatedJob = payload.new as ImportJob;
           setJob(updatedJob);
           setIsStalled(false);
-          if (updatedJob.status === 'completed' || updatedJob.status === 'failed') {
+          if (updatedJob.status === 'completed' || updatedJob.status === 'failed' || updatedJob.status === 'stopped') {
             onComplete?.();
             if (pollInterval) {
               clearInterval(pollInterval);
@@ -162,6 +259,7 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
 
   const isComplete = job.status === 'completed';
   const isFailed = job.status === 'failed' || isStalled;
+  const isStopped = job.status === 'stopped';
   const isProcessing = job.status === 'processing' && !isStalled;
 
   const handleDismiss = async () => {
@@ -175,24 +273,25 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
     <div className={cn(
       "rounded-lg border overflow-hidden",
       isComplete && "border-green-500/30",
-      isFailed && "border-destructive/30",
+      (isFailed || isStopped) && "border-destructive/30",
       isProcessing && "border-primary/30"
     )}>
       {/* Header */}
       <div className={cn(
         "px-4 py-3 flex items-center gap-3",
         isComplete && "bg-green-500/10",
-        isFailed && "bg-destructive/10",
+        (isFailed || isStopped) && "bg-destructive/10",
         isProcessing && "bg-primary/5"
       )}>
         {isProcessing && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
         {isComplete && <CheckCircle2 className="h-5 w-5 text-green-500" />}
-        {isFailed && <XCircle className="h-5 w-5 text-destructive" />}
+        {(isFailed || isStopped) && <XCircle className="h-5 w-5 text-destructive" />}
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm">
             {isProcessing && "Importing files..."}
             {isComplete && "Import completed"}
             {isStalled && "Import stalled"}
+            {isStopped && "Import stopped"}
             {isFailed && !isStalled && "Import failed"}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -200,7 +299,49 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
           </p>
         </div>
         <span className="text-2xl font-bold text-foreground">{progress}%</span>
-        {(isComplete || isFailed || isStalled) && onDismiss && (
+        
+        {/* Stop button - only show when processing */}
+        {isProcessing && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                disabled={isStopping}
+              >
+                {isStopping ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <StopCircle className="h-4 w-4 mr-1" />
+                )}
+                Stop
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Stop Import?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will stop the import and remove all partially imported content 
+                  ({job.pages_created} pages and {job.topics_created} topics created so far).
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Continue Import</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={stopAndCleanup}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Stop & Cleanup
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+        
+        {(isComplete || isFailed || isStopped || isStalled) && onDismiss && (
           <Button 
             variant="ghost" 
             size="icon" 
@@ -222,6 +363,16 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
         </div>
       )}
 
+      {/* Cleaning indicator */}
+      {isCleaning && (
+        <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/30">
+          <div className="flex items-center gap-2 text-xs text-destructive">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Cleaning up imported content...
+          </div>
+        </div>
+      )}
+
       {/* Progress bar */}
       <div className="px-4 py-2 bg-card">
         <Progress 
@@ -229,7 +380,7 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
           className={cn(
             "h-2",
             isComplete && "[&>div]:bg-green-500",
-            isFailed && "[&>div]:bg-destructive"
+            (isFailed || isStopped) && "[&>div]:bg-destructive"
           )} 
         />
       </div>
@@ -278,7 +429,7 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
       </div>
 
       {/* Errors list */}
-      {job.errors && job.errors.length > 0 && (isComplete || isFailed) && (
+      {job.errors && job.errors.length > 0 && (isComplete || isFailed || isStopped) && (
         <details className="border-t border-border/50">
           <summary className="px-4 py-2 cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors">
             View {job.errors.length} error{job.errors.length !== 1 ? 's' : ''}
