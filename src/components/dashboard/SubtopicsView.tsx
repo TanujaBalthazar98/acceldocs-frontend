@@ -55,7 +55,7 @@ export function SubtopicsView({
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3">
       {immediateSubtopics.map(topic => {
         const docCount = getTopicDocCount(topic.id);
         const subtopicCount = getSubtopicCount(topic.id);
@@ -65,16 +65,16 @@ export function SubtopicsView({
             key={topic.id}
             onClick={() => onSelectTopic(topic)}
             className={cn(
-              "flex items-start gap-3 p-4 rounded-lg border border-border bg-card",
+              "flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-lg border border-border bg-card",
               "hover:bg-muted/50 hover:border-primary/30 transition-all text-left",
               "focus:outline-none focus:ring-2 focus:ring-primary/20"
             )}
           >
-            <div className="p-2 rounded-md bg-primary/10 shrink-0">
-              <Folder className="w-5 h-5 text-primary" />
+            <div className="p-1.5 sm:p-2 rounded-md bg-primary/10 shrink-0">
+              <Folder className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-medium text-sm truncate">{topic.name}</h3>
+              <h3 className="font-medium text-xs sm:text-sm truncate">{topic.name}</h3>
               <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                 {subtopicCount > 0 && (
                   <span className="flex items-center gap-1">
