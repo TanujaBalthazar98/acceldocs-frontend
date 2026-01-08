@@ -316,7 +316,19 @@ function removeGoogleDocsStyles(html: string): string {
  * Cleans up structural issues in HTML
  */
 function cleanupStructure(html: string): string {
-  let cleaned = html;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const container = doc.body.firstElementChild as HTMLElement | null;
+
+  if (!container) return html;
+
+  // Wrap orphaned <li> elements in <ul> tags
+  wrapOrphanedListItems(container);
+  
+  // Convert lines starting with ">" to blockquotes
+  convertBlockquotes(container);
+
+  let cleaned = container.innerHTML;
   
   // Ensure proper list structure
   cleaned = cleaned.replace(/<\/li>\s*<li>/gi, '</li><li>');
@@ -342,6 +354,54 @@ function cleanupStructure(html: string): string {
   cleaned = cleaned.replace(/\s*<br\s*\/?>\s*<\/p>/gi, '</p>');
   
   return cleaned;
+}
+
+/**
+ * Wraps orphaned <li> elements (not inside ul/ol) with <ul> tags
+ */
+function wrapOrphanedListItems(container: HTMLElement): void {
+  const allLis = Array.from(container.querySelectorAll('li'));
+  
+  for (const li of allLis) {
+    const parent = li.parentElement;
+    if (parent && parent.tagName !== 'UL' && parent.tagName !== 'OL') {
+      // This li is orphaned - find consecutive orphaned lis
+      const siblings: Element[] = [li];
+      let next = li.nextElementSibling;
+      
+      while (next && next.tagName === 'LI') {
+        siblings.push(next);
+        next = next.nextElementSibling;
+      }
+      
+      // Create a ul wrapper
+      const ul = container.ownerDocument.createElement('ul');
+      li.parentNode?.insertBefore(ul, li);
+      
+      for (const sibling of siblings) {
+        ul.appendChild(sibling);
+      }
+    }
+  }
+}
+
+/**
+ * Converts paragraphs starting with ">" to blockquotes
+ */
+function convertBlockquotes(container: HTMLElement): void {
+  const paragraphs = Array.from(container.querySelectorAll('p'));
+  
+  for (const p of paragraphs) {
+    const text = p.textContent?.trim() || '';
+    if (text.startsWith('>') || text.startsWith('&gt;')) {
+      const blockquote = container.ownerDocument.createElement('blockquote');
+      const newP = container.ownerDocument.createElement('p');
+      // Remove the leading ">" and any following space
+      newP.innerHTML = p.innerHTML.replace(/^(&gt;|>)\s*/, '');
+      blockquote.appendChild(newP);
+      p.parentNode?.replaceChild(blockquote, p);
+    }
+  }
 }
 
 /**

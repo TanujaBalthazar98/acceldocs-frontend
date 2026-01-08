@@ -417,12 +417,23 @@
   overflow-x: auto;
 }
 
+.docs-content p {
+  margin: 1em 0;
+  line-height: 1.75;
+}
+
+.docs-content p:first-child {
+  margin-top: 0;
+}
+
 .docs-content table {
   width: 100%;
   border-collapse: collapse;
   margin: 1.5em 0;
   font-size: 0.875em;
   border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  overflow: hidden;
 }
 
 .docs-content th,
@@ -448,13 +459,17 @@
 
 /* Enhanced code block styles */
 .docs-content pre {
-  background: hsl(var(--secondary));
+  background: hsl(222 40% 10%);
   border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
   padding: 1rem 1.25rem;
   overflow-x: auto;
   margin: 1.5em 0;
   font-size: 0.875em;
+}
+
+.light .docs-content pre {
+  background: hsl(210 20% 96%);
 }
 
 .docs-content pre code {
@@ -464,6 +479,7 @@
   font-size: 1em;
   line-height: 1.7;
   white-space: pre;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 .docs-content code:not(pre code) {
@@ -472,6 +488,7 @@
   padding: 0.2em 0.4em;
   border-radius: 0.25rem;
   font-size: 0.875em;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 /* Better list rendering */
@@ -490,8 +507,13 @@
 }
 
 .docs-content li {
-  margin: 0.5em 0;
+  margin: 0.75em 0;
   padding-left: 0.25em;
+  line-height: 1.7;
+}
+
+.docs-content li::marker {
+  color: hsl(var(--primary));
 }
 
 .docs-content li > ul,
@@ -502,13 +524,87 @@
 /* Better blockquote styling */
 .docs-content blockquote {
   border-left: 4px solid hsl(var(--primary));
-  padding: 0.75em 1em;
+  padding: 1em 1.25em;
   margin: 1.5em 0;
-  background: hsl(var(--muted) / 0.3);
+  background: hsl(var(--primary) / 0.05);
   border-radius: 0 0.5rem 0.5rem 0;
   color: hsl(var(--muted-foreground));
 }
 
 .docs-content blockquote p {
   margin: 0;
+  font-style: italic;
+}
+
+/* Strong/bold text styling */
+.docs-content strong,
+.docs-content b {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
+/* Feature item styling - bold followed by colon */
+.docs-content li strong:first-child {
+  color: hsl(var(--foreground));
+}
+
+/* Links in docs */
+.docs-content a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.docs-content a:hover {
+  color: hsl(var(--primary) / 0.8);
+  text-decoration-color: hsl(var(--primary) / 0.5);
+}
+
+/* Headings in docs content */
+.docs-content h1,
+.docs-content h2,
+.docs-content h3,
+.docs-content h4,
+.docs-content h5,
+.docs-content h6 {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 2em;
+  margin-bottom: 0.75em;
+}
+
+.docs-content h1:first-child,
+.docs-content h2:first-child,
+.docs-content h3:first-child {
+  margin-top: 0;
+}
+
+.docs-content h1 { font-size: 2em; }
+.docs-content h2 { font-size: 1.5em; }
+.docs-content h3 { font-size: 1.25em; }
+.docs-content h4 { font-size: 1.125em; }
+
+/* Horizontal rule */
+.docs-content hr {
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+  margin: 2.5em 0;
+}
+
+/* Images in docs */
+.docs-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1.5em 0;
+  border: 1px solid hsl(var(--border));
+}
+
+/* Section dividers - visual breaks */
+.docs-content > p + ul,
+.docs-content > p + ol {
+  margin-top: 0.75em;
 }
