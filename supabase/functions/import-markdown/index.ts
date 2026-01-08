@@ -773,6 +773,25 @@ async function processImportWithProgress(
   // Helper to update job progress
   const updateProgress = async (currentFile?: string) => {
     if (!jobId) return;
+
+    // If user stopped the import, abort the background task ASAP
+    try {
+      const { data: stopCheck } = await supabase
+        .from("import_jobs")
+        .select("status")
+        .eq("id", jobId)
+        .maybeSingle();
+
+      if (stopCheck?.status === "stopped") {
+        throw new Error("Import stopped by user");
+      }
+    } catch (err) {
+      // If the stop check fails, continue (don't kill import just because of a transient read error)
+      if (err instanceof Error && err.message === "Import stopped by user") {
+        throw err;
+      }
+    }
+
     try {
       await supabase
         .from("import_jobs")
@@ -865,34 +884,54 @@ async function processImportWithProgress(
     }
   }
 
-    // Mark job as complete
+    // Mark job as complete (unless user stopped it)
     if (jobId) {
-      await supabase
+      const { data: finalStatus } = await supabase
         .from("import_jobs")
-        .update({
-          status: 'completed',
-          processed_files: results.processedFiles,
-          topics_created: results.topicsCreated,
-          pages_created: results.pagesCreated,
-          errors: results.errors,
-          current_file: null,
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", jobId);
+        .select("status")
+        .eq("id", jobId)
+        .maybeSingle();
+
+      if (finalStatus?.status !== "stopped") {
+        await supabase
+          .from("import_jobs")
+          .update({
+            status: "completed",
+            processed_files: results.processedFiles,
+            topics_created: results.topicsCreated,
+            pages_created: results.pagesCreated,
+            errors: results.errors,
+            current_file: null,
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", jobId);
+      }
     }
 
     console.log("Import complete:", results);
   } catch (error) {
     console.error("Import processing failed with error:", error);
     
-    // Mark job as failed
+    // Mark job as failed (but don't overwrite 'stopped')
     if (jobId) {
-      results.errors.push(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const { data: currentStatus } = await supabase
+        .from("import_jobs")
+        .select("status")
+        .eq("id", jobId)
+        .maybeSingle();
+
+      if (currentStatus?.status === "stopped") {
+        return;
+      }
+
+      results.errors.push(
+        `Import failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
       await supabase
         .from("import_jobs")
         .update({
-          status: 'failed',
+          status: "failed",
           processed_files: results.processedFiles,
           topics_created: results.topicsCreated,
           pages_created: results.pagesCreated,

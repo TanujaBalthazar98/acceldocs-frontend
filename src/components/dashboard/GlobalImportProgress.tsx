@@ -27,6 +27,7 @@ interface ImportJob {
   errors: string[];
   current_file: string | null;
   project_id: string;
+  created_at: string;
 }
 
 interface GlobalImportProgressProps {
@@ -43,29 +44,25 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
 
   // Stop import and cleanup partial content
   const stopAndCleanup = useCallback(async (job: ImportJob) => {
-    setStoppingJobs(prev => new Set([...prev, job.id]));
-    
+    setStoppingJobs((prev) => new Set([...prev, job.id]));
+
     try {
-      // Mark job as stopped
+      // Mark job as stopped (the background import will detect this and abort)
       await supabase
         .from("import_jobs")
         .update({
-          status: 'stopped',
+          status: "stopped",
           completed_at: new Date().toISOString(),
-          errors: [...(job.errors || []), 'Import stopped by user - cleaning up partial content'],
+          errors: [
+            ...(job.errors || []),
+            "Import stopped by user - cleaning up partial content",
+          ],
         })
         .eq("id", job.id);
 
-      // Get the job's created_at for cleanup
-      const { data: jobData } = await supabase
-        .from("import_jobs")
-        .select("created_at")
-        .eq("id", job.id)
-        .single();
+      const jobStartTime = job.created_at;
 
-      const jobStartTime = jobData?.created_at || job.current_file;
-
-      // Get documents created by this import (created after job started)
+      // Delete documents created during this import window
       const { data: docsToDelete } = await supabase
         .from("documents")
         .select("id")
@@ -76,10 +73,13 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
         await supabase
           .from("documents")
           .delete()
-          .in("id", docsToDelete.map(d => d.id));
+          .in(
+            "id",
+            docsToDelete.map((d) => d.id)
+          );
       }
 
-      // Get topics created by this import
+      // Delete topics created during this import window
       const { data: topicsToDelete } = await supabase
         .from("topics")
         .select("id")
@@ -90,7 +90,10 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
         await supabase
           .from("topics")
           .delete()
-          .in("id", topicsToDelete.map(t => t.id));
+          .in(
+            "id",
+            topicsToDelete.map((t) => t.id)
+          );
       }
 
       toast({
@@ -98,7 +101,7 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
         description: `Cleaned up ${docsToDelete?.length || 0} pages and ${topicsToDelete?.length || 0} topics.`,
       });
 
-      setDismissed(prev => new Set([...prev, job.id]));
+      setDismissed((prev) => new Set([...prev, job.id]));
       onComplete?.();
     } catch (error) {
       console.error("Error stopping import:", error);
@@ -108,7 +111,7 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
         variant: "destructive",
       });
     } finally {
-      setStoppingJobs(prev => {
+      setStoppingJobs((prev) => {
         const next = new Set(prev);
         next.delete(job.id);
         return next;
