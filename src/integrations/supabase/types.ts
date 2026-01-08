@@ -290,6 +290,7 @@ export type Database = {
           content: string | null
           content_html: string | null
           created_at: string
+          display_order: number | null
           google_doc_id: string
           google_modified_at: string | null
           id: string
@@ -308,6 +309,7 @@ export type Database = {
           content?: string | null
           content_html?: string | null
           created_at?: string
+          display_order?: number | null
           google_doc_id: string
           google_modified_at?: string | null
           id?: string
@@ -326,6 +328,7 @@ export type Database = {
           content?: string | null
           content_html?: string | null
           created_at?: string
+          display_order?: number | null
           google_doc_id?: string
           google_modified_at?: string | null
           id?: string
