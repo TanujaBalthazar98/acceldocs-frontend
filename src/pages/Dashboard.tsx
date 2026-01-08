@@ -989,12 +989,7 @@ const Dashboard = () => {
             /* Expanded: Horizontal layout */
             <>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="h-6 flex-shrink-0">
-                    <img src={acceldataLogo} alt="Acceldocs" className="h-full" />
-                  </div>
-                  <span className="text-lg font-semibold text-foreground">Acceldocs</span>
-                </div>
+                <span className="text-lg font-semibold text-foreground">Acceldocs</span>
 
                 <div className="flex items-center">
                   <Tooltip>
