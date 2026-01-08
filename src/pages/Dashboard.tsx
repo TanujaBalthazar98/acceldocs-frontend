@@ -2541,7 +2541,7 @@ const Dashboard = () => {
           setAddProjectOpen(open);
           if (!open) setParentProjectForCreate(null);
         }}
-        rootFolderId={rootFolderId}
+        rootFolderId={parentProjectForCreate?.drive_folder_id || rootFolderId}
         organizationId={organizationId || undefined}
         parentProjectId={parentProjectForCreate?.id}
         parentProjectName={parentProjectForCreate?.name}
