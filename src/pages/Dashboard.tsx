@@ -84,6 +84,7 @@ import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
 
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
+import { GlobalImportProgress } from "@/components/dashboard/GlobalImportProgress";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
@@ -912,11 +913,17 @@ const Dashboard = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-10 animate-pulse">
-            <img src={acceldataLogo} alt="Loading" className="h-full" />
+        <div className="flex flex-col items-center gap-6">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <BookOpen className="h-5 w-5 text-primary animate-pulse" />
+            </div>
+            <span className="text-2xl font-semibold text-foreground">Acceldocs</span>
           </div>
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <span>Loading workspace...</span>
+          </div>
         </div>
       </div>
     );
@@ -1667,14 +1674,14 @@ const Dashboard = () => {
         <main className="flex-1 flex flex-col">
           {/* Header */}
           <header className="h-14 border-b border-border flex items-center justify-between px-6">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Projects</span>
-              <ChevronRight className="w-3 h-3" />
-              <span className="text-foreground">{selectedProject?.name || "Select a project"}</span>
+            <div className="flex items-center gap-3">
+              <span className="font-medium text-foreground">{organizationName || "Workspace"}</span>
+              <ChevronRight className="w-3 h-3 text-muted-foreground" />
+              <span className="text-muted-foreground">{selectedProject?.name || "Select a project"}</span>
               {selectedTopic && (
                 <>
-                  <ChevronRight className="w-3 h-3" />
-                  <span className="text-foreground">{selectedTopic.name}</span>
+                  <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">{selectedTopic.name}</span>
                 </>
               )}
             </div>
@@ -2175,6 +2182,14 @@ const Dashboard = () => {
           onOpenChange={setInviteMemberOpen}
           organizationId={organizationId}
           organizationName={organizationName}
+        />
+      )}
+      
+      {/* Global Import Progress Indicator */}
+      {organizationId && (
+        <GlobalImportProgress 
+          organizationId={organizationId} 
+          onComplete={() => fetchData()} 
         />
       )}
     </div>
