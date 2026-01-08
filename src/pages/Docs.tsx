@@ -631,8 +631,8 @@ export default function Docs() {
         )}
       </ScrollArea>
 
-      {/* Footer - show Dashboard link for org members */}
-      {user && isOrgUser && (
+      {/* Footer - show Dashboard link ONLY for authenticated org members viewing non-public content */}
+      {user && isOrgUser && selectedProject?.visibility !== "public" && (
         <div className="p-3 border-t border-border">
           <Link to="/dashboard">
             <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground">
@@ -677,19 +677,17 @@ export default function Docs() {
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle />
-              {user && isOrgUser ? (
-                /* Only show Dashboard for authenticated org users */
+              {/* Hide Dashboard on landing when all visible projects are public */}
+              {user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
                 <Link to="/dashboard">
                   <Button variant="ghost" size="sm">Dashboard</Button>
                 </Link>
-              ) : !user ? (
+              ) : !user && projects.some(p => p.visibility !== "public") ? (
                 /* Show Sign in for unauthenticated users viewing internal/external docs */
-                projects.some(p => p.visibility !== "public") ? (
-                  <>
-                    <Link to="/auth"><Button variant="ghost" size="sm">Sign in</Button></Link>
-                    <Link to="/auth"><Button size="sm" className="brand-primary-bg text-white">Create account</Button></Link>
-                  </>
-                ) : null
+                <>
+                  <Link to="/auth"><Button variant="ghost" size="sm">Sign in</Button></Link>
+                  <Link to="/auth"><Button size="sm" className="brand-primary-bg text-white">Create account</Button></Link>
+                </>
               ) : null}
             </div>
           </div>
@@ -806,30 +804,28 @@ export default function Docs() {
             <ThemeToggle className="h-8 w-8 sm:h-9 sm:w-9" />
             {authLoading ? (
               <Skeleton className="h-8 w-16 sm:h-9 sm:w-24" />
-            ) : user && isOrgUser ? (
-              /* Only show Dashboard for authenticated org users */
+            ) : user && isOrgUser && selectedProject?.visibility !== "public" ? (
+              /* Only show Dashboard for authenticated org users on non-public content */
               <Link to="/dashboard">
                 <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
                   <span className="hidden sm:inline">Dashboard</span>
                   <span className="sm:hidden">Dash</span>
                 </Button>
               </Link>
-            ) : !user ? (
+            ) : !user && selectedProject?.visibility !== "public" ? (
               /* Only show auth options if current project is not public (requires login) */
-              selectedProject?.visibility !== "public" ? (
-                <>
-                  <Link to="/auth">
-                    <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
-                      Sign in
-                    </Button>
-                  </Link>
-                  <Link to="/auth">
-                    <Button size="sm" className="hidden md:inline-flex" style={{ backgroundColor: currentOrg?.primary_color }}>
-                      Create account
-                    </Button>
-                  </Link>
-                </>
-              ) : null
+              <>
+                <Link to="/auth">
+                  <Button variant="ghost" size="sm" className="px-2 sm:px-3 text-xs sm:text-sm">
+                    Sign in
+                  </Button>
+                </Link>
+                <Link to="/auth">
+                  <Button size="sm" className="hidden md:inline-flex" style={{ backgroundColor: currentOrg?.primary_color }}>
+                    Create account
+                  </Button>
+                </Link>
+              </>
             ) : null}
 
             {/* Mobile menu trigger */}
