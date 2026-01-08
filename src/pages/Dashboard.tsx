@@ -83,6 +83,7 @@ import { IntegrationsPanel } from "@/components/dashboard/IntegrationsPanel";
 import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
 
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
+import { DriveStatusIndicator } from "@/components/dashboard/DriveStatusIndicator";
 import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
 import { GlobalImportProgress } from "@/components/dashboard/GlobalImportProgress";
 import { supabase } from "@/integrations/supabase/client";
@@ -1689,6 +1690,7 @@ const Dashboard = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <DriveStatusIndicator onStatusChange={(connected) => setNeedsDriveAccess(!connected)} />
               {organizationId && <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => window.location.reload()} />}
               <Button
                 variant="outline"
