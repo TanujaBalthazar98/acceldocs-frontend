@@ -408,57 +408,206 @@ const Dashboard = () => {
   const handleDeleteProject = async (projectId: string, forceDelete = false): Promise<boolean> => {
     // RBAC check - only admins can delete projects
     if (!permissions.canDeleteProject) {
-      toast({ title: "Permission Denied", description: "You don't have permission to delete projects.", variant: "destructive" });
-      await logUnauthorizedAttempt('delete_project', 'project', projectId, projectId, 'canDeleteProject');
+      toast({
+        title: "Permission Denied",
+        description: "You don't have permission to delete projects.",
+        variant: "destructive",
+      });
+      await logUnauthorizedAttempt(
+        "delete_project",
+        "project",
+        projectId,
+        projectId,
+        "canDeleteProject"
+      );
       return false;
     }
-    
-    // Get the project's drive folder ID first
-    const project = projects.find(p => p.id === projectId);
-    
+
+    const project = projects.find((p) => p.id === projectId);
+
+    const fail = (title: string, description: string) => {
+      toast({ title, description, variant: "destructive" });
+      return false;
+    };
+
     // Trash the Drive folder if it exists - block deletion if it fails (unless force delete)
     if (project?.drive_folder_id && !forceDelete) {
       const trashResult = await trashFile(project.drive_folder_id);
       if (!trashResult.success) {
         if (trashResult.errorCode === "NOT_AUTHORIZED") {
-          // Offer force delete option - keep dialog open
           setForceDeleteAvailable(true);
-          toast({ 
-            title: "Cannot Delete from Drive", 
-            description: "This folder contains files not created by this app. Use 'Force Delete' to remove only from the app.", 
-            variant: "destructive" 
+          toast({
+            title: "Cannot Delete from Drive",
+            description:
+              "This folder contains files not created by this app. Use 'Force Delete' to remove only from the app.",
+            variant: "destructive",
           });
           return false;
         }
-        toast({ 
-          title: "Cannot Delete Project", 
-          description: trashResult.error || "Failed to trash the Drive folder. Please reconnect to Google Drive and try again.", 
-          variant: "destructive" 
-        });
-        return false;
+
+        return fail(
+          "Cannot Delete Project",
+          trashResult.error ||
+            "Failed to trash the Drive folder. Please reconnect to Google Drive and try again."
+        );
       }
     }
-    
-    // Delete all documents in the project first
-    await supabase.from("documents").delete().eq("project_id", projectId);
-    // Delete all topics in the project
-    await supabase.from("topics").delete().eq("project_id", projectId);
-    // Delete the project
-    const { error } = await supabase.from("projects").delete().eq("id", projectId);
-    
-    if (error) {
-      toast({ title: "Error", description: "Failed to delete project.", variant: "destructive" });
-      return false;
-    } else {
-      await logAction('delete_project', 'project', projectId, projectId, { projectName: project?.name, forceDelete });
-      toast({ title: "Deleted", description: forceDelete ? "Project deleted from app (Drive files remain)." : "Project moved to Drive trash and deleted from app." });
-      if (selectedProject?.id === projectId) {
-        setSelectedProject(null);
-        setSelectedTopic(null);
-      }
-      fetchData();
-      return true;
+
+    // IMPORTANT: Projects have many related records with foreign keys.
+    // We must delete/clear those first or the project delete will fail.
+
+    // 1) Delete connector actions (FK to documents/connectors)
+    {
+      const { error } = await supabase
+        .from("connector_actions")
+        .delete()
+        .eq("project_id", projectId);
+      if (error) return fail("Error", `Failed to delete connector actions: ${error.message}`);
     }
+
+    // 2) Delete page feedback for documents in this project (FK to documents)
+    {
+      const { data: docRows, error: docRowsError } = await supabase
+        .from("documents")
+        .select("id")
+        .eq("project_id", projectId);
+      if (docRowsError)
+        return fail("Error", `Failed to load project documents: ${docRowsError.message}`);
+
+      const docIds = (docRows || []).map((r: any) => r.id).filter(Boolean);
+      if (docIds.length > 0) {
+        const { error } = await supabase
+          .from("page_feedback")
+          .delete()
+          .in("document_id", docIds);
+        if (error) return fail("Error", `Failed to delete page feedback: ${error.message}`);
+      }
+    }
+
+    // 3) Delete other project-linked rows
+    {
+      const { error } = await supabase
+        .from("drive_permission_sync")
+        .delete()
+        .eq("project_id", projectId);
+      if (error) return fail("Error", `Failed to delete Drive permission sync rows: ${error.message}`);
+    }
+
+    {
+      const { error } = await supabase
+        .from("import_jobs")
+        .delete()
+        .eq("project_id", projectId);
+      if (error) return fail("Error", `Failed to delete import jobs: ${error.message}`);
+    }
+
+    {
+      const { error } = await supabase
+        .from("project_invitations")
+        .delete()
+        .eq("project_id", projectId);
+      if (error) return fail("Error", `Failed to delete project invitations: ${error.message}`);
+    }
+
+    {
+      const { error } = await supabase
+        .from("project_members")
+        .delete()
+        .eq("project_id", projectId);
+      if (error) return fail("Error", `Failed to delete project members: ${error.message}`);
+    }
+
+    // 4) Clear nullable foreign keys (keep history)
+    {
+      const { error } = await supabase
+        .from("audit_logs")
+        .update({ project_id: null })
+        .eq("project_id", projectId);
+      if (error) return fail("Error", `Failed to detach audit logs: ${error.message}`);
+    }
+
+    {
+      const { error } = await supabase
+        .from("domains")
+        .update({ project_id: null })
+        .eq("project_id", projectId);
+      if (error) return fail("Error", `Failed to detach domains: ${error.message}`);
+    }
+
+    // 5) Delete project connectors (and their related rows)
+    {
+      const { data: connectorRows, error: connectorRowsError } = await supabase
+        .from("connectors")
+        .select("id")
+        .eq("project_id", projectId);
+
+      if (connectorRowsError)
+        return fail("Error", `Failed to load project connectors: ${connectorRowsError.message}`);
+
+      const connectorIds = (connectorRows || []).map((r: any) => r.id).filter(Boolean);
+      if (connectorIds.length > 0) {
+        const { error: permsError } = await supabase
+          .from("connector_permissions")
+          .delete()
+          .in("connector_id", connectorIds);
+        if (permsError) return fail("Error", `Failed to delete connector permissions: ${permsError.message}`);
+
+        const { error: credsError } = await supabase
+          .from("connector_credentials")
+          .delete()
+          .in("connector_id", connectorIds);
+        if (credsError) return fail("Error", `Failed to delete connector credentials: ${credsError.message}`);
+
+        const { error: connectorsError } = await supabase
+          .from("connectors")
+          .delete()
+          .in("id", connectorIds);
+        if (connectorsError) return fail("Error", `Failed to delete connectors: ${connectorsError.message}`);
+      }
+    }
+
+    // 6) Delete project content
+    {
+      const { error } = await supabase
+        .from("documents")
+        .delete()
+        .eq("project_id", projectId);
+      if (error) return fail("Error", `Failed to delete project pages: ${error.message}`);
+    }
+
+    {
+      const { error } = await supabase
+        .from("topics")
+        .delete()
+        .eq("project_id", projectId);
+      if (error) return fail("Error", `Failed to delete project topics: ${error.message}`);
+    }
+
+    // 7) Delete the project
+    {
+      const { error } = await supabase.from("projects").delete().eq("id", projectId);
+      if (error) return fail("Error", `Failed to delete project: ${error.message}`);
+    }
+
+    await logAction("delete_project", "project", projectId, projectId, {
+      projectName: project?.name,
+      forceDelete,
+    });
+
+    toast({
+      title: "Deleted",
+      description: forceDelete
+        ? "Project deleted from app (Drive files remain)."
+        : "Project moved to Drive trash and deleted from app.",
+    });
+
+    if (selectedProject?.id === projectId) {
+      setSelectedProject(null);
+      setSelectedTopic(null);
+    }
+
+    fetchData();
+    return true;
   };
   
   const handleDeleteTopic = async (topicId: string, forceDelete = false): Promise<boolean> => {
