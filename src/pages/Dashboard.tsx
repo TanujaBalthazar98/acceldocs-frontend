@@ -1529,7 +1529,7 @@ const Dashboard = () => {
                   <div
                     key={subProject.id}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer",
+                      "group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer",
                       subProject.id === selectedProject.id
                         ? "bg-secondary text-foreground"
                         : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
@@ -1547,9 +1547,44 @@ const Dashboard = () => {
                       {subProject.name.charAt(0).toUpperCase()}
                     </div>
                     <span className="truncate">{subProject.name}</span>
-                    {subProject.is_published && (
-                      <span className="w-2 h-2 rounded-full bg-green-500 ml-auto shrink-0" />
-                    )}
+
+                    <div className="ml-auto flex items-center gap-1">
+                      {subProject.is_published && (
+                        <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                      )}
+
+                      {permissions.canDeleteProject && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label="Sub-project actions"
+                            >
+                              <MoreHorizontal className="w-3 h-3" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setForceDeleteAvailable(false);
+                                setItemToDelete({
+                                  type: "project",
+                                  id: subProject.id,
+                                  name: subProject.name,
+                                });
+                                setDeleteDialogOpen(true);
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
                   </div>
                 ))
               ) : (
