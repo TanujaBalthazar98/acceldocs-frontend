@@ -157,10 +157,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     
     // Basic sign-in with default scopes only (openid, email, profile)
     // Drive access is requested separately during onboarding via requestDriveAccess
+    // Use 'hd' parameter to restrict to acceldata.io domain at Google level
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: redirectUrl,
+        queryParams: {
+          hd: "acceldata.io",
+        },
       },
     });
 
