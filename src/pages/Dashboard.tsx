@@ -1479,7 +1479,38 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Search */}
+        {/* Sub-Projects Section - Shows children of selected project */}
+        {!sidebarCollapsed && selectedProject && getSubProjects(selectedProject.id).length > 0 && (
+          <div className="px-2 py-2 border-b border-border">
+            <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Sub-Projects
+            </div>
+            <div className="space-y-0.5">
+              {getSubProjects(selectedProject.id).map((subProject) => (
+                <div
+                  key={subProject.id}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                  onClick={() => {
+                    setSelectedProject(subProject);
+                    setSelectedTopic(null);
+                    setShowAPISettings(false);
+                    setShowMCPSettings(false);
+                    setShowIntegrations(false);
+                    setShowGeneralSettings(false);
+                  }}
+                >
+                  <div className="flex items-center justify-center w-5 h-5 bg-primary/20 rounded text-xs font-bold text-primary">
+                    {subProject.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="truncate">{subProject.name}</span>
+                  {subProject.is_published && (
+                    <span className="w-2 h-2 rounded-full bg-green-500 ml-auto shrink-0" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {sidebarCollapsed ? (
           <div className="p-2 border-b border-border">
             <Tooltip>
