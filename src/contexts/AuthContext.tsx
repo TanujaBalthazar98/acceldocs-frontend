@@ -49,15 +49,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Track if we've already tried to store refresh token for the current Drive-consent flow
   const hasAttemptedStoreTokenRef = useRef(false);
 
-  // Store refresh token by calling edge function that uses admin API
-  const storeRefreshToken = async () => {
+  // Store refresh token by calling edge function - pass the token from session
+  const storeRefreshToken = async (refreshToken: string) => {
     // Only attempt once per Drive-consent flow
     if (hasAttemptedStoreTokenRef.current) return;
     hasAttemptedStoreTokenRef.current = true;
 
     try {
-      console.log("Calling store-refresh-token edge function...");
-      const { data, error } = await supabase.functions.invoke("store-refresh-token");
+      console.log("Calling store-refresh-token edge function with refresh token...");
+      const { data, error } = await supabase.functions.invoke("store-refresh-token", {
+        body: { refreshToken }
+      });
 
       if (error) {
         console.error("Failed to store refresh token:", error);
@@ -92,10 +94,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
       if (event === "SIGNED_IN" && driveConsentRequested && session?.user?.id) {
         localStorage.removeItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY);
-        console.log(
-          "Drive access granted, attempting to store refresh token via edge function..."
-        );
-        setTimeout(() => storeRefreshToken(), 500);
+        
+        // Get the provider_refresh_token from the session - this is only available during OAuth callback
+        const refreshToken = session.provider_refresh_token;
+        if (refreshToken) {
+          console.log("Drive access granted, storing refresh token via edge function...");
+          setTimeout(() => storeRefreshToken(refreshToken), 500);
+        } else {
+          console.warn("No provider_refresh_token in session - token refresh will not work");
+        }
       }
 
       // Clear tokens on sign out

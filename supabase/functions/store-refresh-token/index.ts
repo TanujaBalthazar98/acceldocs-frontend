@@ -29,8 +29,7 @@ Deno.serve(async (req) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     
     if (userError || !user) {
-      // Don't return 401 for session issues - return a soft error that doesn't break the app
-      console.log("User session not valid, skipping token refresh:", userError?.message);
+      console.log("User session not valid, skipping token storage:", userError?.message);
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -42,60 +41,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log("Looking up provider refresh token for user:", user.id);
+    // Get the refresh token from the request body
+    let refreshToken: string | null = null;
+    try {
+      const body = await req.json();
+      refreshToken = body.refreshToken;
+    } catch {
+      // No body or invalid JSON - try to extract from identity data (fallback)
+    }
 
-    // Query the auth.identities table to get the provider refresh token
-    // This requires service role key
-    const { data: identities, error: identitiesError } = await supabase
-      .from("identities")
-      .select("provider, identity_data")
-      .eq("user_id", user.id)
-      .eq("provider", "google")
-      .single();
+    console.log("Processing refresh token for user:", user.id);
 
-    // If we can't query identities directly, try the auth admin API
-    if (identitiesError) {
-      console.log("Could not query identities table, trying admin API");
-      
-      // Use the admin API to get user details including identities
-      const { data: userData, error: adminError } = await supabase.auth.admin.getUserById(user.id);
-      
-      if (adminError) {
-        console.error("Admin API error:", adminError);
-        return new Response(
-          JSON.stringify({ error: "Could not retrieve user identities", details: adminError.message }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Find Google identity
-      const googleIdentity = userData.user?.identities?.find(i => i.provider === "google");
-      
-      if (!googleIdentity) {
-        console.log("No Google identity found");
-        return new Response(
-          JSON.stringify({ error: "No Google identity found for user" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // The refresh token might be in identity_data
-      const refreshToken = (googleIdentity.identity_data as Record<string, unknown>)?.refresh_token as string | undefined;
-      
-      if (!refreshToken) {
-        console.log("No refresh token in Google identity data");
-        console.log("Identity data keys:", Object.keys(googleIdentity.identity_data || {}));
-        return new Response(
-          JSON.stringify({ 
-            error: "No refresh token available", 
-            message: "Please sign in again with Google to grant offline access",
-            needsReauth: true 
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Store the refresh token in the profiles table
+    if (refreshToken) {
+      // Store the provided refresh token directly
+      console.log("Storing provided refresh token...");
       const { error: updateError } = await supabase
         .from("profiles")
         .update({ 
@@ -119,9 +78,67 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log("Found identity data");
+    // Fallback: Try to get from identity data (unlikely to have it, but worth trying)
+    console.log("No refresh token in body, attempting to retrieve from identity data...");
+    
+    const { data: userData, error: adminError } = await supabase.auth.admin.getUserById(user.id);
+    
+    if (adminError) {
+      console.error("Admin API error:", adminError);
+      return new Response(
+        JSON.stringify({ 
+          error: "No refresh token provided and could not retrieve from identity", 
+          needsReauth: true,
+          message: "Please reconnect Google Drive to grant offline access"
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const googleIdentity = userData.user?.identities?.find(i => i.provider === "google");
+    
+    if (!googleIdentity) {
+      console.log("No Google identity found");
+      return new Response(
+        JSON.stringify({ error: "No Google identity found for user", needsReauth: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const identityRefreshToken = (googleIdentity.identity_data as Record<string, unknown>)?.refresh_token as string | undefined;
+    
+    if (!identityRefreshToken) {
+      console.log("No refresh token in identity data - keys:", Object.keys(googleIdentity.identity_data || {}));
+      return new Response(
+        JSON.stringify({ 
+          error: "No refresh token available", 
+          message: "Please reconnect Google Drive to grant offline access",
+          needsReauth: true 
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Store the refresh token
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ 
+        google_refresh_token: identityRefreshToken,
+        google_token_refreshed_at: new Date().toISOString()
+      } as Record<string, unknown>)
+      .eq("id", user.id);
+
+    if (updateError) {
+      console.error("Failed to store refresh token:", updateError);
+      return new Response(
+        JSON.stringify({ error: "Failed to store refresh token", details: updateError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("Refresh token stored successfully from identity");
     return new Response(
-      JSON.stringify({ success: true, hasIdentity: true }),
+      JSON.stringify({ success: true, message: "Refresh token stored from identity" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

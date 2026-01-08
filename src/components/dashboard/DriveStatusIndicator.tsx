@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Cloud, CloudOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,45 +13,54 @@ interface DriveStatusIndicatorProps {
   onStatusChange?: (connected: boolean) => void;
 }
 
+type ConnectionStatus = 'connected' | 'disconnected' | 'needs_reauth' | 'checking' | null;
+
 export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorProps) => {
   const { requestDriveAccess, user } = useAuth();
-  const [isConnected, setIsConnected] = useState<boolean | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const hasCheckedRef = useRef(false);
 
   const checkDriveConnection = async () => {
-    if (!user) return;
+    if (!user || hasCheckedRef.current) return;
+    hasCheckedRef.current = true;
     
-    setIsChecking(true);
+    setConnectionStatus('checking');
     try {
-      // Try to list a folder to verify the token works
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.provider_token;
       
-      if (!token) {
-        setIsConnected(false);
+      // Check if user has a refresh token stored
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('google_refresh_token')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      const hasRefreshToken = !!profile?.google_refresh_token;
+      
+      if (!token && !hasRefreshToken) {
+        setConnectionStatus('needs_reauth');
         onStatusChange?.(false);
         return;
       }
 
-      // Make a simple API call to verify the token
+      // Make a simple API call to verify the token works
       const response = await supabase.functions.invoke('google-drive', {
         body: { action: 'list_folder', folderId: 'root' }
       });
 
       if (response.error || response.data?.needsReauth) {
-        setIsConnected(false);
-        onStatusChange?.(false);
+        setConnectionStatus(hasRefreshToken ? 'connected' : 'needs_reauth');
+        onStatusChange?.(hasRefreshToken);
       } else {
-        setIsConnected(true);
+        setConnectionStatus('connected');
         onStatusChange?.(true);
       }
     } catch (error) {
       console.error('Error checking Drive connection:', error);
-      setIsConnected(false);
+      setConnectionStatus('needs_reauth');
       onStatusChange?.(false);
-    } finally {
-      setIsChecking(false);
     }
   };
 
@@ -61,20 +70,17 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
 
   const handleReconnect = async () => {
     setIsReconnecting(true);
+    hasCheckedRef.current = false;
     try {
       await requestDriveAccess();
-      // Re-check connection after a short delay
-      setTimeout(() => {
-        checkDriveConnection();
-        setIsReconnecting(false);
-      }, 2000);
+      // The page will redirect for OAuth - no need to re-check here
     } catch (error) {
       console.error('Error reconnecting to Drive:', error);
       setIsReconnecting(false);
     }
   };
 
-  if (isChecking || isConnected === null) {
+  if (connectionStatus === 'checking' || connectionStatus === null) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -88,7 +94,7 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
     );
   }
 
-  if (isConnected) {
+  if (connectionStatus === 'connected') {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
