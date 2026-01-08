@@ -14,7 +14,7 @@ const GOOGLE_TOKEN_KEY = "google_access_token";
 
 export const useGoogleDrive = () => {
   const { toast } = useToast();
-  const { googleAccessToken, requestDriveAccess } = useAuth();
+  const { googleAccessToken, requestDriveAccess, signOut } = useAuth();
 
   const getGoogleToken = (): string | null => {
     // First try from context, then from localStorage
@@ -37,6 +37,19 @@ export const useGoogleDrive = () => {
     return true;
   };
 
+  // Handle re-authentication automatically: prompt user to sign out and back in
+  const handleReauthRequired = () => {
+    toast({
+      title: "Session expired",
+      description: "Your Google session has expired. Signing you out so you can sign back in.",
+      variant: "destructive",
+    });
+    // Give user time to read the message, then sign out
+    setTimeout(() => {
+      signOut();
+    }, 2000);
+  };
+
   const listFolder = async (folderId: string): Promise<{ files: DriveFile[] | null; needsDriveAccess?: boolean }> => {
     const token = getGoogleToken();
     if (!token) {
@@ -51,11 +64,7 @@ export const useGoogleDrive = () => {
     // Ensure session is fresh
     const sessionValid = await ensureFreshSession();
     if (!sessionValid) {
-      toast({
-        title: "Session expired",
-        description: "Please sign in again.",
-        variant: "destructive",
-      });
+      handleReauthRequired();
       return { files: null };
     }
 
@@ -79,13 +88,9 @@ export const useGoogleDrive = () => {
       return { files: null };
     }
 
-    // Check for reauth needed - treat same as needsDriveAccess to show reconnect banner
+    // Check for reauth needed - automatically handle it
     if (data?.needsReauth) {
-      toast({
-        title: "Google Drive access expired",
-        description: "Please reconnect to Google Drive to continue.",
-        variant: "destructive",
-      });
+      handleReauthRequired();
       return { files: null, needsDriveAccess: true };
     }
 
@@ -109,7 +114,11 @@ export const useGoogleDrive = () => {
     }
 
     // Ensure session is fresh
-    await ensureFreshSession();
+    const sessionValid = await ensureFreshSession();
+    if (!sessionValid) {
+      handleReauthRequired();
+      return null;
+    }
 
     const { data, error } = await supabase.functions.invoke("google-drive", {
       body: {
@@ -133,11 +142,7 @@ export const useGoogleDrive = () => {
     }
 
     if (data?.needsReauth) {
-      toast({
-        title: "Re-authentication required",
-        description: "Your Google session has expired. Please sign out and sign in again.",
-        variant: "destructive",
-      });
+      handleReauthRequired();
       return null;
     }
     
@@ -165,7 +170,11 @@ export const useGoogleDrive = () => {
     }
 
     // Ensure session is fresh
-    await ensureFreshSession();
+    const sessionValid = await ensureFreshSession();
+    if (!sessionValid) {
+      handleReauthRequired();
+      return null;
+    }
 
     const { data, error } = await supabase.functions.invoke("google-drive", {
       body: {
@@ -189,11 +198,7 @@ export const useGoogleDrive = () => {
     }
 
     if (data?.needsReauth) {
-      toast({
-        title: "Re-authentication required",
-        description: "Please sign out and sign in again with Google.",
-        variant: "destructive",
-      });
+      handleReauthRequired();
       return null;
     }
 
@@ -208,7 +213,11 @@ export const useGoogleDrive = () => {
     }
 
     // Ensure session is fresh
-    await ensureFreshSession();
+    const sessionValid = await ensureFreshSession();
+    if (!sessionValid) {
+      handleReauthRequired();
+      return { success: false, error: "Session expired", errorCode: "SESSION_EXPIRED" };
+    }
 
     const { data, error } = await supabase.functions.invoke("google-drive", {
       body: {
@@ -226,8 +235,8 @@ export const useGoogleDrive = () => {
     }
 
     if (data?.needsReauth) {
-      console.log("Re-authentication required for trash operation");
-      return { success: false, error: "Re-authentication required", errorCode: "NEEDS_REAUTH" };
+      handleReauthRequired();
+      return { success: false, error: "Session expired", errorCode: "NEEDS_REAUTH" };
     }
 
     if (data?.error) {
