@@ -41,7 +41,23 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       if (!user) return;
 
       try {
-        // Check if Acceldata org already exists
+        // First check if user already has a pending join request (they can see their own requests)
+        const { data: pendingRequest } = await supabase
+          .from("join_requests")
+          .select("id, status, organization_id")
+          .eq("user_id", user.id)
+          .eq("status", "pending")
+          .maybeSingle();
+
+        if (pendingRequest) {
+          setExistingOrgId(pendingRequest.organization_id);
+          setOnboardingMode("pending_request");
+          setIsCheckingOrg(false);
+          return;
+        }
+
+        // Try to check if Acceldata org exists using RLS-visible query
+        // This query works because of "Users can view organizations by domain" policy
         const { data: existingOrg, error } = await supabase
           .from("organizations")
           .select("id, drive_folder_id")
@@ -54,27 +70,15 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
         if (existingOrg) {
           setExistingOrgId(existingOrg.id);
-          
-          // Check if user already has a pending join request
-          const { data: pendingRequest } = await supabase
-            .from("join_requests")
-            .select("id, status")
-            .eq("user_id", user.id)
-            .eq("organization_id", existingOrg.id)
-            .eq("status", "pending")
-            .maybeSingle();
-
-          if (pendingRequest) {
-            setOnboardingMode("pending_request");
-          } else {
-            setOnboardingMode("join_existing");
-          }
+          setOnboardingMode("join_existing");
         } else {
-          // No org exists - this user will be the first/owner
+          // No org found via RLS - this user will be the first/owner
           setOnboardingMode("first_user");
         }
       } catch (err) {
         console.error("Error during org check:", err);
+        // Default to join_existing to avoid duplicate creation errors
+        setOnboardingMode("join_existing");
       } finally {
         setIsCheckingOrg(false);
       }
