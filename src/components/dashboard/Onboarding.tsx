@@ -120,50 +120,42 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
     setIsCreating(true);
     try {
-      // Create the Acceldata organization (this user becomes owner)
-      const { data: newOrg, error: createError } = await supabase
-        .from("organizations")
-        .insert({
+      // Create (or fetch) the Acceldata workspace in an idempotent way.
+      // This avoids "duplicate key" errors if the org already exists but isn't RLS-visible here.
+      const { data, error } = await supabase.functions.invoke("ensure-acceldata-workspace", {
+        body: {
           domain: ACCELDATA_DOMAIN,
           name: ACCELDATA_WORKSPACE_NAME,
-          owner_id: user.id,
-        })
-        .select("id")
-        .single();
+        },
+      });
 
-      if (createError) throw createError;
+      if (error || !data?.ok || !data?.organizationId) {
+        throw error || new Error(data?.error || "Failed to ensure workspace");
+      }
 
-      // Update user's profile to link to this org
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert({
-          id: user.id,
-          email: user.email || "",
-          organization_id: newOrg.id,
-          account_type: "team"
-        }, { onConflict: "id" });
+      // If it already existed, switch the user into the request-access flow.
+      if (data.existed) {
+        setExistingOrgId(data.organizationId);
+        setOnboardingMode("join_existing");
+        toast({
+          title: "Workspace already exists",
+          description: "Request access to join the existing Acceldata workspace.",
+        });
+        return;
+      }
 
-      if (profileError) throw profileError;
-
-      // Add user as owner
-      await supabase
-        .from("user_roles")
-        .upsert({
-          user_id: user.id,
-          organization_id: newOrg.id,
-          role: "owner",
-        }, { onConflict: "user_id,organization_id" });
-
-      // Create Drive folder if connected
+      // Create Drive folder if connected, then store folder id (without overwriting if already set).
       if (driveConnected) {
         const folderName = `Acceldocs - ${ACCELDATA_WORKSPACE_NAME}`;
         const folder = await createFolder(folderName, "root");
 
         if (folder?.id) {
-          await supabase
-            .from("organizations")
-            .update({ drive_folder_id: folder.id })
-            .eq("id", newOrg.id);
+          await supabase.functions.invoke("ensure-acceldata-workspace", {
+            body: {
+              domain: ACCELDATA_DOMAIN,
+              driveFolderId: folder.id,
+            },
+          });
         }
       }
 
