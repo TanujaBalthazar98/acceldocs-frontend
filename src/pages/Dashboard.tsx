@@ -437,6 +437,15 @@ const Dashboard = () => {
       return false;
     };
 
+    // Check for and delete child projects first (sub-projects)
+    const childProjects = projects.filter(p => p.parent_id === projectId);
+    for (const child of childProjects) {
+      const childDeleted = await handleDeleteProject(child.id, forceDelete);
+      if (!childDeleted) {
+        return fail("Error", `Failed to delete sub-project "${child.name}". Please delete it first.`);
+      }
+    }
+
     // Trash the Drive folder if it exists - block deletion if it fails (unless force delete)
     if (project?.drive_folder_id && !forceDelete) {
       const trashResult = await trashFile(project.drive_folder_id);
