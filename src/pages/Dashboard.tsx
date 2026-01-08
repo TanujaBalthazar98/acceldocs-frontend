@@ -1272,9 +1272,17 @@ const Dashboard = () => {
     return <PageView onBack={() => setSelectedPage(null)} />;
   }
 
-  // Get root projects (no parent) and their children
-  const rootProjects = filteredProjects.filter(p => !p.parent_id);
-  const getSubProjects = (parentId: string) => filteredProjects.filter(p => p.parent_id === parentId);
+  // Projects tree helpers (single-level nesting)
+  const rootProjects = filteredProjects.filter((p) => !p.parent_id);
+  const getSubProjects = (parentId: string) => filteredProjects.filter((p) => p.parent_id === parentId);
+
+  const selectedParentProject = selectedProject?.parent_id
+    ? filteredProjects.find((p) => p.id === selectedProject.parent_id) || null
+    : null;
+
+  // If you're inside a sub-project, show its siblings (parent's sub-projects) for easy switching.
+  const subProjectsGroupProject = selectedParentProject ?? selectedProject ?? null;
+  const visibleSubProjects = subProjectsGroupProject ? getSubProjects(subProjectsGroupProject.id) : [];
 
   return (
     <TooltipProvider>
@@ -1479,7 +1487,7 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Sub-Projects Section - Always show when project is selected */}
+        {/* Sub-Projects Section - Shows children of selected project (or siblings when inside a sub-project) */}
         {!sidebarCollapsed && selectedProject && (
           <div className="px-2 py-2 border-b border-border">
             <div className="flex items-center justify-between px-3 py-1.5">
@@ -1493,7 +1501,8 @@ const Dashboard = () => {
                     size="icon"
                     className="h-5 w-5"
                     onClick={() => {
-                      setParentProjectForCreate(selectedProject);
+                      if (!subProjectsGroupProject) return;
+                      setParentProjectForCreate(subProjectsGroupProject);
                       setAddProjectOpen(true);
                     }}
                   >
@@ -1506,11 +1515,16 @@ const Dashboard = () => {
               </Tooltip>
             </div>
             <div className="space-y-0.5">
-              {getSubProjects(selectedProject.id).length > 0 ? (
-                getSubProjects(selectedProject.id).map((subProject) => (
+              {visibleSubProjects.length > 0 ? (
+                visibleSubProjects.map((subProject) => (
                   <div
                     key={subProject.id}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer",
+                      subProject.id === selectedProject.id
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    )}
                     onClick={() => {
                       setSelectedProject(subProject);
                       setSelectedTopic(null);
@@ -2541,7 +2555,8 @@ const Dashboard = () => {
           setAddProjectOpen(open);
           if (!open) setParentProjectForCreate(null);
         }}
-        rootFolderId={parentProjectForCreate?.drive_folder_id || rootFolderId}
+        rootFolderId={rootFolderId}
+        driveParentFolderId={parentProjectForCreate?.drive_folder_id ?? null}
         organizationId={organizationId || undefined}
         parentProjectId={parentProjectForCreate?.id}
         parentProjectName={parentProjectForCreate?.name}

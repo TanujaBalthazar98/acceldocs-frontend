@@ -21,7 +21,10 @@ import { ZipImportDialog } from "./ZipImportDialog";
 interface AddProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Organization root Drive folder id */
   rootFolderId: string | null;
+  /** Optional preferred Drive parent folder id (e.g. parent project folder) */
+  driveParentFolderId?: string | null;
   organizationId?: string;
   parentProjectId?: string | null;
   parentProjectName?: string;
@@ -36,7 +39,8 @@ interface FileEntry {
 export const AddProjectDialog = ({ 
   open, 
   onOpenChange, 
-  rootFolderId, 
+  rootFolderId,
+  driveParentFolderId,
   organizationId,
   parentProjectId,
   parentProjectName,
@@ -55,21 +59,35 @@ export const AddProjectDialog = ({
   const { toast } = useToast();
   const { user } = useAuth();
 
+  const tryCreateProjectFolder = async (name: string) => {
+    if (!rootFolderId) return null;
+
+    const primaryParentId = driveParentFolderId || rootFolderId;
+    let folder = await createFolder(name, primaryParentId);
+
+    // If we tried to create inside the parent project folder and it failed,
+    // fall back to the org root folder so users can still create sub-projects.
+    if (!folder && driveParentFolderId && driveParentFolderId !== rootFolderId) {
+      folder = await createFolder(name, rootFolderId);
+      if (folder) {
+        toast({
+          title: "Created in root folder",
+          description: "Could not create inside the parent project folder. Created under the root instead.",
+        });
+      }
+    }
+
+    return folder;
+  };
+
   const handleCreateEmpty = async () => {
     if (!projectName.trim() || !rootFolderId || !organizationId || !user) return;
 
     setIsCreating(true);
 
     try {
-      const folder = await createFolder(projectName.trim(), rootFolderId);
-      if (!folder) {
-        toast({
-          title: "Failed to create project",
-          description: "Could not create the project folder in Drive.",
-          variant: "destructive",
-        });
-        return;
-      }
+      const folder = await tryCreateProjectFolder(projectName.trim());
+      if (!folder) return;
 
       const { error: createProjectError } = await supabase.from("projects").insert({
         name: projectName.trim(),
@@ -140,15 +158,8 @@ export const AddProjectDialog = ({
 
     try {
       // Step 1: Create the project folder
-      const folder = await createFolder(projectName.trim(), rootFolderId);
-      if (!folder) {
-        toast({
-          title: "Failed to create project",
-          description: "Could not create the project folder in Drive.",
-          variant: "destructive",
-        });
-        return;
-      }
+      const folder = await tryCreateProjectFolder(projectName.trim());
+      if (!folder) return;
 
       // Step 2: Create the project record immediately (no manual sync required)
       const { data: project, error: createProjectError } = await supabase
@@ -266,15 +277,8 @@ export const AddProjectDialog = ({
     setIsCreating(true);
     try {
       // Create project folder first
-      const folder = await createFolder(projectName.trim(), rootFolderId);
-      if (!folder) {
-        toast({
-          title: "Failed to create project",
-          description: "Could not create the project folder in Drive.",
-          variant: "destructive",
-        });
-        return;
-      }
+      const folder = await tryCreateProjectFolder(projectName.trim());
+      if (!folder) return;
 
       // Create project record
       const { data: project, error } = await supabase
