@@ -49,16 +49,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Track if we've already tried to store refresh token for the current Drive-consent flow
   const hasAttemptedStoreTokenRef = useRef(false);
 
-  // Store refresh token by calling edge function - pass the token from session
-  const storeRefreshToken = async (refreshToken: string) => {
+  // Store refresh token by calling backend function.
+  // If refreshToken isn't provided, the backend will try to extract it from the user's Google identity.
+  const storeRefreshToken = async (refreshToken?: string) => {
     // Only attempt once per Drive-consent flow
     if (hasAttemptedStoreTokenRef.current) return;
     hasAttemptedStoreTokenRef.current = true;
 
     try {
-      console.log("Calling store-refresh-token edge function with refresh token...");
       const { data, error } = await supabase.functions.invoke("store-refresh-token", {
-        body: { refreshToken }
+        body: refreshToken ? { refreshToken } : {},
       });
 
       if (error) {
@@ -75,7 +75,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Set up auth state listener FIRST
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("Auth state changed:", event);
       setSession(session);
       setUser(session?.user ?? null);
@@ -92,17 +92,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const driveConsentRequested =
         localStorage.getItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY) === "1";
 
-      if (event === "SIGNED_IN" && driveConsentRequested && session?.user?.id) {
+      const shouldStoreAfterDriveConsent =
+        driveConsentRequested &&
+        !!session?.user?.id &&
+        (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED");
+
+      if (shouldStoreAfterDriveConsent) {
         localStorage.removeItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY);
-        
-        // Get the provider_refresh_token from the session - this is only available during OAuth callback
-        const refreshToken = session.provider_refresh_token;
-        if (refreshToken) {
-          console.log("Drive access granted, storing refresh token via edge function...");
-          setTimeout(() => storeRefreshToken(refreshToken), 500);
-        } else {
-          console.warn("No provider_refresh_token in session - token refresh will not work");
-        }
+
+        // provider_refresh_token is often only present during consent. If it's missing,
+        // we still invoke the backend to try to extract/store it from identity data.
+        const refreshToken = session?.provider_refresh_token;
+        setTimeout(() => storeRefreshToken(refreshToken ?? undefined), 500);
       }
 
       // Clear tokens on sign out
@@ -182,6 +183,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signInWithGoogle = async () => {
     const redirectUrl = `${window.location.origin}/dashboard`;
 
+    // Allow a fresh attempt to store refresh tokens after consent flows
+    hasAttemptedStoreTokenRef.current = false;
+
     // Restrict account chooser to acceldata.io and force account selection.
     // Use skipBrowserRedirect so we can control navigation (new tab in preview iframe).
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -207,6 +211,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Using drive.readonly to read existing files + drive.file to create new ones
   const requestDriveAccess = async () => {
     const redirectUrl = `${window.location.origin}/dashboard`;
+
+    // Allow a fresh attempt to store refresh tokens after consent flows
+    hasAttemptedStoreTokenRef.current = false;
 
     // Mark that we're about to request offline/Drive scopes so we can store the refresh token after redirect
     localStorage.setItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY, "1");
