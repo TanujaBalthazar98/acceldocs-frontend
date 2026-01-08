@@ -996,8 +996,7 @@ const Dashboard = () => {
                   <span className="text-lg font-semibold text-foreground">Acceldocs</span>
                 </div>
 
-                <div className="flex items-center gap-1">
-                  {organizationId && <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => window.location.reload()} />}
+                <div className="flex items-center">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -1685,6 +1684,7 @@ const Dashboard = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
+              {organizationId && <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => window.location.reload()} />}
               <Button
                 variant="outline"
                 size="sm"
