@@ -583,6 +583,16 @@ const Dashboard = () => {
       if (error) return fail("Error", `Failed to delete project topics: ${error.message}`);
     }
 
+    // 6b) Delete slug history for project
+    {
+      const { error } = await supabase
+        .from("slug_history")
+        .delete()
+        .eq("entity_type", "project")
+        .eq("entity_id", projectId);
+      if (error) console.warn("Failed to delete slug history:", error.message);
+    }
+
     // 7) Delete the project
     {
       const { error } = await supabase.from("projects").delete().eq("id", projectId);

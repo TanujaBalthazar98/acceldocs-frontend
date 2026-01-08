@@ -70,11 +70,19 @@ export function ConvertTopicDialog({
       const descendantTopics = getDescendantTopics(topicId);
       const allTopicIds = [topicId, ...descendantTopics.map(t => t.id)];
 
-      // Get all documents in these topics
-      const { data: documents } = await supabase
+      // Get all documents in these topics AND documents directly in the main topic
+      const { data: documents, error: docsQueryError } = await supabase
         .from("documents")
         .select("*")
         .in("topic_id", allTopicIds);
+
+      if (docsQueryError) {
+        console.error("Error fetching documents:", docsQueryError);
+      }
+
+      console.log("Converting topic:", topicId);
+      console.log("All topic IDs:", allTopicIds);
+      console.log("Documents found:", documents?.length || 0);
 
       // Create new project
       const { data: newProject, error: projectError } = await supabase
@@ -92,14 +100,15 @@ export function ConvertTopicDialog({
 
       if (projectError) throw projectError;
 
+      console.log("New project created:", newProject.id);
+
       // Create topic ID mapping for the new project
       const topicIdMap = new Map<string, string>();
 
-      // Create root topic in new project (the converted topic becomes root-level)
-      // First, copy child topics maintaining hierarchy
+      // Create child topics in new project maintaining hierarchy
       for (const childTopic of descendantTopics) {
         const newParentId = childTopic.parent_id === topicId 
-          ? null // Direct children become root-level in new project
+          ? null // Direct children of the converted topic become root-level in new project
           : topicIdMap.get(childTopic.parent_id!);
 
         const { data: newTopic, error: newTopicError } = await supabase
@@ -121,68 +130,92 @@ export function ConvertTopicDialog({
         }
 
         topicIdMap.set(childTopic.id, newTopic.id);
+        console.log("Topic mapped:", childTopic.id, "->", newTopic.id);
       }
 
-      // Copy documents
+      // Copy documents one by one for better error handling
+      let copiedCount = 0;
+      let failedCount = 0;
+      
       if (documents && documents.length > 0) {
-        const docInserts = documents.map(doc => {
+        for (const doc of documents) {
           // Documents directly in the converted topic go to root (no topic)
           // Documents in child topics get mapped to new topic IDs
-          let newTopicId = null;
-          if (doc.topic_id !== topicId) {
-            newTopicId = topicIdMap.get(doc.topic_id!) || null;
+          let newTopicId: string | null = null;
+          if (doc.topic_id && doc.topic_id !== topicId) {
+            newTopicId = topicIdMap.get(doc.topic_id) || null;
           }
 
-          return {
-            title: doc.title,
-            slug: doc.slug,
-            google_doc_id: doc.google_doc_id,
-            project_id: newProject.id,
-            topic_id: newTopicId,
-            content: doc.content,
-            content_html: doc.content_html,
-            published_content_html: mode === "copy" ? null : doc.published_content_html,
-            owner_id: doc.owner_id,
-            visibility: doc.visibility,
-            is_published: false, // New project starts unpublished
-          };
-        });
+          const { error: docError } = await supabase
+            .from("documents")
+            .insert({
+              title: doc.title,
+              slug: doc.slug,
+              google_doc_id: doc.google_doc_id,
+              project_id: newProject.id,
+              topic_id: newTopicId,
+              content: doc.content,
+              content_html: doc.content_html,
+              published_content_html: mode === "copy" ? null : doc.published_content_html,
+              owner_id: doc.owner_id,
+              visibility: doc.visibility,
+              is_published: false, // New project starts unpublished
+            });
 
-        const { error: docsError } = await supabase
-          .from("documents")
-          .insert(docInserts);
-
-        if (docsError) {
-          console.error("Error copying documents:", docsError);
+          if (docError) {
+            console.error("Error copying document:", doc.title, docError);
+            failedCount++;
+          } else {
+            copiedCount++;
+            console.log("Document copied:", doc.title, "to topic:", newTopicId);
+          }
         }
       }
+
+      console.log(`Documents copied: ${copiedCount}, failed: ${failedCount}`);
 
       // If move mode, delete original topic and its contents
       if (mode === "move") {
         // Delete documents first
-        await supabase
+        const { error: delDocsErr } = await supabase
           .from("documents")
           .delete()
           .in("topic_id", allTopicIds);
+        
+        if (delDocsErr) {
+          console.error("Error deleting original documents:", delDocsErr);
+        }
 
         // Delete child topics (in reverse order to handle hierarchy)
         for (const descendant of [...descendantTopics].reverse()) {
-          await supabase
+          const { error: delTopicErr } = await supabase
             .from("topics")
             .delete()
             .eq("id", descendant.id);
+          
+          if (delTopicErr) {
+            console.error("Error deleting child topic:", descendant.name, delTopicErr);
+          }
         }
 
         // Delete the main topic
-        await supabase
+        const { error: delMainErr } = await supabase
           .from("topics")
           .delete()
           .eq("id", topicId);
+        
+        if (delMainErr) {
+          console.error("Error deleting main topic:", delMainErr);
+        }
       }
+
+      const successMessage = failedCount > 0 
+        ? `"${topicName}" has been ${mode === "move" ? "moved to" : "copied as"} "${projectName}" with ${copiedCount} pages (${failedCount} failed)`
+        : `"${topicName}" has been ${mode === "move" ? "moved to" : "copied as"} "${projectName}" with ${copiedCount} pages`;
 
       toast({
         title: "Topic Converted",
-        description: `"${topicName}" has been ${mode === "move" ? "moved to" : "copied as"} a new project: "${projectName}"`,
+        description: successMessage,
       });
 
       onOpenChange(false);
