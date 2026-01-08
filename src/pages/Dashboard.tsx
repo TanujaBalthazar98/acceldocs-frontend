@@ -45,6 +45,7 @@ import {
   Loader2,
   Home,
   GitBranch,
+  ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -205,6 +206,8 @@ const Dashboard = () => {
   const [isBulkPublishing, setIsBulkPublishing] = useState(false);
   const [parentProjectForCreate, setParentProjectForCreate] = useState<Project | null>(null);
   const [isBulkUnpublishing, setIsBulkUnpublishing] = useState(false);
+  const [subProjectsExpanded, setSubProjectsExpanded] = useState(true);
+  const [topicsExpanded, setTopicsExpanded] = useState(true);
   
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading } = usePermissions(selectedProject?.id || null);
@@ -1499,100 +1502,110 @@ const Dashboard = () => {
         {/* Sub-Projects Section - Shows children of selected project (or siblings when inside a sub-project) */}
         {!sidebarCollapsed && selectedProject && (
           <div className="px-2 py-2 border-b border-border">
-            <div className="flex items-center justify-between px-3 py-1.5">
+            <button 
+              className="flex items-center justify-between px-3 py-1.5 w-full hover:bg-secondary/50 rounded-lg transition-colors"
+              onClick={() => setSubProjectsExpanded(!subProjectsExpanded)}
+            >
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Sub-Projects
               </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={() => {
-                      if (!subProjectsGroupProject) return;
-                      setParentProjectForCreate(subProjectsGroupProject);
-                      setAddProjectOpen(true);
-                    }}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p>Create Sub-Project</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="space-y-0.5">
-              {visibleSubProjects.length > 0 ? (
-                visibleSubProjects.map((subProject) => (
-                  <div
-                    key={subProject.id}
-                    className={cn(
-                      "group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer",
-                      subProject.id === selectedProject.id
-                        ? "bg-secondary text-foreground"
-                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                    )}
-                    onClick={() => {
-                      setSelectedProject(subProject);
-                      setSelectedTopic(null);
-                      setShowAPISettings(false);
-                      setShowMCPSettings(false);
-                      setShowIntegrations(false);
-                      setShowGeneralSettings(false);
-                    }}
-                  >
-                    <div className="flex items-center justify-center w-5 h-5 bg-primary/20 rounded text-xs font-bold text-primary">
-                      {subProject.name.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="truncate">{subProject.name}</span>
-
-                    <div className="ml-auto flex items-center gap-1">
-                      {subProject.is_published && (
-                        <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+              <div className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="p-1 rounded hover:bg-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!subProjectsGroupProject) return;
+                        setParentProjectForCreate(subProjectsGroupProject);
+                        setAddProjectOpen(true);
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Create Sub-Project</p>
+                  </TooltipContent>
+                </Tooltip>
+                <ChevronDown className={cn(
+                  "w-4 h-4 text-muted-foreground transition-transform",
+                  !subProjectsExpanded && "-rotate-90"
+                )} />
+              </div>
+            </button>
+            {subProjectsExpanded && (
+              <div className="space-y-0.5 mt-1">
+                {visibleSubProjects.length > 0 ? (
+                  visibleSubProjects.map((subProject) => (
+                    <div
+                      key={subProject.id}
+                      className={cn(
+                        "group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer",
+                        subProject.id === selectedProject.id
+                          ? "bg-secondary text-foreground"
+                          : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                       )}
+                      onClick={() => {
+                        setSelectedProject(subProject);
+                        setSelectedTopic(null);
+                        setShowAPISettings(false);
+                        setShowMCPSettings(false);
+                        setShowIntegrations(false);
+                        setShowGeneralSettings(false);
+                      }}
+                    >
+                      <div className="flex items-center justify-center w-5 h-5 bg-primary/20 rounded text-xs font-bold text-primary">
+                        {subProject.name.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="truncate">{subProject.name}</span>
 
-                      {permissions.canDeleteProject && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
-                              onClick={(e) => e.stopPropagation()}
-                              aria-label="Sub-project actions"
-                            >
-                              <MoreHorizontal className="w-3 h-3" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setForceDeleteAvailable(false);
-                                setItemToDelete({
-                                  type: "project",
-                                  id: subProject.id,
-                                  name: subProject.name,
-                                });
-                                setDeleteDialogOpen(true);
-                              }}
-                            >
-                              <Trash2 className="w-3 h-3 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                      <div className="ml-auto flex items-center gap-1">
+                        {subProject.is_published && (
+                          <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                        )}
+
+                        {permissions.canDeleteProject && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label="Sub-project actions"
+                              >
+                                <MoreHorizontal className="w-3 h-3" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setForceDeleteAvailable(false);
+                                  setItemToDelete({
+                                    type: "project",
+                                    id: subProject.id,
+                                    name: subProject.name,
+                                  });
+                                  setDeleteDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className="w-3 h-3 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-xs text-muted-foreground italic">
+                    No sub-projects yet
                   </div>
-                ))
-              ) : (
-                <div className="px-3 py-2 text-xs text-muted-foreground italic">
-                  No sub-projects yet
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         {sidebarCollapsed ? (
@@ -1735,60 +1748,70 @@ const Dashboard = () => {
               )}
 
               {/* Topics header */}
-              <div className="flex items-center justify-between px-2 py-2">
+              <button 
+                className="flex items-center justify-between px-2 py-2 w-full hover:bg-secondary/50 rounded-lg transition-colors"
+                onClick={() => setTopicsExpanded(!topicsExpanded)}
+              >
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Topics
                 </span>
                 <div className="flex items-center gap-1">
-                  <button 
-                    onClick={handleSyncFromDrive}
-                    disabled={isSyncing || !rootFolderId}
-                    className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  <span
+                    className="p-1 rounded hover:bg-secondary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSyncFromDrive();
+                    }}
                     title="Sync from Google Drive"
                   >
-                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                  </button>
-                  <Button 
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
+                    <RefreshCw className={cn("w-4 h-4 text-muted-foreground", isSyncing && "animate-spin")} />
+                  </span>
+                  <span
+                    className="p-1 rounded hover:bg-secondary"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setAddTopicOpen(true);
                     }}
-                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
                   >
-                    <Plus className="w-4 h-4" />
-                  </Button>
+                    <Plus className="w-4 h-4 text-muted-foreground" />
+                  </span>
+                  <ChevronDown className={cn(
+                    "w-4 h-4 text-muted-foreground transition-transform",
+                    !topicsExpanded && "-rotate-90"
+                  )} />
                 </div>
-              </div>
+              </button>
 
               {/* Topics list */}
-              <div className="space-y-1">
-                <SidebarTopicsTree
-                  topics={filteredTopics.filter(t => t.project_id === selectedProject.id)}
-                  selectedTopic={selectedTopic}
-                  onSelectTopic={(topic) => {
-                    setSelectedTopic(topic);
-                    setMobileSidebarOpen(false);
-                  }}
-                  onAddPage={(topic) => {
-                    setSelectedTopic(topic);
-                    setAddPageOpen(true);
-                  }}
-                  onAddSubtopic={(topic) => {
-                    setParentTopicForCreate(topic);
-                    setAddTopicOpen(true);
-                  }}
-                  onOpenSettings={(topic) => {
-                    setSettingsTopic(topic);
-                    setTopicSettingsOpen(true);
-                  }}
-                  onDeleteTopic={(topic) => {
-                    setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
-                    setDeleteDialogOpen(true);
-                  }}
-                  onTopicsReordered={fetchData}
-                />
-              </div>
+              {topicsExpanded && (
+                <div className="space-y-1 mt-1">
+                  <SidebarTopicsTree
+                    topics={filteredTopics.filter(t => t.project_id === selectedProject.id)}
+                    selectedTopic={selectedTopic}
+                    onSelectTopic={(topic) => {
+                      setSelectedTopic(topic);
+                      setMobileSidebarOpen(false);
+                    }}
+                    onAddPage={(topic) => {
+                      setSelectedTopic(topic);
+                      setAddPageOpen(true);
+                    }}
+                    onAddSubtopic={(topic) => {
+                      setParentTopicForCreate(topic);
+                      setAddTopicOpen(true);
+                    }}
+                    onOpenSettings={(topic) => {
+                      setSettingsTopic(topic);
+                      setTopicSettingsOpen(true);
+                    }}
+                    onDeleteTopic={(topic) => {
+                      setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
+                      setDeleteDialogOpen(true);
+                    }}
+                    onTopicsReordered={fetchData}
+                  />
+                </div>
+              )}
             </>
           ) : (
             /* No project selected - prompt to select one */
@@ -2149,7 +2172,7 @@ const Dashboard = () => {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="gap-1.5 h-8 px-2 sm:px-3 hidden sm:flex" 
+                  className="gap-1.5 h-8 px-2 sm:px-3" 
                   onClick={() => window.open(`/docs/${organizationSlug}`, '_blank')}
                 >
                   <BookOpen className="w-4 h-4" />
