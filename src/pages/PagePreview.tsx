@@ -365,7 +365,7 @@ export default function PagePreview() {
               </Button>
             </div>
           ) : docContent ? (
-            <div className="prose prose-invert max-w-none docs-content">
+            <div className="prose dark:prose-invert max-w-none docs-content">
               <div dangerouslySetInnerHTML={{ __html: docContent }} />
             </div>
           ) : (

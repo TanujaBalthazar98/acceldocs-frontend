@@ -2320,6 +2320,7 @@ const Dashboard = () => {
         topicId={settingsTopic?.id || null}
         topicName={settingsTopic?.name || null}
         projectId={settingsTopic?.project_id || null}
+        organizationId={organizationId}
         onUpdate={() => fetchData()}
       />
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
