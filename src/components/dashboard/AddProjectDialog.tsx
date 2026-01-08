@@ -10,12 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FolderPlus, Upload, FileText, FolderTree, Loader2 } from "lucide-react";
+import { FolderPlus, Upload, FileText, FolderTree, Loader2, FolderArchive } from "lucide-react";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { ImportProgressIndicator } from "./ImportProgressIndicator";
+import { ZipImportDialog } from "./ZipImportDialog";
 
 interface AddProjectDialogProps {
   open: boolean;
@@ -43,6 +44,8 @@ export const AddProjectDialog = ({
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [importJobId, setImportJobId] = useState<string | null>(null);
   const [createdFolder, setCreatedFolder] = useState<{ id: string; name: string } | null>(null);
+  const [showZipImport, setShowZipImport] = useState(false);
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { createFolder } = useGoogleDrive();
   const { toast } = useToast();
@@ -246,7 +249,61 @@ export const AddProjectDialog = ({
     setActiveTab("empty");
     setImportJobId(null);
     setCreatedFolder(null);
+    setShowZipImport(false);
+    setCreatedProjectId(null);
     onOpenChange(false);
+  };
+
+  const handleStartZipImport = async () => {
+    if (!projectName.trim() || !rootFolderId || !organizationId || !user) return;
+
+    setIsCreating(true);
+    try {
+      // Create project folder first
+      const folder = await createFolder(projectName.trim(), rootFolderId);
+      if (!folder) {
+        toast({
+          title: "Failed to create project",
+          description: "Could not create the project folder in Drive.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Create project record
+      const { data: project, error } = await supabase
+        .from("projects")
+        .insert({
+          name: projectName.trim(),
+          organization_id: organizationId,
+          created_by: user.id,
+          drive_folder_id: folder.id,
+        })
+        .select("id")
+        .single();
+
+      if (error || !project) {
+        toast({
+          title: "Failed to create project",
+          description: "Project record could not be created.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setCreatedFolder(folder);
+      setCreatedProjectId(project.id);
+      setShowZipImport(true);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleZipImportComplete = () => {
+    if (createdFolder) {
+      onCreated?.(createdFolder);
+    }
+    resetAndClose();
   };
 
   // Group files by topic for preview
@@ -300,14 +357,18 @@ export const AddProjectDialog = ({
             )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="empty" className="gap-2">
               <FolderPlus className="h-4 w-4" />
-              Empty Project
+              Empty
+            </TabsTrigger>
+            <TabsTrigger value="zip" className="gap-2">
+              <FolderArchive className="h-4 w-4" />
+              ZIP Import
             </TabsTrigger>
             <TabsTrigger value="import" className="gap-2">
               <Upload className="h-4 w-4" />
-              Import Markdown
+              Folder
             </TabsTrigger>
           </TabsList>
 
@@ -345,6 +406,64 @@ export const AddProjectDialog = ({
             </div>
           </TabsContent>
 
+          {/* ZIP Import Tab - New reliable method */}
+          <TabsContent value="zip" className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Project Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., API Documentation"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                disabled={!rootFolderId}
+                className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
+              />
+            </div>
+
+            <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <FolderArchive className="h-8 w-8 text-primary shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium mb-1">ZIP or Folder Import</p>
+                  <p className="text-muted-foreground text-xs">
+                    Upload a ZIP file or select a folder with your markdown files. 
+                    Folder structure will be preserved as topics.
+                  </p>
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground bg-background rounded p-2">
+                <p className="font-medium mb-1">Supports config files:</p>
+                <code className="block">_meta.json</code> - Per-folder ordering/titles<br/>
+                <code className="block">toc.yml</code> - GitBook/Mintlify style TOC
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <Button variant="outline" onClick={resetAndClose}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleStartZipImport} 
+                disabled={!projectName.trim() || isCreating || !rootFolderId}
+              >
+                {isCreating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <FolderArchive className="h-4 w-4 mr-2" />
+                    Continue to Import
+                  </>
+                )}
+              </Button>
+            </div>
+          </TabsContent>
+
+          {/* Legacy folder import */}
           <TabsContent value="import" className="space-y-4 mt-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
@@ -448,6 +567,23 @@ export const AddProjectDialog = ({
           </TabsContent>
         </Tabs>
           </>
+        )}
+
+        {/* ZIP Import Dialog */}
+        {showZipImport && createdFolder && createdProjectId && organizationId && (
+          <ZipImportDialog
+            open={showZipImport}
+            onOpenChange={(open) => {
+              if (!open) {
+                handleZipImportComplete();
+              }
+            }}
+            projectId={createdProjectId}
+            projectName={projectName}
+            projectFolderId={createdFolder.id}
+            organizationId={organizationId}
+            onImported={handleZipImportComplete}
+          />
         )}
       </DialogContent>
     </Dialog>
