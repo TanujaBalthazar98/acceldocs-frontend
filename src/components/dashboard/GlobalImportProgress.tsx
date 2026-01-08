@@ -1,9 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, FolderTree, FileStack, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, FolderTree, FileStack, X, CheckCircle2, AlertCircle, StopCircle, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface ImportJob {
   id: string;
@@ -26,6 +38,83 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
   const [activeJobs, setActiveJobs] = useState<ImportJob[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [projectNames, setProjectNames] = useState<Record<string, string>>({});
+  const [stoppingJobs, setStoppingJobs] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
+
+  // Stop import and cleanup partial content
+  const stopAndCleanup = useCallback(async (job: ImportJob) => {
+    setStoppingJobs(prev => new Set([...prev, job.id]));
+    
+    try {
+      // Mark job as stopped
+      await supabase
+        .from("import_jobs")
+        .update({
+          status: 'stopped',
+          completed_at: new Date().toISOString(),
+          errors: [...(job.errors || []), 'Import stopped by user - cleaning up partial content'],
+        })
+        .eq("id", job.id);
+
+      // Get the job's created_at for cleanup
+      const { data: jobData } = await supabase
+        .from("import_jobs")
+        .select("created_at")
+        .eq("id", job.id)
+        .single();
+
+      const jobStartTime = jobData?.created_at || job.current_file;
+
+      // Get documents created by this import (created after job started)
+      const { data: docsToDelete } = await supabase
+        .from("documents")
+        .select("id")
+        .eq("project_id", job.project_id)
+        .gte("created_at", jobStartTime);
+
+      if (docsToDelete && docsToDelete.length > 0) {
+        await supabase
+          .from("documents")
+          .delete()
+          .in("id", docsToDelete.map(d => d.id));
+      }
+
+      // Get topics created by this import
+      const { data: topicsToDelete } = await supabase
+        .from("topics")
+        .select("id")
+        .eq("project_id", job.project_id)
+        .gte("created_at", jobStartTime);
+
+      if (topicsToDelete && topicsToDelete.length > 0) {
+        await supabase
+          .from("topics")
+          .delete()
+          .in("id", topicsToDelete.map(t => t.id));
+      }
+
+      toast({
+        title: "Import Stopped",
+        description: `Cleaned up ${docsToDelete?.length || 0} pages and ${topicsToDelete?.length || 0} topics.`,
+      });
+
+      setDismissed(prev => new Set([...prev, job.id]));
+      onComplete?.();
+    } catch (error) {
+      console.error("Error stopping import:", error);
+      toast({
+        title: "Error",
+        description: "Failed to stop import. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setStoppingJobs(prev => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  }, [toast, onComplete]);
 
   useEffect(() => {
     let pollInterval: NodeJS.Timeout | null = null;
@@ -106,7 +195,10 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
           : 0;
         const isComplete = job.status === 'completed';
         const isFailed = job.status === 'failed';
+        const isStopped = job.status === 'stopped';
+        const isProcessing = job.status === 'processing' || job.status === 'pending';
         const hasErrors = job.errors && job.errors.length > 0;
+        const isStopping = stoppingJobs.has(job.id);
 
         return (
           <div 
@@ -114,28 +206,31 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
             className={cn(
               "bg-card border rounded-lg shadow-lg overflow-hidden animate-in slide-in-from-bottom-2",
               isComplete && "border-green-500/30",
-              isFailed && "border-destructive/30",
-              !isComplete && !isFailed && "border-primary/30"
+              (isFailed || isStopped) && "border-destructive/30",
+              isProcessing && !isStopping && "border-primary/30"
             )}
           >
             {/* Header */}
             <div className={cn(
               "px-3 py-2 flex items-center gap-2",
               isComplete && "bg-green-500/10",
-              isFailed && "bg-destructive/10",
-              !isComplete && !isFailed && "bg-primary/5"
+              (isFailed || isStopped) && "bg-destructive/10",
+              isProcessing && !isStopping && "bg-primary/5"
             )}>
-              {!isComplete && !isFailed && (
+              {isProcessing && !isStopping && (
                 <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
               )}
+              {isStopping && (
+                <Loader2 className="h-4 w-4 animate-spin text-destructive flex-shrink-0" />
+              )}
               {isComplete && <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />}
-              {isFailed && <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />}
+              {(isFailed || isStopped) && !isStopping && <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />}
               
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate">
-                  Importing to {projectNames[job.project_id] || "project"}
+                  {isStopping ? "Stopping import..." : `Importing to ${projectNames[job.project_id] || "project"}`}
                 </p>
-                {job.current_file && !isComplete && !isFailed && (
+                {job.current_file && isProcessing && !isStopping && (
                   <p className="text-xs text-muted-foreground truncate">
                     {job.current_file}
                   </p>
@@ -144,14 +239,51 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
               
               <span className="text-sm font-semibold">{progress}%</span>
               
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 -mr-1"
-                onClick={() => setDismissed(prev => new Set([...prev, job.id]))}
-              >
-                <X className="h-3 w-3" />
-              </Button>
+              {/* Stop button - only show when processing */}
+              {isProcessing && !isStopping && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <StopCircle className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Stop Import?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will stop the import and remove all partially imported content 
+                        ({job.pages_created} pages and {job.topics_created} topics created so far).
+                        This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Continue Import</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => stopAndCleanup(job)}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Stop & Cleanup
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+              
+              {(isComplete || isFailed || isStopped) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 -mr-1"
+                  onClick={() => setDismissed(prev => new Set([...prev, job.id]))}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
             </div>
 
             {/* Progress */}
@@ -161,7 +293,7 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
                 className={cn(
                   "h-1.5",
                   isComplete && "[&>div]:bg-green-500",
-                  isFailed && "[&>div]:bg-destructive"
+                  (isFailed || isStopped || isStopping) && "[&>div]:bg-destructive"
                 )} 
               />
             </div>
