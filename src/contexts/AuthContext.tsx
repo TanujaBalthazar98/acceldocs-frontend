@@ -154,19 +154,29 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const signInWithGoogle = async () => {
     const redirectUrl = `${window.location.origin}/dashboard`;
-    
-    // Basic sign-in with default scopes only (openid, email, profile)
-    // Drive access is requested separately during onboarding via requestDriveAccess
-    // Use 'hd' parameter to restrict to acceldata.io domain at Google level
-    const { error } = await supabase.auth.signInWithOAuth({
+
+    // Restrict account chooser to acceldata.io and force account selection.
+    // Use skipBrowserRedirect so we can reliably navigate even in embedded previews.
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: redirectUrl,
+        skipBrowserRedirect: true,
         queryParams: {
           hd: "acceldata.io",
+          prompt: "select_account",
         },
       },
     });
+
+    if (!error && data?.url) {
+      try {
+        // Prefer top-level navigation when embedded
+        (window.top ?? window).location.assign(data.url);
+      } catch {
+        window.location.assign(data.url);
+      }
+    }
 
     return { error };
   };
@@ -179,18 +189,28 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Mark that we're about to request offline/Drive scopes so we can store the refresh token after redirect
     localStorage.setItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY, "1");
 
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: redirectUrl,
+        skipBrowserRedirect: true,
         scopes:
           "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file",
         queryParams: {
           access_type: "offline",
-          prompt: "consent",
+          prompt: "consent select_account",
+          hd: "acceldata.io",
         },
       },
     });
+
+    if (!error && data?.url) {
+      try {
+        (window.top ?? window).location.assign(data.url);
+      } catch {
+        window.location.assign(data.url);
+      }
+    }
 
     return { error };
   };

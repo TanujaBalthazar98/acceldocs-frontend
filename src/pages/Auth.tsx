@@ -27,11 +27,11 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     setAuthError(null);
-    
+
     const { error } = await signInWithGoogle();
-    
+
     if (error) {
-      setAuthError("Failed to sign in with Google. Please try again.");
+      setAuthError(error.message || "Failed to sign in with Google. Please try again.");
       setIsLoading(false);
     }
   };
@@ -81,7 +81,7 @@ const Auth = () => {
             <div className="text-center lg:text-left">
               <h2 className="text-2xl font-semibold mb-2">Welcome</h2>
               <p className="text-muted-foreground">
-                Sign in with your Acceldata Google account
+                Sign in with your Acceldata Google account (you may need to pick the right account)
               </p>
             </div>
 
