@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { Building2 } from "lucide-react";
-import acceldataLogo from "@/assets/acceldata-logo.svg";
 
 interface Workspace {
   id: string;
@@ -73,24 +71,16 @@ export const WorkspaceSwitcher = ({
     return null;
   }
 
-  // Single workspace display - no dropdown needed for Acceldata-only
+  // Single workspace display - simplified for Acceldata-only (no logo since it's in header)
   if (collapsed) {
-    return (
-      <div
-        className="flex items-center justify-center h-10 w-10"
-        title={currentWorkspace.name}
-      >
-        <img src={acceldataLogo} alt="Acceldata" className="h-5 w-auto" />
-      </div>
-    );
+    return null; // Don't show anything when collapsed - logo is already in the header
   }
 
   return (
-    <div className="w-full px-3 py-2">
+    <div className="w-full px-3 py-2 border-t border-border">
       <div className="flex items-center gap-2 min-w-0">
-        <img src={acceldataLogo} alt="Acceldata" className="h-5 w-auto flex-shrink-0" />
         <div className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">
+          <span className="block truncate text-sm font-medium text-foreground">
             {currentWorkspace.name}
           </span>
           <span className="text-xs text-muted-foreground capitalize">

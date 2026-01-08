@@ -988,7 +988,7 @@ const Dashboard = () => {
           ) : (
             /* Expanded: Horizontal layout */
             <>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="h-6 flex-shrink-0">
                     <img src={acceldataLogo} alt="Acceldocs" className="h-full" />
