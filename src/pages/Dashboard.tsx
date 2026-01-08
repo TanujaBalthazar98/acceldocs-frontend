@@ -180,7 +180,8 @@ const Dashboard = () => {
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ type: 'project' | 'topic' | 'document'; id: string; name: string } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ type: 'project' | 'topic' | 'document'; id: string; name: string; forceDelete?: boolean } | null>(null);
+  const [forceDeleteAvailable, setForceDeleteAvailable] = useState(false);
   const [isNormalizing, setIsNormalizing] = useState(false);
   const [orgMcpEnabled, setOrgMcpEnabled] = useState(false);
   const [orgHasApiSpec, setOrgHasApiSpec] = useState(false);
@@ -404,7 +405,7 @@ const Dashboard = () => {
   );
   
   // Delete handlers with RBAC enforcement
-  const handleDeleteProject = async (projectId: string) => {
+  const handleDeleteProject = async (projectId: string, forceDelete = false) => {
     // RBAC check - only admins can delete projects
     if (!permissions.canDeleteProject) {
       toast({ title: "Permission Denied", description: "You don't have permission to delete projects.", variant: "destructive" });
@@ -415,13 +416,23 @@ const Dashboard = () => {
     // Get the project's drive folder ID first
     const project = projects.find(p => p.id === projectId);
     
-    // Trash the Drive folder if it exists - block deletion if it fails
-    if (project?.drive_folder_id) {
-      const trashed = await trashFile(project.drive_folder_id);
-      if (!trashed) {
+    // Trash the Drive folder if it exists - block deletion if it fails (unless force delete)
+    if (project?.drive_folder_id && !forceDelete) {
+      const trashResult = await trashFile(project.drive_folder_id);
+      if (!trashResult.success) {
+        if (trashResult.errorCode === "NOT_AUTHORIZED") {
+          // Offer force delete option
+          setForceDeleteAvailable(true);
+          toast({ 
+            title: "Cannot Delete from Drive", 
+            description: "This folder contains files not created by this app. Use 'Force Delete' to remove only from the app, or delete the files manually in Google Drive first.", 
+            variant: "destructive" 
+          });
+          return;
+        }
         toast({ 
           title: "Cannot Delete Project", 
-          description: "Failed to trash the Drive folder. Please reconnect to Google Drive and try again.", 
+          description: trashResult.error || "Failed to trash the Drive folder. Please reconnect to Google Drive and try again.", 
           variant: "destructive" 
         });
         return;
@@ -438,8 +449,8 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to delete project.", variant: "destructive" });
     } else {
-      await logAction('delete_project', 'project', projectId, projectId, { projectName: project?.name });
-      toast({ title: "Deleted", description: "Project moved to Drive trash and deleted from app." });
+      await logAction('delete_project', 'project', projectId, projectId, { projectName: project?.name, forceDelete });
+      toast({ title: "Deleted", description: forceDelete ? "Project deleted from app (Drive files remain)." : "Project moved to Drive trash and deleted from app." });
       if (selectedProject?.id === projectId) {
         setSelectedProject(null);
         setSelectedTopic(null);
@@ -448,7 +459,7 @@ const Dashboard = () => {
     }
   };
   
-  const handleDeleteTopic = async (topicId: string) => {
+  const handleDeleteTopic = async (topicId: string, forceDelete = false) => {
     // RBAC check - editors and admins can delete topics
     if (!permissions.canDeleteTopic) {
       toast({ title: "Permission Denied", description: "You don't have permission to delete topics.", variant: "destructive" });
@@ -459,13 +470,22 @@ const Dashboard = () => {
     // Get the topic's drive folder ID first
     const topic = topics.find(t => t.id === topicId);
     
-    // Trash the Drive folder if it exists - block deletion if it fails
-    if (topic?.drive_folder_id) {
-      const trashed = await trashFile(topic.drive_folder_id);
-      if (!trashed) {
+    // Trash the Drive folder if it exists - block deletion if it fails (unless force delete)
+    if (topic?.drive_folder_id && !forceDelete) {
+      const trashResult = await trashFile(topic.drive_folder_id);
+      if (!trashResult.success) {
+        if (trashResult.errorCode === "NOT_AUTHORIZED") {
+          setForceDeleteAvailable(true);
+          toast({ 
+            title: "Cannot Delete from Drive", 
+            description: "This folder contains files not created by this app. Use 'Force Delete' to remove only from the app.", 
+            variant: "destructive" 
+          });
+          return;
+        }
         toast({ 
           title: "Cannot Delete Topic", 
-          description: "Failed to trash the Drive folder. Please reconnect to Google Drive and try again.", 
+          description: trashResult.error || "Failed to trash the Drive folder. Please reconnect to Google Drive and try again.", 
           variant: "destructive" 
         });
         return;
@@ -480,8 +500,8 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to delete topic.", variant: "destructive" });
     } else {
-      await logAction('delete_topic', 'topic', topicId, selectedProject?.id || '', { topicName: topic?.name });
-      toast({ title: "Deleted", description: "Topic moved to Drive trash and deleted from app." });
+      await logAction('delete_topic', 'topic', topicId, selectedProject?.id || '', { topicName: topic?.name, forceDelete });
+      toast({ title: "Deleted", description: forceDelete ? "Topic deleted from app (Drive files remain)." : "Topic moved to Drive trash and deleted from app." });
       if (selectedTopic?.id === topicId) {
         setSelectedTopic(null);
       }
@@ -489,7 +509,7 @@ const Dashboard = () => {
     }
   };
   
-  const handleDeleteDocument = async (docId: string) => {
+  const handleDeleteDocument = async (docId: string, forceDelete = false) => {
     // RBAC check - editors and admins can delete documents
     if (!permissions.canDeleteDocument) {
       toast({ title: "Permission Denied", description: "You don't have permission to delete pages.", variant: "destructive" });
@@ -500,13 +520,22 @@ const Dashboard = () => {
     // Get the document's google doc ID first
     const doc = filteredDocuments.find(d => d.id === docId);
     
-    // Trash the Drive file if it exists - block deletion if it fails
-    if (doc?.google_doc_id) {
-      const trashed = await trashFile(doc.google_doc_id);
-      if (!trashed) {
+    // Trash the Drive file if it exists - block deletion if it fails (unless force delete)
+    if (doc?.google_doc_id && !forceDelete) {
+      const trashResult = await trashFile(doc.google_doc_id);
+      if (!trashResult.success) {
+        if (trashResult.errorCode === "NOT_AUTHORIZED") {
+          setForceDeleteAvailable(true);
+          toast({ 
+            title: "Cannot Delete from Drive", 
+            description: "This file was not created by this app. Use 'Force Delete' to remove only from the app.", 
+            variant: "destructive" 
+          });
+          return;
+        }
         toast({ 
           title: "Cannot Delete Page", 
-          description: "Failed to trash the Drive file. Please reconnect to Google Drive and try again.", 
+          description: trashResult.error || "Failed to trash the Drive file. Please reconnect to Google Drive and try again.", 
           variant: "destructive" 
         });
         return;
@@ -518,29 +547,30 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to delete page.", variant: "destructive" });
     } else {
-      await logAction('delete_document', 'document', docId, selectedProject?.id || '', { documentTitle: doc?.title });
-      toast({ title: "Deleted", description: "Page moved to Drive trash and deleted from app." });
+      await logAction('delete_document', 'document', docId, selectedProject?.id || '', { documentTitle: doc?.title, forceDelete });
+      toast({ title: "Deleted", description: forceDelete ? "Page deleted from app (Drive file remains)." : "Page moved to Drive trash and deleted from app." });
       fetchData();
     }
   };
   
-  const confirmDelete = async () => {
+  const confirmDelete = async (forceDelete = false) => {
     if (!itemToDelete) return;
     
     switch (itemToDelete.type) {
       case 'project':
-        await handleDeleteProject(itemToDelete.id);
+        await handleDeleteProject(itemToDelete.id, forceDelete);
         break;
       case 'topic':
-        await handleDeleteTopic(itemToDelete.id);
+        await handleDeleteTopic(itemToDelete.id, forceDelete);
         break;
       case 'document':
-        await handleDeleteDocument(itemToDelete.id);
+        await handleDeleteDocument(itemToDelete.id, forceDelete);
         break;
     }
     
     setDeleteDialogOpen(false);
     setItemToDelete(null);
+    setForceDeleteAvailable(false);
   };
   
   const handleOpenInDrive = (googleDocId: string) => {
@@ -2323,7 +2353,7 @@ const Dashboard = () => {
         organizationId={organizationId}
         onUpdate={() => fetchData()}
       />
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => { setDeleteDialogOpen(open); if (!open) setForceDeleteAvailable(false); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {itemToDelete?.type}?</AlertDialogTitle>
@@ -2331,13 +2361,23 @@ const Dashboard = () => {
               Are you sure you want to delete "{itemToDelete?.name}"? 
               {itemToDelete?.type === 'project' && " This will also delete all topics and pages within it."}
               {itemToDelete?.type === 'topic' && " This will also delete all pages within it."}
-              {" The corresponding files will be moved to Google Drive trash (recoverable for 30 days)."}
+              {forceDeleteAvailable 
+                ? " Note: Drive files could not be deleted (they contain content not created by this app). Use 'Force Delete' to remove only from the app."
+                : " The corresponding files will be moved to Google Drive trash (recoverable for 30 days)."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {forceDeleteAvailable && (
+              <AlertDialogAction 
+                onClick={() => confirmDelete(true)}
+                className="bg-orange-600 text-white hover:bg-orange-700"
+              >
+                Force Delete (App Only)
+              </AlertDialogAction>
+            )}
             <AlertDialogAction 
-              onClick={confirmDelete}
+              onClick={() => confirmDelete(false)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete

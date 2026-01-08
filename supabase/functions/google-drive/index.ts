@@ -631,11 +631,33 @@ Deno.serve(async (req) => {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
         
+        // Parse the error to extract the reason
+        let errorReason = "";
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorReason = errorJson?.error?.errors?.[0]?.reason || "";
+        } catch {
+          // Ignore parse errors
+        }
+        
         if (response.status === 401 || response.status === 403) {
+          // Check specifically for appNotAuthorizedToChild error
+          if (errorReason === "appNotAuthorizedToChild") {
+            return new Response(
+              JSON.stringify({ 
+                error: "Cannot delete: folder contains files not created by this app. Delete these files manually in Google Drive first, or use 'Force Delete' to remove only from the app.", 
+                errorReason: "appNotAuthorizedToChild",
+                needsReauth: false 
+              }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          
           return new Response(
             JSON.stringify({ 
               error: "Google authentication expired", 
               needsReauth: true,
+              errorReason,
               details: errorText 
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -651,7 +673,7 @@ Deno.serve(async (req) => {
         }
         
         return new Response(
-          JSON.stringify({ error: "Failed to trash file", details: errorText }),
+          JSON.stringify({ error: "Failed to trash file", errorReason, details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

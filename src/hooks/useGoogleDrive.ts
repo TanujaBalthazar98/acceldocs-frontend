@@ -200,11 +200,11 @@ export const useGoogleDrive = () => {
     return data?.doc || null;
   };
 
-  const trashFile = async (fileId: string): Promise<boolean> => {
+  const trashFile = async (fileId: string): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     const token = getGoogleToken();
     if (!token) {
       console.log("No Google token for trash operation");
-      return false;
+      return { success: false, error: "No authentication token", errorCode: "NO_TOKEN" };
     }
 
     // Ensure session is fresh
@@ -222,15 +222,25 @@ export const useGoogleDrive = () => {
 
     if (error) {
       console.error("Trash file error:", error);
-      return false;
+      return { success: false, error: error.message, errorCode: "INVOKE_ERROR" };
     }
 
     if (data?.needsReauth) {
       console.log("Re-authentication required for trash operation");
-      return false;
+      return { success: false, error: "Re-authentication required", errorCode: "NEEDS_REAUTH" };
     }
 
-    return data?.success || false;
+    if (data?.error) {
+      // Check for specific Google Drive error
+      const errorReason = data.errorReason || "";
+      return { 
+        success: false, 
+        error: data.error, 
+        errorCode: errorReason === "appNotAuthorizedToChild" ? "NOT_AUTHORIZED" : "DRIVE_ERROR" 
+      };
+    }
+
+    return { success: data?.success || false };
   };
 
   return { listFolder, createFolder, createDoc, trashFile, getGoogleToken };
