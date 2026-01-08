@@ -111,6 +111,7 @@ interface Project {
   drive_folder_id: string | null;
   visibility: VisibilityLevel;
   is_published: boolean;
+  parent_id: string | null;
 }
 
 interface Topic {
@@ -193,10 +194,12 @@ const Dashboard = () => {
   const [auditLogOpen, setAuditLogOpen] = useState(false);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
   const [organizationName, setOrganizationName] = useState<string>("");
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [isBulkPublishing, setIsBulkPublishing] = useState(false);
+  const [parentProjectForCreate, setParentProjectForCreate] = useState<Project | null>(null);
   const [isBulkUnpublishing, setIsBulkUnpublishing] = useState(false);
   
   // Permissions and audit logging
@@ -284,7 +287,7 @@ const Dashboard = () => {
       // Get projects - only from user's own organization (not public projects from other orgs)
       const { data: projectsData } = await supabase
         .from("projects")
-        .select("id, name, drive_folder_id, visibility, is_published")
+        .select("id, name, drive_folder_id, visibility, is_published, parent_id")
         .eq("organization_id", profile.organization_id)
         .order("name");
 
@@ -1265,11 +1268,42 @@ const Dashboard = () => {
     return <PageView onBack={() => setSelectedPage(null)} />;
   }
 
+  // Get root projects (no parent) and their children
+  const rootProjects = filteredProjects.filter(p => !p.parent_id);
+  const getSubProjects = (parentId: string) => filteredProjects.filter(p => p.parent_id === parentId);
+
   return (
     <TooltipProvider>
     <div className="min-h-screen bg-background flex">
+      {/* Mobile sidebar overlay */}
+      {mobileSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden" 
+          onClick={() => setMobileSidebarOpen(false)} 
+        />
+      )}
+      
+      {/* Mobile header */}
+      <div className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-border flex items-center justify-between px-4 z-30 lg:hidden">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setMobileSidebarOpen(true)}
+        >
+          <PanelLeft className="h-5 w-5" />
+        </Button>
+        <span className="font-semibold">Acceldocs</span>
+        <div className="w-10" /> {/* Spacer for balance */}
+      </div>
+      
       {/* Sidebar */}
-      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} border-r border-border flex flex-col transition-all duration-300`}>
+      <aside className={cn(
+        "border-r border-border flex flex-col transition-all duration-300 bg-background z-50",
+        sidebarCollapsed ? 'w-16' : 'w-64',
+        // Mobile: fixed position, slides in from left
+        "fixed inset-y-0 left-0 lg:relative",
+        mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      )}>
         {/* Logo, Workspace, Notifications & Collapse Toggle */}
         <div className={`border-b border-border ${sidebarCollapsed ? 'p-2' : 'p-4'}`}>
           {sidebarCollapsed ? (
@@ -1512,160 +1546,196 @@ const Dashboard = () => {
           {/* Projects List - only shown when expanded */}
           {!sidebarCollapsed && (
             <div className="space-y-1">
-              {filteredProjects.length === 0 ? (
+              {rootProjects.length === 0 ? (
                 <p className="px-3 py-2 text-sm text-muted-foreground">
                   {searchQuery ? "No matching projects" : "No projects yet"}
                 </p>
               ) : (
-                filteredProjects.map((project) => {
+                rootProjects.map((project) => {
                   const projectTopics = filteredTopics.filter(t => t.project_id === project.id);
+                  const subProjects = getSubProjects(project.id);
                   const isExpanded = expandedProjects.has(project.id) || !!searchQuery;
+                  
+                  const renderProjectItem = (proj: Project, isSubProject = false) => {
+                    const projTopics = filteredTopics.filter(t => t.project_id === proj.id);
+                    const projExpanded = expandedProjects.has(proj.id) || !!searchQuery;
+                    
+                    return (
+                      <div key={proj.id} className={isSubProject ? "ml-4" : ""}>
+                        <div
+                          className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer relative ${
+                            selectedProject?.id === proj.id
+                              ? "bg-secondary text-foreground"
+                              : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                          }`}
+                          onClick={() => {
+                            setSelectedProject(proj);
+                            setSelectedTopic(null);
+                            setShowAPISettings(false);
+                            setShowMCPSettings(false);
+                            setShowIntegrations(false);
+                            setMobileSidebarOpen(false);
+                            setExpandedProjects(prev => {
+                              const next = new Set(prev);
+                              if (next.has(proj.id)) {
+                                next.delete(proj.id);
+                              } else {
+                                next.add(proj.id);
+                              }
+                              return next;
+                            });
+                          }}
+                        >
+                          {selectedProject?.id === proj.id && (
+                            <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
+                          )}
+                          <ChevronRight className={`w-3 h-3 transition-transform ${projExpanded ? 'rotate-90' : ''}`} />
+                          <FolderTree className={`w-4 h-4 ${isSubProject ? 'text-primary/70' : ''}`} />
+                          <span className="flex-1 text-left truncate">{proj.name}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProject(proj);
+                              setAddTopicOpen(true);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                            title="Add topic"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                onClick={(e) => e.stopPropagation()}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
+                              >
+                                <MoreHorizontal className="w-3 h-3" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              {permissions.canManageMembers && (
+                                <DropdownMenuItem onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleShareProject(e as unknown as React.MouseEvent, proj);
+                                }}>
+                                  <Share2 className="w-3 h-3 mr-2" />
+                                  Share
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onClick={() => {
+                                window.open(`/docs/${proj.id}`, '_blank');
+                              }}>
+                                <Eye className="w-3 h-3 mr-2" />
+                                Preview Docs
+                              </DropdownMenuItem>
+                              {proj.is_published && (
+                                <DropdownMenuItem onClick={() => {
+                                  window.open(`/docs/${proj.id}`, '_blank');
+                                }}>
+                                  <BookOpen className="w-3 h-3 mr-2" />
+                                  Published Docs
+                                </DropdownMenuItem>
+                              )}
+                              {/* Add Sub-Project - only for root projects */}
+                              {!proj.parent_id && permissions.canEditProjectSettings && (
+                                <DropdownMenuItem onClick={(e) => {
+                                  e.stopPropagation();
+                                  setParentProjectForCreate(proj);
+                                  setAddProjectOpen(true);
+                                }}>
+                                  <Plus className="w-3 h-3 mr-2" />
+                                  Add Sub-Project
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              {permissions.canEditProjectSettings && (
+                                <DropdownMenuItem onClick={() => {
+                                  setSelectedProject(proj);
+                                  setProjectSettingsOpen(true);
+                                }}>
+                                  <Settings className="w-3 h-3 mr-2" />
+                                  Settings
+                                </DropdownMenuItem>
+                              )}
+                              {permissions.canMoveTopic && (
+                                <DropdownMenuItem 
+                                  onClick={() => handleNormalizeStructure(proj.id)}
+                                  disabled={isNormalizing}
+                                >
+                                  <Layers className="w-3 h-3 mr-2" />
+                                  {isNormalizing ? "Normalizing..." : "Normalize Structure"}
+                                </DropdownMenuItem>
+                              )}
+                              {permissions.canViewAuditLogs && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => setAuditLogOpen(true)}>
+                                    <History className="w-3 h-3 mr-2" />
+                                    Audit Logs
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                              {permissions.canDeleteProject && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => {
+                                      setItemToDelete({ type: 'project', id: proj.id, name: proj.name });
+                                      setDeleteDialogOpen(true);
+                                    }}
+                                  >
+                                    <Trash2 className="w-3 h-3 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                        
+                        {/* Topics under this project */}
+                        {projExpanded && (
+                          <div className="ml-2 mt-1">
+                            <SidebarTopicsTree
+                              topics={projTopics}
+                              selectedTopic={selectedTopic}
+                              onSelectTopic={(topic) => {
+                                setSelectedTopic(topic);
+                                setMobileSidebarOpen(false);
+                              }}
+                              onAddPage={(topic) => {
+                                setSelectedTopic(topic);
+                                setAddPageOpen(true);
+                              }}
+                              onAddSubtopic={(topic) => {
+                                setParentTopicForCreate(topic);
+                                setAddTopicOpen(true);
+                              }}
+                              onOpenSettings={(topic) => {
+                                setSettingsTopic(topic);
+                                setTopicSettingsOpen(true);
+                              }}
+                              onDeleteTopic={(topic) => {
+                                setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
+                                setDeleteDialogOpen(true);
+                              }}
+                              onTopicsReordered={fetchData}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  };
                   
                   return (
                     <div key={project.id}>
-                      <div
-                        className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer relative ${
-                          selectedProject?.id === project.id
-                            ? "bg-secondary text-foreground"
-                            : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                        }`}
-                        onClick={() => {
-                          setSelectedProject(project);
-                          setShowAPISettings(false);
-                          setShowMCPSettings(false);
-                          setExpandedProjects(prev => {
-                            const next = new Set(prev);
-                            if (next.has(project.id)) {
-                              next.delete(project.id);
-                            } else {
-                              next.add(project.id);
-                            }
-                            return next;
-                          });
-                        }}
-                      >
-                        {selectedProject?.id === project.id && (
-                          <span className="absolute left-0 w-0.5 h-6 bg-primary rounded-r" />
-                        )}
-                        <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                        <FolderTree className="w-4 h-4" />
-                        <span className="flex-1 text-left truncate">{project.name}</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedProject(project);
-                            setAddTopicOpen(true);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
-                          title="Add topic"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              onClick={(e) => e.stopPropagation()}
-                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all"
-                            >
-                              <MoreHorizontal className="w-3 h-3" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            {permissions.canManageMembers && (
-                              <DropdownMenuItem onClick={(e) => {
-                                e.stopPropagation();
-                                handleShareProject(e as unknown as React.MouseEvent, project);
-                              }}>
-                                <Share2 className="w-3 h-3 mr-2" />
-                                Share
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => {
-                              window.open(`/docs/${project.id}`, '_blank');
-                            }}>
-                              <Eye className="w-3 h-3 mr-2" />
-                              Preview Docs
-                            </DropdownMenuItem>
-                            {project.is_published && (
-                              <DropdownMenuItem onClick={() => {
-                                window.open(`/docs/${project.id}`, '_blank');
-                              }}>
-                                <BookOpen className="w-3 h-3 mr-2" />
-                                Published Docs
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            {permissions.canEditProjectSettings && (
-                              <DropdownMenuItem onClick={() => {
-                                setSelectedProject(project);
-                                setProjectSettingsOpen(true);
-                              }}>
-                                <Settings className="w-3 h-3 mr-2" />
-                                Settings
-                              </DropdownMenuItem>
-                            )}
-                            {permissions.canMoveTopic && (
-                              <DropdownMenuItem 
-                                onClick={() => handleNormalizeStructure(project.id)}
-                                disabled={isNormalizing}
-                              >
-                                <Layers className="w-3 h-3 mr-2" />
-                                {isNormalizing ? "Normalizing..." : "Normalize Structure"}
-                              </DropdownMenuItem>
-                            )}
-                            {permissions.canViewAuditLogs && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => setAuditLogOpen(true)}>
-                                  <History className="w-3 h-3 mr-2" />
-                                  Audit Logs
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                            {permissions.canDeleteProject && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => {
-                                    setItemToDelete({ type: 'project', id: project.id, name: project.name });
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                >
-                                  <Trash2 className="w-3 h-3 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                      {renderProjectItem(project, false)}
                       
-                      {/* Topics under this project */}
-                      {isExpanded && (
-                        <div className="ml-2 mt-1">
-                          <SidebarTopicsTree
-                            topics={projectTopics}
-                            selectedTopic={selectedTopic}
-                            onSelectTopic={(topic) => setSelectedTopic(topic)}
-                            onAddPage={(topic) => {
-                              setSelectedTopic(topic);
-                              setAddPageOpen(true);
-                            }}
-                            onAddSubtopic={(topic) => {
-                              setParentTopicForCreate(topic);
-                              setAddTopicOpen(true);
-                            }}
-                            onOpenSettings={(topic) => {
-                              setSettingsTopic(topic);
-                              setTopicSettingsOpen(true);
-                            }}
-                            onDeleteTopic={(topic) => {
-                              setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
-                              setDeleteDialogOpen(true);
-                            }}
-                            onTopicsReordered={fetchData}
-                          />
+                      {/* Sub-projects under this project */}
+                      {isExpanded && subProjects.length > 0 && (
+                        <div className="mt-1">
+                          {subProjects.map(subProj => renderProjectItem(subProj, true))}
                         </div>
                       )}
                     </div>
@@ -1981,9 +2051,9 @@ const Dashboard = () => {
           }}
         />
       ) : (
-        <main className="flex-1 flex flex-col">
+        <main className="flex-1 flex flex-col pt-14 lg:pt-0">
           {/* Header */}
-          <header className="h-14 border-b border-border flex items-center justify-between px-6">
+          <header className="h-14 border-b border-border flex items-center justify-between px-4 lg:px-6">
             <div className="flex items-center gap-3">
               <span className="font-medium text-foreground">{organizationName || "Workspace"}</span>
               <ChevronRight className="w-3 h-3 text-muted-foreground" />
@@ -2466,11 +2536,17 @@ const Dashboard = () => {
       
       <AddProjectDialog
         open={addProjectOpen}
-        onOpenChange={setAddProjectOpen}
+        onOpenChange={(open) => {
+          setAddProjectOpen(open);
+          if (!open) setParentProjectForCreate(null);
+        }}
         rootFolderId={rootFolderId}
         organizationId={organizationId || undefined}
+        parentProjectId={parentProjectForCreate?.id}
+        parentProjectName={parentProjectForCreate?.name}
         onCreated={(folder) => {
-          fetchData(); // Refetch to get full project data with all fields
+          fetchData();
+          setParentProjectForCreate(null);
         }}
       />
       

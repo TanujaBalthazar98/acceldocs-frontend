@@ -23,6 +23,8 @@ interface AddProjectDialogProps {
   onOpenChange: (open: boolean) => void;
   rootFolderId: string | null;
   organizationId?: string;
+  parentProjectId?: string | null;
+  parentProjectName?: string;
   onCreated?: (folder: { id: string; name: string }) => void;
 }
 
@@ -36,6 +38,8 @@ export const AddProjectDialog = ({
   onOpenChange, 
   rootFolderId, 
   organizationId,
+  parentProjectId,
+  parentProjectName,
   onCreated 
 }: AddProjectDialogProps) => {
   const [projectName, setProjectName] = useState("");
@@ -72,6 +76,7 @@ export const AddProjectDialog = ({
         organization_id: organizationId,
         created_by: user.id,
         drive_folder_id: folder.id,
+        parent_id: parentProjectId || null,
       });
 
       if (createProjectError) {
@@ -153,6 +158,7 @@ export const AddProjectDialog = ({
           organization_id: organizationId,
           created_by: user.id,
           drive_folder_id: folder.id,
+          parent_id: parentProjectId || null,
         })
         .select("id")
         .single();
@@ -278,6 +284,7 @@ export const AddProjectDialog = ({
           organization_id: organizationId,
           created_by: user.id,
           drive_folder_id: folder.id,
+          parent_id: parentProjectId || null,
         })
         .select("id")
         .single();
@@ -324,12 +331,14 @@ export const AddProjectDialog = ({
       <DialogContent className="sm:max-w-lg bg-card border-border">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-foreground">
-            {importJobId ? "Importing Files" : "Create Project"}
+            {importJobId ? "Importing Files" : parentProjectId ? "Create Sub-Project" : "Create Project"}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             {importJobId 
               ? "Your files are being imported. This may take a few minutes."
-              : "Start with an empty project or import existing Markdown documentation."
+              : parentProjectId
+                ? `Create a sub-project under "${parentProjectName}".`
+                : "Start with an empty project or import existing Markdown documentation."
             }
           </DialogDescription>
         </DialogHeader>
