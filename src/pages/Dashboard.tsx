@@ -88,7 +88,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
 import { useJoinRequestNotifications } from "@/hooks/useJoinRequestNotifications";
-import docspeareIcon from "@/assets/docspeare-icon.png";
+import acceldataLogo from "@/assets/acceldata-logo.svg";
 
 const stateConfig = {
   active: { color: "bg-state-active", label: "Active" },
@@ -913,8 +913,8 @@ const Dashboard = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-xl overflow-hidden shadow-glow animate-pulse">
-            <img src={docspeareIcon} alt="Loading" className="w-full h-full object-cover" />
+          <div className="h-10 animate-pulse">
+            <img src={acceldataLogo} alt="Loading" className="h-full" />
           </div>
           <p className="text-muted-foreground">Loading...</p>
         </div>
@@ -961,12 +961,12 @@ const Dashboard = () => {
               {/* Logo */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="w-10 h-10 rounded-xl overflow-hidden cursor-pointer">
-                    <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
+                  <div className="h-6 cursor-pointer">
+                    <img src={acceldataLogo} alt="Acceldocs" className="h-full" />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  <p className="font-semibold">{organizationName || 'Docspeare'}</p>
+                  <p className="font-semibold">Acceldocs</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -990,10 +990,10 @@ const Dashboard = () => {
             <>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0">
-                    <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
+                  <div className="h-6 flex-shrink-0">
+                    <img src={acceldataLogo} alt="Acceldocs" className="h-full" />
                   </div>
-                  <span className="text-lg font-semibold text-foreground">Docspeare</span>
+                  <span className="text-lg font-semibold text-foreground">Acceldocs</span>
                 </div>
 
                 <div className="flex items-center gap-1">
