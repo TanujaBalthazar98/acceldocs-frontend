@@ -11,7 +11,10 @@ import {
   Globe,
   Sparkles,
   PanelLeftClose,
+  PanelRightClose,
   Code,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -169,6 +172,7 @@ export default function Docs() {
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
   const [isCustomDomain, setIsCustomDomain] = useState(false);
+  const [isFullWidth, setIsFullWidth] = useState(false);
 
   // Check for custom domain on mount
   useEffect(() => {
@@ -507,14 +511,16 @@ const getTopicDocuments = (topicId: string) =>
       .filter(d => !d.topic_id)
       .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
 
-  // Check if a topic should be "invisible" (same name as project, only child topic)
+  // Check if a topic should be "invisible" (same name as project, only root topic)
   const isInvisibleTopic = (topic: Topic) => {
     if (!selectedProject) return false;
+    if (topic.parent_id) return false; // Only check root topics
+    
     // Root topic with same name as project AND it's the only root topic
     const rootTopics = projectTopics.filter(t => !t.parent_id);
-    return !topic.parent_id && 
-           topic.name.toLowerCase() === selectedProject.name.toLowerCase() &&
-           rootTopics.length === 1;
+    const nameMatch = topic.name.toLowerCase().trim() === selectedProject.name.toLowerCase().trim();
+    
+    return nameMatch && rootTopics.length === 1;
   };
 
   // Get documents from invisible topics (treat them as project-level)
@@ -988,28 +994,52 @@ const getTopicDocuments = (topicId: string) =>
           ) : selectedDocument ? (
             <div className="flex">
               {/* Article content */}
-              <article className="flex-1 max-w-4xl mx-auto p-6 lg:p-8">
-                {/* Breadcrumb */}
-                <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-                  <span>{selectedProject?.name}</span>
-                  {selectedDocument.topic_id && (() => {
-                    const topic = topics.find(t => t.id === selectedDocument.topic_id);
-                    // Hide topic from breadcrumb if it's an "invisible" topic (same name as project)
-                    if (topic && !isInvisibleTopic(topic)) {
-                      return (
-                        <>
-                          <span>/</span>
-                          <span>{topic.name}</span>
-                        </>
-                      );
-                    }
-                    return null;
-                  })()}
-                </nav>
+              <article className={cn(
+                "flex-1 p-6 lg:p-8 transition-all duration-300",
+                isFullWidth ? "max-w-none px-8 lg:px-16" : "max-w-4xl mx-auto"
+              )}>
+                {/* Breadcrumb and controls */}
+                <div className="flex items-center justify-between mb-6">
+                  <nav className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>{selectedProject?.name}</span>
+                    {selectedDocument.topic_id && (() => {
+                      const topic = topics.find(t => t.id === selectedDocument.topic_id);
+                      if (topic && !isInvisibleTopic(topic)) {
+                        return (
+                          <>
+                            <ChevronRight className="h-3 w-3" />
+                            <span>{topic.name}</span>
+                          </>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </nav>
+                  
+                  {/* Expand/Collapse button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsFullWidth(!isFullWidth)}
+                    className="hidden lg:flex gap-2 text-muted-foreground hover:text-foreground"
+                  >
+                    {isFullWidth ? (
+                      <>
+                        <Minimize2 className="h-4 w-4" />
+                        <span className="text-xs">Compact</span>
+                      </>
+                    ) : (
+                      <>
+                        <Maximize2 className="h-4 w-4" />
+                        <span className="text-xs">Expand</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
 
                 {/* Title */}
                 <div className="flex items-start gap-3 mb-4">
-                  <h1 className="text-3xl lg:text-4xl font-bold text-foreground">
+                  <h1 className="text-3xl lg:text-4xl font-bold text-foreground brand-heading">
                     {selectedDocument.title}
                   </h1>
                 </div>
@@ -1036,19 +1066,17 @@ const getTopicDocuments = (topicId: string) =>
                   </div>
                 )}
 
-                {/* Content */}
-                <div className="bg-card border border-border rounded-lg p-6 lg:p-8">
-                  {documentHtml ? (
-                    <div 
-                      className="prose prose-neutral dark:prose-invert max-w-none docs-content"
-                      dangerouslySetInnerHTML={{ __html: removeFirstHeadingIfMatches(normalizeHtml(documentHtml), selectedDocument.title) }}
-                    />
-                  ) : (
-                    <div className="text-center py-10 text-muted-foreground">
-                      <p className="font-medium">This page hasn’t been published yet.</p>
-                    </div>
-                  )}
-                </div>
+                {/* Content - clean rendering */}
+                {documentHtml ? (
+                  <div 
+                    className="prose prose-lg prose-neutral dark:prose-invert max-w-none docs-content"
+                    dangerouslySetInnerHTML={{ __html: removeFirstHeadingIfMatches(normalizeHtml(documentHtml), selectedDocument.title) }}
+                  />
+                ) : (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <p className="font-medium">This page hasn't been published yet.</p>
+                  </div>
+                )}
 
                 {/* Page Feedback - only for public docs pages */}
                 {selectedDocument.published_content_html && selectedProject?.visibility === "public" && (
@@ -1056,10 +1084,12 @@ const getTopicDocuments = (topicId: string) =>
                 )}
               </article>
 
-              {/* Right sidebar - Table of Contents */}
-              <aside className="hidden lg:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4">
-                <TableOfContents html={documentHtml} />
-              </aside>
+              {/* Right sidebar - Table of Contents (hide in full width mode) */}
+              {!isFullWidth && (
+                <aside className="hidden lg:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4">
+                  <TableOfContents html={documentHtml} />
+                </aside>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-center p-8">
