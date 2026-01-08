@@ -4,28 +4,22 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Mail, Lock, AlertCircle } from "lucide-react";
+import { Mail, Lock, AlertCircle, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
-import docspeareIcon from "@/assets/docspeare-icon.png";
 
 type AccountType = "individual" | "team" | "enterprise";
+
+const ALLOWED_DOMAIN = "acceldata.io";
 
 const authSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-const PERSONAL_DOMAINS = [
-  'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com',
-  'msn.com', 'yahoo.com', 'yahoo.co.uk', 'ymail.com', 'aol.com',
-  'icloud.com', 'me.com', 'mac.com', 'protonmail.com', 'proton.me',
-  'tutanota.com', 'zoho.com', 'mail.com', 'gmx.com', 'gmx.net'
-];
-
-const isPersonalEmail = (email: string): boolean => {
+const isAcceldataEmail = (email: string): boolean => {
   const domain = email.split('@')[1]?.toLowerCase();
-  return PERSONAL_DOMAINS.includes(domain);
+  return domain === ALLOWED_DOMAIN;
 };
 
 const Auth = () => {
@@ -53,6 +47,13 @@ const Auth = () => {
   const validateForm = () => {
     try {
       authSchema.parse({ email, password });
+      
+      // Check for Acceldata domain
+      if (!isAcceldataEmail(email)) {
+        setErrors({ email: `Only @${ALLOWED_DOMAIN} email addresses are allowed` });
+        return false;
+      }
+      
       setErrors({});
       return true;
     } catch (error) {
@@ -68,7 +69,6 @@ const Auth = () => {
     }
   };
 
-
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -78,9 +78,7 @@ const Auth = () => {
     setIsLoading(true);
 
     if (isSignUp) {
-      const inferredAccountType: AccountType = isPersonalEmail(email)
-        ? "individual"
-        : "team";
+      const inferredAccountType: AccountType = "team";
       const { error } = await signUpWithEmail(email, password, inferredAccountType);
       if (error) {
         const errorMessage = error.message.includes("already registered")
@@ -119,57 +117,55 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-        {/* Background Effects */}
-        <div className="absolute inset-0 bg-glow opacity-30" />
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse-glow" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-primary/5 rounded-full blur-3xl animate-pulse-glow" style={{ animationDelay: '1.5s' }} />
+      {/* Left Panel - Internal Branding */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-muted/30">
+        {/* Subtle Background Pattern */}
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `repeating-linear-gradient(45deg, currentColor 0, currentColor 1px, transparent 0, transparent 50%)`,
+            backgroundSize: '20px 20px'
+          }} />
+        </div>
         
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 rounded-xl overflow-hidden">
-              <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
+            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+              <FileText className="w-6 h-6 text-primary" />
             </div>
-            <span className="text-2xl font-bold text-foreground">Docspeare</span>
+            <span className="text-2xl font-bold text-foreground">Acceldocs</span>
           </div>
 
           <h1 className="text-4xl xl:text-5xl font-bold mb-6 leading-tight">
-            Turn your Google Docs into{" "}
-            <span className="text-gradient">trusted knowledge</span>
+            Internal Documentation
+            <span className="block text-muted-foreground text-2xl xl:text-3xl font-normal mt-2">
+              for Acceldata
+            </span>
           </h1>
 
           <p className="text-lg text-muted-foreground max-w-md">
-            Connect your Google Drive and start organizing your documentation in seconds. No uploads. No migrations.
+            Access and manage your team's documentation. Restricted to Acceldata employees only.
           </p>
+
+          <div className="mt-8 p-4 rounded-lg bg-background/50 border border-border/50 max-w-md">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Access restricted:</span> Only @{ALLOWED_DOMAIN} email addresses can sign in.
+            </p>
+          </div>
         </div>
       </div>
 
       {/* Right Panel - Auth Form */}
       <div className="flex-1 flex flex-col">
-        {/* Back Button */}
-        <div className="p-6">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate("/")}
-            className="gap-2 text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to home
-          </Button>
-        </div>
-
         {/* Form Container */}
-        <div className="flex-1 flex items-center justify-center px-6 pb-12">
+        <div className="flex-1 flex items-center justify-center px-6 py-12">
           <div className="w-full max-w-md">
             {/* Mobile Logo */}
             <div className="flex lg:hidden items-center gap-3 mb-8 justify-center">
-              <div className="w-10 h-10 rounded-xl overflow-hidden">
-                <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <FileText className="w-5 h-5 text-primary" />
               </div>
-              <span className="text-xl font-bold text-foreground">Docspeare</span>
+              <span className="text-xl font-bold text-foreground">Acceldocs</span>
             </div>
 
             {/* Header */}
@@ -179,9 +175,15 @@ const Auth = () => {
               </h2>
               <p className="text-muted-foreground">
                 {isSignUp
-                  ? "Sign up to start organizing your docs"
-                  : "Sign in to access your knowledge base"}
+                  ? "Sign up with your Acceldata email"
+                  : "Sign in to access documentation"}
               </p>
+            </div>
+
+            {/* Domain Restriction Notice */}
+            <div className="flex items-center gap-3 p-4 mb-6 rounded-lg bg-muted/50 border border-border text-sm">
+              <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <span className="text-muted-foreground">Only @{ALLOWED_DOMAIN} emails allowed</span>
             </div>
 
             {/* Error Alert */}
@@ -227,7 +229,7 @@ const Auth = () => {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="you@company.com"
+                    placeholder={`you@${ALLOWED_DOMAIN}`}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10"
@@ -257,8 +259,6 @@ const Auth = () => {
                   <p className="text-sm text-destructive">{errors.password}</p>
                 )}
               </div>
-
-              {/* Account type selection is temporarily hidden. */}
 
               <Button
                 type="submit"
