@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, XCircle, Loader2, FileText, FolderTree, FileStack, AlertCircle } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, FileText, FolderTree, FileStack, AlertCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface ImportJob {
   id: string;
@@ -14,16 +15,34 @@ interface ImportJob {
   errors: string[];
   current_file: string | null;
   created_at: string;
+  updated_at: string;
   completed_at: string | null;
 }
 
 interface ImportProgressIndicatorProps {
   jobId: string;
   onComplete?: () => void;
+  onDismiss?: () => void;
 }
 
-export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressIndicatorProps) {
+const STALL_TIMEOUT_MS = 60000; // 1 minute without progress = stalled
+
+export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: ImportProgressIndicatorProps) {
   const [job, setJob] = useState<ImportJob | null>(null);
+  const [isStalled, setIsStalled] = useState(false);
+  const [lastProgress, setLastProgress] = useState<{ files: number; time: number } | null>(null);
+
+  // Mark job as failed
+  const markAsFailed = useCallback(async () => {
+    await supabase
+      .from("import_jobs")
+      .update({
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+        errors: [...(job?.errors || []), 'Import timed out - background task may have been terminated'],
+      })
+      .eq("id", jobId);
+  }, [jobId, job?.errors]);
 
   useEffect(() => {
     let pollInterval: NodeJS.Timeout | null = null;
@@ -40,10 +59,37 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
         .single();
 
       if (!error && data) {
-        setJob(data as ImportJob);
-        if (data.status === 'completed' || data.status === 'failed') {
+        const jobData = data as ImportJob;
+        setJob(jobData);
+        
+        // Check for stall - if processing but no progress in STALL_TIMEOUT_MS
+        if (jobData.status === 'processing') {
+          const now = Date.now();
+          const updatedAt = new Date(jobData.updated_at).getTime();
+          
+          // If no update in STALL_TIMEOUT_MS, mark as stalled
+          if (now - updatedAt > STALL_TIMEOUT_MS) {
+            setIsStalled(true);
+          } else {
+            setIsStalled(false);
+          }
+          
+          // Track progress for stall detection
+          setLastProgress(prev => {
+            if (!prev || prev.files !== jobData.processed_files) {
+              return { files: jobData.processed_files, time: now };
+            }
+            // Same progress for too long?
+            if (now - prev.time > STALL_TIMEOUT_MS) {
+              setIsStalled(true);
+            }
+            return prev;
+          });
+        }
+        
+        if (jobData.status === 'completed' || jobData.status === 'failed') {
+          setIsStalled(false);
           onComplete?.();
-          // Stop polling when complete
           if (pollInterval) {
             clearInterval(pollInterval);
             pollInterval = null;
@@ -54,10 +100,10 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
 
     fetchJob();
 
-    // Poll more frequently (every 1.5 seconds) and use setInterval which continues in background
-    pollInterval = setInterval(fetchJob, 1500);
+    // Poll more frequently (every 2 seconds)
+    pollInterval = setInterval(fetchJob, 2000);
 
-    // Handle visibility change to immediately fetch when tab becomes visible again
+    // Handle visibility change
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchJob();
@@ -65,7 +111,7 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Also subscribe to realtime updates as backup
+    // Realtime updates as backup
     const channel = supabase
       .channel(`import-job-${jobId}`)
       .on(
@@ -79,6 +125,7 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
         (payload) => {
           const updatedJob = payload.new as ImportJob;
           setJob(updatedJob);
+          setIsStalled(false);
           if (updatedJob.status === 'completed' || updatedJob.status === 'failed') {
             onComplete?.();
             if (pollInterval) {
@@ -114,8 +161,15 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
     : 0;
 
   const isComplete = job.status === 'completed';
-  const isFailed = job.status === 'failed';
-  const isProcessing = job.status === 'processing';
+  const isFailed = job.status === 'failed' || isStalled;
+  const isProcessing = job.status === 'processing' && !isStalled;
+
+  const handleDismiss = async () => {
+    if (isStalled) {
+      await markAsFailed();
+    }
+    onDismiss?.();
+  };
 
   return (
     <div className={cn(
@@ -134,18 +188,39 @@ export function ImportProgressIndicator({ jobId, onComplete }: ImportProgressInd
         {isProcessing && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
         {isComplete && <CheckCircle2 className="h-5 w-5 text-green-500" />}
         {isFailed && <XCircle className="h-5 w-5 text-destructive" />}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm">
             {isProcessing && "Importing files..."}
             {isComplete && "Import completed"}
-            {isFailed && "Import failed"}
+            {isStalled && "Import stalled"}
+            {isFailed && !isStalled && "Import failed"}
           </p>
           <p className="text-xs text-muted-foreground">
             {job.processed_files} of {job.total_files} files processed
           </p>
         </div>
         <span className="text-2xl font-bold text-foreground">{progress}%</span>
+        {(isComplete || isFailed || isStalled) && onDismiss && (
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-7 w-7 shrink-0"
+            onClick={handleDismiss}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
+
+      {/* Stalled warning */}
+      {isStalled && (
+        <div className="px-4 py-2 bg-amber-500/10 border-t border-amber-500/30">
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            The import appears to have stopped responding. The background task may have timed out.
+            You can dismiss this and try importing fewer files at once.
+          </p>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="px-4 py-2 bg-card">

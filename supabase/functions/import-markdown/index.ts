@@ -766,6 +766,9 @@ async function processImportWithProgress(
     processedFiles: 0,
     errors: [] as string[],
   };
+  
+  // Wrap entire processing in try-catch to mark as failed on any unhandled error
+  try {
 
   // Helper to update job progress
   const updateProgress = async (currentFile?: string) => {
@@ -862,22 +865,43 @@ async function processImportWithProgress(
     }
   }
 
-  // Mark job as complete
-  if (jobId) {
-    await supabase
-      .from("import_jobs")
-      .update({
-        status: 'completed',
-        processed_files: results.processedFiles,
-        topics_created: results.topicsCreated,
-        pages_created: results.pagesCreated,
-        errors: results.errors,
-        current_file: null,
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", jobId);
-  }
+    // Mark job as complete
+    if (jobId) {
+      await supabase
+        .from("import_jobs")
+        .update({
+          status: 'completed',
+          processed_files: results.processedFiles,
+          topics_created: results.topicsCreated,
+          pages_created: results.pagesCreated,
+          errors: results.errors,
+          current_file: null,
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
+    }
 
-  console.log("Import complete:", results);
+    console.log("Import complete:", results);
+  } catch (error) {
+    console.error("Import processing failed with error:", error);
+    
+    // Mark job as failed
+    if (jobId) {
+      results.errors.push(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      await supabase
+        .from("import_jobs")
+        .update({
+          status: 'failed',
+          processed_files: results.processedFiles,
+          topics_created: results.topicsCreated,
+          pages_created: results.pagesCreated,
+          errors: results.errors,
+          current_file: null,
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
+    }
+  }
 }
