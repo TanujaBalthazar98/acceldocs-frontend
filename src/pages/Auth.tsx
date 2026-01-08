@@ -8,12 +8,12 @@ import acceldataLogo from "@/assets/acceldata-logo.svg";
 const ALLOWED_DOMAIN = "acceldata.io";
 
 const Auth = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-
   const { user, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const from = (location.state as { from?: Location })?.from?.pathname || "/dashboard";
 
