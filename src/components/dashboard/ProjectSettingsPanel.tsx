@@ -96,6 +96,8 @@ export const ProjectSettingsPanel = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // Members state
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -420,6 +422,91 @@ export const ProjectSettingsPanel = ({
     }
   };
 
+  const handleDeleteProject = async () => {
+    if (!projectId) return;
+    setIsDeleting(true);
+
+    try {
+      // Clean up related records in order to avoid FK constraint errors
+      // 1. Delete connector actions
+      await supabase.from("connector_actions").delete().eq("project_id", projectId);
+      
+      // 2. Delete page feedback for documents in this project
+      const { data: docs } = await supabase.from("documents").select("id").eq("project_id", projectId);
+      if (docs && docs.length > 0) {
+        const docIds = docs.map(d => d.id);
+        await supabase.from("page_feedback").delete().in("document_id", docIds);
+      }
+      
+      // 3. Delete drive permission sync
+      await supabase.from("drive_permission_sync").delete().eq("project_id", projectId);
+      
+      // 4. Delete import jobs
+      await supabase.from("import_jobs").delete().eq("project_id", projectId);
+      
+      // 5. Delete project invitations
+      await supabase.from("project_invitations").delete().eq("project_id", projectId);
+      
+      // 6. Delete project members
+      await supabase.from("project_members").delete().eq("project_id", projectId);
+      
+      // 7. Delete audit logs
+      await supabase.from("audit_logs").delete().eq("project_id", projectId);
+      
+      // 8. Delete domains
+      await supabase.from("domains").delete().eq("project_id", projectId);
+      
+      // 9. Delete connector credentials and connectors
+      const { data: connectors } = await supabase.from("connectors").select("id").eq("project_id", projectId);
+      if (connectors && connectors.length > 0) {
+        const connectorIds = connectors.map(c => c.id);
+        await supabase.from("connector_permissions").delete().in("connector_id", connectorIds);
+        await supabase.from("connector_credentials").delete().in("connector_id", connectorIds);
+        await supabase.from("connectors").delete().eq("project_id", projectId);
+      }
+      
+      // 10. Delete documents
+      await supabase.from("documents").delete().eq("project_id", projectId);
+      
+      // 11. Delete topics
+      await supabase.from("topics").delete().eq("project_id", projectId);
+      
+      // 12. Delete slug history
+      await supabase.from("slug_history").delete().eq("entity_id", projectId).eq("entity_type", "project");
+      
+      // 13. Delete child projects first
+      const { data: childProjects } = await supabase.from("projects").select("id").eq("parent_id", projectId);
+      if (childProjects && childProjects.length > 0) {
+        for (const child of childProjects) {
+          // Recursively clean up child project's related data
+          await supabase.from("project_members").delete().eq("project_id", child.id);
+          await supabase.from("documents").delete().eq("project_id", child.id);
+          await supabase.from("topics").delete().eq("project_id", child.id);
+          await supabase.from("projects").delete().eq("id", child.id);
+        }
+      }
+      
+      // 14. Finally delete the project
+      const { error } = await supabase.from("projects").delete().eq("id", projectId);
+
+      if (error) throw error;
+
+      toast({ title: "Project deleted", description: "The project has been removed." });
+      onOpenChange(false);
+      onUpdate?.();
+    } catch (err) {
+      console.error("Delete project error:", err);
+      toast({ 
+        title: "Delete failed", 
+        description: "An error occurred while deleting the project.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   if (!projectId) return null;
 
   const currentVisibility = visibilityOptions.find(v => v.value === visibility);
@@ -708,17 +795,55 @@ export const ProjectSettingsPanel = ({
                     Delete Project
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    This will remove the project from DocLayer. Documents in
+                    This will remove the project from Docspeare. Documents in
                     Drive will not be affected.
                   </p>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="mt-3 gap-2"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Delete Project
-                  </Button>
+                  {!showDeleteConfirm ? (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="mt-3 gap-2"
+                      onClick={() => setShowDeleteConfirm(true)}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Delete Project
+                    </Button>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-medium text-destructive">
+                        Are you sure? This cannot be undone.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowDeleteConfirm(false)}
+                          disabled={isDeleting}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={handleDeleteProject}
+                          disabled={isDeleting}
+                          className="gap-2"
+                        >
+                          {isDeleting ? (
+                            <>
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="w-3 h-3" />
+                              Confirm Delete
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
