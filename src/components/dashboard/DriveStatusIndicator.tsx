@@ -13,12 +13,13 @@ interface DriveStatusIndicatorProps {
   onStatusChange?: (connected: boolean) => void;
 }
 
-type ConnectionStatus = 'connected' | 'disconnected' | 'needs_reauth' | 'checking' | null;
+type ConnectionStatus = 'connected' | 'disconnected' | 'needs_reauth' | 'checking' | 'not_owner' | null;
 
 export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorProps) => {
   const { requestDriveAccess, user } = useAuth();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [isOrgOwner, setIsOrgOwner] = useState(false);
   const hasCheckedRef = useRef(false);
 
   const checkDriveConnection = async () => {
@@ -27,16 +28,40 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
     
     setConnectionStatus('checking');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.provider_token;
-      
-      // Check if user has a refresh token stored
+      // First check if the current user is the org owner
       const { data: profile } = await supabase
         .from('profiles')
-        .select('google_refresh_token')
+        .select('organization_id, google_refresh_token')
         .eq('id', user.id)
         .maybeSingle();
 
+      if (!profile?.organization_id) {
+        // User not in an org yet
+        setConnectionStatus('not_owner');
+        onStatusChange?.(true); // Don't block non-owners
+        return;
+      }
+
+      // Check if user is the org owner
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('owner_id')
+        .eq('id', profile.organization_id)
+        .maybeSingle();
+
+      const userIsOwner = org?.owner_id === user.id;
+      setIsOrgOwner(userIsOwner);
+
+      // Only the org owner needs to have Drive connected
+      if (!userIsOwner) {
+        setConnectionStatus('not_owner');
+        onStatusChange?.(true); // Non-owners don't need Drive access
+        return;
+      }
+
+      // For the owner, check Drive connection
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.provider_token;
       const hasRefreshToken = !!profile?.google_refresh_token;
       
       if (!token && !hasRefreshToken) {
@@ -59,8 +84,14 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       }
     } catch (error) {
       console.error('Error checking Drive connection:', error);
-      setConnectionStatus('needs_reauth');
-      onStatusChange?.(false);
+      // Only show error for owners
+      if (isOrgOwner) {
+        setConnectionStatus('needs_reauth');
+        onStatusChange?.(false);
+      } else {
+        setConnectionStatus('not_owner');
+        onStatusChange?.(true);
+      }
     }
   };
 
@@ -79,6 +110,11 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       setIsReconnecting(false);
     }
   };
+
+  // Don't show anything for non-owners
+  if (connectionStatus === 'not_owner') {
+    return null;
+  }
 
   if (connectionStatus === 'checking' || connectionStatus === null) {
     return (
