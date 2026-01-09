@@ -2669,6 +2669,7 @@ const Dashboard = () => {
         topicId={selectedTopic?.id}
         topicName={selectedTopic?.name}
         parentFolderId={selectedTopic?.drive_folder_id || null}
+        organizationId={organizationId}
         onCreated={() => fetchData()}
       />
       
@@ -2703,6 +2704,7 @@ const Dashboard = () => {
           name: parentTopicForCreate.name,
           drive_folder_id: parentTopicForCreate.drive_folder_id,
         } : null}
+        organizationId={organizationId}
         onCreated={() => {
           fetchData();
           setParentTopicForCreate(null);

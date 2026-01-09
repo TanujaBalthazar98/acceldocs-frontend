@@ -7,11 +7,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, Folder, Loader2, AlertCircle } from "lucide-react";
+import { Upload, FileText, Folder, Loader2, AlertCircle, FolderTree } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { ImportProgressIndicator } from "./ImportProgressIndicator";
+import { Progress } from "@/components/ui/progress";
 
 interface ImportDialogProps {
   open: boolean;
@@ -23,6 +24,7 @@ interface ImportDialogProps {
   topicId?: string | null;
   topicName?: string | null;
   topicFolderId?: string | null;
+  organizationId?: string | null;
   onImported?: () => void;
 }
 
@@ -41,16 +43,17 @@ export const ImportDialog = ({
   topicId,
   topicName,
   topicFolderId,
+  organizationId,
   onImported,
 }: ImportDialogProps) => {
   const [isImporting, setIsImporting] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<FileWithContent[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [importJobId, setImportJobId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const { user } = useAuth();
-  const { createFolder, createDoc } = useGoogleDrive();
+  const { user, googleAccessToken } = useAuth();
 
   const parentFolderId = type === "page" ? (topicFolderId || projectFolderId) : projectFolderId;
   const locationText = type === "page" 
@@ -60,6 +63,35 @@ export const ImportDialog = ({
   const resetState = () => {
     setSelectedFiles([]);
     setIsImporting(false);
+    setImportJobId(null);
+  };
+
+  // Get folder structure preview for display
+  const getFolderStructure = () => {
+    const folders = new Map<string, number>();
+    
+    for (const file of selectedFiles) {
+      const parts = file.path.split('/');
+      if (parts.length > 1) {
+        // Build all folder paths
+        for (let i = 1; i < parts.length; i++) {
+          const folderPath = parts.slice(0, i).join('/');
+          folders.set(folderPath, (folders.get(folderPath) || 0) + (i === parts.length - 1 ? 1 : 0));
+        }
+      }
+    }
+    
+    // Count files per deepest folder
+    const folderCounts = new Map<string, number>();
+    for (const file of selectedFiles) {
+      const parts = file.path.split('/');
+      if (parts.length > 1) {
+        const folderPath = parts.slice(0, -1).join('/');
+        folderCounts.set(folderPath, (folderCounts.get(folderPath) || 0) + 1);
+      }
+    }
+    
+    return folderCounts;
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,198 +190,82 @@ export const ImportDialog = ({
     setSelectedFiles(fileList);
   };
 
-  const extractTitle = (content: string, filename: string): string => {
-    // Try to find first H1
-    const h1Match = content.match(/^# (.+)$/m);
-    if (h1Match) return h1Match[1].trim();
-    
-    // Try frontmatter title
-    const frontmatterMatch = content.match(/^---[\s\S]*?title:\s*['"]?([^'"\n]+)['"]?[\s\S]*?---/);
-    if (frontmatterMatch) return frontmatterMatch[1].trim();
-    
-    // Use filename without extension
-    return filename.replace(/\.md$/i, '').replace(/[-_]/g, ' ');
-  };
-
-  const markdownToHtml = (markdown: string): string => {
-    let html = markdown;
-    
-    // Remove frontmatter
-    html = html.replace(/^---[\s\S]*?---\n*/m, '');
-    
-    // Code blocks
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, _lang, code) => {
-      return `<pre><code>${code.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
-    });
-    
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    
-    // Headers
-    html = html.replace(/^###### (.+)$/gm, '<h6>$1</h6>');
-    html = html.replace(/^##### (.+)$/gm, '<h5>$1</h5>');
-    html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-    
-    // Bold and italic
-    html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    
-    // Links
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-    
-    // Lists
-    html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/^\* (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-    
-    // Paragraphs
-    const lines = html.split('\n');
-    html = lines.map(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return '';
-      if (trimmed.startsWith('<')) return line;
-      return `<p>${line}</p>`;
-    }).join('\n');
-    
-    return html.trim();
-  };
-
   const handleImport = async () => {
-    if (!parentFolderId || !projectId || selectedFiles.length === 0) return;
+    if (!parentFolderId || !projectId || selectedFiles.length === 0 || !googleAccessToken) {
+      if (!googleAccessToken) {
+        toast({
+          title: "Google connection required",
+          description: "Please reconnect your Google account.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
 
     setIsImporting(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.provider_token) {
+      // Use the edge function for both topic and page imports to properly handle nested structures
+      const filesToImport = selectedFiles.map(f => ({
+        path: f.path,
+        content: f.content,
+      }));
+
+      // For page imports, we need to prepend the target topic folder to maintain structure
+      const filesWithContext = type === "page" && topicId
+        ? filesToImport.map(f => ({
+            ...f,
+            // Wrap files in a context so they go to the right topic
+            targetTopicId: topicId,
+          }))
+        : filesToImport;
+
+      // Call the edge function to start background import
+      const { data, error } = await supabase.functions.invoke('import-markdown', {
+        body: {
+          files: filesWithContext,
+          projectId,
+          organizationId,
+          targetTopicId: type === "page" ? topicId : null, // For page imports, specify the target topic
+        },
+        headers: {
+          'x-google-token': googleAccessToken,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to start import');
+      }
+
+      if (data?.needsReauth) {
         toast({
-          title: "Google connection required",
-          description: "Please reconnect your Google account.",
+          title: "Google reconnection required",
+          description: "Please reconnect your Google account to continue.",
           variant: "destructive",
         });
         setIsImporting(false);
         return;
       }
 
-      if (type === "page") {
-        // Import as pages directly
-        let successCount = 0;
-        for (const file of selectedFiles) {
-          const filename = file.path.split('/').pop() || file.path;
-          const title = extractTitle(file.content, filename);
-          
-          // Create doc in Google Drive
-          const doc = await createDoc(title, parentFolderId);
-          
-          if (doc) {
-            // Save document to database
-            const { error } = await supabase
-              .from("documents")
-              .insert({
-                title: title,
-                google_doc_id: doc.id,
-                project_id: projectId,
-                topic_id: topicId || null,
-                owner_id: user?.id || null,
-                content_html: markdownToHtml(file.content),
-              });
-
-            if (!error) {
-              successCount++;
-            }
-          }
-        }
-
+      if (data?.jobId) {
+        // Show progress indicator
+        setImportJobId(data.jobId);
+        
         toast({
-          title: "Import complete",
-          description: `Successfully imported ${successCount} of ${selectedFiles.length} pages.`,
+          title: "Import started",
+          description: `Importing ${selectedFiles.length} files. Progress shown below.`,
         });
       } else {
-        // Import as topics with nested structure
-        const folderStructure = new Map<string, FileWithContent[]>();
-        
-        for (const file of selectedFiles) {
-          const parts = file.path.split('/');
-          // Get the first folder as topic name
-          if (parts.length > 1) {
-            const topicFolder = parts[0];
-            if (!folderStructure.has(topicFolder)) {
-              folderStructure.set(topicFolder, []);
-            }
-            folderStructure.get(topicFolder)!.push(file);
-          } else {
-            // Files without folder go to a default topic
-            const defaultTopic = "Imported";
-            if (!folderStructure.has(defaultTopic)) {
-              folderStructure.set(defaultTopic, []);
-            }
-            folderStructure.get(defaultTopic)!.push(file);
-          }
-        }
-
-        let topicsCreated = 0;
-        let pagesCreated = 0;
-
-        for (const [topicName, files] of folderStructure) {
-          // Create topic folder in Google Drive
-          const folder = await createFolder(topicName, parentFolderId);
-          
-          if (folder) {
-            // Save topic to database
-            const { data: topic, error: topicError } = await supabase
-              .from("topics")
-              .insert({
-                name: topicName,
-                drive_folder_id: folder.id,
-                project_id: projectId,
-              })
-              .select("id")
-              .single();
-
-            if (!topicError && topic) {
-              topicsCreated++;
-
-              // Create pages within topic
-              for (const file of files) {
-                const filename = file.path.split('/').pop() || file.path;
-                const title = extractTitle(file.content, filename);
-                
-                const doc = await createDoc(title, folder.id);
-                
-                if (doc) {
-                  const { error } = await supabase
-                    .from("documents")
-                    .insert({
-                      title: title,
-                      google_doc_id: doc.id,
-                      project_id: projectId,
-                      topic_id: topic.id,
-                      owner_id: user?.id || null,
-                      content_html: markdownToHtml(file.content),
-                    });
-
-                  if (!error) {
-                    pagesCreated++;
-                  }
-                }
-              }
-            }
-          }
-        }
-
+        // No job ID means immediate completion or error
         toast({
           title: "Import complete",
-          description: `Created ${topicsCreated} topics with ${pagesCreated} pages.`,
+          description: `Imported ${selectedFiles.length} files.`,
         });
+        onImported?.();
+        resetState();
+        onOpenChange(false);
       }
 
-      onImported?.();
-      resetState();
-      onOpenChange(false);
     } catch (error) {
       console.error("Import error:", error);
       toast({
@@ -357,15 +273,29 @@ export const ImportDialog = ({
         description: error instanceof Error ? error.message : "An error occurred during import.",
         variant: "destructive",
       });
-    } finally {
       setIsImporting(false);
     }
   };
 
+  const handleImportComplete = () => {
+    onImported?.();
+    resetState();
+    onOpenChange(false);
+  };
+
+  const handleImportDismiss = () => {
+    resetState();
+    onOpenChange(false);
+  };
+
+  const folderStructure = getFolderStructure();
+  const hasSubfolders = folderStructure.size > 0 && 
+    Array.from(folderStructure.keys()).some(path => path.includes('/'));
+
   return (
     <Dialog open={open} onOpenChange={(open) => {
-      if (!open) resetState();
-      onOpenChange(open);
+      if (!open && !isImporting) resetState();
+      if (!isImporting) onOpenChange(open);
     }}>
       <DialogContent className="sm:max-w-lg bg-card border-border">
         <DialogHeader>
@@ -381,7 +311,16 @@ export const ImportDialog = ({
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
-          {!parentFolderId && (
+          {/* Import progress indicator */}
+          {importJobId && (
+            <ImportProgressIndicator
+              jobId={importJobId}
+              onComplete={handleImportComplete}
+              onDismiss={handleImportDismiss}
+            />
+          )}
+
+          {!importJobId && !parentFolderId && (
             <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
               <p className="text-sm text-destructive flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" />
@@ -393,112 +332,139 @@ export const ImportDialog = ({
             </div>
           )}
 
-          {/* Drop zone */}
-          <div
-            onDrop={handleDrop}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            className={`
-              border-2 border-dashed rounded-lg p-8 text-center transition-colors
-              ${dragOver ? 'border-primary bg-primary/5' : 'border-border'}
-              ${!parentFolderId ? 'opacity-50 pointer-events-none' : 'cursor-pointer hover:border-primary/50'}
-            `}
-            onClick={() => type === "topic" ? folderInputRef.current?.click() : fileInputRef.current?.click()}
-          >
-            <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground mb-1">
-              {type === "topic" ? "Drop folders or click to select" : "Drop files or click to select"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Supports .md and .markdown files
-            </p>
-          </div>
+          {!importJobId && !isImporting && (
+            <>
+              {/* Drop zone */}
+              <div
+                onDrop={handleDrop}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                className={`
+                  border-2 border-dashed rounded-lg p-8 text-center transition-colors
+                  ${dragOver ? 'border-primary bg-primary/5' : 'border-border'}
+                  ${!parentFolderId ? 'opacity-50 pointer-events-none' : 'cursor-pointer hover:border-primary/50'}
+                `}
+                onClick={() => type === "topic" ? folderInputRef.current?.click() : fileInputRef.current?.click()}
+              >
+                <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-sm font-medium text-foreground mb-1">
+                  {type === "topic" ? "Drop folders or click to select" : "Drop files or click to select"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Supports .md and .markdown files
+                </p>
+              </div>
 
-          {/* Hidden file inputs */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".md,.markdown"
-            multiple
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-          <input
-            ref={folderInputRef}
-            type="file"
-            accept=".md,.markdown"
-            multiple
-            // @ts-ignore - webkitdirectory is a valid attribute
-            webkitdirectory=""
-            className="hidden"
-            onChange={handleFileSelect}
-          />
+              {/* Hidden file inputs */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".md,.markdown"
+                multiple
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <input
+                ref={folderInputRef}
+                type="file"
+                accept=".md,.markdown"
+                multiple
+                // @ts-ignore - webkitdirectory is a valid attribute
+                webkitdirectory=""
+                className="hidden"
+                onChange={handleFileSelect}
+              />
 
-          {/* Selected files preview */}
-          {selectedFiles.length > 0 && (
-            <div className="border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
-              <p className="text-sm font-medium text-foreground mb-2">
-                {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
-              </p>
-              <div className="space-y-1">
-                {selectedFiles.slice(0, 10).map((file, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <FileText className="w-3 h-3" />
-                    <span className="truncate">{file.path}</span>
+              {/* Selected files preview */}
+              {selectedFiles.length > 0 && (
+                <div className="border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-foreground">
+                      {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
+                    </p>
+                    {hasSubfolders && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                        <FolderTree className="w-3 h-3" />
+                        Nested folders detected
+                      </span>
+                    )}
                   </div>
-                ))}
-                {selectedFiles.length > 10 && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    ... and {selectedFiles.length - 10} more
-                  </p>
-                )}
+                  <div className="space-y-1">
+                    {selectedFiles.slice(0, 10).map((file, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <FileText className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{file.path}</span>
+                      </div>
+                    ))}
+                    {selectedFiles.length > 10 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ... and {selectedFiles.length - 10} more
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Importing state (before job ID is received) */}
+          {isImporting && !importJobId && (
+            <div className="flex flex-col items-center justify-center py-8 gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="font-medium">Starting import...</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Preparing {selectedFiles.length} files
+                </p>
               </div>
             </div>
           )}
 
           {/* Action buttons */}
-          <div className="flex justify-between items-center gap-2 pt-2 border-t border-border">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!parentFolderId || isImporting}
-              >
-                <FileText className="w-4 h-4 mr-1" />
-                Files
-              </Button>
-              {type === "topic" && (
+          {!importJobId && (
+            <div className="flex justify-between items-center gap-2 pt-2 border-t border-border">
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => folderInputRef.current?.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   disabled={!parentFolderId || isImporting}
                 >
-                  <Folder className="w-4 h-4 mr-1" />
-                  Folder
+                  <FileText className="w-4 h-4 mr-1" />
+                  Files
                 </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isImporting}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleImport}
-                disabled={selectedFiles.length === 0 || isImporting || !parentFolderId}
-              >
-                {isImporting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Importing...
-                  </>
-                ) : (
-                  `Import ${selectedFiles.length > 0 ? `(${selectedFiles.length})` : ''}`
+                {type === "topic" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => folderInputRef.current?.click()}
+                    disabled={!parentFolderId || isImporting}
+                  >
+                    <Folder className="w-4 h-4 mr-1" />
+                    Folder
+                  </Button>
                 )}
-              </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isImporting}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleImport}
+                  disabled={selectedFiles.length === 0 || isImporting || !parentFolderId}
+                >
+                  {isImporting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    `Import ${selectedFiles.length > 0 ? `(${selectedFiles.length})` : ''}`
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

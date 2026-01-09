@@ -21,6 +21,7 @@ interface AddTopicDialogProps {
   projectId: string | null;
   projectFolderId: string | null;
   parentTopic?: { id: string; name: string; drive_folder_id: string } | null;
+  organizationId?: string | null;
   onCreated?: (topic: { id: string; name: string; drive_folder_id: string }) => void;
 }
 
@@ -31,6 +32,7 @@ export const AddTopicDialog = ({
   projectId, 
   projectFolderId, 
   parentTopic,
+  organizationId,
   onCreated 
 }: AddTopicDialogProps) => {
   const [topicName, setTopicName] = useState("");
@@ -178,6 +180,7 @@ export const AddTopicDialog = ({
         projectId={projectId}
         projectName={projectName}
         projectFolderId={targetFolderId}
+        organizationId={organizationId}
         onImported={() => {
           onCreated?.({ id: '', name: '', drive_folder_id: '' });
         }}
