@@ -63,67 +63,22 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
   // Stop import and cleanup partial content
   const stopAndCleanup = useCallback(async () => {
     if (!job) return;
-    
+
     setIsStopping(true);
     setIsCleaning(true);
-    
+
     try {
-      // Mark job as stopped
-      await supabase
-        .from("import_jobs")
-        .update({
-          status: 'stopped',
-          completed_at: new Date().toISOString(),
-          errors: [...(job.errors || []), 'Import stopped by user - cleaning up partial content'],
-        })
-        .eq("id", jobId);
+      const { data, error } = await supabase.functions.invoke("stop-import-job", {
+        body: { jobId },
+      });
 
-      // Get documents created by this import (created after job started)
-      const jobStartTime = job.created_at;
-      const { data: docsToDelete, error: fetchDocsError } = await supabase
-        .from("documents")
-        .select("id, google_doc_id")
-        .eq("project_id", job.project_id)
-        .gte("created_at", jobStartTime);
-
-      if (fetchDocsError) {
-        console.error("Error fetching documents:", fetchDocsError);
-      } else if (docsToDelete && docsToDelete.length > 0) {
-        // Delete documents created during this import
-        const { error: deleteDocsError } = await supabase
-          .from("documents")
-          .delete()
-          .in("id", docsToDelete.map(d => d.id));
-
-        if (deleteDocsError) {
-          console.error("Error deleting documents:", deleteDocsError);
-        }
-      }
-
-      // Get topics created by this import
-      const { data: topicsToDelete, error: fetchTopicsError } = await supabase
-        .from("topics")
-        .select("id")
-        .eq("project_id", job.project_id)
-        .gte("created_at", jobStartTime);
-
-      if (fetchTopicsError) {
-        console.error("Error fetching topics:", fetchTopicsError);
-      } else if (topicsToDelete && topicsToDelete.length > 0) {
-        // Delete topics created during this import (children first via cascade)
-        const { error: deleteTopicsError } = await supabase
-          .from("topics")
-          .delete()
-          .in("id", topicsToDelete.map(t => t.id));
-
-        if (deleteTopicsError) {
-          console.error("Error deleting topics:", deleteTopicsError);
-        }
+      if (error) {
+        throw error;
       }
 
       toast({
         title: "Import Stopped",
-        description: `Cleaned up ${docsToDelete?.length || 0} pages and ${topicsToDelete?.length || 0} topics.`,
+        description: `Cleaned up ${data?.deletedPages ?? 0} pages and ${data?.deletedTopics ?? 0} topics.`,
       });
 
       onComplete?.();
@@ -132,7 +87,7 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
       console.error("Error stopping import:", error);
       toast({
         title: "Error",
-        description: "Failed to stop import. Please try again.",
+        description: "Failed to stop import. Please sign in again and retry.",
         variant: "destructive",
       });
     } finally {
