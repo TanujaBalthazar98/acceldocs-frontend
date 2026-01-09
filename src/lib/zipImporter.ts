@@ -249,18 +249,35 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
   
   const fileArray = Array.from(files);
   
-  // First pass: find and parse config files
+  // Determine root folder to strip (common prefix)
+  const firstPath = fileArray[0]?.webkitRelativePath || fileArray[0]?.name || '';
+  const rootFolder = firstPath.split('/')[0];
+  const allInSameRoot = fileArray.every(f => {
+    const p = f.webkitRelativePath || f.name;
+    return p.startsWith(rootFolder + '/') || p === rootFolder;
+  });
+  
+  // Helper to normalize paths consistently
+  const normalizePath = (path: string): string => {
+    if (allInSameRoot && path.startsWith(rootFolder + '/')) {
+      return path.slice(rootFolder.length + 1);
+    }
+    return path;
+  };
+  
+  // First pass: find and parse config files with NORMALIZED paths
   for (const file of fileArray) {
-    const path = file.webkitRelativePath || file.name;
-    const fileName = path.split('/').pop()?.toLowerCase() || '';
-    const folderPath = path.split('/').slice(0, -1).join('/');
+    const rawPath = file.webkitRelativePath || file.name;
+    const normalizedPath = normalizePath(rawPath);
+    const fileName = normalizedPath.split('/').pop()?.toLowerCase() || '';
+    const folderPath = normalizedPath.split('/').slice(0, -1).join('/');
     
     if (fileName === '_meta.json' || fileName === 'meta.json') {
       const content = await file.text();
       const config = parseMetaJson(content);
       if (config) {
-        const depth = path.split('/').length;
-        if (depth <= 2) {
+        // Root level if no folder path after normalization
+        if (!folderPath || normalizedPath.split('/').length <= 1) {
           result.rootConfig = config;
         } else {
           result.folderConfigs.set(folderPath, config);
@@ -275,10 +292,10 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
     }
   }
   
-  // Second pass: extract markdown files
+  // Second pass: extract markdown files with consistent path normalization
   for (const file of fileArray) {
-    const path = file.webkitRelativePath || file.name;
-    const fileName = path.split('/').pop() || '';
+    const rawPath = file.webkitRelativePath || file.name;
+    const fileName = rawPath.split('/').pop() || '';
     const ext = fileName.split('.').pop()?.toLowerCase();
     
     // Skip config files and non-markdown files
@@ -288,22 +305,15 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
     try {
       const content = await file.text();
       
-      // Normalize path
-      let normalizedPath = path;
-      const firstFolder = path.split('/')[0];
-      if (fileArray.every(f => {
-        const p = f.webkitRelativePath || f.name;
-        return p.startsWith(firstFolder + '/') || p === firstFolder;
-      })) {
-        normalizedPath = path.replace(firstFolder + '/', '');
-      }
-      
+      // Normalize path using the same logic as config parsing
+      const normalizedPath = normalizePath(rawPath);
       const folderPath = normalizedPath.split('/').slice(0, -1).join('/');
       const baseName = fileName.replace(/\.(md|mdx|markdown)$/i, '');
       
       let order: number | undefined;
       let title: string | undefined;
       
+      // Check folder-level config using normalized path
       const folderConfig = result.folderConfigs.get(folderPath);
       if (folderConfig?.order) {
         const idx = folderConfig.order.findIndex(o => o === baseName || o === fileName);
@@ -313,6 +323,7 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
         title = folderConfig.titles[baseName];
       }
       
+      // Check root config if no folder config
       if (order === undefined && result.rootConfig?.order) {
         const idx = result.rootConfig.order.findIndex(o => 
           o === baseName || o === fileName || o === normalizedPath
@@ -330,7 +341,7 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
         title,
       });
     } catch (e) {
-      result.errors.push(`Failed to read ${path}`);
+      result.errors.push(`Failed to read ${rawPath}`);
     }
   }
   

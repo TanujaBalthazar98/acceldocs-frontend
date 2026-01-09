@@ -85,28 +85,33 @@ interface TopicNode {
   children: Map<string, TopicNode>;
 }
 
-// Convert Markdown to clean HTML for Google Docs import
+// Convert Markdown to clean semantic HTML (no inline styles - CSS handles styling)
 function markdownToHtml(markdown: string): string {
   let html = markdown;
   
   // Remove frontmatter
   html = html.replace(/^---[\s\S]*?---\n*/m, '');
   
+  // Process callouts/admonitions before other processing
+  // Format: > [!NOTE] or > **Note:** or > ⚠️ Warning:
+  html = processCallouts(html);
+  
   // Code blocks (must be before inline code)
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    return `<pre style="background-color:#f4f4f4;padding:12px;border-radius:4px;overflow-x:auto;font-family:monospace;"><code>${escapeHtml(code.trim())}</code></pre>`;
+    const langAttr = lang ? ` data-language="${lang}"` : '';
+    return `<pre${langAttr}><code>${escapeHtml(code.trim())}</code></pre>`;
   });
   
   // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code style="background-color:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:monospace;">$1</code>');
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
   
   // Headers (process from h6 to h1 to avoid conflicts)
-  html = html.replace(/^###### (.+)$/gm, '<h6 style="font-size:12px;font-weight:bold;margin:16px 0 8px 0;">$1</h6>');
-  html = html.replace(/^##### (.+)$/gm, '<h5 style="font-size:14px;font-weight:bold;margin:16px 0 8px 0;">$1</h5>');
-  html = html.replace(/^#### (.+)$/gm, '<h4 style="font-size:16px;font-weight:bold;margin:16px 0 8px 0;">$1</h4>');
-  html = html.replace(/^### (.+)$/gm, '<h3 style="font-size:18px;font-weight:bold;margin:20px 0 10px 0;">$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2 style="font-size:22px;font-weight:bold;margin:24px 0 12px 0;">$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1 style="font-size:28px;font-weight:bold;margin:28px 0 14px 0;">$1</h1>');
+  html = html.replace(/^###### (.+)$/gm, '<h6>$1</h6>');
+  html = html.replace(/^##### (.+)$/gm, '<h5>$1</h5>');
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
   
   // Bold and italic (order matters)
   html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
@@ -117,15 +122,15 @@ function markdownToHtml(markdown: string): string {
   html = html.replace(/_(.+?)_/g, '<em>$1</em>');
   
   // Links and images
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;" />');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:#1a73e8;">$1</a>');
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
   
-  // Blockquotes
-  html = html.replace(/^> (.+)$/gm, '<blockquote style="border-left:4px solid #ddd;padding-left:16px;margin:16px 0;color:#666;">$1</blockquote>');
+  // Blockquotes (multi-line support)
+  html = processBlockquotes(html);
   
   // Horizontal rules
-  html = html.replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #ddd;margin:24px 0;" />');
-  html = html.replace(/^\*\*\*$/gm, '<hr style="border:none;border-top:1px solid #ddd;margin:24px 0;" />');
+  html = html.replace(/^---$/gm, '<hr />');
+  html = html.replace(/^\*\*\*$/gm, '<hr />');
   
   // Process tables
   html = processMarkdownTables(html);
@@ -139,14 +144,62 @@ function markdownToHtml(markdown: string): string {
     const trimmed = line.trim();
     if (!trimmed) return '';
     if (trimmed.startsWith('<')) return line;
-    return `<p style="margin:12px 0;line-height:1.6;">${line}</p>`;
+    return `<p>${line}</p>`;
   }).join('\n');
   
   // Clean up
-  html = html.replace(/<p[^>]*>\s*<\/p>/g, '');
+  html = html.replace(/<p>\s*<\/p>/g, '');
   html = html.replace(/\n{3,}/g, '\n\n');
   
   return html.trim();
+}
+
+// Process callouts/admonitions like > [!NOTE], > [!WARNING], etc.
+function processCallouts(html: string): string {
+  // GitHub-style callouts: > [!NOTE], > [!TIP], > [!WARNING], > [!CAUTION], > [!IMPORTANT]
+  const calloutRegex = /^> \[!(NOTE|TIP|WARNING|CAUTION|IMPORTANT|INFO|DANGER)\]\n((?:^>.*\n?)*)/gim;
+  
+  html = html.replace(calloutRegex, (_, type, content) => {
+    const cleanContent = content.replace(/^> ?/gm, '').trim();
+    const calloutType = type.toLowerCase();
+    return `<div class="callout callout-${calloutType}" data-callout="${calloutType}"><p>${cleanContent}</p></div>\n`;
+  });
+  
+  return html;
+}
+
+// Process multi-line blockquotes
+function processBlockquotes(html: string): string {
+  const lines = html.split('\n');
+  const result: string[] = [];
+  let inBlockquote = false;
+  let blockquoteContent: string[] = [];
+  
+  for (const line of lines) {
+    const isQuoteLine = /^>\s?(.*)$/.test(line);
+    
+    if (isQuoteLine) {
+      if (!inBlockquote) {
+        inBlockquote = true;
+        blockquoteContent = [];
+      }
+      const content = line.replace(/^>\s?/, '');
+      blockquoteContent.push(content);
+    } else {
+      if (inBlockquote) {
+        result.push(`<blockquote><p>${blockquoteContent.join(' ')}</p></blockquote>`);
+        inBlockquote = false;
+        blockquoteContent = [];
+      }
+      result.push(line);
+    }
+  }
+  
+  if (inBlockquote) {
+    result.push(`<blockquote><p>${blockquoteContent.join(' ')}</p></blockquote>`);
+  }
+  
+  return result.join('\n');
 }
 
 function processMarkdownTables(html: string): string {
@@ -154,8 +207,10 @@ function processMarkdownTables(html: string): string {
   
   return html.replace(tableRegex, (match) => {
     const rows = match.trim().split('\n');
-    let tableHtml = '<table style="border-collapse:collapse;width:100%;margin:16px 0;">';
+    let tableHtml = '<table>';
     let isHeader = true;
+    let inThead = false;
+    let inTbody = false;
     
     for (const row of rows) {
       const cells = row.split('|').slice(1, -1).map(c => c.trim());
@@ -166,16 +221,24 @@ function processMarkdownTables(html: string): string {
         continue;
       }
       
+      if (isHeader && !inThead) {
+        tableHtml += '<thead>';
+        inThead = true;
+      } else if (!isHeader && !inTbody) {
+        if (inThead) tableHtml += '</thead>';
+        tableHtml += '<tbody>';
+        inTbody = true;
+      }
+      
       const cellTag = isHeader ? 'th' : 'td';
-      const cellStyle = isHeader 
-        ? 'style="border:1px solid #ddd;padding:8px 12px;background:#f5f5f5;font-weight:bold;text-align:left;"'
-        : 'style="border:1px solid #ddd;padding:8px 12px;"';
-      const rowHtml = cells.map(c => `<${cellTag} ${cellStyle}>${c}</${cellTag}>`).join('');
+      const rowHtml = cells.map(c => `<${cellTag}>${c}</${cellTag}>`).join('');
       tableHtml += `<tr>${rowHtml}</tr>`;
       
       if (isHeader) isHeader = false;
     }
     
+    if (inThead && !inTbody) tableHtml += '</thead>';
+    if (inTbody) tableHtml += '</tbody>';
     tableHtml += '</table>';
     return tableHtml;
   });
@@ -186,28 +249,34 @@ function processLists(html: string): string {
   const result: string[] = [];
   let inList = false;
   let listType = '';
+  let listDepth = 0;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const unorderedMatch = line.match(/^[\s]*[-*+]\s+(.+)$/);
-    const orderedMatch = line.match(/^[\s]*\d+\.\s+(.+)$/);
+    const unorderedMatch = line.match(/^(\s*)[-*+]\s+(.+)$/);
+    const orderedMatch = line.match(/^(\s*)\d+\.\s+(.+)$/);
     
     if (unorderedMatch) {
+      const indent = unorderedMatch[1].length;
+      const content = unorderedMatch[2];
+      
       if (!inList || listType !== 'ul') {
         if (inList) result.push(`</${listType}>`);
-        result.push('<ul style="margin:12px 0;padding-left:24px;">');
+        result.push('<ul>');
         inList = true;
         listType = 'ul';
       }
-      result.push(`<li style="margin:4px 0;">${unorderedMatch[1]}</li>`);
+      result.push(`<li>${content}</li>`);
     } else if (orderedMatch) {
+      const content = orderedMatch[2];
+      
       if (!inList || listType !== 'ol') {
         if (inList) result.push(`</${listType}>`);
-        result.push('<ol style="margin:12px 0;padding-left:24px;">');
+        result.push('<ol>');
         inList = true;
         listType = 'ol';
       }
-      result.push(`<li style="margin:4px 0;">${orderedMatch[1]}</li>`);
+      result.push(`<li>${content}</li>`);
     } else {
       if (inList) {
         result.push(`</${listType}>`);
