@@ -195,9 +195,13 @@ export function SidebarTopicsTree({
         const targetIndex = siblings.findIndex(s => s.id === targetTopicId);
         
         if (dropPosition === 'before') {
-          newOrder = targetIndex > 0 ? (siblings[targetIndex - 1].display_order + targetTopic.display_order) / 2 : targetTopic.display_order - 1;
+          newOrder = targetIndex > 0 
+            ? Math.floor((siblings[targetIndex - 1].display_order + targetTopic.display_order) / 2) 
+            : targetTopic.display_order - 1;
         } else {
-          newOrder = targetIndex < siblings.length - 1 ? (targetTopic.display_order + siblings[targetIndex + 1].display_order) / 2 : targetTopic.display_order + 1;
+          newOrder = targetIndex < siblings.length - 1 
+            ? Math.floor((targetTopic.display_order + siblings[targetIndex + 1].display_order) / 2) 
+            : targetTopic.display_order + 1;
         }
       }
 
