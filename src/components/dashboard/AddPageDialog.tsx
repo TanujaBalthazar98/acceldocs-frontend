@@ -23,6 +23,7 @@ interface AddPageDialogProps {
   topicId?: string | null;
   topicName?: string | null;
   parentFolderId: string | null;
+  organizationId?: string | null;
   onCreated?: (doc: { id: string; name: string; google_doc_id: string }) => void;
 }
 
@@ -33,7 +34,8 @@ export const AddPageDialog = ({
   projectName, 
   topicId,
   topicName, 
-  parentFolderId, 
+  parentFolderId,
+  organizationId,
   onCreated 
 }: AddPageDialogProps) => {
   const [pageTitle, setPageTitle] = useState("");
@@ -184,6 +186,7 @@ export const AddPageDialog = ({
         topicId={topicId}
         topicName={topicName}
         topicFolderId={parentFolderId}
+        organizationId={organizationId}
         onImported={() => {
           onCreated?.({ id: '', name: '', google_doc_id: '' });
         }}
