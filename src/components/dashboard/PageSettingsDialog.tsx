@@ -16,6 +16,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +30,13 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Link2, ExternalLink, Trash2 } from "lucide-react";
+import { Link2, ExternalLink, Trash2, FolderInput } from "lucide-react";
+
+interface Topic {
+  id: string;
+  name: string;
+  parent_id: string | null;
+}
 
 interface PageSettingsDialogProps {
   open: boolean;
@@ -54,20 +67,25 @@ export const PageSettingsDialog = ({
   const [isPublished, setIsPublished] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [currentTopicId, setCurrentTopicId] = useState<string | null>(null);
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [isMoving, setIsMoving] = useState(false);
 
-  // Fetch document data when opened
+  // Fetch document data and topics when opened
   useEffect(() => {
     if (open && documentId) {
       fetchDocumentData();
+      fetchTopics();
     }
-  }, [open, documentId]);
+  }, [open, documentId, projectId]);
 
   const fetchDocumentData = async () => {
     if (!documentId) return;
 
     const { data } = await supabase
       .from("documents")
-      .select("title, slug, is_published, content_html, published_content_html")
+      .select("title, slug, is_published, content_html, published_content_html, topic_id")
       .eq("id", documentId)
       .single();
 
@@ -75,7 +93,39 @@ export const PageSettingsDialog = ({
       setTitle(data.title);
       setSlug(data.slug || "");
       setIsPublished(data.is_published);
+      setCurrentTopicId(data.topic_id);
+      setSelectedTopicId(data.topic_id);
     }
+  };
+
+  const fetchTopics = async () => {
+    if (!projectId) return;
+    
+    const { data } = await supabase
+      .from("topics")
+      .select("id, name, parent_id")
+      .eq("project_id", projectId)
+      .order("display_order");
+    
+    if (data) {
+      setTopics(data);
+    }
+  };
+
+  // Build topic display name with hierarchy
+  const getTopicDisplayName = (topic: Topic): string => {
+    const parts: string[] = [topic.name];
+    let current = topic;
+    while (current.parent_id) {
+      const parent = topics.find(t => t.id === current.parent_id);
+      if (parent) {
+        parts.unshift(parent.name);
+        current = parent;
+      } else {
+        break;
+      }
+    }
+    return parts.join(" / ");
   };
 
   // Validate slug format
@@ -148,6 +198,11 @@ export const PageSettingsDialog = ({
       updateData.published_content_html = currentDoc.content_html;
     }
 
+    // Handle topic change
+    if (selectedTopicId !== currentTopicId) {
+      updateData.topic_id = selectedTopicId;
+    }
+
     const { error } = await supabase
       .from("documents")
       .update(updateData)
@@ -158,7 +213,8 @@ export const PageSettingsDialog = ({
     if (error) {
       toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
     } else {
-      toast({ title: "Saved", description: "Page settings updated." });
+      const movedMessage = selectedTopicId !== currentTopicId ? " Page moved to new topic." : "";
+      toast({ title: "Saved", description: `Page settings updated.${movedMessage}` });
       onUpdate?.();
       onOpenChange(false);
     }
@@ -255,6 +311,39 @@ export const PageSettingsDialog = ({
                 onCheckedChange={setIsPublished}
               />
             </div>
+
+            {/* Move to Topic */}
+            {topics.length > 0 && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <FolderInput className="w-4 h-4" />
+                  Move to Topic
+                </Label>
+                <Select
+                  value={selectedTopicId || "root"}
+                  onValueChange={(value) => setSelectedTopicId(value === "root" ? null : value)}
+                >
+                  <SelectTrigger className="bg-secondary">
+                    <SelectValue placeholder="Select a topic" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="root">
+                      <span className="text-muted-foreground">Project Root (no topic)</span>
+                    </SelectItem>
+                    {topics.map((topic) => (
+                      <SelectItem key={topic.id} value={topic.id}>
+                        {getTopicDisplayName(topic)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTopicId !== currentTopicId && (
+                  <p className="text-xs text-primary">
+                    Page will be moved when you save changes
+                  </p>
+                )}
+              </div>
+            )}
 
             <Separator />
 
