@@ -564,6 +564,9 @@ Deno.serve(async (req) => {
     const { files, projectId, organizationId } = body;
 
     console.log(`Importing ${files.length} markdown files to project ${projectId}`);
+    
+    // Log file paths for debugging
+    console.log("File paths received:", files.slice(0, 10).map(f => f.path));
 
     // Get project's drive folder
     const { data: project, error: projectError } = await supabase
