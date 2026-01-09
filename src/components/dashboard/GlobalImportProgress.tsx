@@ -47,58 +47,17 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
     setStoppingJobs((prev) => new Set([...prev, job.id]));
 
     try {
-      // Mark job as stopped (the background import will detect this and abort)
-      await supabase
-        .from("import_jobs")
-        .update({
-          status: "stopped",
-          completed_at: new Date().toISOString(),
-          errors: [
-            ...(job.errors || []),
-            "Import stopped by user - cleaning up partial content",
-          ],
-        })
-        .eq("id", job.id);
+      const { data, error } = await supabase.functions.invoke("stop-import-job", {
+        body: { jobId: job.id },
+      });
 
-      const jobStartTime = job.created_at;
-
-      // Delete documents created during this import window
-      const { data: docsToDelete } = await supabase
-        .from("documents")
-        .select("id")
-        .eq("project_id", job.project_id)
-        .gte("created_at", jobStartTime);
-
-      if (docsToDelete && docsToDelete.length > 0) {
-        await supabase
-          .from("documents")
-          .delete()
-          .in(
-            "id",
-            docsToDelete.map((d) => d.id)
-          );
-      }
-
-      // Delete topics created during this import window
-      const { data: topicsToDelete } = await supabase
-        .from("topics")
-        .select("id")
-        .eq("project_id", job.project_id)
-        .gte("created_at", jobStartTime);
-
-      if (topicsToDelete && topicsToDelete.length > 0) {
-        await supabase
-          .from("topics")
-          .delete()
-          .in(
-            "id",
-            topicsToDelete.map((t) => t.id)
-          );
+      if (error) {
+        throw error;
       }
 
       toast({
         title: "Import Stopped",
-        description: `Cleaned up ${docsToDelete?.length || 0} pages and ${topicsToDelete?.length || 0} topics.`,
+        description: `Cleaned up ${data?.deletedPages ?? 0} pages and ${data?.deletedTopics ?? 0} topics.`,
       });
 
       setDismissed((prev) => new Set([...prev, job.id]));
@@ -107,7 +66,7 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
       console.error("Error stopping import:", error);
       toast({
         title: "Error",
-        description: "Failed to stop import. Please try again.",
+        description: "Failed to stop import. Please sign in again and retry.",
         variant: "destructive",
       });
     } finally {
