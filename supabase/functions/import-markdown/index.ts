@@ -617,6 +617,14 @@ Deno.serve(async (req) => {
   }
 });
 
+// Custom error class for import stop
+class ImportStoppedError extends Error {
+  constructor() {
+    super("Import stopped by user");
+    this.name = "ImportStoppedError";
+  }
+}
+
 // Recursively create topics with proper hierarchy
 async function createTopicsRecursively(
   supabase: any,
@@ -722,6 +730,10 @@ async function createTopicsRecursively(
           results.processedFiles++;
           await updateProgress();
         } catch (err) {
+          // Re-throw stop errors to bubble up
+          if (err instanceof ImportStoppedError || (err instanceof Error && err.message === "Import stopped by user")) {
+            throw err;
+          }
           console.error(`Error processing file ${file.path}:`, err);
           results.errors.push(`Error: ${file.path}`);
           results.processedFiles++;
@@ -743,6 +755,10 @@ async function createTopicsRecursively(
         0
       );
     } catch (err) {
+      // Re-throw stop errors to bubble up
+      if (err instanceof ImportStoppedError || (err instanceof Error && err.message === "Import stopped by user")) {
+        throw err;
+      }
       console.error(`Error creating topic ${name}:`, err);
       results.errors.push(`Error creating topic: ${name}`);
     }
@@ -770,11 +786,11 @@ async function processImportWithProgress(
   // Wrap entire processing in try-catch to mark as failed on any unhandled error
   try {
 
-  // Helper to update job progress
+  // Helper to update job progress and check for stop signal
   const updateProgress = async (currentFile?: string) => {
     if (!jobId) return;
 
-    // If user stopped the import, abort the background task ASAP
+    // Check if user stopped the import - this is critical for responsive stopping
     try {
       const { data: stopCheck } = await supabase
         .from("import_jobs")
@@ -783,13 +799,16 @@ async function processImportWithProgress(
         .maybeSingle();
 
       if (stopCheck?.status === "stopped") {
-        throw new Error("Import stopped by user");
+        console.log("Import stop detected, aborting...");
+        throw new ImportStoppedError();
       }
     } catch (err) {
-      // If the stop check fails, continue (don't kill import just because of a transient read error)
-      if (err instanceof Error && err.message === "Import stopped by user") {
+      // Re-throw stop errors
+      if (err instanceof ImportStoppedError) {
         throw err;
       }
+      // Continue on transient read errors
+      console.warn("Stop check failed:", err);
     }
 
     try {
@@ -877,10 +896,20 @@ async function processImportWithProgress(
       results.processedFiles++;
       await updateProgress();
     } catch (err) {
+      // Re-throw stop errors to bubble up and exit the loop
+      if (err instanceof ImportStoppedError) {
+        throw err;
+      }
       console.error(`Error processing file ${file.path}:`, err);
       results.errors.push(`Error: ${file.path}`);
       results.processedFiles++;
-      await updateProgress();
+      try {
+        await updateProgress();
+      } catch (stopErr) {
+        if (stopErr instanceof ImportStoppedError) {
+          throw stopErr;
+        }
+      }
     }
   }
 
