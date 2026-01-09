@@ -76,6 +76,11 @@ interface ImportRequest {
   }[];
   projectId: string;
   organizationId: string;
+  /**
+   * If provided, imported folders become subtopics under this topic, and root-level files become pages in it.
+   * Used for both "import pages" (within a topic) and "import subtopics".
+   */
+  parentTopicId?: string | null;
 }
 
 interface TopicNode {
@@ -561,12 +566,12 @@ Deno.serve(async (req) => {
     }
 
     const body: ImportRequest = await req.json();
-    const { files, projectId, organizationId } = body;
+    const { files, projectId, organizationId, parentTopicId } = body;
 
     console.log(`Importing ${files.length} markdown files to project ${projectId}`);
-    
+
     // Log file paths for debugging
-    console.log("File paths received:", files.slice(0, 10).map(f => f.path));
+    console.log("File paths received:", files.slice(0, 10).map((f) => f.path));
 
     // Get project's drive folder
     const { data: project, error: projectError } = await supabase
@@ -580,6 +585,30 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "Project not found or no Drive folder" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Determine base folder/topic (when importing into an existing topic)
+    let baseFolderId = project.drive_folder_id;
+    let baseTopicId: string | null = null;
+
+    if (parentTopicId) {
+      const { data: parentTopic, error: parentTopicError } = await supabase
+        .from("topics")
+        .select("id, drive_folder_id")
+        .eq("id", parentTopicId)
+        .eq("project_id", projectId)
+        .single();
+
+      if (parentTopicError || !parentTopic?.drive_folder_id) {
+        return new Response(
+          JSON.stringify({ error: "Parent topic not found" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      baseFolderId = parentTopic.drive_folder_id;
+      baseTopicId = parentTopic.id;
+      console.log(`Import base topic: ${baseTopicId}`);
     }
 
     // Get Google token
@@ -638,14 +667,16 @@ Deno.serve(async (req) => {
     const backgroundTask = async () => {
       try {
         await processImportWithProgress(
-          supabase, 
-          project, 
-          tokenManager, 
-          topicTree, 
-          rootFiles, 
-          projectId, 
+          supabase,
+          project,
+          tokenManager,
+          topicTree,
+          rootFiles,
+          projectId,
           user.id,
-          jobId
+          jobId,
+          baseFolderId,
+          baseTopicId
         );
       } catch (err) {
         console.error("Import failed:", err);
@@ -846,7 +877,9 @@ async function processImportWithProgress(
   rootFiles: { path: string; content: string }[],
   projectId: string,
   userId: string,
-  jobId: string | null
+  jobId: string | null,
+  baseFolderId: string,
+  baseTopicId: string | null
 ): Promise<void> {
   const results = {
     topicsCreated: 0,
@@ -906,8 +939,8 @@ async function processImportWithProgress(
     tokenManager,
     topicTree,
     projectId,
-    project.drive_folder_id,
-    null,
+    baseFolderId,
+    baseTopicId,
     userId,
     results,
     updateProgress
@@ -929,7 +962,7 @@ async function processImportWithProgress(
         tokenManager,
         title,
         htmlContent,
-        project.drive_folder_id!
+        baseFolderId
       );
 
       if (!docResult.success) {
@@ -942,20 +975,23 @@ async function processImportWithProgress(
       // Use upsert to handle duplicate documents gracefully
       const { error: docError } = await supabase
         .from("documents")
-        .upsert({
-          title,
-          slug: generateSlug(title),
-          google_doc_id: docResult.id,
-          project_id: projectId,
-          topic_id: null,
-          content_html: htmlContent,
-          owner_id: userId,
-          visibility: "internal",
-          is_published: false,
-        }, {
-          onConflict: 'project_id,google_doc_id',
-          ignoreDuplicates: true
-        });
+        .upsert(
+          {
+            title,
+            slug: generateSlug(title),
+            google_doc_id: docResult.id,
+            project_id: projectId,
+            topic_id: baseTopicId,
+            content_html: htmlContent,
+            owner_id: userId,
+            visibility: "internal",
+            is_published: false,
+          },
+          {
+            onConflict: 'project_id,google_doc_id',
+            ignoreDuplicates: true,
+          }
+        );
 
       if (docError) {
         console.error(`Failed to save document ${title}:`, docError);

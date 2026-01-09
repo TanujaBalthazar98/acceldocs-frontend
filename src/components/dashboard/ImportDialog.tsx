@@ -21,9 +21,13 @@ interface ImportDialogProps {
   projectId: string | null;
   projectName: string | null;
   projectFolderId: string | null;
+  /** For page imports, this is the topic to import into. */
   topicId?: string | null;
   topicName?: string | null;
   topicFolderId?: string | null;
+  /** For topic imports, this is the parent topic to create subtopics under. */
+  parentTopicId?: string | null;
+  parentTopicName?: string | null;
   organizationId?: string | null;
   onImported?: () => void;
 }
@@ -43,6 +47,8 @@ export const ImportDialog = ({
   topicId,
   topicName,
   topicFolderId,
+  parentTopicId,
+  parentTopicName,
   organizationId,
   onImported,
 }: ImportDialogProps) => {
@@ -56,9 +62,11 @@ export const ImportDialog = ({
   const { user, googleAccessToken } = useAuth();
 
   const parentFolderId = type === "page" ? (topicFolderId || projectFolderId) : projectFolderId;
+  const importParentTopicId = type === "page" ? (topicId || null) : (parentTopicId || null);
+
   const locationText = type === "page" 
     ? (topicName ? `${projectName} / ${topicName}` : projectName || "current project")
-    : projectName || "current project";
+    : (parentTopicName ? `${projectName} / ${parentTopicName}` : projectName || "current project");
 
   const resetState = () => {
     setSelectedFiles([]);
@@ -226,7 +234,7 @@ export const ImportDialog = ({
           files: filesWithContext,
           projectId,
           organizationId,
-          targetTopicId: type === "page" ? topicId : null, // For page imports, specify the target topic
+          parentTopicId: importParentTopicId,
         },
         headers: {
           'x-google-token': googleAccessToken,

@@ -180,6 +180,8 @@ export const AddTopicDialog = ({
         projectId={projectId}
         projectName={projectName}
         projectFolderId={targetFolderId}
+        parentTopicId={parentTopic?.id || null}
+        parentTopicName={parentTopic?.name || null}
         organizationId={organizationId}
         onImported={() => {
           onCreated?.({ id: '', name: '', drive_folder_id: '' });
