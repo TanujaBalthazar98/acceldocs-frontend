@@ -86,6 +86,7 @@ import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { SubtopicsView } from "@/components/dashboard/SubtopicsView";
 import { SidebarTopicsTree } from "@/components/dashboard/SidebarTopicsTree";
+import { UnifiedContentTree } from "@/components/dashboard/UnifiedContentTree";
 import { APISettingsPanel } from "@/components/dashboard/APISettingsPanel";
 import { MCPSettingsPanel } from "@/components/dashboard/MCPSettingsPanel";
 import { AuditLogPanel } from "@/components/dashboard/AuditLogPanel";
@@ -1809,7 +1810,7 @@ const Dashboard = () => {
                 onClick={() => setTopicsExpanded(!topicsExpanded)}
               >
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Topics
+                  Content
                 </span>
                 <div className="flex items-center gap-1">
                   <span
@@ -1838,14 +1839,35 @@ const Dashboard = () => {
                 </div>
               </button>
 
-              {/* Topics list */}
+              {/* Unified topics + pages tree */}
               {topicsExpanded && (
                 <div className="space-y-1 mt-1">
-                  <SidebarTopicsTree
+                  <UnifiedContentTree
                     topics={filteredTopics.filter(t => t.project_id === selectedProject.id)}
-                    selectedTopic={selectedTopic}
+                    documents={documents.filter(d => d.project_id === selectedProject.id).map(d => ({
+                      id: d.id,
+                      title: d.title,
+                      google_doc_id: d.google_doc_id,
+                      project_id: d.project_id,
+                      topic_id: d.topic_id,
+                      display_order: null,
+                    }))}
+                    selectedTopicId={selectedTopic?.id || null}
+                    selectedDocumentId={selectedPage}
+                    autoCollapseDepth={3}
                     onSelectTopic={(topic) => {
                       setSelectedTopic(topic);
+                      setSelectedPage(null);
+                      setMobileSidebarOpen(false);
+                    }}
+                    onSelectDocument={(doc) => {
+                      setSelectedPage(doc.id);
+                      setSelectedTopic(null);
+                      // Find the topic for the doc
+                      const docTopic = topics.find(t => t.id === doc.topic_id);
+                      if (docTopic) {
+                        setSelectedTopic(docTopic);
+                      }
                       setMobileSidebarOpen(false);
                     }}
                     onAddPage={(topic) => {
@@ -1856,12 +1878,23 @@ const Dashboard = () => {
                       setParentTopicForCreate(topic);
                       setAddTopicOpen(true);
                     }}
-                    onOpenSettings={(topic) => {
+                    onOpenTopicSettings={(topic) => {
                       setSettingsTopic(topic);
                       setTopicSettingsOpen(true);
                     }}
                     onDeleteTopic={(topic) => {
                       setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
+                      setDeleteDialogOpen(true);
+                    }}
+                    onOpenDocumentSettings={(doc) => {
+                      const fullDoc = documents.find(d => d.id === doc.id);
+                      if (fullDoc) {
+                        setSelectedDocument(fullDoc);
+                        setPageSettingsOpen(true);
+                      }
+                    }}
+                    onDeleteDocument={(doc) => {
+                      setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
                       setDeleteDialogOpen(true);
                     }}
                     onTopicsReordered={fetchData}
