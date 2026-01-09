@@ -1565,37 +1565,93 @@ const Dashboard = () => {
                           <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
                         )}
 
-                        {permissions.canDeleteProject && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
-                                onClick={(e) => e.stopPropagation()}
-                                aria-label="Sub-project actions"
-                              >
-                                <MoreHorizontal className="w-3 h-3" />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-44">
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setForceDeleteAvailable(false);
-                                  setItemToDelete({
-                                    type: "project",
-                                    id: subProject.id,
-                                    name: subProject.name,
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label="Sub-project actions"
+                            >
+                              <MoreHorizontal className="w-3 h-3" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedProject(subProject);
+                                setProjectSettingsOpen(true);
+                              }}
+                            >
+                              <Settings className="w-3 h-3 mr-2" />
+                              Settings
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const newPublishedState = !subProject.is_published;
+                                const { error } = await supabase
+                                  .from("projects")
+                                  .update({ is_published: newPublishedState })
+                                  .eq("id", subProject.id);
+                                if (error) {
+                                  toast({ title: "Error", description: "Failed to update publish state.", variant: "destructive" });
+                                } else {
+                                  toast({
+                                    title: newPublishedState ? "Published" : "Unpublished",
+                                    description: newPublishedState
+                                      ? "Sub-project is now live."
+                                      : "Sub-project is no longer accessible.",
                                   });
-                                  setDeleteDialogOpen(true);
-                                }}
-                              >
-                                <Trash2 className="w-3 h-3 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
+                                  fetchData();
+                                }
+                              }}
+                            >
+                              {subProject.is_published ? (
+                                <>
+                                  <XCircle className="w-3 h-3 mr-2" />
+                                  Unpublish
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-3 h-3 mr-2" />
+                                  Publish
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedProject(subProject);
+                                setShareOpen(true);
+                              }}
+                            >
+                              <Share2 className="w-3 h-3 mr-2" />
+                              Share
+                            </DropdownMenuItem>
+                            {permissions.canDeleteProject && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setForceDeleteAvailable(false);
+                                    setItemToDelete({
+                                      type: "project",
+                                      id: subProject.id,
+                                      name: subProject.name,
+                                    });
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                >
+                                  <Trash2 className="w-3 h-3 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   ))
