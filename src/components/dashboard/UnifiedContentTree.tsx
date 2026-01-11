@@ -297,10 +297,16 @@ export function UnifiedContentTree({
       const y = e.clientY - rect.top;
       const height = rect.height;
 
+      // Mobile/trackpad UX: when dragging a *page* over a *topic*, treat the whole row as
+      // an "inside" drop target to avoid accidental "before/after" drops.
+      const draggingDocOverTopic =
+        nodeType === "topic" && dragState.draggedType === "document";
+
       let dropPosition: "before" | "inside" | "after";
-      // For topics, allow "inside" position (to move into the topic)
-      // For documents, only allow "before" and "after"
-      if (nodeType === "topic") {
+
+      if (draggingDocOverTopic) {
+        dropPosition = "inside";
+      } else if (nodeType === "topic") {
         if (y < height * 0.25) {
           dropPosition = "before";
         } else if (y > height * 0.75) {
@@ -310,11 +316,7 @@ export function UnifiedContentTree({
         }
       } else {
         // Documents only support before/after
-        if (y < height * 0.5) {
-          dropPosition = "before";
-        } else {
-          dropPosition = "after";
-        }
+        dropPosition = y < height * 0.5 ? "before" : "after";
       }
 
       setDragState((prev) => ({
@@ -323,7 +325,7 @@ export function UnifiedContentTree({
         dropPosition,
       }));
     },
-    []
+    [dragState.draggedType]
   );
 
   const handleDragLeave = useCallback(() => {
@@ -520,11 +522,19 @@ export function UnifiedContentTree({
             display_order: idx * 10,
           }));
 
-          const { error } = await supabase
-            .from("documents")
-            .upsert(updates as any, { onConflict: "id" });
+          // Use per-row UPDATEs (instead of UPSERT) to avoid any INSERT path issues
+          // and to keep permissions requirements minimal.
+          const results = await Promise.all(
+            updates.map((u) =>
+              supabase
+                .from("documents")
+                .update({ topic_id: u.topic_id, display_order: u.display_order })
+                .eq("id", u.id)
+            )
+          );
 
-          if (error) throw error;
+          const firstError = results.find((r) => r.error)?.error;
+          if (firstError) throw firstError;
 
           toast({
             title: "Page moved",
