@@ -60,6 +60,7 @@ interface UnifiedContentTreeProps {
   onOpenDocumentSettings?: (document: Document) => void;
   onDeleteDocument?: (document: Document) => void;
   onTopicsReordered?: () => void;
+  onDocumentsReordered?: () => void;
 }
 
 // Unified tree node can be a topic (folder) or a document (page)
@@ -99,6 +100,7 @@ export function UnifiedContentTree({
   onOpenDocumentSettings,
   onDeleteDocument,
   onTopicsReordered,
+  onDocumentsReordered,
 }: UnifiedContentTreeProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState>({
@@ -261,11 +263,7 @@ export function UnifiedContentTree({
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, nodeId: string, nodeType: TreeNodeType) => {
-      // Only allow dragging topics for reordering
-      if (nodeType !== "topic") {
-        e.preventDefault();
-        return;
-      }
+      // Allow dragging both topics and documents
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", nodeId);
       setDragState((prev) => ({
@@ -288,8 +286,6 @@ export function UnifiedContentTree({
 
   const handleDragOver = useCallback(
     (e: React.DragEvent, nodeId: string, nodeType: TreeNodeType) => {
-      // Only accept drops on topics
-      if (nodeType !== "topic") return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
 
@@ -302,12 +298,23 @@ export function UnifiedContentTree({
       const height = rect.height;
 
       let dropPosition: "before" | "inside" | "after";
-      if (y < height * 0.25) {
-        dropPosition = "before";
-      } else if (y > height * 0.75) {
-        dropPosition = "after";
+      // For topics, allow "inside" position (to move into the topic)
+      // For documents, only allow "before" and "after"
+      if (nodeType === "topic") {
+        if (y < height * 0.25) {
+          dropPosition = "before";
+        } else if (y > height * 0.75) {
+          dropPosition = "after";
+        } else {
+          dropPosition = "inside";
+        }
       } else {
-        dropPosition = "inside";
+        // Documents only support before/after
+        if (y < height * 0.5) {
+          dropPosition = "before";
+        } else {
+          dropPosition = "after";
+        }
       }
 
       setDragState((prev) => ({
@@ -328,14 +335,14 @@ export function UnifiedContentTree({
   }, []);
 
   const handleDrop = useCallback(
-    async (e: React.DragEvent, targetNodeId: string) => {
+    async (e: React.DragEvent, targetNodeId: string, targetNodeType: TreeNodeType) => {
       e.preventDefault();
 
       const { draggedId, draggedType, dropPosition } = dragState;
 
       if (
         !draggedId ||
-        draggedType !== "topic" ||
+        !draggedType ||
         draggedId === targetNodeId ||
         !dropPosition
       ) {
@@ -348,96 +355,187 @@ export function UnifiedContentTree({
         return;
       }
 
-      const draggedTopic = topics.find((t) => t.id === draggedId);
-      const targetTopic = topics.find((t) => t.id === targetNodeId);
+      // Handle topic drop
+      if (draggedType === "topic") {
+        const draggedTopic = topics.find((t) => t.id === draggedId);
+        const targetTopic = topics.find((t) => t.id === targetNodeId);
 
-      if (!draggedTopic || !targetTopic) return;
-
-      // Prevent dropping parent into child
-      const isDescendant = (parentId: string, childId: string): boolean => {
-        const children = topics.filter((t) => t.parent_id === parentId);
-        for (const child of children) {
-          if (child.id === childId || isDescendant(child.id, childId)) {
-            return true;
-          }
+        if (!draggedTopic || !targetTopic) {
+          handleDragEnd();
+          return;
         }
-        return false;
-      };
 
-      if (isDescendant(draggedId, targetNodeId)) {
-        toast({
-          title: "Invalid move",
-          description: "Cannot move a topic into its own subtopic.",
-          variant: "destructive",
-        });
-        handleDragEnd();
-        return;
+        // Prevent dropping parent into child
+        const isDescendant = (parentId: string, childId: string): boolean => {
+          const children = topics.filter((t) => t.parent_id === parentId);
+          for (const child of children) {
+            if (child.id === childId || isDescendant(child.id, childId)) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        if (isDescendant(draggedId, targetNodeId)) {
+          toast({
+            title: "Invalid move",
+            description: "Cannot move a topic into its own subtopic.",
+            variant: "destructive",
+          });
+          handleDragEnd();
+          return;
+        }
+
+        try {
+          let newParentId: string | null;
+          let newOrder: number;
+
+          if (dropPosition === "inside") {
+            newParentId = targetNodeId;
+            const siblings = topics.filter((t) => t.parent_id === targetNodeId);
+            newOrder =
+              siblings.length > 0
+                ? Math.max(...siblings.map((s) => s.display_order || 0)) + 1
+                : 0;
+            setExpandedNodes((prev) => new Set([...prev, targetNodeId]));
+          } else {
+            newParentId = targetTopic.parent_id;
+            const siblings = topics.filter(
+              (t) => t.parent_id === newParentId && t.id !== draggedId
+            );
+            const targetIndex = siblings.findIndex((s) => s.id === targetNodeId);
+
+            if (dropPosition === "before") {
+              newOrder =
+                targetIndex > 0
+                  ? Math.floor(
+                      (siblings[targetIndex - 1].display_order +
+                        targetTopic.display_order) /
+                        2
+                    )
+                  : targetTopic.display_order - 1;
+            } else {
+              newOrder =
+                targetIndex < siblings.length - 1
+                  ? Math.floor(
+                      (targetTopic.display_order +
+                        siblings[targetIndex + 1].display_order) /
+                        2
+                    )
+                  : targetTopic.display_order + 1;
+            }
+          }
+
+          const { error } = await supabase
+            .from("topics")
+            .update({ parent_id: newParentId, display_order: newOrder })
+            .eq("id", draggedId);
+
+          if (error) throw error;
+
+          toast({
+            title: "Topic moved",
+            description: `"${draggedTopic.name}" has been moved.`,
+          });
+
+          onTopicsReordered?.();
+        } catch (error: any) {
+          toast({
+            title: "Failed to move topic",
+            description: error.message || "An error occurred.",
+            variant: "destructive",
+          });
+        }
       }
 
-      try {
-        let newParentId: string | null;
-        let newOrder: number;
-
-        if (dropPosition === "inside") {
-          newParentId = targetNodeId;
-          const siblings = topics.filter((t) => t.parent_id === targetNodeId);
-          newOrder =
-            siblings.length > 0
-              ? Math.max(...siblings.map((s) => s.display_order || 0)) + 1
-              : 0;
-          setExpandedNodes((prev) => new Set([...prev, targetNodeId]));
-        } else {
-          newParentId = targetTopic.parent_id;
-          const siblings = topics.filter(
-            (t) => t.parent_id === newParentId && t.id !== draggedId
-          );
-          const targetIndex = siblings.findIndex((s) => s.id === targetNodeId);
-
-          if (dropPosition === "before") {
-            newOrder =
-              targetIndex > 0
-                ? Math.floor(
-                    (siblings[targetIndex - 1].display_order +
-                      targetTopic.display_order) /
-                      2
-                  )
-                : targetTopic.display_order - 1;
-          } else {
-            newOrder =
-              targetIndex < siblings.length - 1
-                ? Math.floor(
-                    (targetTopic.display_order +
-                      siblings[targetIndex + 1].display_order) /
-                      2
-                  )
-                : targetTopic.display_order + 1;
-          }
+      // Handle document drop
+      if (draggedType === "document") {
+        const draggedDoc = documents.find((d) => d.id === draggedId);
+        if (!draggedDoc) {
+          handleDragEnd();
+          return;
         }
 
-        const { error } = await supabase
-          .from("topics")
-          .update({ parent_id: newParentId, display_order: newOrder })
-          .eq("id", draggedId);
+        try {
+          let newTopicId: string | null;
+          let newOrder: number;
 
-        if (error) throw error;
+          if (targetNodeType === "topic" && dropPosition === "inside") {
+            // Dropping into a topic
+            newTopicId = targetNodeId;
+            const siblings = documents.filter((d) => d.topic_id === targetNodeId);
+            newOrder =
+              siblings.length > 0
+                ? Math.max(...siblings.map((s) => s.display_order ?? 0)) + 1
+                : 0;
+            setExpandedNodes((prev) => new Set([...prev, targetNodeId]));
+          } else if (targetNodeType === "document") {
+            // Dropping before/after another document
+            const targetDoc = documents.find((d) => d.id === targetNodeId);
+            if (!targetDoc) {
+              handleDragEnd();
+              return;
+            }
+            
+            newTopicId = targetDoc.topic_id ?? null;
+            const siblings = documents
+              .filter((d) => d.topic_id === newTopicId && d.id !== draggedId)
+              .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
+            const targetIndex = siblings.findIndex((s) => s.id === targetNodeId);
+            const targetOrder = targetDoc.display_order ?? 0;
 
-        toast({
-          title: "Topic moved",
-          description: `"${draggedTopic.name}" has been moved.`,
-        });
+            if (dropPosition === "before") {
+              newOrder =
+                targetIndex > 0
+                  ? Math.floor(
+                      ((siblings[targetIndex - 1].display_order ?? 0) + targetOrder) / 2
+                    )
+                  : targetOrder - 1;
+            } else {
+              newOrder =
+                targetIndex < siblings.length - 1
+                  ? Math.floor(
+                      (targetOrder + (siblings[targetIndex + 1].display_order ?? 999)) / 2
+                    )
+                  : targetOrder + 1;
+            }
+          } else {
+            // Dropping before/after a topic - put at root level (no topic)
+            const targetTopic = topics.find((t) => t.id === targetNodeId);
+            newTopicId = targetTopic?.parent_id ?? null;
+            const siblings = documents
+              .filter((d) => d.topic_id === newTopicId && d.id !== draggedId)
+              .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
+            newOrder = siblings.length > 0 
+              ? Math.max(...siblings.map((s) => s.display_order ?? 0)) + 1 
+              : 0;
+          }
 
-        onTopicsReordered?.();
-      } catch (error: any) {
-        toast({
-          title: "Failed to move topic",
-          description: error.message || "An error occurred.",
-          variant: "destructive",
-        });
+          const { error } = await supabase
+            .from("documents")
+            .update({ topic_id: newTopicId, display_order: Math.floor(newOrder) })
+            .eq("id", draggedId);
+
+          if (error) throw error;
+
+          toast({
+            title: "Page moved",
+            description: `"${draggedDoc.title}" has been moved.`,
+          });
+
+          onDocumentsReordered?.();
+        } catch (error: any) {
+          toast({
+            title: "Failed to move page",
+            description: error.message || "An error occurred.",
+            variant: "destructive",
+          });
+        }
       }
 
       handleDragEnd();
     },
-    [dragState, topics, toast, onTopicsReordered, handleDragEnd]
+    [dragState, topics, documents, toast, onTopicsReordered, onDocumentsReordered, handleDragEnd]
   );
 
   // ============ Render ============
@@ -462,12 +560,12 @@ export function UnifiedContentTree({
 
         <div
           data-node-id={node.id}
-          draggable={isTopic}
+          draggable={true}
           onDragStart={(e) => handleDragStart(e, node.id, node.type)}
           onDragEnd={handleDragEnd}
           onDragOver={(e) => handleDragOver(e, node.id, node.type)}
           onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, node.id)}
+          onDrop={(e) => handleDrop(e, node.id, node.type)}
           className={cn(
             "group flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm transition-colors cursor-pointer",
             isSelected
@@ -489,12 +587,10 @@ export function UnifiedContentTree({
             }
           }}
         >
-          {/* Drag handle (topics only) */}
-          {isTopic && (
-            <div className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing shrink-0">
-              <GripVertical className="w-3 h-3 text-muted-foreground" />
-            </div>
-          )}
+          {/* Drag handle for both topics and documents */}
+          <div className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing shrink-0">
+            <GripVertical className="w-3 h-3 text-muted-foreground" />
+          </div>
 
           {/* Expand/collapse chevron */}
           {hasChildren ? (
