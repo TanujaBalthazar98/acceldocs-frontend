@@ -540,8 +540,10 @@ export function UnifiedContentTree({
 
           const firstNoop = results.find((r) => !r.data || r.data.length === 0);
           if (firstNoop) {
+            const { data: authData } = await supabase.auth.getUser();
+            const signedInAs = authData.user?.email ? `Signed in as ${authData.user.email}. ` : "";
             throw new Error(
-              "Move was blocked (no changes applied). You may not have permission to move pages in this project."
+              `${signedInAs}Move was blocked (no changes applied). This usually means your current account doesn’t have edit permissions for this project.`
             );
           }
 
