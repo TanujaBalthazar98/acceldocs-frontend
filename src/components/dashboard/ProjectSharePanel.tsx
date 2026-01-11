@@ -44,6 +44,8 @@ interface ProjectSharePanelProps {
   onOpenChange: (open: boolean) => void;
   projectId: string;
   projectName: string;
+  projectSlug?: string | null;
+  organizationSlug?: string | null;
 }
 
 type ProjectRole = "admin" | "editor" | "reviewer" | "viewer";
@@ -95,7 +97,9 @@ export const ProjectSharePanel = ({
   open, 
   onOpenChange, 
   projectId, 
-  projectName 
+  projectName,
+  projectSlug,
+  organizationSlug,
 }: ProjectSharePanelProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -337,15 +341,26 @@ export const ProjectSharePanel = ({
     }
   };
 
+  // Build the correct public docs URL using slugs
+  const getDocsUrl = () => {
+    if (organizationSlug && projectSlug) {
+      return `${window.location.origin}/docs/${organizationSlug}/${projectSlug}`;
+    }
+    // Fallback to ID-based if slugs not available (shouldn't happen in normal flow)
+    return `${window.location.origin}/docs/${projectId}`;
+  };
+
   const handleCopyLink = () => {
-    const url = `${window.location.origin}/docs/${projectId}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(getDocsUrl());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleViewPreview = () => {
-    window.open(`/docs/${projectId}`, '_blank');
+    const url = organizationSlug && projectSlug 
+      ? `/docs/${organizationSlug}/${projectSlug}`
+      : `/docs/${projectId}`;
+    window.open(url, '_blank');
   };
 
   return (
@@ -406,7 +421,12 @@ export const ProjectSharePanel = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => window.open(`/docs/${projectId}`, '_blank')}
+              onClick={() => {
+                const url = organizationSlug && projectSlug 
+                  ? `/docs/${organizationSlug}/${projectSlug}`
+                  : `/docs/${projectId}`;
+                window.open(url, '_blank');
+              }}
               className="flex-1 gap-2"
             >
               <BookOpen className="w-4 h-4" />
