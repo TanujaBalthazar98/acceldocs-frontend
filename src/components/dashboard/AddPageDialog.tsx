@@ -49,8 +49,11 @@ export const AddPageDialog = ({
     ? `${projectName} / ${topicName}` 
     : projectName || "current project";
 
+  // Determine if we have a valid parent folder - could be project folder (for project-level pages) or topic folder
+  const hasValidFolder = !!parentFolderId;
+
   const handleCreate = async () => {
-    if (!pageTitle.trim() || !parentFolderId || !projectId) return;
+    if (!pageTitle.trim() || !hasValidFolder || !projectId) return;
     
     setIsCreating(true);
     
@@ -113,10 +116,19 @@ export const AddPageDialog = ({
             </TabsList>
             
             <TabsContent value="create" className="space-y-4 pt-2">
-              {!parentFolderId && (
+              {!hasValidFolder && (
                 <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                   <p className="text-sm text-destructive">
-                    No topic selected. Please select a topic first to add a page.
+                    No project or topic selected. Please select a project first to add a page.
+                  </p>
+                </div>
+              )}
+
+              {/* Show info when creating at project level (no topic) */}
+              {hasValidFolder && !topicId && (
+                <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                  <p className="text-sm text-muted-foreground">
+                    This page will be created directly under <span className="font-medium text-foreground">{projectName}</span> without a topic.
                   </p>
                 </div>
               )}
@@ -132,12 +144,12 @@ export const AddPageDialog = ({
                     placeholder="e.g., Getting Started Guide"
                     value={pageTitle}
                     onChange={(e) => setPageTitle(e.target.value)}
-                    disabled={!parentFolderId}
+                    disabled={!hasValidFolder}
                     className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  A new Google Doc with this title will be created.
+                  A new Google Doc with this title will be created{topicId ? " in this topic" : " directly under the project"}.
                 </p>
               </div>
 
@@ -147,7 +159,7 @@ export const AddPageDialog = ({
                 </Button>
                 <Button 
                   onClick={handleCreate} 
-                  disabled={!pageTitle.trim() || isCreating || !parentFolderId || !projectId}
+                  disabled={!pageTitle.trim() || isCreating || !hasValidFolder || !projectId}
                 >
                   {isCreating ? "Creating..." : "Create Page"}
                 </Button>
@@ -165,7 +177,7 @@ export const AddPageDialog = ({
                     onOpenChange(false);
                     setShowImport(true);
                   }}
-                  disabled={!parentFolderId}
+                  disabled={!hasValidFolder}
                 >
                   <Upload className="w-4 h-4 mr-2" />
                   Open Import Dialog
