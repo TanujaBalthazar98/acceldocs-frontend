@@ -137,6 +137,7 @@ interface Document {
   google_doc_id: string;
   project_id: string;
   topic_id: string | null;
+  display_order: number | null;
   google_modified_at: string | null;
   created_at: string;
   visibility: VisibilityLevel;
@@ -321,13 +322,13 @@ const Dashboard = () => {
             .from("documents")
             .select(
               `
-              id, title, google_doc_id, project_id, topic_id, google_modified_at, created_at, updated_at,
+              id, title, google_doc_id, project_id, topic_id, display_order, google_modified_at, created_at, updated_at,
               visibility, is_published, owner_id,
               owner:profiles!documents_owner_id_fkey(full_name, email)
             `
             )
             .in("project_id", projectIds)
-            .order("created_at", { ascending: false });
+            .order("display_order", { ascending: true, nullsFirst: false });
 
           if (docsData) {
             const baseDocs = docsData.map((doc: any) => ({
@@ -1349,8 +1350,17 @@ const Dashboard = () => {
   }
 
   // If a page is selected, show the PageView
-  if (selectedPage) {
-    return <PageView onBack={() => setSelectedPage(null)} />;
+  if (selectedPage && selectedDocument) {
+    return (
+      <PageView
+        document={selectedDocument}
+        onBack={() => {
+          setSelectedPage(null);
+          setSelectedDocument(null);
+        }}
+        onDocumentUpdate={fetchData}
+      />
+    );
   }
 
   // Projects tree helpers (single-level nesting)
@@ -1942,7 +1952,7 @@ const Dashboard = () => {
                       google_doc_id: d.google_doc_id,
                       project_id: d.project_id,
                       topic_id: d.topic_id,
-                      display_order: null,
+                      display_order: d.display_order,
                     }))}
                     selectedTopicId={selectedTopic?.id || null}
                     selectedDocumentId={selectedPage}
