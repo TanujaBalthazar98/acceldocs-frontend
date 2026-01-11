@@ -971,6 +971,59 @@ const Dashboard = () => {
   const clearSelection = () => {
     setSelectedDocIds(new Set());
   };
+  
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  
+  const handleBulkDelete = async () => {
+    if (!permissions.canDeleteDocument) {
+      toast({ title: "Permission Denied", description: "You don't have permission to delete pages.", variant: "destructive" });
+      return;
+    }
+    
+    setIsBulkDeleting(true);
+    const docsToDelete = documents.filter(d => selectedDocIds.has(d.id));
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const doc of docsToDelete) {
+      // Trash from Drive first
+      if (doc.google_doc_id) {
+        const trashResult = await trashFile(doc.google_doc_id);
+        if (!trashResult.success && trashResult.errorCode !== "NOT_AUTHORIZED") {
+          errorCount++;
+          continue;
+        }
+      }
+      
+      // Delete from database
+      const { error } = await supabase
+        .from("documents")
+        .delete()
+        .eq("id", doc.id);
+      
+      if (!error) {
+        successCount++;
+        await logAction('delete', 'document', doc.id, doc.project_id, { documentTitle: doc.title, bulk: true });
+      } else {
+        errorCount++;
+      }
+    }
+    
+    if (successCount > 0) {
+      toast({
+        title: "Bulk Delete Complete",
+        description: `Deleted ${successCount} page${successCount > 1 ? 's' : ''} successfully.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
+      });
+      setSelectedDocIds(new Set());
+      fetchData();
+    } else {
+      toast({ title: "No pages deleted", description: "Could not delete any of the selected pages.", variant: "destructive" });
+    }
+    setIsBulkDeleting(false);
+    setBulkDeleteDialogOpen(false);
+  };
   const handleSignOut = async () => {
     await signOut();
     toast({
@@ -1900,12 +1953,18 @@ const Dashboard = () => {
                       setMobileSidebarOpen(false);
                     }}
                     onSelectDocument={(doc) => {
+                      // Find the full document object and set it for PageView
+                      const fullDoc = documents.find(d => d.id === doc.id);
+                      if (fullDoc) {
+                        setSelectedDocument(fullDoc);
+                      }
                       setSelectedPage(doc.id);
-                      setSelectedTopic(null);
                       // Find the topic for the doc
                       const docTopic = topics.find(t => t.id === doc.topic_id);
                       if (docTopic) {
                         setSelectedTopic(docTopic);
+                      } else {
+                        setSelectedTopic(null);
                       }
                       setMobileSidebarOpen(false);
                     }}
@@ -1937,6 +1996,7 @@ const Dashboard = () => {
                       setDeleteDialogOpen(true);
                     }}
                     onTopicsReordered={fetchData}
+                    onDocumentsReordered={fetchData}
                   />
                 </div>
               )}
@@ -2504,6 +2564,18 @@ const Dashboard = () => {
                     {isBulkUnpublishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
                     Unpublish
                   </Button>
+                  {permissions.canDeleteDocument && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setBulkDeleteDialogOpen(true)}
+                      disabled={isBulkDeleting}
+                    >
+                      {isBulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                      Delete
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -2844,7 +2916,30 @@ const Dashboard = () => {
         </AlertDialogContent>
       </AlertDialog>
       
-      {/* Audit Log Panel - Admin only */}
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedDocIds.size} page{selectedDocIds.size > 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the selected pages? 
+              The corresponding files will be moved to Google Drive trash (recoverable for 30 days).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleBulkDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isBulkDeleting}
+            >
+              {isBulkDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
       {permissions.canViewAuditLogs && selectedProject && (
         <AuditLogPanel
           open={auditLogOpen}
