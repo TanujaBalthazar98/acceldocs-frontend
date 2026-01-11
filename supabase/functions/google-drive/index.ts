@@ -111,6 +111,100 @@ function getOperationForAction(action: string): string {
   }
 }
 
+// Attempt to resolve project context when callers don't provide projectId
+// (needed so non-owners can operate using the org owner's Drive connection)
+async function resolveProjectIdFromFolderId(
+  supabase: any,
+  folderId: string
+): Promise<string | undefined> {
+  // Topic folder → project
+  const { data: topic } = await supabase
+    .from("topics")
+    .select("project_id")
+    .eq("drive_folder_id", folderId)
+    .maybeSingle();
+
+  if (topic?.project_id) return topic.project_id as string;
+
+  // Project folder → project
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("drive_folder_id", folderId)
+    .maybeSingle();
+
+  return project?.id as string | undefined;
+}
+
+async function resolveProjectIdFromFileId(
+  supabase: any,
+  fileId: string
+): Promise<string | undefined> {
+  // Document file → project
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("project_id")
+    .eq("google_doc_id", fileId)
+    .maybeSingle();
+
+  if (doc?.project_id) return doc.project_id as string;
+
+  // Folder file → project/topic folder
+  return resolveProjectIdFromFolderId(supabase, fileId);
+}
+
+async function resolveProjectIdFromBody(
+  supabase: any,
+  body: RequestBody
+): Promise<string | undefined> {
+  // If client provided a projectId, trust it (still subject to RBAC)
+  if ("projectId" in body && body.projectId) return body.projectId;
+
+  switch (body.action) {
+    case "list_folder":
+      return resolveProjectIdFromFolderId(supabase, body.folderId);
+    case "create_folder":
+    case "create_doc":
+      return resolveProjectIdFromFolderId(supabase, body.parentFolderId);
+    case "get_doc_content":
+      return resolveProjectIdFromFileId(supabase, body.docId);
+    case "sync_doc_content": {
+      const { data: dbDoc } = await supabase
+        .from("documents")
+        .select("project_id")
+        .eq("id", body.documentId)
+        .maybeSingle();
+      return (dbDoc?.project_id as string | undefined) ??
+        (body.googleDocId ? await resolveProjectIdFromFileId(supabase, body.googleDocId) : undefined);
+    }
+    case "trash_file":
+      return resolveProjectIdFromFileId(supabase, body.fileId);
+    default:
+      return undefined;
+  }
+}
+
+async function getDriveTokenOwnerIdForProject(
+  supabase: any,
+  projectId: string
+): Promise<string | null> {
+  const { data: project } = await supabase
+    .from("projects")
+    .select("organization_id")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (!project?.organization_id) return null;
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("owner_id")
+    .eq("id", project.organization_id)
+    .maybeSingle();
+
+  return (org?.owner_id as string | null) ?? null;
+}
+
 // Refresh Google access token using refresh token
 async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
@@ -240,16 +334,18 @@ Deno.serve(async (req) => {
 
     // RBAC Permission Check
     const operation = getOperationForAction(body.action);
-    const projectId = 'projectId' in body ? body.projectId : undefined;
-    
-    const permCheck = await checkDrivePermission(supabase, user.id, projectId, operation);
+    const resolvedProjectId = await resolveProjectIdFromBody(supabase, body);
+    // Keep a `projectId` variable for downstream logging/backwards-compat usage
+    const projectId = resolvedProjectId;
+
+    const permCheck = await checkDrivePermission(supabase, user.id, resolvedProjectId, operation);
     if (!permCheck.allowed) {
-      console.log("RBAC denied:", body.action, "for user:", user.id, "project:", projectId);
+      console.log("RBAC denied:", body.action, "for user:", user.id, "project:", resolvedProjectId);
       return new Response(
-        JSON.stringify({ 
-          error: "Insufficient permissions", 
+        JSON.stringify({
+          error: "Insufficient permissions",
           message: `You don't have permission to ${operation} in this project`,
-          code: "PERMISSION_DENIED"
+          code: "PERMISSION_DENIED",
         }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -257,9 +353,29 @@ Deno.serve(async (req) => {
 
     const providerTokenFromHeader = req.headers.get("x-google-token");
 
+    // IMPORTANT: For project-scoped Drive actions we always use the org owner's Drive connection.
+    // This ensures non-owners can still create/move/delete pages without having Drive scopes.
+    const driveTokenUserId = resolvedProjectId
+      ? await getDriveTokenOwnerIdForProject(supabase, resolvedProjectId)
+      : user.id;
+
+    if (!driveTokenUserId) {
+      return new Response(
+        JSON.stringify({
+          error: "Workspace owner Drive connection not configured",
+          needsReauth: true,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Only use the caller-provided token when it belongs to the Drive owner.
+    const providerTokenForUse =
+      providerTokenFromHeader && driveTokenUserId === user.id ? providerTokenFromHeader : null;
+
     const { token: initialGoogleToken, needsReauth } = await getValidAccessToken(
-      providerTokenFromHeader,
-      user.id,
+      providerTokenForUse,
+      driveTokenUserId,
       supabase
     );
 
@@ -290,7 +406,7 @@ Deno.serve(async (req) => {
 
       if (res.status === 401 || res.status === 403) {
         console.log("Google token rejected, attempting refresh...");
-        const refreshed = await refreshUserAccessToken(supabase, user.id);
+        const refreshed = await refreshUserAccessToken(supabase, driveTokenUserId);
         if (refreshed) {
           tokenRef.token = refreshed;
           res = await doFetch(refreshed);
