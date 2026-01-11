@@ -97,6 +97,7 @@ export const ProjectSettingsPanel = ({
   const [isPublishing, setIsPublishing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isRepairing, setIsRepairing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // Members state
@@ -108,6 +109,41 @@ export const ProjectSettingsPanel = ({
   const [syncedDocsCount, setSyncedDocsCount] = useState(0);
   const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+
+  // Repair hierarchy - detect and fix duplicate topics/sub-projects
+  const handleRepairHierarchy = async () => {
+    if (!projectId) return;
+    setIsRepairing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('repair-hierarchy', {
+        body: { projectId, dryRun: false }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.duplicatesFound === 0) {
+        toast({
+          title: "No duplicates found",
+          description: "Your project hierarchy looks good!",
+        });
+      } else {
+        toast({
+          title: "Hierarchy Repaired",
+          description: `Found ${data?.duplicatesFound || 0} duplicates, applied ${data?.repairsApplied || 0} repairs.`,
+        });
+        onUpdate?.();
+      }
+    } catch (error: any) {
+      console.error("Repair error:", error);
+      toast({
+        title: "Repair Failed",
+        description: error.message || "Could not repair hierarchy.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRepairing(false);
+    }
+  };
 
   // Fetch project data when opened
   useEffect(() => {
@@ -689,16 +725,29 @@ export const ProjectSettingsPanel = ({
                   {syncedDocsCount} document{syncedDocsCount !== 1 ? "s" : ""} synced
                 </p>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="gap-2"
-                onClick={handleSyncNow}
-                disabled={isSyncing || !driveFolderId}
-              >
-                <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
-                {isSyncing ? "Syncing..." : "Sync Now"}
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2"
+                  onClick={handleRepairHierarchy}
+                  disabled={isRepairing || !projectId}
+                  title="Fix duplicate topics/sub-projects"
+                >
+                  <AlertTriangle className={`w-3 h-3 ${isRepairing ? "animate-pulse" : ""}`} />
+                  {isRepairing ? "Repairing..." : "Repair"}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2"
+                  onClick={handleSyncNow}
+                  disabled={isSyncing || !driveFolderId}
+                >
+                  <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
+                  {isSyncing ? "Syncing..." : "Sync Now"}
+                </Button>
+              </div>
             </div>
           </div>
 

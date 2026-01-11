@@ -1,1 +1,52 @@
 project_id = "hojldwekecmdfasbiyyg"
+
+[functions.check-permission]
+verify_jwt = false
+
+[functions.docs-ai-assistant]
+verify_jwt = false
+
+[functions.docs-ai-chat]
+verify_jwt = false
+
+[functions.ensure-acceldata-workspace]
+verify_jwt = false
+
+[functions.extract-website-styles]
+verify_jwt = false
+
+[functions.google-drive]
+verify_jwt = false
+
+[functions.import-markdown]
+verify_jwt = false
+
+[functions.mcp-connector]
+verify_jwt = false
+
+[functions.normalize-structure]
+verify_jwt = false
+
+[functions.repair-hierarchy]
+verify_jwt = false
+
+[functions.send-invitation-email]
+verify_jwt = false
+
+[functions.send-join-request-email]
+verify_jwt = false
+
+[functions.serve-llms-txt]
+verify_jwt = false
+
+[functions.serve-robots-txt]
+verify_jwt = false
+
+[functions.stop-import-job]
+verify_jwt = false
+
+[functions.store-refresh-token]
+verify_jwt = false
+
+[functions.sync-drive-permissions]
+verify_jwt = false

@@ -114,6 +114,7 @@ const stateConfig = {
 interface Project {
   id: string;
   name: string;
+  slug?: string | null;
   drive_folder_id: string | null;
   visibility: VisibilityLevel;
   is_published: boolean;
@@ -296,7 +297,7 @@ const Dashboard = () => {
       // Get projects - only from user's own organization (not public projects from other orgs)
       const { data: projectsData } = await supabase
         .from("projects")
-        .select("id, name, drive_folder_id, visibility, is_published, parent_id")
+        .select("id, name, slug, drive_folder_id, visibility, is_published, parent_id")
         .eq("organization_id", profile.organization_id)
         .order("name");
 
@@ -1079,6 +1080,53 @@ const Dashboard = () => {
       });
     } finally {
       setIsNormalizing(false);
+    }
+  };
+
+  // Repair hierarchy - detect and fix duplicate topics/sub-projects
+  const [isRepairing, setIsRepairing] = useState(false);
+  const handleRepairHierarchy = async (projectId: string) => {
+    setIsRepairing(true);
+    try {
+      // First do a dry run to see what would be repaired
+      const { data: dryRunData, error: dryRunError } = await supabase.functions.invoke('repair-hierarchy', {
+        body: { projectId, dryRun: true }
+      });
+      
+      if (dryRunError) throw dryRunError;
+      
+      if (dryRunData?.duplicatesFound === 0) {
+        toast({
+          title: "No duplicates found",
+          description: "Your project hierarchy looks good!",
+        });
+        setIsRepairing(false);
+        return;
+      }
+      
+      // Show what was found and apply repairs
+      const { data, error } = await supabase.functions.invoke('repair-hierarchy', {
+        body: { projectId, dryRun: false }
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Hierarchy Repaired",
+        description: `Found ${data?.duplicatesFound || 0} duplicates, applied ${data?.repairsApplied || 0} repairs.`,
+      });
+      
+      // Refresh data to show updated structure
+      await fetchData();
+    } catch (error: any) {
+      console.error("Repair error:", error);
+      toast({
+        title: "Repair Failed",
+        description: error.message || "Could not repair hierarchy.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRepairing(false);
     }
   };
 
@@ -2813,6 +2861,8 @@ const Dashboard = () => {
         onOpenChange={setShareOpen}
         projectId={selectedProject?.id || ""}
         projectName={selectedProject?.name || ""}
+        projectSlug={selectedProject?.slug}
+        organizationSlug={organizationSlug}
       />
       
       <AddPageDialog
