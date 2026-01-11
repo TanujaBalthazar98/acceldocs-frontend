@@ -458,6 +458,18 @@ export function UnifiedContentTree({
           return;
         }
 
+        // Ensure we have an authenticated session before attempting writes.
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData.session) {
+          toast({
+            title: "Session expired",
+            description: "Please sign in again and retry the move.",
+            variant: "destructive",
+          });
+          handleDragEnd();
+          return;
+        }
+
         try {
           // Determine destination "container" (topic_id) and insertion index
           let destinationTopicId: string | null = draggedDoc.topic_id ?? null;
