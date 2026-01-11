@@ -52,6 +52,7 @@ interface Project {
   visibility: VisibilityLevel;
   is_published: boolean;
   organization_id: string;
+  parent_id: string | null;
   mcp_enabled?: boolean | null;
   openapi_spec_json?: any;
   openapi_spec_url?: string | null;
@@ -384,7 +385,7 @@ export default function Docs() {
       // Build project query scoped to the target organization
       const { data: projectsData, error: projectsError } = await supabase
         .from("projects")
-        .select("id, name, slug, visibility, is_published, organization_id, mcp_enabled, openapi_spec_json, openapi_spec_url")
+        .select("id, name, slug, visibility, is_published, organization_id, parent_id, mcp_enabled, openapi_spec_json, openapi_spec_url")
         .eq("organization_id", targetOrgId)
         .eq("is_published", true)
         .order("name");
@@ -812,7 +813,7 @@ const getTopicDocuments = (topicId: string) =>
         {/* Top Header */}
         <header className="border-b border-border bg-card">
         <div className="flex items-center justify-between px-3 sm:px-4 lg:px-6 h-14 gap-2">
-          {/* Left: Organization Logo/Name */}
+          {/* Left: Organization Logo/Name + Root Project */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link to={currentOrg ? `/docs/${currentOrg.slug || currentOrg.domain}` : "/"} className="flex items-center gap-2">
               {currentOrg?.logo_url ? (
@@ -823,10 +824,24 @@ const getTopicDocuments = (topicId: string) =>
               <span className="font-bold text-base sm:text-lg text-foreground brand-heading truncate max-w-[120px] sm:max-w-none">
                 {currentOrg?.name || "Documentation"}
               </span>
-              {currentOrg?.tagline && (
-                <span className="text-muted-foreground font-normal hidden lg:inline brand-body">{currentOrg.tagline}</span>
-              )}
             </Link>
+            {/* Root project name displayed near logo */}
+            {(() => {
+              const rootProject = projects.find(p => !p.parent_id);
+              if (rootProject && selectedProject) {
+                const displayProject = selectedProject.parent_id 
+                  ? projects.find(p => p.id === selectedProject.parent_id) 
+                  : selectedProject;
+                if (displayProject) {
+                  return (
+                    <span className="text-muted-foreground font-medium text-sm sm:text-base hidden sm:inline">
+                      / {displayProject.name}
+                    </span>
+                  );
+                }
+              }
+              return null;
+            })()}
           </div>
 
           {/* Center: Search + Ask AI */}
@@ -914,37 +929,61 @@ const getTopicDocuments = (topicId: string) =>
         </div>
         </header>
 
-        {/* Project Tabs Bar */}
-        <div className="border-b border-border bg-card">
-          <div className="flex items-center justify-between">
-            {/* Left: Project tabs - aligned with sidebar */}
-            <div className="flex items-center gap-0 overflow-x-auto pl-3">
-              {loading ? (
-                <div className="flex gap-2 py-2">
-                  {[1, 2, 3].map(i => (
-                    <Skeleton key={i} className="h-8 w-24" />
-                  ))}
+        {/* Sub-Project Tabs Bar - Only show if there are sub-projects */}
+        {(() => {
+          const rootProject = projects.find(p => !p.parent_id);
+          const subProjects = projects.filter(p => p.parent_id === rootProject?.id);
+          const hasSubProjects = subProjects.length > 0;
+          
+          // Determine active root for tab highlighting
+          const activeRootId = selectedProject?.parent_id || selectedProject?.id;
+          
+          return hasSubProjects ? (
+            <div className="border-b border-border bg-card">
+              <div className="flex items-center justify-between">
+                {/* Left: Sub-project tabs */}
+                <div className="flex items-center gap-0 overflow-x-auto pl-3">
+                  {loading ? (
+                    <div className="flex gap-2 py-2">
+                      {[1, 2, 3].map(i => (
+                        <Skeleton key={i} className="h-8 w-24" />
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Root project tab (shown as first tab if there are docs directly under it) */}
+                      {rootProject && (
+                        <button
+                          key={rootProject.id}
+                          onClick={() => selectProject(rootProject)}
+                          className={cn(
+                            "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px pl-0",
+                            selectedProject?.id === rootProject.id && !selectedProject?.parent_id
+                              ? "border-primary text-foreground"
+                              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                          )}
+                        >
+                          {rootProject.name}
+                        </button>
+                      )}
+                      {/* Sub-project tabs */}
+                      {subProjects.map((project) => (
+                        <button
+                          key={project.id}
+                          onClick={() => selectProject(project)}
+                          className={cn(
+                            "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
+                            selectedProject?.id === project.id
+                              ? "border-primary text-foreground"
+                              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                          )}
+                        >
+                          {project.name}
+                        </button>
+                      ))}
+                    </>
+                  )}
                 </div>
-              ) : projects.length === 0 ? (
-                <div className="py-3 text-sm text-muted-foreground">No projects available</div>
-              ) : (
-                projects.map((project, index) => (
-                  <button
-                    key={project.id}
-                    onClick={() => selectProject(project)}
-                    className={cn(
-                      "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
-                      index === 0 && "pl-0",
-                      selectedProject?.id === project.id
-                        ? "border-primary text-foreground"
-                        : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                    )}
-                  >
-                    {project.name}
-                  </button>
-                ))
-              )}
-            </div>
             
             {/* Right: Developer Dropdown */}
             {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
@@ -978,6 +1017,8 @@ const getTopicDocuments = (topicId: string) =>
             )}
           </div>
         </div>
+          ) : null;
+        })()}
       </div>
 
       {/* Main Layout */}
