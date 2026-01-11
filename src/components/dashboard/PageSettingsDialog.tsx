@@ -167,6 +167,17 @@ export const PageSettingsDialog = ({
 
   const handleSave = async () => {
     if (!documentId) return;
+
+    // Ensure we have an authenticated session before attempting writes.
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      toast({
+        title: "Session expired",
+        description: "Please sign in again and retry.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Validate slug
     if (slug && !validateSlug(slug)) return;
