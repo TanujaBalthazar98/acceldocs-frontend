@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -13,6 +13,11 @@ import {
   Edit3,
   Trash2,
   Archive,
+  RefreshCw,
+  Lock,
+  Eye,
+  Globe,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -22,135 +27,112 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SharePanel } from "./SharePanel";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import DOMPurify from "dompurify";
 
-interface PageViewProps {
-  onBack: () => void;
+type VisibilityLevel = "internal" | "external" | "public";
+
+interface DocumentData {
+  id: string;
+  title: string;
+  google_doc_id: string;
+  project_id: string;
+  topic_id: string | null;
+  google_modified_at: string | null;
+  created_at: string;
+  visibility: VisibilityLevel;
+  is_published: boolean;
+  owner_id: string | null;
+  owner_name?: string;
+  content_html: string | null;
+  published_content_html: string | null;
 }
 
-const mockPageData = {
-  title: "API Authentication Guide",
-  state: "active" as const,
-  owner: "Sarah Kim",
-  backupOwner: "Mike Rodriguez",
-  lastVerified: "December 11, 2025",
-  lastModified: "December 10, 2025",
-  visibility: "public" as const,
-  googleDocUrl: "https://docs.google.com/document/d/example",
+interface PageViewProps {
+  document: DocumentData;
+  onBack: () => void;
+  onDocumentUpdate?: () => void;
+}
+
+const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: string; color: string }> = {
+  internal: { icon: Lock, label: "Internal", color: "text-muted-foreground" },
+  external: { icon: Eye, label: "External", color: "text-blue-400" },
+  public: { icon: Globe, label: "Public", color: "text-green-400" },
 };
 
-const mockDocContent = `
-# API Authentication Guide
-
-This guide covers the authentication mechanisms available in our API, including OAuth 2.0, API keys, and JWT tokens.
-
-## Overview
-
-Our API supports multiple authentication methods to accommodate different use cases:
-
-- **OAuth 2.0** - Recommended for user-facing applications
-- **API Keys** - Suitable for server-to-server communication
-- **JWT Tokens** - For stateless authentication
-
-## OAuth 2.0 Authentication
-
-OAuth 2.0 is our recommended authentication method for applications that act on behalf of users.
-
-### Getting Started
-
-1. Register your application in the Developer Portal
-2. Obtain your client ID and client secret
-3. Implement the authorization flow
-
-### Authorization Code Flow
-
-\`\`\`typescript
-const authUrl = \`https://api.example.com/oauth/authorize?
-  client_id=\${CLIENT_ID}&
-  redirect_uri=\${REDIRECT_URI}&
-  response_type=code&
-  scope=read write\`;
-
-// Redirect user to authUrl
-window.location.href = authUrl;
-\`\`\`
-
-### Token Exchange
-
-After the user authorizes your application, exchange the authorization code for tokens:
-
-\`\`\`typescript
-const response = await fetch('https://api.example.com/oauth/token', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/x-www-form-urlencoded',
-  },
-  body: new URLSearchParams({
-    grant_type: 'authorization_code',
-    code: authorizationCode,
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
-    redirect_uri: REDIRECT_URI,
-  }),
-});
-
-const { access_token, refresh_token } = await response.json();
-\`\`\`
-
-## API Key Authentication
-
-For server-to-server communication, API keys provide a simpler authentication mechanism.
-
-### Generating API Keys
-
-1. Navigate to Settings → API Keys
-2. Click "Generate New Key"
-3. Store the key securely - it won't be shown again
-
-### Using API Keys
-
-Include your API key in the \`Authorization\` header:
-
-\`\`\`bash
-curl -X GET "https://api.example.com/v1/resources" \\
-  -H "Authorization: Bearer YOUR_API_KEY"
-\`\`\`
-
-> **Security Note**: Never expose API keys in client-side code or public repositories.
-
-## Rate Limiting
-
-All authentication methods are subject to rate limiting:
-
-| Plan       | Requests/minute | Requests/day |
-|------------|-----------------|--------------|
-| Free       | 60              | 1,000        |
-| Pro        | 600             | 50,000       |
-| Enterprise | 6,000           | Unlimited    |
-
-## Error Handling
-
-Common authentication errors:
-
-- **401 Unauthorized** - Invalid or missing credentials
-- **403 Forbidden** - Valid credentials but insufficient permissions
-- **429 Too Many Requests** - Rate limit exceeded
-
-## Need Help?
-
-- Check our [FAQ](/docs/faq)
-- Join our [Developer Community](https://community.example.com)
-- Contact support at api-support@example.com
-`;
-
-const stateConfig = {
-  active: { color: "bg-state-active", label: "Active" },
-  draft: { color: "bg-state-draft", label: "Draft" },
-  deprecated: { color: "bg-state-deprecated", label: "Deprecated" },
-  archived: { color: "bg-state-archived", label: "Archived" },
-};
-
-export const PageView = ({ onBack }: PageViewProps) => {
+export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) => {
   const [shareOpen, setShareOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [contentHtml, setContentHtml] = useState<string | null>(document.content_html);
+  const { toast } = useToast();
+
+  // Update content when document changes
+  useEffect(() => {
+    setContentHtml(document.content_html);
+  }, [document.id, document.content_html]);
+
+  const handleSyncContent = async () => {
+    setIsSyncing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({
+          title: "Session expired",
+          description: "Please sign in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("google-drive", {
+        body: {
+          action: "sync_doc_content",
+          documentId: document.id,
+          googleDocId: document.google_doc_id,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.needsReauth) {
+        toast({
+          title: "Drive access required",
+          description: "Please reconnect Google Drive.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (data?.html) {
+        setContentHtml(data.html);
+        toast({
+          title: "Content synced",
+          description: "Document content has been updated.",
+        });
+        onDocumentUpdate?.();
+      }
+    } catch (error: any) {
+      toast({
+        title: "Sync failed",
+        description: error.message || "Failed to sync content.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "Unknown";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+
+  const VisibilityIcon = visibilityConfig[document.visibility]?.icon || Lock;
 
   return (
     <>
@@ -170,15 +152,25 @@ export const PageView = ({ onBack }: PageViewProps) => {
             <div className="h-4 w-px bg-border" />
             <div className="flex items-center gap-2">
               <Circle
-                className={`w-2 h-2 ${stateConfig[mockPageData.state].color} rounded-full`}
+                className={`w-2 h-2 ${document.is_published ? 'bg-green-500' : 'bg-amber-500'} rounded-full`}
               />
               <span className="text-sm text-muted-foreground">
-                {stateConfig[mockPageData.state].label}
+                {document.is_published ? 'Published' : 'Draft'}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleSyncContent}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing...' : 'Sync'}
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -192,7 +184,7 @@ export const PageView = ({ onBack }: PageViewProps) => {
               variant="ghost"
               size="sm"
               className="gap-2"
-              onClick={() => window.open(mockPageData.googleDocUrl, "_blank")}
+              onClick={() => window.open(`https://docs.google.com/document/d/${document.google_doc_id}/edit`, "_blank")}
             >
               <ExternalLink className="w-4 h-4" />
               Open in Drive
@@ -236,131 +228,67 @@ export const PageView = ({ onBack }: PageViewProps) => {
             {/* Page Meta */}
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-foreground mb-4">
-                {mockPageData.title}
+                {document.title}
               </h1>
 
               <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <User className="w-4 h-4" />
-                  <span>Owner: {mockPageData.owner}</span>
-                </div>
-                <div className="h-4 w-px bg-border" />
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  <span>Verified: {mockPageData.lastVerified}</span>
-                </div>
-                {mockPageData.visibility === "public" && (
+                {document.owner_name && (
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    <span>Owner: {document.owner_name}</span>
+                  </div>
+                )}
+                {document.google_modified_at && (
                   <>
                     <div className="h-4 w-px bg-border" />
-                    <span className="px-2 py-0.5 text-xs bg-primary/10 text-primary rounded">
-                      Public
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      <span>Modified: {formatDate(document.google_modified_at)}</span>
+                    </div>
                   </>
                 )}
+                <div className="h-4 w-px bg-border" />
+                <div className="flex items-center gap-1">
+                  <VisibilityIcon className={`w-4 h-4 ${visibilityConfig[document.visibility]?.color}`} />
+                  <span className={visibilityConfig[document.visibility]?.color}>
+                    {visibilityConfig[document.visibility]?.label}
+                  </span>
+                </div>
               </div>
             </div>
 
             {/* Document Content */}
             <article className="prose prose-invert prose-headings:text-foreground prose-p:text-secondary-foreground prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-secondary-foreground max-w-none">
               <div className="rounded-xl border border-border bg-card/50 p-8">
-                {/* Simulated rendered markdown */}
-                <h1 className="text-2xl font-bold mb-4">API Authentication Guide</h1>
-                
-                <p className="text-secondary-foreground leading-relaxed mb-6">
-                  This guide covers the authentication mechanisms available in our API, including OAuth 2.0, API keys, and JWT tokens.
-                </p>
-
-                <h2 className="text-xl font-semibold text-foreground mt-8 mb-4">Overview</h2>
-                <p className="text-secondary-foreground leading-relaxed mb-4">
-                  Our API supports multiple authentication methods to accommodate different use cases:
-                </p>
-                <ul className="list-disc pl-6 space-y-2 text-secondary-foreground mb-6">
-                  <li><strong className="text-foreground">OAuth 2.0</strong> - Recommended for user-facing applications</li>
-                  <li><strong className="text-foreground">API Keys</strong> - Suitable for server-to-server communication</li>
-                  <li><strong className="text-foreground">JWT Tokens</strong> - For stateless authentication</li>
-                </ul>
-
-                <h2 className="text-xl font-semibold text-foreground mt-8 mb-4">OAuth 2.0 Authentication</h2>
-                <p className="text-secondary-foreground leading-relaxed mb-4">
-                  OAuth 2.0 is our recommended authentication method for applications that act on behalf of users.
-                </p>
-
-                <h3 className="text-lg font-medium text-foreground mt-6 mb-3">Getting Started</h3>
-                <ol className="list-decimal pl-6 space-y-2 text-secondary-foreground mb-6">
-                  <li>Register your application in the Developer Portal</li>
-                  <li>Obtain your client ID and client secret</li>
-                  <li>Implement the authorization flow</li>
-                </ol>
-
-                <h3 className="text-lg font-medium text-foreground mt-6 mb-3">Authorization Code Flow</h3>
-                <pre className="bg-secondary border border-border rounded-lg p-4 overflow-x-auto mb-6">
-                  <code className="text-sm text-primary font-mono">{`const authUrl = \`https://api.example.com/oauth/authorize?
-  client_id=\${CLIENT_ID}&
-  redirect_uri=\${REDIRECT_URI}&
-  response_type=code&
-  scope=read write\`;
-
-// Redirect user to authUrl
-window.location.href = authUrl;`}</code>
-                </pre>
-
-                <h2 className="text-xl font-semibold text-foreground mt-8 mb-4">API Key Authentication</h2>
-                <p className="text-secondary-foreground leading-relaxed mb-4">
-                  For server-to-server communication, API keys provide a simpler authentication mechanism.
-                </p>
-
-                <div className="bg-state-draft/10 border border-state-draft/30 rounded-lg p-4 my-6">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-state-draft shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-state-draft">Security Note</p>
-                      <p className="text-sm text-secondary-foreground mt-1">
-                        Never expose API keys in client-side code or public repositories.
-                      </p>
-                    </div>
+                {contentHtml ? (
+                  <div
+                    className="google-doc-content"
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(contentHtml, {
+                        ADD_TAGS: ["style"],
+                        ADD_ATTR: ["target", "rel"],
+                      }),
+                    }}
+                  />
+                ) : (
+                  <div className="text-center py-12">
+                    <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                    <p className="text-muted-foreground mb-4">No content synced yet.</p>
+                    <Button onClick={handleSyncContent} disabled={isSyncing}>
+                      {isSyncing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Syncing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Sync from Google Drive
+                        </>
+                      )}
+                    </Button>
                   </div>
-                </div>
-
-                <h2 className="text-xl font-semibold text-foreground mt-8 mb-4">Rate Limiting</h2>
-                <p className="text-secondary-foreground leading-relaxed mb-4">
-                  All authentication methods are subject to rate limiting:
-                </p>
-
-                <div className="overflow-x-auto mb-6">
-                  <table className="w-full border border-border rounded-lg overflow-hidden">
-                    <thead className="bg-secondary">
-                      <tr>
-                        <th className="text-left px-4 py-3 text-sm font-medium text-foreground">Plan</th>
-                        <th className="text-left px-4 py-3 text-sm font-medium text-foreground">Requests/minute</th>
-                        <th className="text-left px-4 py-3 text-sm font-medium text-foreground">Requests/day</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      <tr>
-                        <td className="px-4 py-3 text-sm text-secondary-foreground">Free</td>
-                        <td className="px-4 py-3 text-sm text-secondary-foreground">60</td>
-                        <td className="px-4 py-3 text-sm text-secondary-foreground">1,000</td>
-                      </tr>
-                      <tr>
-                        <td className="px-4 py-3 text-sm text-secondary-foreground">Pro</td>
-                        <td className="px-4 py-3 text-sm text-secondary-foreground">600</td>
-                        <td className="px-4 py-3 text-sm text-secondary-foreground">50,000</td>
-                      </tr>
-                      <tr>
-                        <td className="px-4 py-3 text-sm text-secondary-foreground">Enterprise</td>
-                        <td className="px-4 py-3 text-sm text-secondary-foreground">6,000</td>
-                        <td className="px-4 py-3 text-sm text-secondary-foreground">Unlimited</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <h2 className="text-xl font-semibold text-foreground mt-8 mb-4">Need Help?</h2>
-                <ul className="list-disc pl-6 space-y-2 text-secondary-foreground">
-                  <li>Check our <a href="#" className="text-primary hover:underline">FAQ</a></li>
-                  <li>Join our <a href="#" className="text-primary hover:underline">Developer Community</a></li>
-                  <li>Contact support at <a href="mailto:api-support@example.com" className="text-primary hover:underline">api-support@example.com</a></li>
-                </ul>
+                )}
               </div>
             </article>
           </div>
@@ -370,7 +298,7 @@ window.location.href = authUrl;`}</code>
       <SharePanel
         open={shareOpen}
         onOpenChange={setShareOpen}
-        pageTitle={mockPageData.title}
+        pageTitle={document.title}
       />
     </>
   );
