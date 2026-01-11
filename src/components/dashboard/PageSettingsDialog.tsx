@@ -232,11 +232,13 @@ export const PageSettingsDialog = ({
     setDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (documentId && onDelete) {
-      onDelete(documentId);
+      // Close dialogs first to prevent any navigation issues
       setDeleteDialogOpen(false);
       onOpenChange(false);
+      // Then perform the delete
+      await onDelete(documentId);
     }
   };
 

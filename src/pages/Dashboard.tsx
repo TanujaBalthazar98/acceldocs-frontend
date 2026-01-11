@@ -700,8 +700,8 @@ const Dashboard = () => {
       return false;
     }
     
-    // Get the document's google doc ID first
-    const doc = filteredDocuments.find(d => d.id === docId);
+    // Get the document's google doc ID first (search all documents, not just filtered)
+    const doc = documents.find(d => d.id === docId);
     
     // Trash the Drive file if it exists - block deletion if it fails (unless force delete)
     if (doc?.google_doc_id && !forceDelete) {
@@ -716,11 +716,14 @@ const Dashboard = () => {
           });
           return false;
         }
-        toast({ 
-          title: "Cannot Delete Page", 
-          description: trashResult.error || "Failed to trash the Drive file. Please reconnect to Google Drive and try again.", 
-          variant: "destructive" 
-        });
+        // For non-owners, don't show reconnect prompt - the issue is with the owner's token
+        if (trashResult.errorCode !== "NEEDS_REAUTH") {
+          toast({ 
+            title: "Cannot Delete Page", 
+            description: trashResult.error || "Failed to trash the Drive file.", 
+            variant: "destructive" 
+          });
+        }
         return false;
       }
     }
@@ -731,6 +734,10 @@ const Dashboard = () => {
       toast({ title: "Error", description: "Failed to delete page.", variant: "destructive" });
       return false;
     } else {
+      // Clear selected document to prevent any navigation to deleted page
+      if (selectedDocument?.id === docId) {
+        setSelectedDocument(null);
+      }
       await logAction('delete_document', 'document', docId, selectedProject?.id || '', { documentTitle: doc?.title, forceDelete });
       toast({ title: "Deleted", description: forceDelete ? "Page deleted from app (Drive file remains)." : "Page moved to Drive trash and deleted from app." });
       fetchData();
@@ -740,6 +747,14 @@ const Dashboard = () => {
   
   const confirmDelete = async (forceDelete = false) => {
     if (!itemToDelete) return;
+    
+    // Clear selected page/document before deleting to prevent navigation issues
+    if (itemToDelete.type === 'document' && selectedPage === itemToDelete.id) {
+      setSelectedPage(null);
+    }
+    if (itemToDelete.type === 'document' && selectedDocument?.id === itemToDelete.id) {
+      setSelectedDocument(null);
+    }
     
     let success = true;
     switch (itemToDelete.type) {

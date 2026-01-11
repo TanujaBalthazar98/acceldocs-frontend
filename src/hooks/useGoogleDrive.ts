@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,8 +15,9 @@ const GOOGLE_TOKEN_KEY = "google_access_token";
 
 export const useGoogleDrive = () => {
   const { toast } = useToast();
-  const { googleAccessToken, requestDriveAccess } = useAuth();
+  const { googleAccessToken, requestDriveAccess, user } = useAuth();
   const reauthInFlightRef = useRef(false);
+  const isOrgOwnerRef = useRef<boolean | null>(null);
 
   const getGoogleToken = (): string | null => {
     // First try from context, then from localStorage
@@ -24,6 +25,36 @@ export const useGoogleDrive = () => {
     console.log("Google token available:", !!token);
     return token;
   };
+
+  // Check if current user is the organization owner (only owners should be prompted for reauth)
+  const checkIsOrgOwner = useCallback(async (): Promise<boolean> => {
+    if (isOrgOwnerRef.current !== null) return isOrgOwnerRef.current;
+    if (!user) return false;
+
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!profile?.organization_id) {
+        isOrgOwnerRef.current = false;
+        return false;
+      }
+
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("owner_id")
+        .eq("id", profile.organization_id)
+        .maybeSingle();
+
+      isOrgOwnerRef.current = org?.owner_id === user.id;
+      return isOrgOwnerRef.current;
+    } catch {
+      return false;
+    }
+  }, [user]);
 
   // Ensure session is fresh before making edge function calls
   const ensureFreshSession = async (): Promise<boolean> => {
@@ -39,10 +70,24 @@ export const useGoogleDrive = () => {
     return true;
   };
 
-  // Handle re-authentication automatically by triggering the Drive-consent OAuth flow.
-  // This is the only reliable way to recover if the backend can't refresh the Google access token.
-  const handleReauthRequired = async () => {
-    if (reauthInFlightRef.current) return;
+  // Handle re-authentication - ONLY for org owners
+  // Non-owners should never be prompted to reconnect Drive since only the owner's Drive is used
+  const handleReauthRequired = async (): Promise<boolean> => {
+    // Check if current user is org owner before prompting for reauth
+    const isOwner = await checkIsOrgOwner();
+    
+    if (!isOwner) {
+      // Non-owners should see a different message - they can't fix this themselves
+      toast({
+        title: "Drive access issue",
+        description: "The workspace owner needs to reconnect Google Drive. Please contact your admin.",
+        duration: 12000,
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (reauthInFlightRef.current) return false;
     reauthInFlightRef.current = true;
 
     toast({
@@ -61,7 +106,9 @@ export const useGoogleDrive = () => {
         duration: 12000,
         variant: "destructive",
       });
+      return false;
     }
+    return true;
   };
 
   const listFolder = async (
