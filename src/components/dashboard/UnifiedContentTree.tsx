@@ -457,64 +457,72 @@ export function UnifiedContentTree({
         }
 
         try {
-          let newTopicId: string | null;
-          let newOrder: number;
+          // Determine destination "container" (topic_id) and insertion index
+          let destinationTopicId: string | null = draggedDoc.topic_id ?? null;
+          let insertIndex: number | null = null;
 
-          if (targetNodeType === "topic" && dropPosition === "inside") {
-            // Dropping into a topic
-            newTopicId = targetNodeId;
-            const siblings = documents.filter((d) => d.topic_id === targetNodeId);
-            newOrder =
-              siblings.length > 0
-                ? Math.max(...siblings.map((s) => s.display_order ?? 0)) + 1
-                : 0;
-            setExpandedNodes((prev) => new Set([...prev, targetNodeId]));
-          } else if (targetNodeType === "document") {
+          if (targetNodeType === "topic") {
+            const targetTopic = topics.find((t) => t.id === targetNodeId);
+            if (!targetTopic) {
+              handleDragEnd();
+              return;
+            }
+
+            // Dropping *inside* a topic → move into that topic.
+            // Dropping *before/after* a topic → move to the topic's parent level (i.e., sibling of that topic).
+            destinationTopicId =
+              dropPosition === "inside" ? targetTopic.id : targetTopic.parent_id ?? null;
+
+            if (dropPosition === "inside") {
+              setExpandedNodes((prev) => new Set([...prev, targetTopic.id]));
+            }
+
+            // Since topics and pages don't interleave in ordering (topics render first),
+            // treat before/after as "top" / "bottom" within that level's pages.
+            insertIndex = dropPosition === "before" ? 0 : null; // null means append
+          } else {
             // Dropping before/after another document
             const targetDoc = documents.find((d) => d.id === targetNodeId);
             if (!targetDoc) {
               handleDragEnd();
               return;
             }
-            
-            newTopicId = targetDoc.topic_id ?? null;
-            const siblings = documents
-              .filter((d) => d.topic_id === newTopicId && d.id !== draggedId)
-              .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
-            const targetIndex = siblings.findIndex((s) => s.id === targetNodeId);
-            const targetOrder = targetDoc.display_order ?? 0;
 
-            if (dropPosition === "before") {
-              newOrder =
-                targetIndex > 0
-                  ? Math.floor(
-                      ((siblings[targetIndex - 1].display_order ?? 0) + targetOrder) / 2
-                    )
-                  : targetOrder - 1;
-            } else {
-              newOrder =
-                targetIndex < siblings.length - 1
-                  ? Math.floor(
-                      (targetOrder + (siblings[targetIndex + 1].display_order ?? 999)) / 2
-                    )
-                  : targetOrder + 1;
-            }
-          } else {
-            // Dropping before/after a topic - put at root level (no topic)
-            const targetTopic = topics.find((t) => t.id === targetNodeId);
-            newTopicId = targetTopic?.parent_id ?? null;
-            const siblings = documents
-              .filter((d) => d.topic_id === newTopicId && d.id !== draggedId)
+            destinationTopicId = targetDoc.topic_id ?? null;
+
+            const sorted = documents
+              .filter((d) => d.topic_id === destinationTopicId && d.id !== draggedId)
               .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
-            newOrder = siblings.length > 0 
-              ? Math.max(...siblings.map((s) => s.display_order ?? 0)) + 1 
-              : 0;
+
+            const targetIndex = sorted.findIndex((d) => d.id === targetDoc.id);
+            if (targetIndex === -1) {
+              insertIndex = null;
+            } else {
+              insertIndex = dropPosition === "before" ? targetIndex : targetIndex + 1;
+            }
           }
+
+          // Build the destination ordering and reindex deterministically (avoids integer midpoint collisions)
+          const destinationDocs = documents
+            .filter((d) => d.topic_id === destinationTopicId && d.id !== draggedId)
+            .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
+
+          const orderedIds = destinationDocs.map((d) => d.id);
+          const finalIndex =
+            insertIndex === null
+              ? orderedIds.length
+              : Math.max(0, Math.min(insertIndex, orderedIds.length));
+          orderedIds.splice(finalIndex, 0, draggedId);
+
+          const updates = orderedIds.map((id, idx) => ({
+            id,
+            topic_id: destinationTopicId,
+            display_order: idx * 10,
+          }));
 
           const { error } = await supabase
             .from("documents")
-            .update({ topic_id: newTopicId, display_order: Math.floor(newOrder) })
-            .eq("id", draggedId);
+            .upsert(updates as any, { onConflict: "id" });
 
           if (error) throw error;
 
