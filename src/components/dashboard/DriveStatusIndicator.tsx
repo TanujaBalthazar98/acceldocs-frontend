@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 
 interface DriveStatusIndicatorProps {
   onStatusChange?: (connected: boolean) => void;
@@ -17,6 +18,7 @@ type ConnectionStatus = 'connected' | 'disconnected' | 'needs_reauth' | 'checkin
 
 export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorProps) => {
   const { requestDriveAccess, user } = useAuth();
+  const { resetRecoveryState } = useDriveRecovery();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isOrgOwner, setIsOrgOwner] = useState(false);
@@ -79,6 +81,8 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
         setConnectionStatus(hasRefreshToken ? 'connected' : 'needs_reauth');
         onStatusChange?.(hasRefreshToken);
       } else {
+        // Connection successful - reset any recovery state
+        resetRecoveryState();
         setConnectionStatus('connected');
         onStatusChange?.(true);
       }
@@ -102,6 +106,8 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
   const handleReconnect = async () => {
     setIsReconnecting(true);
     hasCheckedRef.current = false;
+    // Reset recovery state before reconnecting so fresh attempts can happen
+    resetRecoveryState();
     try {
       await requestDriveAccess();
       // The page will redirect for OAuth - no need to re-check here
