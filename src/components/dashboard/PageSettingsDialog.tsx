@@ -213,11 +213,14 @@ export const PageSettingsDialog = ({
     setIsSaving(false);
 
     if (error || !updatedRows || updatedRows.length === 0) {
+      const { data: authData } = await supabase.auth.getUser();
+      const signedInAs = authData.user?.email ? `Signed in as ${authData.user.email}. ` : "";
+
       toast({
         title: "Couldn't save",
         description:
           error?.message ||
-          "No changes were applied. You may not have permission to edit this page.",
+          `${signedInAs}No changes were applied. This usually means your current account doesn’t have permission to edit this page in this project.`,
         variant: "destructive",
       });
     } else {
