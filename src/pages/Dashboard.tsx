@@ -1823,15 +1823,39 @@ const Dashboard = () => {
                   >
                     <RefreshCw className={cn("w-4 h-4 text-muted-foreground", isSyncing && "animate-spin")} />
                   </span>
-                  <span
-                    className="p-1 rounded hover:bg-secondary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAddTopicOpen(true);
-                    }}
-                  >
-                    <Plus className="w-4 h-4 text-muted-foreground" />
-                  </span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <span
+                        className="p-1 rounded hover:bg-secondary cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Plus className="w-4 h-4 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setParentTopicForCreate(null);
+                          setAddTopicOpen(true);
+                        }}
+                      >
+                        <Folder className="w-3 h-3 mr-2" />
+                        Add Topic
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Add page directly to project (no topic)
+                          setSelectedTopic(null);
+                          setAddPageOpen(true);
+                        }}
+                      >
+                        <FileText className="w-3 h-3 mr-2" />
+                        Add Page
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <ChevronDown className={cn(
                     "w-4 h-4 text-muted-foreground transition-transform",
                     !topicsExpanded && "-rotate-90"
@@ -2701,7 +2725,7 @@ const Dashboard = () => {
         projectName={selectedProject?.name}
         topicId={selectedTopic?.id}
         topicName={selectedTopic?.name}
-        parentFolderId={selectedTopic?.drive_folder_id || null}
+        parentFolderId={selectedTopic?.drive_folder_id || selectedProject?.drive_folder_id || null}
         organizationId={organizationId}
         onCreated={() => fetchData()}
       />
