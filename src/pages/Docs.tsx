@@ -248,6 +248,20 @@ export default function Docs() {
     }
   }, [projectSlug, projects]);
 
+  // Helper to get the first available document for a project (considering display order)
+  const getFirstDocumentForProject = (projectId: string) => {
+    const projectDocs = documents.filter(d => d.project_id === projectId);
+    if (projectDocs.length === 0) return null;
+    
+    // Sort by display_order, then by title
+    return projectDocs.sort((a, b) => {
+      const orderA = (a as any).display_order ?? Infinity;
+      const orderB = (b as any).display_order ?? Infinity;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.title.localeCompare(b.title);
+    })[0];
+  };
+
   // Handle document selection from URL
   useEffect(() => {
     if (!selectedProject) return;
@@ -280,6 +294,12 @@ export default function Docs() {
         if (doc.topic_id) {
           setExpandedTopics(prev => new Set([...prev, doc.topic_id!]));
         }
+      }
+    } else {
+      // No page slug in URL - auto-select the first document
+      const firstDoc = getFirstDocumentForProject(selectedProject.id);
+      if (firstDoc && currentOrg) {
+        navigate(buildDocUrl(firstDoc, selectedProject, currentOrg), { replace: true });
       }
     }
   }, [pageSlug, topicSlug, selectedProject, documents, topics, currentOrg]);
