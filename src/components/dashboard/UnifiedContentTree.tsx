@@ -530,11 +530,20 @@ export function UnifiedContentTree({
                 .from("documents")
                 .update({ topic_id: u.topic_id, display_order: u.display_order })
                 .eq("id", u.id)
+                // IMPORTANT: request returning rows so we can detect RLS "0 rows affected" cases
+                .select("id")
             )
           );
 
           const firstError = results.find((r) => r.error)?.error;
           if (firstError) throw firstError;
+
+          const firstNoop = results.find((r) => !r.data || r.data.length === 0);
+          if (firstNoop) {
+            throw new Error(
+              "Move was blocked (no changes applied). You may not have permission to move pages in this project."
+            );
+          }
 
           toast({
             title: "Page moved",

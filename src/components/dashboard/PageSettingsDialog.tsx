@@ -203,15 +203,23 @@ export const PageSettingsDialog = ({
       updateData.topic_id = selectedTopicId;
     }
 
-    const { error } = await supabase
+    const { data: updatedRows, error } = await supabase
       .from("documents")
       .update(updateData)
-      .eq("id", documentId);
+      .eq("id", documentId)
+      // IMPORTANT: request returning rows so we can detect RLS "0 rows affected" cases
+      .select("id");
 
     setIsSaving(false);
 
-    if (error) {
-      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+    if (error || !updatedRows || updatedRows.length === 0) {
+      toast({
+        title: "Couldn't save",
+        description:
+          error?.message ||
+          "No changes were applied. You may not have permission to edit this page.",
+        variant: "destructive",
+      });
     } else {
       const movedMessage = selectedTopicId !== currentTopicId ? " Page moved to new topic." : "";
       toast({ title: "Saved", description: `Page settings updated.${movedMessage}` });
