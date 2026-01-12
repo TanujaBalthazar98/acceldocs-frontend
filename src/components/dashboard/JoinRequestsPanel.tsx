@@ -74,6 +74,31 @@ export const JoinRequestsPanel = ({ organizationId }: JoinRequestsPanelProps) =>
         description: "The user has been added to your workspace.",
       });
 
+      // Auto-sync Drive permissions for all org projects with Drive folders
+      if (organizationId) {
+        const { data: projects } = await supabase
+          .from("projects")
+          .select("id, drive_folder_id")
+          .eq("organization_id", organizationId)
+          .not("drive_folder_id", "is", null);
+        
+        if (projects && projects.length > 0) {
+          console.log(`Syncing Drive permissions for ${projects.length} projects...`);
+          // Sync in parallel for efficiency
+          await Promise.all(
+            projects.map(project =>
+              supabase.functions.invoke("sync-drive-permissions", {
+                body: { projectId: project.id }
+              }).catch(err => console.error(`Failed to sync project ${project.id}:`, err))
+            )
+          );
+          toast({
+            title: "Drive access granted",
+            description: "User now has access to project folders in Google Drive.",
+          });
+        }
+      }
+
       fetchRequests();
     } catch (error: any) {
       toast({

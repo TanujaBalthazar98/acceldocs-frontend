@@ -355,6 +355,9 @@ export const ProjectSharePanel = ({
 
       setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: newRole } : m));
       toast({ title: "Role updated" });
+      
+      // Auto-sync Drive permissions after role change
+      syncDrivePermissions();
     } catch (error) {
       console.error("Error updating role:", error);
       toast({ title: "Error", description: "Failed to update role.", variant: "destructive" });
