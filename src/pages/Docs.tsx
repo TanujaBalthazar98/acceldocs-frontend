@@ -951,22 +951,7 @@ const getTopicDocuments = (topicId: string) =>
                     </div>
                   ) : (
                     <>
-                      {/* Root project tab (shown as first tab if there are docs directly under it) */}
-                      {rootProject && (
-                        <button
-                          key={rootProject.id}
-                          onClick={() => selectProject(rootProject)}
-                          className={cn(
-                            "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px pl-0",
-                            selectedProject?.id === rootProject.id && !selectedProject?.parent_id
-                              ? "border-primary text-foreground"
-                              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                          )}
-                        >
-                          {rootProject.name}
-                        </button>
-                      )}
-                      {/* Sub-project tabs */}
+                      {/* Sub-project tabs only (root project is shown in header) */}
                       {subProjects.map((project) => (
                         <button
                           key={project.id}
