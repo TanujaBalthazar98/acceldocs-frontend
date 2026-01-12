@@ -288,48 +288,66 @@ export function SmartSearch({
           ) : results.length > 0 ? (
             <ScrollArea className="max-h-80">
               <div className="py-2">
-                {results.map((result, index) => (
-                  <button
-                    key={`${result.type}-${result.id}`}
-                    className={cn(
-                      "w-full px-4 py-2.5 flex items-start gap-3 text-left transition-colors",
-                      index === selectedIndex ? "bg-accent" : "hover:bg-accent/50"
-                    )}
-                    onClick={() => handleSelect(result)}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                  >
-                    <div 
-                      className="p-1.5 rounded-md bg-muted shrink-0 mt-0.5"
-                      style={primaryColor && index === selectedIndex ? { backgroundColor: `${primaryColor}20`, color: primaryColor } : undefined}
+                {results.map((result, index) => {
+                  const isSelected = index === selectedIndex;
+                  return (
+                    <button
+                      key={`${result.type}-${result.id}`}
+                      className={cn(
+                        "w-full px-4 py-2.5 flex items-start gap-3 text-left transition-colors",
+                        isSelected ? "bg-primary text-primary-foreground" : "hover:bg-accent/50"
+                      )}
+                      onClick={() => handleSelect(result)}
+                      onMouseEnter={() => setSelectedIndex(index)}
                     >
-                      {getResultIcon(result.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm text-foreground truncate">
-                        {result.title}
+                      <div 
+                        className={cn(
+                          "p-1.5 rounded-md shrink-0 mt-0.5",
+                          isSelected ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted"
+                        )}
+                        style={primaryColor && isSelected ? { backgroundColor: `${primaryColor}20`, color: "inherit" } : undefined}
+                      >
+                        {getResultIcon(result.type)}
                       </div>
-                      {(result.projectName || result.topicName) && (
-                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                          {result.projectName}
-                          {result.topicName && (
-                            <>
-                              <ArrowRight className="h-2.5 w-2.5" />
-                              {result.topicName}
-                            </>
-                          )}
+                      <div className="flex-1 min-w-0">
+                        <div className={cn(
+                          "font-medium text-sm truncate",
+                          isSelected ? "text-primary-foreground" : "text-foreground"
+                        )}>
+                          {result.title}
                         </div>
-                      )}
-                      {result.snippet && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                          {result.snippet}
-                        </p>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider shrink-0 mt-1">
-                      {result.type}
-                    </span>
-                  </button>
-                ))}
+                        {(result.projectName || result.topicName) && (
+                          <div className={cn(
+                            "text-xs flex items-center gap-1 mt-0.5",
+                            isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
+                          )}>
+                            {result.projectName}
+                            {result.topicName && (
+                              <>
+                                <ArrowRight className="h-2.5 w-2.5" />
+                                {result.topicName}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {result.snippet && (
+                          <p className={cn(
+                            "text-xs mt-1 line-clamp-1",
+                            isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
+                          )}>
+                            {result.snippet}
+                          </p>
+                        )}
+                      </div>
+                      <span className={cn(
+                        "text-[10px] uppercase tracking-wider shrink-0 mt-1",
+                        isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
+                      )}>
+                        {result.type}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </ScrollArea>
           ) : null}
