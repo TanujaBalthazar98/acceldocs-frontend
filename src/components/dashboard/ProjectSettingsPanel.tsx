@@ -98,6 +98,7 @@ export const ProjectSettingsPanel = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRepairing, setIsRepairing] = useState(false);
+  const [isSyncingDrivePermissions, setIsSyncingDrivePermissions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // Members state
@@ -507,6 +508,33 @@ export const ProjectSettingsPanel = ({
     }
   };
 
+  const handleSyncDrivePermissions = async () => {
+    if (!projectId) return;
+    setIsSyncingDrivePermissions(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-drive-permissions', {
+        body: { projectId }
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Drive permissions synced",
+        description: `Successfully synced permissions for ${data?.results?.length || 0} members.`,
+      });
+    } catch (error: any) {
+      console.error("Sync Drive permissions error:", error);
+      toast({
+        title: "Sync failed",
+        description: error.message || "Failed to sync Drive permissions.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncingDrivePermissions(false);
+    }
+  };
+
   const handleRemoveMember = async (memberId: string) => {
     const { error } = await supabase
       .from("project_members")
@@ -820,10 +848,23 @@ export const ProjectSettingsPanel = ({
               <label className="text-sm font-medium text-foreground">
                 Project Members
               </label>
-              <Button variant="ghost" size="sm" className="gap-2 text-primary">
-                <Users className="w-3 h-3" />
-                Manage
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2"
+                  onClick={handleSyncDrivePermissions}
+                  disabled={isSyncingDrivePermissions || !driveFolderId}
+                  title={!driveFolderId ? "No Drive folder connected" : "Sync member permissions to Google Drive"}
+                >
+                  <RefreshCw className={`w-3 h-3 ${isSyncingDrivePermissions ? "animate-spin" : ""}`} />
+                  {isSyncingDrivePermissions ? "Syncing..." : "Sync Drive Permissions"}
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2 text-primary">
+                  <Users className="w-3 h-3" />
+                  Manage
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               {loadingMembers ? (
