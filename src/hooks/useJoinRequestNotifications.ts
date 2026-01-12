@@ -70,8 +70,7 @@ export const useJoinRequestNotifications = (userId: string | undefined) => {
     if (!approvedOrgId || !userId) return false;
     
     // The approve_join_request function already updates the profile
-    // Just need to reload the page to pick up the new org
-    window.location.reload();
+    // Return true to signal the caller should refetch data (no hard reload needed)
     return true;
   };
 

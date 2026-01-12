@@ -2500,7 +2500,7 @@ const Dashboard = () => {
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
               <DriveStatusIndicator onStatusChange={(connected) => setNeedsDriveAccess(!connected)} />
-              {organizationId && <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => window.location.reload()} />}
+              {organizationId && <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => fetchData()} />}
               <Button
                 variant="outline"
                 size="sm"
@@ -2564,7 +2564,13 @@ const Dashboard = () => {
               <Button 
                 variant="hero" 
                 size="sm" 
-                onClick={switchToApprovedWorkspace}
+                onClick={async () => {
+                  const switched = await switchToApprovedWorkspace();
+                  if (switched) {
+                    // Refresh data to load the new workspace
+                    await fetchData();
+                  }
+                }}
                 className="gap-2"
               >
                 <ArrowRight className="w-4 h-4" />
@@ -3045,7 +3051,14 @@ const Dashboard = () => {
         projectId={selectedDocument?.project_id || null}
         googleDocId={selectedDocument?.google_doc_id || null}
         onUpdate={() => fetchData()}
-        onDelete={handleDeleteDocument}
+        onDelete={async (docId) => {
+          // Clear selection first to prevent any stale rendering
+          setSelectedPage(null);
+          setSelectedDocument(null);
+          setPageSettingsOpen(false);
+          // Then perform the delete
+          return await handleDeleteDocument(docId);
+        }}
       />
       
       <TopicSettingsDialog
