@@ -74,20 +74,55 @@ export function usePermissions(projectId: string | null) {
         .eq('id', projectId)
         .maybeSingle();
 
-      if (project) {
-        const orgOwner = (project.organizations as any)?.owner_id === user.id;
-        setIsOrgOwner(orgOwner);
+      if (!project) {
+        setRole(null);
+        setPermissions(EMPTY_PERMISSIONS);
+        setLoading(false);
+        return;
+      }
+
+      const orgId = project.organization_id;
+      const orgOwner = (project.organizations as any)?.owner_id === user.id;
+      setIsOrgOwner(orgOwner);
+      
+      if (orgOwner) {
+        // Org owner gets full admin permissions
+        setRole('admin');
+        setPermissions(getPermissionsForRole('admin', true));
+        setLoading(false);
+        return;
+      }
+
+      // Check org-level role (user_roles table) - this cascades to all projects
+      const { data: orgRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('organization_id', orgId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (orgRole) {
+        // Map org-level app_role to project_role
+        const appRole = orgRole.role as string;
+        let mappedRole: ProjectRole = null;
         
-        if (orgOwner) {
-          // Org owner gets full admin permissions
-          setRole('admin');
-          setPermissions(getPermissionsForRole('admin', true));
+        if (appRole === 'owner' || appRole === 'admin') {
+          mappedRole = 'admin';
+        } else if (appRole === 'editor') {
+          mappedRole = 'editor';
+        } else if (appRole === 'viewer') {
+          mappedRole = 'viewer';
+        }
+
+        if (mappedRole) {
+          setRole(mappedRole);
+          setPermissions(getPermissionsForRole(mappedRole, false));
           setLoading(false);
           return;
         }
       }
 
-      // Check project membership
+      // Check explicit project membership
       const { data: membership } = await supabase
         .from('project_members')
         .select('role')

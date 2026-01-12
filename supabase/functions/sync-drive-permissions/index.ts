@@ -235,191 +235,187 @@ Deno.serve(async (req) => {
     const body: SyncRequest = await req.json();
     console.log("Sync request:", body);
 
-    // Get pending sync items
-    let query = supabase
-      .from('drive_permission_sync')
-      .select(`
-        *,
-        project:projects!drive_permission_sync_project_id_fkey(
-          id,
-          drive_folder_id,
-          organization_id
-        )
-      `)
-      .in('sync_status', ['pending', 'pending_removal'])
-      .order('created_at', { ascending: true })
-      .limit(50);
+    const { projectId } = body;
 
-    if (body.syncId) {
-      query = query.eq('id', body.syncId);
-    } else if (body.projectId) {
-      query = query.eq('project_id', body.projectId);
-    }
-
-    const { data: pendingItems, error: fetchError } = await query;
-
-    if (fetchError) {
-      console.error("Error fetching pending syncs:", fetchError);
+    if (!projectId) {
       return new Response(
-        JSON.stringify({ error: "Failed to fetch pending syncs" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "projectId is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (!pendingItems || pendingItems.length === 0) {
+    // Verify caller has permission to sync this project
+    const { data: canManage } = await supabase.rpc('can_manage_project_members', {
+      _project_id: projectId,
+      _user_id: user.id,
+    });
+
+    if (!canManage) {
+      console.log(`User ${user.id} cannot manage project ${projectId}`);
       return new Response(
-        JSON.stringify({ message: "No pending syncs", synced: 0 }),
+        JSON.stringify({ error: "Permission denied" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get project with org and drive folder info
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select(`
+        id,
+        drive_folder_id,
+        organization_id,
+        organizations!projects_organization_id_fkey(owner_id)
+      `)
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      console.error("Project not found:", projectError);
+      return new Response(
+        JSON.stringify({ error: "Project not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!project.drive_folder_id) {
+      console.log("Project has no drive folder, skipping sync");
+      return new Response(
+        JSON.stringify({ message: "Project has no Drive folder", synced: 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Processing ${pendingItems.length} pending syncs`);
+    const orgId = project.organization_id;
+    const driveFileId = project.drive_folder_id;
 
-    // Group by project to minimize token refreshes
-    const projectGroups = new Map<string, any[]>();
-    for (const item of pendingItems) {
-      const projectId = item.project_id;
-      if (!projectGroups.has(projectId)) {
-        projectGroups.set(projectId, []);
-      }
-      projectGroups.get(projectId)!.push(item);
+    // Get access token for org owner
+    const accessToken = await getOrgOwnerToken(supabase, projectId);
+    if (!accessToken) {
+      console.error("No access token available for project");
+      return new Response(
+        JSON.stringify({ error: "No valid Google access token. Org owner must reconnect Google Drive." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    // Collect all users who need Drive access for this project
+    // This includes: org-level admins/editors/viewers from user_roles + explicit project_members
+    const usersToSync: Array<{ userId: string; email: string; role: string; source: string }> = [];
+
+    // 1. Get org-level role users (user_roles table)
+    const { data: orgRoleUsers, error: orgRoleError } = await supabase
+      .from('user_roles')
+      .select(`
+        user_id,
+        role,
+        profiles!user_roles_user_id_fkey(email)
+      `)
+      .eq('organization_id', orgId);
+
+    if (!orgRoleError && orgRoleUsers) {
+      for (const ur of orgRoleUsers) {
+        const email = (ur.profiles as any)?.email;
+        if (email) {
+          // Map app_role to project_role equivalent
+          let mappedRole = 'viewer';
+          if (ur.role === 'owner' || ur.role === 'admin') {
+            mappedRole = 'admin';
+          } else if (ur.role === 'editor') {
+            mappedRole = 'editor';
+          }
+          usersToSync.push({
+            userId: ur.user_id,
+            email,
+            role: mappedRole,
+            source: 'user_roles',
+          });
+        }
+      }
+    }
+
+    // 2. Get explicit project members
+    const { data: projectMembers, error: pmError } = await supabase
+      .from('project_members')
+      .select(`
+        user_id,
+        role,
+        profiles!project_members_user_id_fkey(email)
+      `)
+      .eq('project_id', projectId);
+
+    if (!pmError && projectMembers) {
+      for (const pm of projectMembers) {
+        const email = (pm.profiles as any)?.email;
+        if (email) {
+          // Check if user already added from org roles - project role takes precedence
+          const existingIdx = usersToSync.findIndex(u => u.userId === pm.user_id);
+          if (existingIdx >= 0) {
+            // Replace with project-level role (more specific)
+            usersToSync[existingIdx] = {
+              userId: pm.user_id,
+              email,
+              role: pm.role,
+              source: 'project_members',
+            };
+          } else {
+            usersToSync.push({
+              userId: pm.user_id,
+              email,
+              role: pm.role,
+              source: 'project_members',
+            });
+          }
+        }
+      }
+    }
+
+    console.log(`Syncing ${usersToSync.length} users for project ${projectId}`);
 
     let successCount = 0;
     let failCount = 0;
     const results: any[] = [];
 
-    for (const [projectId, items] of projectGroups) {
-      // Verify caller has permission to sync this project
-      const { data: canManage } = await supabase.rpc('can_manage_project_members', {
-        _project_id: projectId,
-        _user_id: user.id,
-      });
+    for (const userSync of usersToSync) {
+      const { permissionId, error } = await syncDrivePermission(
+        accessToken,
+        driveFileId,
+        userSync.email,
+        userSync.role
+      );
 
-      if (!canManage) {
-        console.log(`User ${user.id} cannot manage project ${projectId}, skipping`);
-        continue;
-      }
+      if (permissionId) {
+        successCount++;
+        results.push({ 
+          email: userSync.email, 
+          role: userSync.role, 
+          driveRole: getDriveRoleForAppRole(userSync.role),
+          status: 'synced' 
+        });
 
-      // Get access token for this project's org owner
-      const accessToken = await getOrgOwnerToken(supabase, projectId);
-      if (!accessToken) {
-        console.error(`No access token available for project ${projectId}`);
-        for (const item of items) {
-          await supabase
-            .from('drive_permission_sync')
-            .update({
-              sync_status: 'failed',
-              error_message: 'No valid Google access token available. Org owner must reconnect Google Drive.',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', item.id);
-          failCount++;
-        }
-        continue;
-      }
-
-      // Process each sync item
-      for (const item of items) {
-        const driveFileId = item.drive_file_id;
-        
-        if (item.sync_status === 'pending_removal') {
-          // Remove permission
-          if (item.drive_permission_id) {
-            const { success, error } = await removeDrivePermission(
-              accessToken,
-              driveFileId,
-              item.drive_permission_id
-            );
-
-            if (success) {
-              await supabase
-                .from('drive_permission_sync')
-                .delete()
-                .eq('id', item.id);
-              successCount++;
-              results.push({ id: item.id, status: 'removed' });
-            } else {
-              await supabase
-                .from('drive_permission_sync')
-                .update({
-                  sync_status: 'failed',
-                  error_message: error,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', item.id);
-              failCount++;
-              results.push({ id: item.id, status: 'failed', error });
-            }
-          } else {
-            // No permission ID, just delete the record
-            await supabase
-              .from('drive_permission_sync')
-              .delete()
-              .eq('id', item.id);
-            successCount++;
-          }
-        } else {
-          // Create or update permission
-          const userEmail = await getUserEmail(supabase, item.user_id);
-          if (!userEmail) {
-            await supabase
-              .from('drive_permission_sync')
-              .update({
-                sync_status: 'failed',
-                error_message: 'User email not found',
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', item.id);
-            failCount++;
-            continue;
-          }
-
-          const { permissionId, error } = await syncDrivePermission(
-            accessToken,
-            driveFileId,
-            userEmail,
-            item.role,
-            item.drive_permission_id || undefined
-          );
-
-          if (permissionId) {
-            await supabase
-              .from('drive_permission_sync')
-              .update({
-                sync_status: 'synced',
-                drive_permission_id: permissionId !== 'existing' ? permissionId : item.drive_permission_id,
-                last_synced_at: new Date().toISOString(),
-                error_message: null,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', item.id);
-            successCount++;
-            results.push({ id: item.id, status: 'synced', permissionId });
-
-            // Log successful sync
-            await supabase.from('audit_logs').insert({
-              user_id: user.id,
-              action: 'sync_drive_permission',
-              entity_type: 'project_member',
-              entity_id: item.project_member_id,
-              project_id: projectId,
-              metadata: { targetUserId: item.user_id, role: item.role, driveRole: getDriveRoleForAppRole(item.role) },
-              success: true,
-            });
-          } else {
-            await supabase
-              .from('drive_permission_sync')
-              .update({
-                sync_status: 'failed',
-                error_message: error,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', item.id);
-            failCount++;
-            results.push({ id: item.id, status: 'failed', error });
-          }
-        }
+        // Log successful sync
+        await supabase.from('audit_logs').insert({
+          user_id: user.id,
+          action: 'sync_drive_permission',
+          entity_type: 'user',
+          entity_id: userSync.userId,
+          project_id: projectId,
+          metadata: { 
+            targetEmail: userSync.email, 
+            role: userSync.role, 
+            driveRole: getDriveRoleForAppRole(userSync.role),
+            source: userSync.source
+          },
+          success: true,
+        });
+      } else {
+        failCount++;
+        results.push({ 
+          email: userSync.email, 
+          role: userSync.role, 
+          status: 'failed', 
+          error 
+        });
       }
     }
 
