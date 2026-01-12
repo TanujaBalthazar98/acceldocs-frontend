@@ -503,6 +503,21 @@ export default function Docs() {
     setMobileMenuOpen(false);
   };
 
+  const getDocsLandingPath = () => {
+    if (isCustomDomain) return "/docs";
+    if (currentOrg) return `/docs/${currentOrg.slug || currentOrg.domain}`;
+    return "/docs";
+  };
+
+  const goToDocsLanding = () => {
+    setSelectedProject(null);
+    setSelectedDocument(null);
+    setExpandedTopics(new Set());
+    setDocumentHtml(null);
+    setMobileMenuOpen(false);
+    navigate(getDocsLandingPath());
+  };
+
   // Filter content by search
   const searchLower = searchQuery.toLowerCase();
   
@@ -749,7 +764,14 @@ const getTopicDocuments = (topicId: string) =>
         {/* Minimal Header */}
         <header className="border-b border-border bg-card">
           <div className="flex items-center justify-between px-4 lg:px-6 h-14">
-            <Link to={isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <Link
+              to={isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`}
+              onClick={(e) => {
+                e.preventDefault();
+                goToDocsLanding();
+              }}
+              className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            >
               {currentOrg.logo_url ? (
                 <img src={currentOrg.logo_url} alt={currentOrg.name} className="h-8 w-auto" />
               ) : (
@@ -825,7 +847,14 @@ const getTopicDocuments = (topicId: string) =>
         <div className="flex items-center justify-between px-3 sm:px-4 lg:px-6 h-14 gap-2">
           {/* Left: Organization Logo/Name + Root Project */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <Link to={currentOrg ? (isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`) : "/"} className="flex items-center gap-2">
+            <Link
+              to={currentOrg ? (isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`) : "/"}
+              onClick={(e) => {
+                e.preventDefault();
+                goToDocsLanding();
+              }}
+              className="flex items-center gap-2"
+            >
               {currentOrg?.logo_url ? (
                 <img src={currentOrg.logo_url} alt={currentOrg.name} className="h-7 sm:h-8 w-auto" />
               ) : (
