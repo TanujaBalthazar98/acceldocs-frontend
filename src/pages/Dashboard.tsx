@@ -2081,7 +2081,7 @@ const Dashboard = () => {
                         <Plus className="w-4 h-4 text-muted-foreground" />
                       </span>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuContent align="end" className="w-44">
                       <DropdownMenuItem
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2092,6 +2092,19 @@ const Dashboard = () => {
                         <Folder className="w-3 h-3 mr-2" />
                         Add Topic
                       </DropdownMenuItem>
+                      {selectedTopic && (
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setParentTopicForCreate(selectedTopic);
+                            setAddTopicOpen(true);
+                          }}
+                        >
+                          <FolderTree className="w-3 h-3 mr-2" />
+                          Add Subtopic in "{selectedTopic.name.slice(0, 15)}{selectedTopic.name.length > 15 ? '...' : ''}"
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2698,7 +2711,10 @@ const Dashboard = () => {
                 )}
               </div>
               <button 
-                onClick={() => setAddTopicOpen(true)}
+                onClick={() => {
+                  setParentTopicForCreate(null);
+                  setAddTopicOpen(true);
+                }}
                 disabled={!selectedProject}
                 className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 title={!selectedProject ? "Select a project first" : "Add topic"}
@@ -2714,6 +2730,10 @@ const Dashboard = () => {
                 allTopics={topics.filter(t => t.project_id === selectedProject.id)}
                 selectedTopic={selectedTopic}
                 onSelectTopic={(topic) => setSelectedTopic(topic)}
+                onAddSubtopic={(parentTopic) => {
+                  setParentTopicForCreate(parentTopic);
+                  setAddTopicOpen(true);
+                }}
                 documents={documents}
               />
             )}

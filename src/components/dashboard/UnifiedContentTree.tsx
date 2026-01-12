@@ -736,16 +736,28 @@ export function UnifiedContentTree({
 
           {/* Quick actions */}
           {isTopic && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddPage(node.data as Topic);
-              }}
-              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
-              title="Add page"
-            >
-              <Plus className="w-3 h-3" />
-            </button>
+            <div className="flex items-center opacity-0 group-hover:opacity-100 shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddSubtopic(node.data as Topic);
+                }}
+                className="p-1 rounded hover:bg-background transition-all"
+                title="Add subtopic"
+              >
+                <FolderPlus className="w-3 h-3" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddPage(node.data as Topic);
+                }}
+                className="p-1 rounded hover:bg-background transition-all"
+                title="Add page"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
           )}
 
           {/* Dropdown menu */}
