@@ -474,32 +474,25 @@ export function UnifiedContentTree({
           // (Those can look like "0 rows affected" due to missing auth context.)
           await supabase.auth.refreshSession();
 
-          // Hard permission check (matches backend RBAC + org-owner bypass)
-          const { data: canEdit, error: canEditError } = await supabase.rpc(
-            "can_edit_project",
-            {
-              _project_id: draggedDoc.project_id,
-              _user_id: sessionData.session.user.id,
+          // Some views pass a lightweight doc object that may not include project_id.
+          // Resolve the true project_id from the database when missing.
+          let sourceProjectId: string | null = (draggedDoc as any).project_id ?? null;
+          if (!sourceProjectId) {
+            const { data: docRow, error: docRowError } = await supabase
+              .from("documents")
+              .select("project_id")
+              .eq("id", draggedId)
+              .maybeSingle();
+
+            if (!docRowError && docRow?.project_id) {
+              sourceProjectId = docRow.project_id;
             }
-          );
-
-          if (canEditError) {
-            // Don't block the action purely on an RPC hiccup; the updates below will still enforce RLS.
-            console.warn("Permission precheck failed:", canEditError);
-          } else if (!canEdit) {
-            const { data: authData } = await supabase.auth.getUser();
-            const signedInAs = authData.user?.email
-              ? `Signed in as ${authData.user.email}. `
-              : "";
-
-            throw new Error(
-              `${signedInAs}Move was blocked (no changes applied). This account does not have edit permissions for this project.`
-            );
           }
 
           try {
             // Determine destination "container" (topic_id) and insertion index
             let destinationTopicId: string | null = draggedDoc.topic_id ?? null;
+            let destinationProjectId: string | null = sourceProjectId;
             let insertIndex: number | null = null;
 
             if (targetNodeType === "topic") {
@@ -508,6 +501,8 @@ export function UnifiedContentTree({
                 handleDragEnd();
                 return;
               }
+
+              destinationProjectId = targetTopic.project_id;
 
               // Dropping *inside* a topic → move into that topic.
               // Dropping *before/after* a topic → move to the topic's parent level (i.e., sibling of that topic).
@@ -529,10 +524,16 @@ export function UnifiedContentTree({
                 return;
               }
 
+              destinationProjectId = (targetDoc as any).project_id ?? destinationProjectId;
               destinationTopicId = targetDoc.topic_id ?? null;
 
               const sorted = documents
-                .filter((d) => d.topic_id === destinationTopicId && d.id !== draggedId)
+                .filter(
+                  (d) =>
+                    d.topic_id === destinationTopicId &&
+                    d.id !== draggedId &&
+                    (!destinationProjectId || d.project_id === destinationProjectId)
+                )
                 .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
 
               const targetIndex = sorted.findIndex((d) => d.id === targetDoc.id);
@@ -543,9 +544,46 @@ export function UnifiedContentTree({
               }
             }
 
+            // Prevent cross-project moves (these should be done via project switcher)
+            if (sourceProjectId && destinationProjectId && sourceProjectId !== destinationProjectId) {
+              toast({
+                title: "Invalid move",
+                description:
+                  "Pages can’t be moved between projects. Switch to that project and try again.",
+                variant: "destructive",
+              });
+              handleDragEnd();
+              return;
+            }
+
+            // Best-effort permission precheck (do NOT hard-block, RLS below is the source of truth).
+            if (destinationProjectId) {
+              const { data: canEdit, error: canEditError } = await supabase.rpc(
+                "can_edit_project",
+                {
+                  _project_id: destinationProjectId,
+                  _user_id: sessionData.session.user.id,
+                }
+              );
+
+              if (canEditError) {
+                console.warn("Permission precheck failed:", canEditError);
+              } else if (!canEdit) {
+                console.warn("Permission precheck returned false", {
+                  destinationProjectId,
+                  userId: sessionData.session.user.id,
+                });
+              }
+            }
+
             // Build the destination ordering and reindex deterministically (avoids integer midpoint collisions)
             const destinationDocs = documents
-              .filter((d) => d.topic_id === destinationTopicId && d.id !== draggedId)
+              .filter(
+                (d) =>
+                  d.topic_id === destinationTopicId &&
+                  d.id !== draggedId &&
+                  (!destinationProjectId || d.project_id === destinationProjectId)
+              )
               .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
 
             const orderedIds = destinationDocs.map((d) => d.id);
