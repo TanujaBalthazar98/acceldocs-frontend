@@ -46,7 +46,7 @@ interface PageSettingsDialogProps {
   projectId: string | null;
   googleDocId: string | null;
   onUpdate?: () => void;
-  onDelete?: (docId: string) => void;
+  onDelete?: (docId: string) => Promise<boolean> | boolean | void;
 }
 
 export const PageSettingsDialog = ({
@@ -256,11 +256,18 @@ export const PageSettingsDialog = ({
 
   const confirmDelete = async () => {
     if (documentId && onDelete) {
-      // Close dialogs first to prevent any navigation issues
+      const docIdToDelete = documentId;
+      // Close the delete confirmation dialog but keep settings dialog open during delete
       setDeleteDialogOpen(false);
-      onOpenChange(false);
-      // Then perform the delete
-      await onDelete(documentId);
+      
+      // Perform the delete operation first
+      const result = await onDelete(docIdToDelete);
+      
+      // Only close the settings dialog after delete completes
+      // Close unless the delete explicitly returned false (failure)
+      if (result !== false) {
+        onOpenChange(false);
+      }
     }
   };
 

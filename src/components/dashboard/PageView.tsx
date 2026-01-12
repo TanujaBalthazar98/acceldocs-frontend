@@ -64,13 +64,45 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
 export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) => {
   const [shareOpen, setShareOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [contentHtml, setContentHtml] = useState<string | null>(document.content_html);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
+  // Use content_html or fall back to published_content_html
+  const [contentHtml, setContentHtml] = useState<string | null>(
+    document.content_html || document.published_content_html
+  );
   const { toast } = useToast();
 
-  // Update content when document changes
+  // Update content when document changes or fetch from DB if missing
   useEffect(() => {
-    setContentHtml(document.content_html);
-  }, [document.id, document.content_html]);
+    const initialContent = document.content_html || document.published_content_html;
+    if (initialContent) {
+      setContentHtml(initialContent);
+    } else {
+      // Content not loaded - fetch it from the database
+      fetchContentFromDB();
+    }
+  }, [document.id, document.content_html, document.published_content_html]);
+
+  const fetchContentFromDB = async () => {
+    setIsLoadingContent(true);
+    try {
+      const { data } = await supabase
+        .from("documents")
+        .select("content_html, published_content_html")
+        .eq("id", document.id)
+        .single();
+      
+      if (data) {
+        const content = data.content_html || data.published_content_html;
+        if (content) {
+          setContentHtml(content);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching document content:", error);
+    } finally {
+      setIsLoadingContent(false);
+    }
+  };
 
   const handleSyncContent = async () => {
     setIsSyncing(true);
@@ -260,7 +292,12 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
             {/* Document Content */}
             <article className="prose prose-invert prose-headings:text-foreground prose-p:text-secondary-foreground prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-secondary-foreground max-w-none">
               <div className="rounded-xl border border-border bg-card/50 p-8">
-                {contentHtml ? (
+                {isLoadingContent ? (
+                  <div className="text-center py-12">
+                    <Loader2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
+                    <p className="text-muted-foreground">Loading content...</p>
+                  </div>
+                ) : contentHtml ? (
                   <div
                     className="google-doc-content"
                     dangerouslySetInnerHTML={{
