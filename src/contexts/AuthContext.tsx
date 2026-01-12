@@ -267,7 +267,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const signOut = async () => {
+    // Clear local state immediately to prevent stale dashboard view
+    setUser(null);
+    setSession(null);
+    setGoogleAccessToken(null);
+    setProfileOrganizationId(null);
+    localStorage.removeItem(GOOGLE_TOKEN_KEY);
+    localStorage.removeItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY);
+    
     await supabase.auth.signOut();
+    
+    // Force navigation to auth page
+    window.location.href = '/auth';
   };
 
   return (
