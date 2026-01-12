@@ -149,12 +149,23 @@ export default function Docs() {
     pageSlug?: string;
   }>();
   
-  const orgSlug = params.orgSlug;
-  const projectSlug = params.projectSlug;
-  const topicSlug = params.pageSlug ? params.topicSlug : undefined;
-  const pageSlug = params.pageSlug || params.topicSlug;
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  
+  // Track custom domain state early for URL interpretation
+  const [isCustomDomain, setIsCustomDomain] = useState(false);
+  
+  // On custom domains, URL structure shifts: org is implicit from domain
+  // Standard: /docs/:orgSlug/:projectSlug/:topicSlug/:pageSlug
+  // Custom domain: /docs/:projectSlug/:topicSlug/:pageSlug
+  const orgSlug = isCustomDomain ? undefined : params.orgSlug;
+  const projectSlug = isCustomDomain ? params.orgSlug : params.projectSlug;
+  const topicSlug = isCustomDomain 
+    ? (params.topicSlug ? params.projectSlug : undefined)
+    : (params.pageSlug ? params.topicSlug : undefined);
+  const pageSlug = isCustomDomain
+    ? (params.topicSlug || params.projectSlug)
+    : (params.pageSlug || params.topicSlug);
   const { theme } = useTheme();
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -172,7 +183,6 @@ export default function Docs() {
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
-  const [isCustomDomain, setIsCustomDomain] = useState(false);
   const [isFullWidth, setIsFullWidth] = useState(false);
 
   // Check for custom domain on mount
@@ -247,7 +257,7 @@ export default function Docs() {
       setSelectedDocument(null);
       setDocumentHtml(null);
     }
-  }, [projectSlug, projects]);
+  }, [projectSlug, projects, isCustomDomain]);
 
   // Helper to get the first available document for a project (considering display order)
   const getFirstDocumentForProject = (projectId: string) => {
