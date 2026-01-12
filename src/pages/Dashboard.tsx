@@ -397,6 +397,21 @@ const Dashboard = () => {
   useEffect(() => {
     fetchData();
   }, [user]);
+
+  // Keep selectedDocument in sync with documents array after refetch
+  useEffect(() => {
+    if (selectedDocument && documents.length > 0) {
+      const updatedDoc = documents.find(d => d.id === selectedDocument.id);
+      if (updatedDoc && (
+        updatedDoc.content_html !== selectedDocument.content_html ||
+        updatedDoc.published_content_html !== selectedDocument.published_content_html ||
+        updatedDoc.title !== selectedDocument.title ||
+        updatedDoc.is_published !== selectedDocument.is_published
+      )) {
+        setSelectedDocument(updatedDoc);
+      }
+    }
+  }, [documents]);
   
   // Reset visible pages when filters change
   useEffect(() => {
@@ -1427,6 +1442,30 @@ const Dashboard = () => {
 
   // If a page is selected, show the PageView
   if (selectedPage && selectedDocument) {
+    // Callback to refresh document content after sync
+    const handleDocumentUpdate = async () => {
+      // Fetch fresh document data including content_html
+      const { data: freshDoc } = await supabase
+        .from("documents")
+        .select(`
+          id, title, google_doc_id, project_id, topic_id, display_order, google_modified_at, created_at, updated_at,
+          visibility, is_published, owner_id, content_html, published_content_html,
+          owner:profiles!documents_owner_id_fkey(full_name, email)
+        `)
+        .eq("id", selectedDocument.id)
+        .single();
+
+      if (freshDoc) {
+        const updatedDoc = {
+          ...freshDoc,
+          owner_name: (freshDoc.owner as any)?.full_name || (freshDoc.owner as any)?.email?.split("@")[0] || null,
+        };
+        setSelectedDocument(updatedDoc as Document);
+        // Also update the documents array
+        setDocuments(prev => prev.map(d => d.id === freshDoc.id ? updatedDoc as Document : d));
+      }
+    };
+
     return (
       <PageView
         document={selectedDocument}
@@ -1434,7 +1473,7 @@ const Dashboard = () => {
           setSelectedPage(null);
           setSelectedDocument(null);
         }}
-        onDocumentUpdate={fetchData}
+        onDocumentUpdate={handleDocumentUpdate}
       />
     );
   }
