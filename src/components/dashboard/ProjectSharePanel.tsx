@@ -155,8 +155,31 @@ export const ProjectSharePanel = ({
 
   const fetchMembers = async () => {
     setLoading(true);
+
+    const mapOrgRoleToProjectRole = (role: string | null): ProjectRole | null => {
+      switch (role) {
+        case "owner":
+        case "admin":
+          return "admin";
+        case "editor":
+          return "editor";
+        case "viewer":
+          return "viewer";
+        default:
+          return null;
+      }
+    };
+
     try {
-      // Fetch project members
+      // Resolve org id for this project (so org-level roles show up as members)
+      const { data: proj } = await supabase
+        .from("projects")
+        .select("organization_id")
+        .eq("id", projectId)
+        .maybeSingle();
+      const orgId = proj?.organization_id ?? null;
+
+      // 1) Explicit project members
       const { data, error } = await supabase
         .from("project_members")
         .select("id, user_id, role")
@@ -164,16 +187,47 @@ export const ProjectSharePanel = ({
 
       if (error) throw error;
 
+      const merged: Array<{ id: string; user_id: string; role: ProjectRole }> =
+        (data || []).map((m: any) => ({ id: m.id, user_id: m.user_id, role: m.role as ProjectRole }));
+
+      const seen = new Set(merged.map((m) => m.user_id));
+
+      // 2) Org-level roles (auto-inherit)
+      if (orgId) {
+        const [{ data: orgRoles }, { data: org }] = await Promise.all([
+          supabase.from("user_roles").select("user_id, role").eq("organization_id", orgId),
+          supabase.from("organizations").select("owner_id").eq("id", orgId).maybeSingle(),
+        ]);
+
+        const ownerId = org?.owner_id ?? null;
+        if (ownerId && !seen.has(ownerId)) {
+          merged.push({ id: `org:${ownerId}`, user_id: ownerId, role: "admin" });
+          seen.add(ownerId);
+        }
+
+        for (const r of orgRoles || []) {
+          const mapped = mapOrgRoleToProjectRole((r as any).role ?? null);
+          if (!mapped) continue;
+          if (seen.has((r as any).user_id)) continue;
+          merged.push({
+            id: `org:${(r as any).user_id}`,
+            user_id: (r as any).user_id,
+            role: mapped,
+          });
+          seen.add((r as any).user_id);
+        }
+      }
+
       // Fetch profile info for each member
-      if (data && data.length > 0) {
-        const userIds = data.map(m => m.user_id);
+      if (merged.length > 0) {
+        const userIds = merged.map((m) => m.user_id);
         const { data: profiles } = await supabase
           .from("profiles")
           .select("id, email, full_name")
           .in("id", userIds);
 
-        const membersWithProfiles = data.map(member => {
-          const profile = profiles?.find(p => p.id === member.user_id);
+        const membersWithProfiles = merged.map((member) => {
+          const profile = profiles?.find((p) => p.id === member.user_id);
           return {
             ...member,
             email: profile?.email,
