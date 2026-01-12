@@ -333,6 +333,14 @@ function generateSlug(text: string): string {
     .trim();
 }
 
+// Normalize path separators and remove leading/trailing slashes
+function normalizePath(path: string): string {
+  return path
+    .replace(/\\/g, '/') // Windows to Unix separators
+    .replace(/^\/+|\/+$/g, '') // Remove leading/trailing slashes
+    .replace(/\/+/g, '/'); // Collapse multiple slashes
+}
+
 // Parse folder structure into a proper tree with UNLIMITED nesting
 function parseNestedStructure(files: { path: string; content: string }[]): {
   topicTree: TopicNode;
@@ -341,36 +349,44 @@ function parseNestedStructure(files: { path: string; content: string }[]): {
   const topicTree: TopicNode = { name: '', fullPath: '', files: [], children: new Map() };
   const rootFiles: { path: string; content: string }[] = [];
   
-  // Find the common root folder
-  let rootFolder = '';
-  if (files.length > 0) {
-    const firstPath = files[0].path;
-    const firstParts = firstPath.split('/');
+  // First, normalize all paths
+  const normalizedFiles = files.map(f => ({
+    ...f,
+    path: normalizePath(f.path)
+  }));
+  
+  // Find the common root folder prefix (only strip if ALL files share it)
+  let commonPrefix = '';
+  if (normalizedFiles.length > 0) {
+    const firstParts = normalizedFiles[0].path.split('/');
     if (firstParts.length > 1) {
-      rootFolder = firstParts[0];
+      const potentialRoot = firstParts[0];
+      const allShareRoot = normalizedFiles.every(f => f.path.startsWith(potentialRoot + '/'));
+      if (allShareRoot) {
+        commonPrefix = potentialRoot;
+        console.log(`Detected common root folder: "${commonPrefix}" - will preserve as topic`);
+      }
     }
   }
   
-  for (const file of files) {
-    let pathParts = file.path.split('/');
+  for (const file of normalizedFiles) {
+    const pathParts = file.path.split('/');
     
-    // Remove the root folder if it matches
-    if (rootFolder && pathParts[0] === rootFolder) {
-      pathParts = pathParts.slice(1);
-    }
-    
-    // Remove the filename
+    // Remove the filename from path parts
     const filename = pathParts.pop() || '';
     
+    // If pathParts is empty after removing filename, this is a root file
     if (pathParts.length === 0) {
-      // File directly in project root
       rootFiles.push(file);
     } else {
-      // Navigate/create the topic tree
+      // Navigate/create the topic tree - DO NOT strip the root folder
+      // The root folder IS a topic that should be created
       let currentNode = topicTree;
       let currentPath = '';
       
       for (const part of pathParts) {
+        if (!part) continue; // Skip empty parts
+        
         currentPath = currentPath ? `${currentPath}/${part}` : part;
         
         if (!currentNode.children.has(part)) {
@@ -389,10 +405,20 @@ function parseNestedStructure(files: { path: string; content: string }[]): {
     }
   }
   
-  console.log(`Parsed structure: ${rootFiles.length} root files`);
+  const topicCount = countTopics(topicTree);
+  console.log(`Parsed structure: ${topicCount} topics and ${rootFiles.length} root files`);
   logTopicTree(topicTree, 0);
   
   return { topicTree, rootFiles };
+}
+
+// Count total topics in tree
+function countTopics(node: TopicNode): number {
+  let count = node.children.size;
+  for (const child of node.children.values()) {
+    count += countTopics(child);
+  }
+  return count;
 }
 
 function logTopicTree(node: TopicNode, depth: number) {
