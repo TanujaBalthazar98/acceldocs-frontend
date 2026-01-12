@@ -281,21 +281,42 @@ const Dashboard = () => {
     
     setIsLoading(true);
     
-    // Get user's profile and organization (use maybeSingle since profile might not exist)
+    // Get user's profile and organization
+    // First try profile.organization_id, then fall back to user_roles as source of truth
     const { data: profile } = await supabase
       .from("profiles")
       .select("organization_id")
       .eq("id", user.id)
       .maybeSingle();
     
-    if (profile?.organization_id) {
-      setOrganizationId(profile.organization_id);
+    let effectiveOrgId = profile?.organization_id || null;
+    
+    // If no org in profile, check user_roles as the authoritative source
+    if (!effectiveOrgId) {
+      const { data: userRole } = await supabase
+        .from("user_roles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      
+      if (userRole?.organization_id) {
+        effectiveOrgId = userRole.organization_id;
+        // Sync the profile's organization_id for consistency
+        await supabase
+          .from("profiles")
+          .update({ organization_id: userRole.organization_id })
+          .eq("id", user.id);
+      }
+    }
+    
+    if (effectiveOrgId) {
+      setOrganizationId(effectiveOrgId);
       
       // Get organization details
       const { data: org } = await supabase
         .from("organizations")
         .select("id, drive_folder_id, name, slug, domain, mcp_enabled, openapi_spec_json, openapi_spec_url")
-        .eq("id", profile.organization_id)
+        .eq("id", effectiveOrgId)
         .single();
       
       if (org?.drive_folder_id) {
@@ -317,7 +338,7 @@ const Dashboard = () => {
       const { data: projectsData } = await supabase
         .from("projects")
         .select("id, name, slug, drive_folder_id, visibility, is_published, parent_id")
-        .eq("organization_id", profile.organization_id)
+        .eq("organization_id", effectiveOrgId)
         .order("name");
 
       if (projectsData) {

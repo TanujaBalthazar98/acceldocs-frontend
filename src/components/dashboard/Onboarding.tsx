@@ -41,7 +41,22 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       if (!user) return;
 
       try {
-        // First check if user already has a pending join request (they can see their own requests)
+        // First check if user already has an org role (they're already a member)
+        const { data: existingRole } = await supabase
+          .from("user_roles")
+          .select("id, organization_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (existingRole) {
+          // User is already a member - complete onboarding immediately
+          console.log("User already has org role, completing onboarding");
+          setIsCheckingOrg(false);
+          onComplete();
+          return;
+        }
+
+        // Check if user already has a pending join request (they can see their own requests)
         const { data: pendingRequest } = await supabase
           .from("join_requests")
           .select("id, status, organization_id")
@@ -85,7 +100,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     };
 
     checkAcceldataOrg();
-  }, [user]);
+  }, [user, onComplete]);
 
   const handleBack = () => {
     if (step > 1) {
