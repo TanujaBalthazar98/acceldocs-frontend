@@ -168,6 +168,10 @@ const Dashboard = () => {
   const [addTopicOpen, setAddTopicOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [pageSettingsOpen, setPageSettingsOpen] = useState(false);
+  const [pageSettingsTarget, setPageSettingsTarget] = useState<Pick<
+    Document,
+    "id" | "title" | "project_id" | "google_doc_id"
+  > | null>(null);
   const [topicSettingsOpen, setTopicSettingsOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -802,9 +806,12 @@ const Dashboard = () => {
       toast({ title: "Error", description: "Failed to delete page.", variant: "destructive" });
       return false;
     } else {
-      // Clear selected document to prevent any navigation to deleted page
+      // Clear selected document/page to prevent showing a deleted page
       if (selectedDocument?.id === docId) {
         setSelectedDocument(null);
+      }
+      if (selectedPage === docId) {
+        setSelectedPage(null);
       }
       await logAction('delete_document', 'document', docId, selectedProject?.id || '', { documentTitle: doc?.title, forceDelete });
       toast({ title: "Deleted", description: forceDelete ? "Page deleted from app (Drive file remains)." : "Page moved to Drive trash and deleted from app." });
@@ -2160,10 +2167,9 @@ const Dashboard = () => {
                     }}
                     onOpenDocumentSettings={(doc) => {
                       const fullDoc = documents.find(d => d.id === doc.id);
-                      if (fullDoc) {
-                        setSelectedDocument(fullDoc);
-                        setPageSettingsOpen(true);
-                      }
+                      if (!fullDoc) return;
+                      setPageSettingsTarget(fullDoc);
+                      setPageSettingsOpen(true);
                     }}
                     onDeleteDocument={(doc) => {
                       setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
@@ -2873,7 +2879,7 @@ const Dashboard = () => {
                                     <DropdownMenuItem
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setSelectedDocument(doc);
+                                        setPageSettingsTarget(doc);
                                         setPageSettingsOpen(true);
                                       }}
                                     >
@@ -3056,17 +3062,22 @@ const Dashboard = () => {
       
       <PageSettingsDialog
         open={pageSettingsOpen}
-        onOpenChange={setPageSettingsOpen}
-        documentId={selectedDocument?.id || null}
-        documentTitle={selectedDocument?.title || null}
-        projectId={selectedDocument?.project_id || null}
-        googleDocId={selectedDocument?.google_doc_id || null}
+        onOpenChange={(open) => {
+          setPageSettingsOpen(open);
+          if (!open) setPageSettingsTarget(null);
+        }}
+        documentId={pageSettingsTarget?.id || null}
+        documentTitle={pageSettingsTarget?.title || null}
+        projectId={pageSettingsTarget?.project_id || null}
+        googleDocId={pageSettingsTarget?.google_doc_id || null}
         onUpdate={() => fetchData()}
         onDelete={async (docId) => {
           const result = await handleDeleteDocument(docId);
           if (result !== false) {
+            // If the user was viewing this page inline, close it.
             if (selectedPage === docId) setSelectedPage(null);
             if (selectedDocument?.id === docId) setSelectedDocument(null);
+            setPageSettingsTarget(null);
           }
           return result;
         }}
