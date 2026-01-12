@@ -213,8 +213,27 @@ const Dashboard = () => {
   const [topicsExpanded, setTopicsExpanded] = useState(true);
   
   // Permissions and audit logging
-  const { permissions, role, loading: permissionsLoading } = usePermissions(selectedProject?.id || null);
+  const { permissions, role, loading: permissionsLoading, isOrgOwner } = usePermissions(selectedProject?.id || null);
   const { logAction, logUnauthorizedAttempt } = useAuditLog();
+
+  // Helper: Check if user can publish for a specific project (used when no project is selected)
+  const canPublishForProject = async (projectId: string): Promise<boolean> => {
+    if (!user) return false;
+    // If we have a selected project and it matches, use cached permissions
+    if (selectedProject?.id === projectId && permissions.canPublish) return true;
+    
+    // Otherwise, call the database function directly
+    const { data: canEdit, error } = await supabase.rpc("can_edit_project", {
+      _project_id: projectId,
+      _user_id: user.id,
+    });
+    
+    if (error) {
+      console.error("Error checking publish permission:", error);
+      return false;
+    }
+    return canEdit === true;
+  };
   
   // Join request notifications for workspace switching
   const { approvedOrgId, approvedOrgName, switchToApprovedWorkspace } = useJoinRequestNotifications(user?.id);
@@ -787,21 +806,25 @@ const Dashboard = () => {
     e.stopPropagation();
     const newState = !currentState;
     
-    // RBAC check - only editors and admins can publish/unpublish
-    const requiredPermission = newState ? 'canPublish' : 'canUnpublish';
-    if (newState && !permissions.canPublish) {
-      toast({ title: "Permission Denied", description: "You don't have permission to publish pages.", variant: "destructive" });
-      await logUnauthorizedAttempt('publish', 'document', docId, selectedProject?.id || '', 'canPublish');
-      return;
-    }
-    if (!newState && !permissions.canUnpublish) {
-      toast({ title: "Permission Denied", description: "You don't have permission to unpublish pages.", variant: "destructive" });
-      await logUnauthorizedAttempt('unpublish', 'document', docId, selectedProject?.id || '', 'canUnpublish');
-      return;
-    }
-    
-    // Find the document to get its content_html for republishing
+    // Find the document to get its project and content
     const doc = documents.find(d => d.id === docId);
+    const docProjectId = doc?.project_id ?? selectedProject?.id ?? '';
+
+    // RBAC check - use document's project for permission check
+    const hasPermission = selectedProject?.id === docProjectId
+      ? (newState ? permissions.canPublish : permissions.canUnpublish)
+      : await canPublishForProject(docProjectId);
+
+    if (newState && !hasPermission) {
+      toast({ title: "Permission Denied", description: "You don't have permission to publish pages.", variant: "destructive" });
+      await logUnauthorizedAttempt('publish', 'document', docId, docProjectId, 'canPublish');
+      return;
+    }
+    if (!newState && !hasPermission) {
+      toast({ title: "Permission Denied", description: "You don't have permission to unpublish pages.", variant: "destructive" });
+      await logUnauthorizedAttempt('unpublish', 'document', docId, docProjectId, 'canUnpublish');
+      return;
+    }
     
     const updateData: Record<string, any> = { is_published: newState };
     
@@ -818,7 +841,7 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to update publish state.", variant: "destructive" });
     } else {
-      await logAction(newState ? 'publish' : 'unpublish', 'document', docId, selectedProject?.id || '', { 
+      await logAction(newState ? 'publish' : 'unpublish', 'document', docId, docProjectId, { 
         documentTitle: doc?.title,
         previousState: currentState ? 'published' : 'draft',
         newState: newState ? 'published' : 'draft'
@@ -838,16 +861,21 @@ const Dashboard = () => {
   const handleRepublishPage = async (e: React.MouseEvent, docId: string) => {
     e.stopPropagation();
     
-    // RBAC check - only editors and admins can republish
-    if (!permissions.canPublish) {
-      toast({ title: "Permission Denied", description: "You don't have permission to publish pages.", variant: "destructive" });
-      await logUnauthorizedAttempt('republish', 'document', docId, selectedProject?.id || '', 'canPublish');
-      return;
-    }
-    
     const doc = documents.find(d => d.id === docId);
     if (!doc?.content_html) {
       toast({ title: "Error", description: "No content to publish.", variant: "destructive" });
+      return;
+    }
+
+    // RBAC check - use document's project for permission check
+    const docProjectId = doc.project_id;
+    const hasPermission = selectedProject?.id === docProjectId
+      ? permissions.canPublish
+      : await canPublishForProject(docProjectId);
+
+    if (!hasPermission) {
+      toast({ title: "Permission Denied", description: "You don't have permission to publish pages.", variant: "destructive" });
+      await logUnauthorizedAttempt('republish', 'document', docId, docProjectId, 'canPublish');
       return;
     }
     
@@ -862,7 +890,7 @@ const Dashboard = () => {
     if (error) {
       toast({ title: "Error", description: "Failed to republish.", variant: "destructive" });
     } else {
-      await logAction('republish', 'document', docId, selectedProject?.id || '', { documentTitle: doc?.title });
+      await logAction('republish', 'document', docId, docProjectId, { documentTitle: doc?.title });
       toast({
         title: "Republished",
         description: "Changes are now live.",
