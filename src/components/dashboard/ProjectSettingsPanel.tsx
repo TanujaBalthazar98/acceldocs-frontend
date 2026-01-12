@@ -178,8 +178,33 @@ export const ProjectSettingsPanel = ({
     if (!projectId) return;
     setLoadingMembers(true);
 
+    const mapOrgRoleToProjectRole = (role: string | null): ProjectRole | null => {
+      switch (role) {
+        case "owner":
+        case "admin":
+          return "admin";
+        case "editor":
+          return "editor";
+        case "viewer":
+          return "viewer";
+        default:
+          return null;
+      }
+    };
+
     try {
-      // Fetch project members
+      // Resolve org id for this project (needed to show org-level admins/editors/viewers)
+      let orgId = organizationId;
+      if (!orgId) {
+        const { data: proj } = await supabase
+          .from("projects")
+          .select("organization_id")
+          .eq("id", projectId)
+          .maybeSingle();
+        orgId = proj?.organization_id ?? null;
+      }
+
+      // 1) Explicit project members
       const { data: membersData, error } = await supabase
         .from("project_members")
         .select("id, user_id, role")
@@ -187,18 +212,56 @@ export const ProjectSettingsPanel = ({
 
       if (error) throw error;
 
-      // Fetch profile info for each member
-      if (membersData && membersData.length > 0) {
-        const userIds = membersData.map(m => m.user_id);
+      const merged: Array<{ id: string; user_id: string; role: ProjectRole }> =
+        (membersData || []).map((m: any) => ({
+          id: m.id,
+          user_id: m.user_id,
+          role: m.role as ProjectRole,
+        }));
+
+      const seen = new Set(merged.map((m) => m.user_id));
+
+      // 2) Org-level roles (auto-inherit across projects)
+      if (orgId) {
+        const [{ data: orgRoles }, { data: org }] = await Promise.all([
+          supabase
+            .from("user_roles")
+            .select("user_id, role")
+            .eq("organization_id", orgId),
+          supabase.from("organizations").select("owner_id").eq("id", orgId).maybeSingle(),
+        ]);
+
+        // Ensure org owner is listed even if not present in user_roles
+        const ownerId = org?.owner_id ?? null;
+        if (ownerId && !seen.has(ownerId)) {
+          merged.push({ id: `org:${ownerId}`, user_id: ownerId, role: "admin" });
+          seen.add(ownerId);
+        }
+
+        for (const r of orgRoles || []) {
+          const mapped = mapOrgRoleToProjectRole((r as any).role ?? null);
+          if (!mapped) continue;
+          if (seen.has((r as any).user_id)) continue;
+          merged.push({
+            id: `org:${(r as any).user_id}`,
+            user_id: (r as any).user_id,
+            role: mapped,
+          });
+          seen.add((r as any).user_id);
+        }
+      }
+
+      // Fetch profile info for display
+      if (merged.length > 0) {
+        const userIds = merged.map((m) => m.user_id);
         const { data: profiles } = await supabase
           .from("profiles")
           .select("id, full_name, email, avatar_url")
           .in("id", userIds);
 
-        const membersWithProfiles = membersData.map(member => ({
+        const membersWithProfiles = merged.map((member) => ({
           ...member,
-          role: member.role as ProjectRole,
-          profile: profiles?.find(p => p.id === member.user_id) || undefined,
+          profile: profiles?.find((p) => p.id === member.user_id) || undefined,
         }));
 
         setMembers(membersWithProfiles);
