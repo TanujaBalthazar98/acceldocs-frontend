@@ -183,6 +183,8 @@ const Dashboard = () => {
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [needsDriveAccess, setNeedsDriveAccess] = useState(false);
@@ -278,141 +280,150 @@ const Dashboard = () => {
       setIsLoading(false);
       return;
     }
-    
-    setIsLoading(true);
-    
-    // Get user's profile and organization
-    // First try profile.organization_id, then fall back to user_roles as source of truth
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .maybeSingle();
-    
-    let effectiveOrgId = profile?.organization_id || null;
-    
-    // If no org in profile, check user_roles as the authoritative source
-    if (!effectiveOrgId) {
-      const { data: userRole } = await supabase
-        .from("user_roles")
-        .select("organization_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      
-      if (userRole?.organization_id) {
-        effectiveOrgId = userRole.organization_id;
-        // Sync the profile's organization_id for consistency
-        await supabase
-          .from("profiles")
-          .update({ organization_id: userRole.organization_id })
-          .eq("id", user.id);
-      }
-    }
-    
-    if (effectiveOrgId) {
-      setOrganizationId(effectiveOrgId);
-      
-      // Get organization details
-      const { data: org } = await supabase
-        .from("organizations")
-        .select("id, drive_folder_id, name, slug, domain, mcp_enabled, openapi_spec_json, openapi_spec_url")
-        .eq("id", effectiveOrgId)
-        .single();
-      
-      if (org?.drive_folder_id) {
-        setRootFolderId(org.drive_folder_id);
-      }
-      if (org?.slug || org?.domain) {
-        setOrganizationSlug(org.slug || org.domain);
-      }
-      
-      // Set org-level API/MCP settings
-      setOrgMcpEnabled((org as any)?.mcp_enabled ?? false);
-      setOrgHasApiSpec(!!((org as any)?.openapi_spec_json || (org as any)?.openapi_spec_url));
-      setOrganizationName(org?.name || "");
-      
-      // Onboarding is complete if the organization has a name set (not just the default domain)
-      setNeedsOnboarding(false);
-      
-      // Get projects - only from user's own organization (not public projects from other orgs)
-      const { data: projectsData } = await supabase
-        .from("projects")
-        .select("id, name, slug, drive_folder_id, visibility, is_published, parent_id")
-        .eq("organization_id", effectiveOrgId)
-        .order("name");
 
-      if (projectsData) {
-        setProjects(projectsData as Project[]);
-        
-        // Get topics for all projects
-        const projectIds = projectsData.map(p => p.id);
-        if (projectIds.length > 0) {
-          const { data: topicsData } = await supabase
-            .from("topics")
-            .select("id, name, drive_folder_id, project_id, parent_id, display_order")
-            .in("project_id", projectIds)
-            .order("display_order");
-          
-          if (topicsData) {
-            setTopics(topicsData as Topic[]);
-          }
-          
-          // Get documents for all projects with owner info
-          // Note: avoid fetching heavy HTML content for already-published pages (faster dashboard load)
-          const { data: docsData } = await supabase
-            .from("documents")
-            .select(
-              `
+    const blockUI = !hasLoadedOnce;
+    if (blockUI) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    try {
+      // Get user's profile and organization
+      // First try profile.organization_id, then fall back to user_roles as source of truth
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      let effectiveOrgId = profile?.organization_id || null;
+
+      // If no org in profile, check user_roles as the authoritative source
+      if (!effectiveOrgId) {
+        const { data: userRole } = await supabase
+          .from("user_roles")
+          .select("organization_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (userRole?.organization_id) {
+          effectiveOrgId = userRole.organization_id;
+          // Sync the profile's organization_id for consistency
+          await supabase
+            .from("profiles")
+            .update({ organization_id: userRole.organization_id })
+            .eq("id", user.id);
+        }
+      }
+
+      if (effectiveOrgId) {
+        setOrganizationId(effectiveOrgId);
+
+        // Get organization details
+        const { data: org } = await supabase
+          .from("organizations")
+          .select(
+            "id, drive_folder_id, name, slug, domain, mcp_enabled, openapi_spec_json, openapi_spec_url",
+          )
+          .eq("id", effectiveOrgId)
+          .single();
+
+        if (org?.drive_folder_id) {
+          setRootFolderId(org.drive_folder_id);
+        }
+        if (org?.slug || org?.domain) {
+          setOrganizationSlug(org.slug || org.domain);
+        }
+
+        // Set org-level API/MCP settings
+        setOrgMcpEnabled((org as any)?.mcp_enabled ?? false);
+        setOrgHasApiSpec(!!((org as any)?.openapi_spec_json || (org as any)?.openapi_spec_url));
+        setOrganizationName(org?.name || "");
+
+        // Onboarding is complete if the organization has a name set (not just the default domain)
+        setNeedsOnboarding(false);
+
+        // Get projects - only from user's own organization (not public projects from other orgs)
+        const { data: projectsData } = await supabase
+          .from("projects")
+          .select("id, name, slug, drive_folder_id, visibility, is_published, parent_id")
+          .eq("organization_id", effectiveOrgId)
+          .order("name");
+
+        if (projectsData) {
+          setProjects(projectsData as Project[]);
+
+          // Get topics for all projects
+          const projectIds = projectsData.map((p) => p.id);
+          if (projectIds.length > 0) {
+            const { data: topicsData } = await supabase
+              .from("topics")
+              .select("id, name, drive_folder_id, project_id, parent_id, display_order")
+              .in("project_id", projectIds)
+              .order("display_order");
+
+            if (topicsData) {
+              setTopics(topicsData as Topic[]);
+            }
+
+            // Get documents for all projects with owner info
+            // Note: avoid fetching heavy HTML content for already-published pages (faster dashboard load)
+            const { data: docsData } = await supabase
+              .from("documents")
+              .select(
+                `
               id, title, google_doc_id, project_id, topic_id, display_order, google_modified_at, created_at, updated_at,
               visibility, is_published, owner_id,
               owner:profiles!documents_owner_id_fkey(full_name, email)
-            `
-            )
-            .in("project_id", projectIds)
-            .order("display_order", { ascending: true, nullsFirst: false });
+            `,
+              )
+              .in("project_id", projectIds)
+              .order("display_order", { ascending: true, nullsFirst: false });
 
-          if (docsData) {
-            const baseDocs = docsData.map((doc: any) => ({
-              ...doc,
-              // default to null so the rest of the dashboard logic keeps working
-              content_html: null,
-              published_content_html: null,
-              owner_name: doc.owner?.full_name || doc.owner?.email?.split("@")[0] || null,
-            }));
-
-            const unpublishedIds = baseDocs
-              .filter((d: any) => !d.is_published)
-              .map((d: any) => d.id);
-
-            if (unpublishedIds.length > 0) {
-              const { data: contentRows } = await supabase
-                .from("documents")
-                .select("id, content_html, published_content_html")
-                .in("id", unpublishedIds);
-
-              const contentById = new Map(
-                (contentRows || []).map((r: any) => [r.id, r])
-              );
-
-              const merged = baseDocs.map((d: any) => ({
-                ...d,
-                ...(contentById.get(d.id) || {}),
+            if (docsData) {
+              const baseDocs = docsData.map((doc: any) => ({
+                ...doc,
+                // default to null so the rest of the dashboard logic keeps working
+                content_html: null,
+                published_content_html: null,
+                owner_name: doc.owner?.full_name || doc.owner?.email?.split("@")[0] || null,
               }));
 
-              setDocuments(merged as Document[]);
-            } else {
-              setDocuments(baseDocs as Document[]);
+              const unpublishedIds = baseDocs.filter((d: any) => !d.is_published).map((d: any) => d.id);
+
+              if (unpublishedIds.length > 0) {
+                const { data: contentRows } = await supabase
+                  .from("documents")
+                  .select("id, content_html, published_content_html")
+                  .in("id", unpublishedIds);
+
+                const contentById = new Map((contentRows || []).map((r: any) => [r.id, r]));
+
+                const merged = baseDocs.map((d: any) => ({
+                  ...d,
+                  ...(contentById.get(d.id) || {}),
+                }));
+
+                setDocuments(merged as Document[]);
+              } else {
+                setDocuments(baseDocs as Document[]);
+              }
             }
           }
         }
+      } else {
+        // No organization - individual user needs onboarding to create one
+        setNeedsOnboarding(true);
+        setOrganizationId(null);
       }
-    } else {
-      // No organization - individual user needs onboarding to create one
-      setNeedsOnboarding(true);
-      setOrganizationId(null);
+    } finally {
+      if (blockUI) {
+        setIsLoading(false);
+      }
+      setIsRefreshing(false);
+      setHasLoadedOnce(true);
     }
-    
-    setIsLoading(false);
   };
   
   useEffect(() => {
@@ -3052,12 +3063,12 @@ const Dashboard = () => {
         googleDocId={selectedDocument?.google_doc_id || null}
         onUpdate={() => fetchData()}
         onDelete={async (docId) => {
-          // Clear selection first to prevent any stale rendering
-          setSelectedPage(null);
-          setSelectedDocument(null);
-          setPageSettingsOpen(false);
-          // Then perform the delete
-          return await handleDeleteDocument(docId);
+          const result = await handleDeleteDocument(docId);
+          if (result !== false) {
+            if (selectedPage === docId) setSelectedPage(null);
+            if (selectedDocument?.id === docId) setSelectedDocument(null);
+          }
+          return result;
         }}
       />
       
