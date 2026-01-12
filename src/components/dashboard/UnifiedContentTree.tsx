@@ -458,120 +458,153 @@ export function UnifiedContentTree({
           return;
         }
 
-        // Ensure we have an authenticated session before attempting writes.
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (!sessionData.session) {
-          toast({
-            title: "Session expired",
-            description: "Please sign in again and retry the move.",
-            variant: "destructive",
-          });
-          handleDragEnd();
-          return;
-        }
-
-        try {
-          // Determine destination "container" (topic_id) and insertion index
-          let destinationTopicId: string | null = draggedDoc.topic_id ?? null;
-          let insertIndex: number | null = null;
-
-          if (targetNodeType === "topic") {
-            const targetTopic = topics.find((t) => t.id === targetNodeId);
-            if (!targetTopic) {
-              handleDragEnd();
-              return;
-            }
-
-            // Dropping *inside* a topic → move into that topic.
-            // Dropping *before/after* a topic → move to the topic's parent level (i.e., sibling of that topic).
-            destinationTopicId =
-              dropPosition === "inside" ? targetTopic.id : targetTopic.parent_id ?? null;
-
-            if (dropPosition === "inside") {
-              setExpandedNodes((prev) => new Set([...prev, targetTopic.id]));
-            }
-
-            // Since topics and pages don't interleave in ordering (topics render first),
-            // treat before/after as "top" / "bottom" within that level's pages.
-            insertIndex = dropPosition === "before" ? 0 : null; // null means append
-          } else {
-            // Dropping before/after another document
-            const targetDoc = documents.find((d) => d.id === targetNodeId);
-            if (!targetDoc) {
-              handleDragEnd();
-              return;
-            }
-
-            destinationTopicId = targetDoc.topic_id ?? null;
-
-            const sorted = documents
-              .filter((d) => d.topic_id === destinationTopicId && d.id !== draggedId)
-              .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
-
-            const targetIndex = sorted.findIndex((d) => d.id === targetDoc.id);
-            if (targetIndex === -1) {
-              insertIndex = null;
-            } else {
-              insertIndex = dropPosition === "before" ? targetIndex : targetIndex + 1;
-            }
+          // Ensure we have an authenticated session before attempting writes.
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (!sessionData.session) {
+            toast({
+              title: "Session expired",
+              description: "Please sign in again and retry the move.",
+              variant: "destructive",
+            });
+            handleDragEnd();
+            return;
           }
 
-          // Build the destination ordering and reindex deterministically (avoids integer midpoint collisions)
-          const destinationDocs = documents
-            .filter((d) => d.topic_id === destinationTopicId && d.id !== draggedId)
-            .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
+          // Proactively refresh to avoid race conditions where requests go out as anon.
+          // (Those can look like "0 rows affected" due to missing auth context.)
+          await supabase.auth.refreshSession();
 
-          const orderedIds = destinationDocs.map((d) => d.id);
-          const finalIndex =
-            insertIndex === null
-              ? orderedIds.length
-              : Math.max(0, Math.min(insertIndex, orderedIds.length));
-          orderedIds.splice(finalIndex, 0, draggedId);
-
-          const updates = orderedIds.map((id, idx) => ({
-            id,
-            topic_id: destinationTopicId,
-            display_order: idx * 10,
-          }));
-
-          // Use per-row UPDATEs (instead of UPSERT) to avoid any INSERT path issues
-          // and to keep permissions requirements minimal.
-          const results = await Promise.all(
-            updates.map((u) =>
-              supabase
-                .from("documents")
-                .update({ topic_id: u.topic_id, display_order: u.display_order })
-                .eq("id", u.id)
-                // IMPORTANT: request returning rows so we can detect RLS "0 rows affected" cases
-                .select("id")
-            )
+          // Hard permission check (matches backend RBAC + org-owner bypass)
+          const { data: canEdit, error: canEditError } = await supabase.rpc(
+            "can_edit_project",
+            {
+              _project_id: draggedDoc.project_id,
+              _user_id: sessionData.session.user.id,
+            }
           );
 
-          const firstError = results.find((r) => r.error)?.error;
-          if (firstError) throw firstError;
-
-          const firstNoop = results.find((r) => !r.data || r.data.length === 0);
-          if (firstNoop) {
+          if (canEditError) {
+            // Don't block the action purely on an RPC hiccup; the updates below will still enforce RLS.
+            console.warn("Permission precheck failed:", canEditError);
+          } else if (!canEdit) {
             const { data: authData } = await supabase.auth.getUser();
-            const signedInAs = authData.user?.email ? `Signed in as ${authData.user.email}. ` : "";
+            const signedInAs = authData.user?.email
+              ? `Signed in as ${authData.user.email}. `
+              : "";
+
             throw new Error(
-              `${signedInAs}Move was blocked (no changes applied). This usually means your current account doesn’t have edit permissions for this project.`
+              `${signedInAs}Move was blocked (no changes applied). This account does not have edit permissions for this project.`
             );
           }
 
-          toast({
-            title: "Page moved",
-            description: `"${draggedDoc.title}" has been moved.`,
-          });
+          try {
+            // Determine destination "container" (topic_id) and insertion index
+            let destinationTopicId: string | null = draggedDoc.topic_id ?? null;
+            let insertIndex: number | null = null;
 
-          onDocumentsReordered?.();
-        } catch (error: any) {
-          toast({
-            title: "Failed to move page",
-            description: error.message || "An error occurred.",
-            variant: "destructive",
-          });
-        }
+            if (targetNodeType === "topic") {
+              const targetTopic = topics.find((t) => t.id === targetNodeId);
+              if (!targetTopic) {
+                handleDragEnd();
+                return;
+              }
+
+              // Dropping *inside* a topic → move into that topic.
+              // Dropping *before/after* a topic → move to the topic's parent level (i.e., sibling of that topic).
+              destinationTopicId =
+                dropPosition === "inside" ? targetTopic.id : targetTopic.parent_id ?? null;
+
+              if (dropPosition === "inside") {
+                setExpandedNodes((prev) => new Set([...prev, targetTopic.id]));
+              }
+
+              // Since topics and pages don't interleave in ordering (topics render first),
+              // treat before/after as "top" / "bottom" within that level's pages.
+              insertIndex = dropPosition === "before" ? 0 : null; // null means append
+            } else {
+              // Dropping before/after another document
+              const targetDoc = documents.find((d) => d.id === targetNodeId);
+              if (!targetDoc) {
+                handleDragEnd();
+                return;
+              }
+
+              destinationTopicId = targetDoc.topic_id ?? null;
+
+              const sorted = documents
+                .filter((d) => d.topic_id === destinationTopicId && d.id !== draggedId)
+                .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
+
+              const targetIndex = sorted.findIndex((d) => d.id === targetDoc.id);
+              if (targetIndex === -1) {
+                insertIndex = null;
+              } else {
+                insertIndex = dropPosition === "before" ? targetIndex : targetIndex + 1;
+              }
+            }
+
+            // Build the destination ordering and reindex deterministically (avoids integer midpoint collisions)
+            const destinationDocs = documents
+              .filter((d) => d.topic_id === destinationTopicId && d.id !== draggedId)
+              .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
+
+            const orderedIds = destinationDocs.map((d) => d.id);
+            const finalIndex =
+              insertIndex === null
+                ? orderedIds.length
+                : Math.max(0, Math.min(insertIndex, orderedIds.length));
+            orderedIds.splice(finalIndex, 0, draggedId);
+
+            const updates = orderedIds.map((id, idx) => ({
+              id,
+              topic_id: destinationTopicId,
+              display_order: idx * 10,
+            }));
+
+            const applyUpdates = async () => {
+              for (const u of updates) {
+                const res = await supabase
+                  .from("documents")
+                  .update({ topic_id: u.topic_id, display_order: u.display_order })
+                  .eq("id", u.id)
+                  // request returning rows so we can detect RLS "0 rows affected" cases
+                  .select("id");
+
+                if (res.error) throw res.error;
+
+                if (!res.data || res.data.length === 0) {
+                  const { data: authData } = await supabase.auth.getUser();
+                  const signedInAs = authData.user?.email
+                    ? `Signed in as ${authData.user.email}. `
+                    : "";
+                  throw new Error(
+                    `${signedInAs}Move was blocked (no changes applied). This usually means your current account doesn’t have edit permissions for this project.`
+                  );
+                }
+              }
+            };
+
+            // Retry once after a refresh (helps when access tokens are mid-refresh).
+            try {
+              await applyUpdates();
+            } catch (e) {
+              await supabase.auth.refreshSession();
+              await applyUpdates();
+            }
+
+            toast({
+              title: "Page moved",
+              description: `"${draggedDoc.title}" has been moved.`,
+            });
+
+            onDocumentsReordered?.();
+          } catch (error: any) {
+            toast({
+              title: "Failed to move page",
+              description: error.message || "An error occurred.",
+              variant: "destructive",
+            });
+          }
       }
 
       handleDragEnd();
