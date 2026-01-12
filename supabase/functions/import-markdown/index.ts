@@ -611,14 +611,67 @@ Deno.serve(async (req) => {
       console.log(`Import base topic: ${baseTopicId}`);
     }
 
-    // Get Google token
-    const googleToken = req.headers.get("x-google-token");
-    if (!googleToken) {
+    // Get org owner's refresh token for Drive operations (owner has full Drive scopes)
+    const { data: org, error: orgError } = await supabase
+      .from("organizations")
+      .select("owner_id")
+      .eq("id", organizationId)
+      .single();
+
+    if (orgError || !org?.owner_id) {
       return new Response(
-        JSON.stringify({ error: "Google token required", needsReauth: true }),
+        JSON.stringify({ error: "Organization not found" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get owner's refresh token
+    const { data: ownerProfile, error: ownerError } = await supabase
+      .from("profiles")
+      .select("google_refresh_token")
+      .eq("id", org.owner_id)
+      .single();
+
+    if (ownerError || !ownerProfile?.google_refresh_token) {
+      return new Response(
+        JSON.stringify({ error: "Organization owner needs to reconnect Google Drive", needsReauth: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Get fresh access token from owner's refresh token
+    const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+    const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+
+    if (!clientId || !clientSecret) {
+      return new Response(
+        JSON.stringify({ error: "Google OAuth not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: ownerProfile.google_refresh_token,
+        grant_type: "refresh_token",
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      console.error("Failed to refresh owner token:", await tokenResponse.text());
+      return new Response(
+        JSON.stringify({ error: "Owner's Google Drive access expired. Ask organization owner to reconnect.", needsReauth: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const tokenData = await tokenResponse.json();
+    const googleToken = tokenData.access_token;
+    console.log(`Using org owner's token for import (owner: ${org.owner_id}, user: ${user.id})`);
 
     // Parse nested folder structure
     const { topicTree, rootFiles } = parseNestedStructure(files);
@@ -660,8 +713,8 @@ Deno.serve(async (req) => {
     const jobId = importJob?.id;
     console.log(`Created import job ${jobId} for ${totalFiles} files`);
     
-    // Create token manager for automatic refresh during long imports
-    const tokenManager = await createTokenManager(supabase, googleToken, user.id);
+    // Create token manager for automatic refresh during long imports (use owner's ID for refresh)
+    const tokenManager = await createTokenManager(supabase, googleToken, org.owner_id);
     
     // Start background processing
     const backgroundTask = async () => {
