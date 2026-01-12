@@ -739,14 +739,14 @@ const getTopicDocuments = (topicId: string) =>
         {/* Minimal Header */}
         <header className="border-b border-border bg-card">
           <div className="flex items-center justify-between px-4 lg:px-6 h-14">
-            <div className="flex items-center gap-3">
+            <Link to={`/docs/${currentOrg.slug || currentOrg.domain}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               {currentOrg.logo_url ? (
                 <img src={currentOrg.logo_url} alt={currentOrg.name} className="h-8 w-auto" />
               ) : (
                 <FolderTree className="h-6 w-6 brand-primary-text" />
               )}
               <span className="font-bold text-lg text-foreground brand-heading">{currentOrg.name}</span>
-            </div>
+            </Link>
             <div className="flex items-center gap-2">
               <ThemeToggle />
               {/* Hide Dashboard on landing when all visible projects are public */}
