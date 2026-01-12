@@ -1041,8 +1041,8 @@ const getTopicDocuments = (topicId: string) =>
             <div className="flex">
               {/* Article content */}
               <article className={cn(
-                "flex-1 p-6 lg:p-8 transition-all duration-300",
-                isFullWidth ? "max-w-none px-8 lg:px-16" : "max-w-4xl mx-auto"
+                "flex-1 px-4 py-6 sm:px-6 lg:p-8 transition-all duration-300 min-w-0 overflow-x-hidden",
+                isFullWidth ? "max-w-none lg:px-16" : "max-w-4xl mx-auto"
               )}>
                 {/* Breadcrumb and controls */}
                 <div className="flex items-center justify-between mb-6">
@@ -1085,7 +1085,7 @@ const getTopicDocuments = (topicId: string) =>
 
                 {/* Title */}
                 <div className="flex items-start gap-3 mb-4">
-                  <h1 className="text-3xl lg:text-4xl font-bold text-foreground brand-heading">
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground brand-heading break-words">
                     {selectedDocument.title}
                   </h1>
                 </div>
@@ -1093,12 +1093,12 @@ const getTopicDocuments = (topicId: string) =>
                 {/* Meta - show different info based on project visibility */}
                 {selectedProject?.visibility === "public" ? (
                   /* Public docs: minimal metadata, no internal info */
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
                     <CopyLinkButton className="ml-auto" />
                   </div>
                 ) : (
                   /* Internal/External docs: full metadata */
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
                     <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
                     <Badge variant="outline" className="text-xs">
                       {visibilityConfig[selectedProject?.visibility || selectedDocument.visibility].label}
@@ -1115,7 +1115,7 @@ const getTopicDocuments = (topicId: string) =>
                 {/* Content - clean rendering */}
                 {documentHtml ? (
                   <div 
-                    className="prose prose-lg prose-neutral dark:prose-invert max-w-none docs-content"
+                    className="prose prose-sm sm:prose-base lg:prose-lg prose-neutral dark:prose-invert max-w-none docs-content overflow-x-hidden"
                     dangerouslySetInnerHTML={{ __html: removeFirstHeadingIfMatches(normalizeHtml(documentHtml), selectedDocument.title) }}
                   />
                 ) : (

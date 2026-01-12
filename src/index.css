@@ -437,6 +437,10 @@
   font-size: 1rem;
   line-height: 1.8;
   color: hsl(var(--foreground));
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .light .docs-content {
@@ -567,21 +571,35 @@
   background: var(--tw-prose-pre-bg);
   border: 1px solid hsl(var(--border));
   border-radius: 0.75rem;
-  padding: 1.25rem 1.5rem;
+  padding: 1rem;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   margin: 1.75em 0;
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  max-width: 100%;
+}
+
+@media (min-width: 640px) {
+  .docs-content pre {
+    padding: 1.25rem 1.5rem;
+  }
 }
 
 .docs-content pre code {
   background: transparent;
   padding: 0;
   color: hsl(var(--foreground));
-  font-size: 0.875em;
+  font-size: 0.8em;
   line-height: 1.7;
   white-space: pre;
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   border: none;
+}
+
+@media (min-width: 640px) {
+  .docs-content pre code {
+    font-size: 0.875em;
+  }
 }
 
 /* Lists */
@@ -662,24 +680,61 @@
   border-left-color: hsl(var(--muted-foreground) / 0.5);
 }
 
+/* Table wrapper for mobile scroll */
+.docs-content .table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 2em 0;
+}
+
+/* Table wrapper for mobile scroll */
+.docs-content .table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 2em 0;
+}
+
 /* Tables */
 .docs-content table {
   width: 100%;
+  min-width: 400px;
   border-collapse: separate;
   border-spacing: 0;
   margin: 2em 0;
-  font-size: 0.9em;
+  font-size: 0.85em;
   border: 1px solid hsl(var(--border));
   border-radius: 0.75rem;
   overflow: hidden;
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
 }
 
+@media (min-width: 640px) {
+  .docs-content table {
+    font-size: 0.9em;
+  }
+}
+
+/* Table inside wrapper - remove its own margin */
+.docs-content .table-wrapper table {
+  margin: 0;
+}
+
 .docs-content th,
 .docs-content td {
   border-bottom: 1px solid hsl(var(--border));
-  padding: 0.875em 1.25em;
+  padding: 0.75em 1em;
   text-align: left;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .docs-content th,
+  .docs-content td {
+    padding: 0.875em 1.25em;
+    white-space: normal;
+  }
 }
 
 .docs-content th {

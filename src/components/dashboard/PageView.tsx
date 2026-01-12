@@ -170,60 +170,60 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
     <>
       <div className="min-h-screen bg-background flex flex-col">
         {/* Header */}
-        <header className="h-14 border-b border-border flex items-center justify-between px-6 shrink-0">
-          <div className="flex items-center gap-4">
+        <header className="min-h-14 border-b border-border flex flex-col sm:flex-row items-start sm:items-center justify-between px-3 sm:px-6 py-2 sm:py-0 gap-2 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
             <Button
               variant="ghost"
               size="sm"
               onClick={onBack}
-              className="gap-2 text-muted-foreground hover:text-foreground"
+              className="gap-1.5 sm:gap-2 text-muted-foreground hover:text-foreground px-2 sm:px-3"
             >
               <ArrowLeft className="w-4 h-4" />
-              Back
+              <span className="hidden xs:inline">Back</span>
             </Button>
-            <div className="h-4 w-px bg-border" />
+            <div className="h-4 w-px bg-border hidden sm:block" />
             <div className="flex items-center gap-2">
               <Circle
                 className={`w-2 h-2 ${document.is_published ? 'bg-green-500' : 'bg-amber-500'} rounded-full`}
               />
-              <span className="text-sm text-muted-foreground">
+              <span className="text-xs sm:text-sm text-muted-foreground">
                 {document.is_published ? 'Published' : 'Draft'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end flex-wrap">
             <Button
               variant="outline"
               size="sm"
-              className="gap-2"
+              className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
               onClick={handleSyncContent}
               disabled={isSyncing}
             >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing...' : 'Sync'}
+              <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
-              className="gap-2"
+              className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
               onClick={() => setShareOpen(true)}
             >
-              <Share2 className="w-4 h-4" />
-              Share
+              <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Share</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="gap-2"
+              className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
               onClick={() => window.open(`https://docs.google.com/document/d/${document.google_doc_id}/edit`, "_blank")}
             >
-              <ExternalLink className="w-4 h-4" />
-              Open in Drive
+              <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden md:inline">Open in Drive</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9">
                   <MoreHorizontal className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -255,33 +255,33 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-8 py-8">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
             {/* Page Meta */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-foreground mb-4">
+            <div className="mb-6 sm:mb-8">
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-3 sm:mb-4">
                 {document.title}
               </h1>
 
-              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
                 {document.owner_name && (
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4" />
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <User className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     <span>Owner: {document.owner_name}</span>
                   </div>
                 )}
                 {document.google_modified_at && (
                   <>
-                    <div className="h-4 w-px bg-border" />
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
+                    <div className="h-4 w-px bg-border hidden sm:block" />
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       <span>Modified: {formatDate(document.google_modified_at)}</span>
                     </div>
                   </>
                 )}
-                <div className="h-4 w-px bg-border" />
+                <div className="h-4 w-px bg-border hidden sm:block" />
                 <div className="flex items-center gap-1">
-                  <VisibilityIcon className={`w-4 h-4 ${visibilityConfig[document.visibility]?.color}`} />
+                  <VisibilityIcon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${visibilityConfig[document.visibility]?.color}`} />
                   <span className={visibilityConfig[document.visibility]?.color}>
                     {visibilityConfig[document.visibility]?.label}
                   </span>
@@ -290,8 +290,8 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
             </div>
 
             {/* Document Content */}
-            <article className="prose prose-invert prose-headings:text-foreground prose-p:text-secondary-foreground prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-secondary-foreground max-w-none">
-              <div className="rounded-xl border border-border bg-card/50 p-8">
+            <article className="prose prose-sm sm:prose-base prose-invert prose-headings:text-foreground prose-p:text-secondary-foreground prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-secondary-foreground max-w-none overflow-x-hidden">
+              <div className="rounded-xl border border-border bg-card/50 p-4 sm:p-6 lg:p-8 overflow-x-auto">
                 {isLoadingContent ? (
                   <div className="text-center py-12">
                     <Loader2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
