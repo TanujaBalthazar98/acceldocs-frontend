@@ -1876,7 +1876,24 @@ const Dashboard = () => {
                     }
                   }
                 } else if (result.type === "page") {
-                  navigate(`/page/${result.id}`);
+                  // Use inline PageView instead of navigating to separate page
+                  const doc = documents.find(d => d.id === result.id);
+                  if (doc) {
+                    setSelectedDocument(doc);
+                    setSelectedPage(doc.id);
+                    // Set project and topic context
+                    const project = projects.find(p => p.id === doc.project_id);
+                    if (project) {
+                      setSelectedProject(project);
+                      setExpandedProjects(prev => new Set([...prev, project.id]));
+                    }
+                    const docTopic = topics.find(t => t.id === doc.topic_id);
+                    if (docTopic) {
+                      setSelectedTopic(docTopic);
+                    } else {
+                      setSelectedTopic(null);
+                    }
+                  }
                 }
               }}
             />
@@ -2727,7 +2744,16 @@ const Dashboard = () => {
                             "hover:bg-secondary/30 transition-colors cursor-pointer group",
                             selectedDocIds.has(doc.id) && "bg-primary/5"
                           )}
-                          onClick={() => navigate(`/page/${doc.id}`)}
+                          onClick={() => {
+                            // Use inline PageView instead of navigating to separate page
+                            setSelectedDocument(doc);
+                            setSelectedPage(doc.id);
+                            // Set topic context for the document
+                            const docTopic = topics.find(t => t.id === doc.topic_id);
+                            if (docTopic) {
+                              setSelectedTopic(docTopic);
+                            }
+                          }}
                         >
                           <td className="w-8 sm:w-10 px-2 sm:px-4 py-2 sm:py-3">
                             <button

@@ -1,4 +1,5 @@
 import { Mail, Twitter, Linkedin } from "lucide-react";
+import { Link } from "react-router-dom";
 import docspeareIcon from "@/assets/docspeare-icon.png";
 
 const Footer = () => {
@@ -34,9 +35,9 @@ const Footer = () => {
                 </a>
               </li>
               <li>
-                <a href="/help" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/help" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Documentation
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -51,14 +52,14 @@ const Footer = () => {
                 </a>
               </li>
               <li>
-                <a href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Privacy Policy
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="/terms" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/terms" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Terms of Service
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
