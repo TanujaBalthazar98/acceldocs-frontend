@@ -767,7 +767,7 @@ const getTopicDocuments = (topicId: string) =>
 
         <DocsLanding
           organization={currentOrg}
-          projects={projects.map(p => ({ ...p, description: null }))}
+          projects={projects.filter(p => !p.parent_id).map(p => ({ ...p, description: null }))}
           documents={documents.map(d => ({
             id: d.id,
             title: d.title,
@@ -959,9 +959,12 @@ const getTopicDocuments = (topicId: string) =>
                           className={cn(
                             "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
                             selectedProject?.id === project.id
-                              ? "border-primary text-foreground"
+                              ? "text-foreground"
                               : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
                           )}
+                          style={selectedProject?.id === project.id ? {
+                            borderColor: currentOrg?.primary_color || 'hsl(var(--primary))'
+                          } : undefined}
                         >
                           {project.name}
                         </button>
