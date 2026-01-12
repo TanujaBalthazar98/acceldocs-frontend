@@ -468,17 +468,35 @@ export default function Docs() {
     }
   };
 
-  const selectProject = (project: Project) => {
-    setSelectedProject(project);
+  const buildProjectUrl = (project: Project) => {
+    if (isCustomDomain) return `/docs/${project.slug}`;
+    if (currentOrg) return `/docs/${currentOrg.slug || currentOrg.domain}/${project.slug}`;
+    return "/docs";
+  };
+
+  const getChildProjects = (projectId: string) =>
+    projects
+      .filter((p) => p.parent_id === projectId)
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+  const resolveProjectForNavigation = (project: Project) => {
+    const children = getChildProjects(project.id);
+    if (children.length === 0) return project;
+
+    const childWithDocs = children.find((p) => documents.some((d) => d.project_id === p.id));
+    return childWithDocs ?? children[0];
+  };
+
+  const selectProject = (project: Project, opts?: { replace?: boolean }) => {
+    const target = resolveProjectForNavigation(project);
+
+    setSelectedProject(target);
     setSelectedDocument(null);
     setDocumentHtml(null);
-    if (currentOrg) {
-      // Use simplified URLs for custom domains
-      if (isCustomDomain) {
-        navigate(`/docs/${project.slug}`);
-      } else {
-        navigate(`/docs/${currentOrg.slug || currentOrg.domain}/${project.slug}`);
-      }
+
+    if (target.slug) {
+      navigate(buildProjectUrl(target), opts?.replace ? { replace: true } : undefined);
     }
   };
 
@@ -517,6 +535,33 @@ export default function Docs() {
     setMobileMenuOpen(false);
     navigate(getDocsLandingPath());
   };
+
+  // If a root project is selected but only its sub-projects contain pages,
+  // automatically forward to the first sub-project with published pages.
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (loading) return;
+    if (pageSlug) return;
+
+    const hasDocs = documents.some((d) => d.project_id === selectedProject.id);
+    if (hasDocs) return;
+
+    const children = projects
+      .filter((p) => p.parent_id === selectedProject.id)
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    if (children.length === 0) return;
+
+    const target = children.find((p) => documents.some((d) => d.project_id === p.id)) ?? children[0];
+
+    if (target.id === selectedProject.id) return;
+
+    setSelectedProject(target);
+    setSelectedDocument(null);
+    setDocumentHtml(null);
+    if (target.slug) navigate(buildProjectUrl(target), { replace: true });
+  }, [selectedProject, projects, documents, loading, pageSlug, isCustomDomain, currentOrg]);
 
   // Filter content by search
   const searchLower = searchQuery.toLowerCase();
@@ -970,13 +1015,13 @@ const getTopicDocuments = (topicId: string) =>
 
         {/* Sub-Project Tabs Bar - Only show if there are sub-projects */}
         {(() => {
-          const rootProject = projects.find(p => !p.parent_id);
-          const subProjects = projects.filter(p => p.parent_id === rootProject?.id);
+          const selectedRoot = selectedProject?.parent_id
+            ? projects.find((p) => p.id === selectedProject.parent_id) ?? null
+            : selectedProject;
+
+          const subProjects = selectedRoot ? projects.filter((p) => p.parent_id === selectedRoot.id) : [];
           const hasSubProjects = subProjects.length > 0;
-          
-          // Determine active root for tab highlighting
-          const activeRootId = selectedProject?.parent_id || selectedProject?.id;
-          
+
           return hasSubProjects ? (
             <div className="border-b border-border bg-card">
               <div className="flex items-center justify-between">
