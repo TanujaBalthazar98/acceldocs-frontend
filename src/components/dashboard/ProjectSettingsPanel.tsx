@@ -505,6 +505,17 @@ export const ProjectSettingsPanel = ({
     } else {
       toast({ title: "Role updated", description: "Member role has been changed." });
       fetchMembers();
+      
+      // Auto-sync Drive permissions after role change
+      if (projectId && driveFolderId) {
+        supabase.functions.invoke("sync-drive-permissions", {
+          body: { projectId }
+        }).then(() => {
+          toast({ title: "Drive access updated", description: "Google Drive permissions synced." });
+        }).catch(err => {
+          console.error("Failed to sync Drive permissions:", err);
+        });
+      }
     }
   };
 
