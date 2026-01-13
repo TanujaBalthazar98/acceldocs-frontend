@@ -200,6 +200,29 @@
   .glass-hover:hover {
     background: hsl(var(--surface-glass) / 0.8);
     border-color: hsl(var(--primary) / 0.3);
+  }
+
+  /* Sidebar navigation selected item - applies brand color */
+  .sidebar-item-selected {
+    background: hsl(var(--primary) / 0.1);
+    color: hsl(var(--primary));
+  }
+
+  .sidebar-item-selected:hover {
+    background: hsl(var(--primary) / 0.15);
+  }
+
+  /* Brand color dynamic classes for docs pages */
+  .brand-primary-text {
+    color: hsl(var(--primary));
+  }
+
+  .brand-primary-bg {
+    background-color: hsl(var(--primary));
+  }
+
+  .brand-primary-border {
+    border-color: hsl(var(--primary));
     box-shadow: var(--shadow-glow);
   }
 }

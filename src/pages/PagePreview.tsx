@@ -118,6 +118,13 @@ export default function PagePreview() {
   const fetchDocContent = async () => {
     if (!document?.google_doc_id) return;
 
+    // Proactively refresh session to prevent premature timeouts
+    try {
+      await supabase.auth.refreshSession();
+    } catch (e) {
+      console.warn("Session refresh failed:", e);
+    }
+
     const token = getGoogleToken();
 
     setLoadingContent(true);
@@ -236,35 +243,35 @@ export default function PagePreview() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border bg-card sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+            <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+              <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="px-2 sm:px-3">
+                <ArrowLeft className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Back</span>
               </Button>
               
               {document.project && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>{document.project.name}</span>
+                <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-muted-foreground truncate">
+                  <span className="truncate max-w-[100px] sm:max-w-none">{document.project.name}</span>
                   {document.topic && (
                     <>
                       <span>/</span>
-                      <span>{document.topic.name}</span>
+                      <span className="truncate max-w-[80px] sm:max-w-none">{document.topic.name}</span>
                     </>
                   )}
                 </div>
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <Badge className={visibilityConfig[document.visibility].color}>
+            <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end flex-wrap">
+              <Badge className={`text-xs ${visibilityConfig[document.visibility].color}`}>
                 <VisibilityIcon className="h-3 w-3 mr-1" />
-                {visibilityConfig[document.visibility].label}
+                <span className="hidden xs:inline">{visibilityConfig[document.visibility].label}</span>
               </Badge>
               
               {document.is_published && (
-                <Badge variant="default" className="bg-primary text-primary-foreground">
+                <Badge variant="default" className="bg-primary text-primary-foreground text-xs">
                   Published
                 </Badge>
               )}
@@ -278,14 +285,14 @@ export default function PagePreview() {
                 />
               )}
               
-              <Button variant="outline" size="sm" onClick={() => setShowSharePanel(true)}>
-                <Share2 className="h-4 w-4 mr-2" />
-                Share
+              <Button variant="outline" size="sm" onClick={() => setShowSharePanel(true)} className="px-2 sm:px-3">
+                <Share2 className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Share</span>
               </Button>
               
-              <Button variant="outline" size="sm" onClick={handleOpenInDrive}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Open in Drive
+              <Button variant="outline" size="sm" onClick={handleOpenInDrive} className="px-2 sm:px-3">
+                <ExternalLink className="h-4 w-4 sm:mr-2" />
+                <span className="hidden md:inline">Open in Drive</span>
               </Button>
             </div>
           </div>
@@ -293,37 +300,37 @@ export default function PagePreview() {
       </header>
 
       {/* Content */}
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Title and Meta */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-4">{document.title}</h1>
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-3 sm:mb-4">{document.title}</h1>
           
-          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
             {document.owner && (
-              <div className="flex items-center gap-2">
-                <Avatar className="h-6 w-6">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <Avatar className="h-5 w-5 sm:h-6 sm:w-6">
                   <AvatarFallback className="text-xs">
                     {document.owner.full_name?.[0] || document.owner.email[0].toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <span>Owner: {document.owner.full_name || document.owner.email}</span>
+                <span className="truncate max-w-[150px] sm:max-w-none">Owner: {document.owner.full_name || document.owner.email}</span>
               </div>
             )}
             
             <div className="flex items-center gap-1">
-              <Calendar className="h-4 w-4" />
+              <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               <span>Created {format(new Date(document.created_at), "MMM d, yyyy")}</span>
             </div>
             
             <div className="flex items-center gap-1">
-              <Calendar className="h-4 w-4" />
+              <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               <span>Updated {format(new Date(document.updated_at), "MMM d, yyyy")}</span>
             </div>
           </div>
         </div>
 
         {/* Document Content */}
-        <div className="bg-card border border-border rounded-lg p-8">
+        <div className="bg-card border border-border rounded-lg p-4 sm:p-6 lg:p-8 overflow-x-auto">
           {loadingContent ? (
             <div className="space-y-4">
               <div className="h-6 w-3/4 bg-muted animate-pulse rounded" />
@@ -365,7 +372,7 @@ export default function PagePreview() {
               </Button>
             </div>
           ) : docContent ? (
-            <div className="prose dark:prose-invert max-w-none docs-content">
+            <div className="prose prose-sm sm:prose-base prose-neutral dark:prose-invert max-w-none docs-content overflow-x-hidden">
               <div dangerouslySetInnerHTML={{ __html: docContent }} />
             </div>
           ) : (

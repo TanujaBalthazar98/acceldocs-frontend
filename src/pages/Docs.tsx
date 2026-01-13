@@ -1005,7 +1005,7 @@ const getTopicDocuments = (topicId: string) =>
                   <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-72 p-0">
+              <SheetContent side="left" className="w-72 p-0 docs-branded">
                 {sidebarContent}
               </SheetContent>
             </Sheet>
