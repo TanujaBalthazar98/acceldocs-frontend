@@ -60,6 +60,13 @@ export function usePermissions(projectId: string | null) {
       return;
     }
 
+    // Proactively refresh session to ensure auth context is fresh
+    try {
+      await supabase.auth.refreshSession();
+    } catch (e) {
+      console.warn("Session refresh failed during permission check:", e);
+    }
+
     setLoading(true);
     
     try {
