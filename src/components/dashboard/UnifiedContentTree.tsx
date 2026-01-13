@@ -194,57 +194,8 @@ export function UnifiedContentTree({
     return rootNodes;
   }, [topics, documents]);
 
-  // Auto-expand path to selected item
-  useEffect(() => {
-    const targetId = selectedDocumentId || selectedTopicId;
-    if (!targetId) return;
-
-    // Find path to target
-    const findPath = (
-      nodes: TreeNode[],
-      target: string,
-      path: string[]
-    ): string[] | null => {
-      for (const node of nodes) {
-        if (node.id === target) {
-          return path;
-        }
-        if (node.children.length > 0) {
-          const found = findPath(node.children, target, [...path, node.id]);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-
-    const path = findPath(tree, targetId, []);
-    if (path && path.length > 0) {
-      setExpandedNodes((prev) => new Set([...prev, ...path]));
-    }
-  }, [selectedDocumentId, selectedTopicId, tree]);
-
-  // Auto-collapse nodes beyond autoCollapseDepth on initial render
-  useEffect(() => {
-    // Collect nodes at depth < autoCollapseDepth to expand
-    const nodesToExpand: string[] = [];
-
-    const collectShallowNodes = (nodes: TreeNode[], depth: number) => {
-      if (depth >= autoCollapseDepth) return;
-      for (const node of nodes) {
-        if (node.type === "topic" && node.children.length > 0) {
-          nodesToExpand.push(node.id);
-          collectShallowNodes(node.children, depth + 1);
-        }
-      }
-    };
-    collectShallowNodes(tree, 0);
-
-    // Only run once on mount
-    if (expandedNodes.size === 0 && nodesToExpand.length > 0) {
-      setExpandedNodes(new Set(nodesToExpand));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tree, autoCollapseDepth]);
+  // NOTE: We no longer auto-expand nodes automatically.
+  // Users must explicitly click to expand topics. This keeps the navigation collapsed by default.
 
   const toggleExpand = (nodeId: string, e: React.MouseEvent) => {
     e.stopPropagation();
