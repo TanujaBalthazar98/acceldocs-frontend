@@ -107,8 +107,9 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   const handleSyncContent = async () => {
     setIsSyncing(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      // Proactively refresh session to prevent premature timeouts
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
         toast({
           title: "Session expired",
           description: "Please sign in again.",
@@ -290,7 +291,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
             </div>
 
             {/* Document Content */}
-            <article className="prose prose-sm sm:prose-base prose-invert prose-headings:text-foreground prose-p:text-secondary-foreground prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-secondary-foreground max-w-none overflow-x-hidden">
+            <article className="prose prose-sm sm:prose-base prose-neutral dark:prose-invert prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-foreground/90 max-w-none overflow-x-hidden">
               <div className="rounded-xl border border-border bg-card/50 p-4 sm:p-6 lg:p-8 overflow-x-auto">
                 {isLoadingContent ? (
                   <div className="text-center py-12">
