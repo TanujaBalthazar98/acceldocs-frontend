@@ -97,7 +97,7 @@ const Auth = () => {
                 <h2 className="text-2xl font-semibold mb-2">Welcome</h2>
                 <p className="text-muted-foreground">
                   Sign in with your Acceldata Google account (you may need to pick the right account)
-                  {isEmbedded ? " — in preview, the sign-in opens in a new tab." : ""}
+                  {isEmbedded ? " — in preview, sign-in opens in a new tab (published site)." : ""}
                 </p>
               </div>
 

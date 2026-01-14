@@ -169,6 +169,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
+  // In preview (which runs embedded), the preview URL can be access-controlled.
+  // Redirect OAuth back to the published site so the flow can complete reliably.
+  const getAuthRedirectOrigin = (): string => {
+    const host = window.location.host;
+    const isPreviewHost = host.startsWith("id-preview--");
+
+    if (isEmbedded() && isPreviewHost) {
+      return "https://acceldocs.lovable.app";
+    }
+
+    return window.location.origin;
+  };
+
   const navigateToOAuth = (url: string) => {
     // Okta/SSO pages often refuse to render in iframes; the preview runs in an iframe.
     // Open OAuth in a new tab when embedded.
@@ -181,7 +194,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const signInWithGoogle = async () => {
-    const redirectUrl = `${window.location.origin}/dashboard`;
+    const redirectUrl = `${getAuthRedirectOrigin()}/dashboard`;
 
     // Allow a fresh attempt to store refresh tokens after consent flows
     hasAttemptedStoreTokenRef.current = false;
@@ -210,7 +223,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Separate function to request Drive access after sign-in
   // Using drive.readonly to read existing files + drive.file to create new ones
   const requestDriveAccess = async () => {
-    const redirectUrl = `${window.location.origin}/dashboard`;
+    const redirectUrl = `${getAuthRedirectOrigin()}/dashboard`;
 
     // Allow a fresh attempt to store refresh tokens after consent flows
     hasAttemptedStoreTokenRef.current = false;
