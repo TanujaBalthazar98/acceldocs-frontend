@@ -267,18 +267,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const signOut = async () => {
-    // Clear local state immediately to prevent stale dashboard view
+    // Clear local state immediately to prevent stale views
     setUser(null);
     setSession(null);
     setGoogleAccessToken(null);
     setProfileOrganizationId(null);
     localStorage.removeItem(GOOGLE_TOKEN_KEY);
     localStorage.removeItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY);
-    
+
+    // Let route guards handle navigation (avoids hard reloads that can hide error toasts)
     await supabase.auth.signOut();
-    
-    // Force navigation to auth page
-    window.location.href = '/auth';
   };
 
   return (
