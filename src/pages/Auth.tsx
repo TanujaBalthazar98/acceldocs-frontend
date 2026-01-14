@@ -36,8 +36,26 @@ const Auth = () => {
     setIsLoading(true);
     setAuthError(null);
 
+    // In preview (iframe), opening the OAuth tab after an async await often gets blocked.
+    // Pre-open a blank tab synchronously, then navigate it once we have the OAuth URL.
+    let oauthWindow: Window | null = null;
+    if (isEmbedded) {
+      oauthWindow = window.open("about:blank", "_blank");
+      try {
+        if (oauthWindow) oauthWindow.opener = null;
+      } catch {
+        // ignore
+      }
+
+      if (!oauthWindow) {
+        setAuthError("Popup blocked. Please allow popups for this site and try again.");
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
-      const { error } = await signInWithGoogle();
+      const { error } = await signInWithGoogle({ oauthWindow });
 
       if (error) {
         setAuthError(error.message || "Failed to sign in with Google. Please try again.");

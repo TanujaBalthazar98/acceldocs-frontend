@@ -11,8 +11,8 @@ interface AuthContextType {
   googleAccessToken: string | null;
   profileOrganizationId: string | null;
   profileLoading: boolean;
-  signInWithGoogle: () => Promise<{ error: Error | null }>;
-  requestDriveAccess: () => Promise<{ error: Error | null }>;
+  signInWithGoogle: (options?: { oauthWindow?: Window | null }) => Promise<{ error: Error | null }>;
+  requestDriveAccess: (options?: { oauthWindow?: Window | null }) => Promise<{ error: Error | null }>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUpWithEmail: (email: string, password: string, accountType?: AccountType) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -182,7 +182,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return window.location.origin;
   };
 
-  const navigateToOAuth = (url: string) => {
+  const navigateToOAuth = (url: string, existingWindow?: Window | null) => {
+    // If the caller already opened a blank tab synchronously (to avoid popup blockers), reuse it.
+    if (existingWindow && !existingWindow.closed) {
+      try {
+        existingWindow.location.href = url;
+        existingWindow.focus();
+        return;
+      } catch {
+        // fall through
+      }
+    }
+
     // Okta/SSO pages often refuse to render in iframes; the preview runs in an iframe.
     // Open OAuth in a new tab when embedded.
     if (isEmbedded()) {
@@ -193,7 +204,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     window.location.assign(url);
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (options?: { oauthWindow?: Window | null }) => {
     const redirectUrl = `${getAuthRedirectOrigin()}/dashboard`;
 
     // Allow a fresh attempt to store refresh tokens after consent flows
@@ -214,7 +225,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
 
     if (!error && data?.url) {
-      navigateToOAuth(data.url);
+      navigateToOAuth(data.url, options?.oauthWindow);
     }
 
     return { error };
@@ -222,7 +233,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   // Separate function to request Drive access after sign-in
   // Using drive.readonly to read existing files + drive.file to create new ones
-  const requestDriveAccess = async () => {
+  const requestDriveAccess = async (options?: { oauthWindow?: Window | null }) => {
     const redirectUrl = `${getAuthRedirectOrigin()}/dashboard`;
 
     // Allow a fresh attempt to store refresh tokens after consent flows
@@ -247,7 +258,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
 
     if (!error && data?.url) {
-      navigateToOAuth(data.url);
+      navigateToOAuth(data.url, options?.oauthWindow);
     }
 
     return { error };
