@@ -19,6 +19,34 @@ const getEmailDomain = (email?: string | null) => {
   return email?.split("@")[1]?.toLowerCase().trim() || null;
 };
 
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "yahoo.com",
+  "yahoo.co.uk",
+  "ymail.com",
+  "aol.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "protonmail.com",
+  "proton.me",
+  "tutanota.com",
+  "zoho.com",
+  "mail.com",
+  "gmx.com",
+  "gmx.net",
+]);
+
+const isPersonalEmailDomain = (domain?: string | null) => {
+  if (!domain) return false;
+  return PERSONAL_EMAIL_DOMAINS.has(domain);
+};
+
 const formatWorkspaceName = (domain?: string | null) => {
   if (!domain) return "Workspace";
   const base = domain.split(".")[0] || domain;
@@ -27,6 +55,13 @@ const formatWorkspaceName = (domain?: string | null) => {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+};
+
+const formatPersonalWorkspaceName = (email?: string | null, fullName?: string | null) => {
+  const base = fullName?.trim() || email?.split("@")[0] || "Personal";
+  const cleaned = base.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "Personal Workspace";
+  return cleaned.toLowerCase().includes("workspace") ? cleaned : `${cleaned} Workspace`;
 };
 
 export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
@@ -41,8 +76,14 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const [isCheckingOrg, setIsCheckingOrg] = useState(true);
   const [existingOrgId, setExistingOrgId] = useState<string | null>(null);
   const [existingOrgName, setExistingOrgName] = useState<string | null>(null);
-  const workspaceDomain = getEmailDomain(user?.email);
-  const workspaceName = existingOrgName?.trim() || formatWorkspaceName(workspaceDomain);
+  const emailDomain = getEmailDomain(user?.email);
+  const isPersonalDomain = isPersonalEmailDomain(emailDomain);
+  const workspaceDomain = isPersonalDomain ? user?.email?.toLowerCase().trim() || null : emailDomain;
+  const workspaceName =
+    existingOrgName?.trim() ||
+    (isPersonalDomain
+      ? formatPersonalWorkspaceName(user?.email || null, user?.user_metadata?.full_name || null)
+      : formatWorkspaceName(emailDomain));
 
   // Check if Drive is already connected
   useEffect(() => {
@@ -57,7 +98,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       if (!user) return;
 
       try {
-        if (!workspaceDomain) {
+        if (!emailDomain && !user?.email) {
           console.error("Missing email domain for onboarding");
           setOnboardingMode("first_user");
           setIsCheckingOrg(false);
@@ -94,12 +135,18 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           return;
         }
 
+        if (isPersonalDomain) {
+          setOnboardingMode("first_user");
+          setIsCheckingOrg(false);
+          return;
+        }
+
         // Try to check if org exists using RLS-visible query
         // This query works because of "Users can view organizations by domain" policy
         const { data: existingOrg, error } = await supabase
           .from("organizations")
           .select("id, name, drive_folder_id")
-          .eq("domain", workspaceDomain)
+          .eq("domain", emailDomain)
           .maybeSingle();
 
         if (error && error.code !== "PGRST116") {
@@ -124,7 +171,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     };
 
     checkOrganization();
-  }, [user, onComplete, workspaceDomain]);
+  }, [user, onComplete, emailDomain, isPersonalDomain]);
 
   const handleBack = () => {
     if (step > 1) {
@@ -160,7 +207,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     setIsCreating(true);
     try {
       if (!workspaceDomain) {
-        throw new Error("Missing email domain for workspace creation.");
+        throw new Error("Missing workspace identifier for creation.");
       }
 
       // Create (or fetch) the workspace in an idempotent way.
@@ -178,6 +225,15 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
       // If it already existed, switch the user into the request-access flow.
       if (data.existed) {
+        if (isPersonalDomain) {
+          toast({
+            title: "Workspace ready",
+            description: "Your personal workspace is ready to use.",
+          });
+          onComplete();
+          return;
+        }
+
         setExistingOrgId(data.organizationId);
         setOnboardingMode("join_existing");
         toast({

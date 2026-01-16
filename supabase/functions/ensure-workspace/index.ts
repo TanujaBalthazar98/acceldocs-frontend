@@ -11,6 +11,34 @@ interface EnsureWorkspaceRequest {
   driveFolderId?: string;
 }
 
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "yahoo.com",
+  "yahoo.co.uk",
+  "ymail.com",
+  "aol.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "protonmail.com",
+  "proton.me",
+  "tutanota.com",
+  "zoho.com",
+  "mail.com",
+  "gmx.com",
+  "gmx.net",
+]);
+
+const toSlug = (value: string) => {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return normalized || "user";
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -49,7 +77,13 @@ Deno.serve(async (req) => {
 
     const email = (user.email || "").toLowerCase();
     const emailDomain = email.split("@")[1]?.trim();
-    const domain = requestedDomain || emailDomain;
+    const isPersonalEmailDomain = !!emailDomain && PERSONAL_EMAIL_DOMAINS.has(emailDomain);
+    const requestedIsEmail = requestedDomain.includes("@");
+    const domain = requestedDomain
+      ? (isPersonalEmailDomain && !requestedIsEmail ? email : requestedDomain)
+      : (isPersonalEmailDomain ? email : emailDomain);
+    const isPersonalWorkspace = domain.includes("@");
+    const personalSlug = isPersonalWorkspace ? `${toSlug(email.split("@")[0] || "user")}-${user.id.slice(0, 8)}` : null;
 
     if (!domain) {
       return new Response(JSON.stringify({ ok: false, error: "Missing organization domain" }), {
@@ -58,7 +92,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (emailDomain && emailDomain !== domain) {
+    if (isPersonalWorkspace) {
+      if (!email || email !== domain) {
+        return new Response(JSON.stringify({ ok: false, error: "Email address not allowed" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else if (emailDomain && emailDomain !== domain) {
       return new Response(JSON.stringify({ ok: false, error: "Email domain not allowed" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -68,7 +109,7 @@ Deno.serve(async (req) => {
     const getOrgByDomain = async () => {
       return await supabase
         .from("organizations")
-        .select("id, drive_folder_id")
+        .select("id, drive_folder_id, slug")
         .eq("domain", domain)
         .maybeSingle();
     };
@@ -88,8 +129,9 @@ Deno.serve(async (req) => {
         .from("organizations")
         .insert({
           domain,
-          name: name || domain,
+          name: name || (isPersonalWorkspace ? "Personal Workspace" : domain),
           owner_id: user.id,
+          ...(personalSlug ? { slug: personalSlug } : {}),
         })
         .select("id")
         .single();
@@ -113,7 +155,16 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3) Optionally set drive folder id, but never overwrite an existing one.
+    // 3) Ensure personal workspaces have a slug for clean URLs.
+    if (organizationId && personalSlug && !existingOrg?.slug) {
+      const { error: slugError } = await supabase
+        .from("organizations")
+        .update({ slug: personalSlug })
+        .eq("id", organizationId);
+      if (slugError) console.error("ensure-workspace: slug update error", slugError);
+    }
+
+    // 4) Optionally set drive folder id, but never overwrite an existing one.
     if (organizationId && driveFolderId) {
       const { data: orgRow } = await supabase
         .from("organizations")
@@ -130,9 +181,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4) Ensure the caller is linked as org member (owner for first creator).
-    // If the org already existed, we don't elevate privileges here.
-    if (organizationId && !existed) {
+    // 5) Ensure the caller is linked as org member (owner for first creator).
+    // For personal workspaces we always link the owner, even if it already existed.
+    if (organizationId && (!existed || isPersonalWorkspace)) {
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert(
