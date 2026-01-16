@@ -29,9 +29,12 @@ import {
 import { SharePanel } from "./SharePanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import DOMPurify from "dompurify";
+import { ensureFreshSession } from "@/lib/authSession";
 
 type VisibilityLevel = "internal" | "external" | "public";
+const GOOGLE_TOKEN_KEY = "google_access_token";
 
 interface DocumentData {
   id: string;
@@ -70,6 +73,8 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
     document.content_html || document.published_content_html
   );
   const { toast } = useToast();
+  const { googleAccessToken } = useAuth();
+  const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
 
   // Update content when document changes or fetch from DB if missing
   useEffect(() => {
@@ -107,9 +112,9 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   const handleSyncContent = async () => {
     setIsSyncing(true);
     try {
-      // Proactively refresh session to prevent premature timeouts
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError || !refreshData.session) {
+      // Proactively refresh session to prevent premature timeouts (rate-limited)
+      const session = await ensureFreshSession();
+      if (!session) {
         toast({
           title: "Session expired",
           description: "Please sign in again.",
@@ -118,12 +123,14 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
         return;
       }
 
+      const token = getGoogleToken();
       const { data, error } = await supabase.functions.invoke("google-drive", {
         body: {
           action: "sync_doc_content",
           documentId: document.id,
           googleDocId: document.google_doc_id,
         },
+        ...(token ? { headers: { "x-google-token": token } } : {}),
       });
 
       if (error) throw error;

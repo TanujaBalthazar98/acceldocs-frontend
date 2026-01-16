@@ -7,6 +7,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Users,
   Trash2,
@@ -84,7 +85,7 @@ export const ProjectSettingsPanel = ({
   onUpdate,
 }: ProjectSettingsProps) => {
   const { toast } = useToast();
-  const { listFolder } = useGoogleDrive();
+  const { listFolder, checkFolderAccess, trashFile } = useGoogleDrive();
   const { user, googleAccessToken } = useAuth();
   
   const [name, setName] = useState(projectName || "");
@@ -110,6 +111,19 @@ export const ProjectSettingsPanel = ({
   const [syncedDocsCount, setSyncedDocsCount] = useState(0);
   const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [organizationDomain, setOrganizationDomain] = useState<string | null>(null);
+  const [driveFolderStatus, setDriveFolderStatus] = useState<"unknown" | "ok" | "missing" | "needs_access">("unknown");
+
+  const normalizeEmail = (value: string) => value.trim().toLowerCase();
+  const normalizeDomain = (value: string | null) => value?.trim().toLowerCase() ?? "";
+  const getEmailDomain = (value: string) => normalizeEmail(value).split("@")[1] ?? "";
+  const isExternalEmail = (value: string) => {
+    const orgDomain = normalizeDomain(organizationDomain);
+    if (!orgDomain) return false;
+    const emailDomain = getEmailDomain(value);
+    if (!emailDomain) return false;
+    return emailDomain !== orgDomain;
+  };
 
   // Repair hierarchy - detect and fix duplicate topics/sub-projects
   const handleRepairHierarchy = async () => {
@@ -154,6 +168,46 @@ export const ProjectSettingsPanel = ({
       fetchSyncStatus();
     }
   }, [open, projectId]);
+
+  useEffect(() => {
+    if (!open || !projectId) return;
+
+    let active = true;
+
+    const checkFolder = async () => {
+      if (!driveFolderId) {
+        setDriveFolderStatus("unknown");
+        return;
+      }
+      if (!googleAccessToken) {
+        setDriveFolderStatus("needs_access");
+        return;
+      }
+
+      const result = await checkFolderAccess(driveFolderId, projectId);
+      if (!active) return;
+
+      if (result.needsDriveAccess) {
+        setDriveFolderStatus("needs_access");
+        return;
+      }
+      if (!result.exists && result.errorCode === "FOLDER_NOT_ACCESSIBLE") {
+        setDriveFolderStatus("missing");
+        return;
+      }
+      if (result.exists) {
+        setDriveFolderStatus("ok");
+        return;
+      }
+      setDriveFolderStatus("unknown");
+    };
+
+    checkFolder();
+
+    return () => {
+      active = false;
+    };
+  }, [open, projectId, driveFolderId, googleAccessToken]);
 
   const fetchProjectData = async () => {
     if (!projectId) return;
@@ -229,11 +283,12 @@ export const ProjectSettingsPanel = ({
             .from("user_roles")
             .select("user_id, role")
             .eq("organization_id", orgId),
-          supabase.from("organizations").select("owner_id").eq("id", orgId).maybeSingle(),
+          supabase.from("organizations").select("owner_id, domain").eq("id", orgId).maybeSingle(),
         ]);
 
         // Ensure org owner is listed even if not present in user_roles
         const ownerId = org?.owner_id ?? null;
+        setOrganizationDomain(org?.domain ?? null);
         if (ownerId && !seen.has(ownerId)) {
           merged.push({ id: `org:${ownerId}`, user_id: ownerId, role: "admin" });
           seen.add(ownerId);
@@ -495,6 +550,15 @@ export const ProjectSettingsPanel = ({
   };
 
   const handleUpdateRole = async (memberId: string, newRole: ProjectRole) => {
+    const member = members.find((item) => item.id === memberId);
+    if (member && isExternalEmail(member.profile?.email ?? "") && newRole !== "viewer") {
+      toast({
+        title: "External collaborators are viewer-only",
+        description: "Update the project visibility to External or Public if needed.",
+        variant: "destructive",
+      });
+      return;
+    }
     const { error } = await supabase
       .from("project_members")
       .update({ role: newRole })
@@ -565,6 +629,40 @@ export const ProjectSettingsPanel = ({
     setIsDeleting(true);
 
     try {
+      if (driveFolderId) {
+        const trashResult = await trashFile(driveFolderId);
+        if (!trashResult.success) {
+          if (trashResult.errorCode === "NOT_AUTHORIZED") {
+            toast({
+              title: "Cannot Delete from Drive",
+              description:
+                "This folder contains files not created by this app. Delete them in Google Drive first.",
+              variant: "destructive",
+            });
+          } else if (trashResult.errorCode === "NEEDS_REAUTH") {
+            toast({
+              title: "Google reconnection required",
+              description: "Please reconnect your Google account to delete this project.",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Cannot Delete from Drive",
+              description: trashResult.error || "Failed to trash the Drive folder.",
+              variant: "destructive",
+            });
+          }
+          setIsDeleting(false);
+          return;
+        }
+        if (trashResult.alreadyDeleted) {
+          toast({
+            title: "Drive Folder Missing",
+            description: "Drive folder was already removed. Cleaning up the project in Acceldocs.",
+          });
+        }
+      }
+
       // Clean up related records in order to avoid FK constraint errors
       // 1. Delete connector actions
       await supabase.from("connector_actions").delete().eq("project_id", projectId);
@@ -613,9 +711,31 @@ export const ProjectSettingsPanel = ({
       await supabase.from("slug_history").delete().eq("entity_id", projectId).eq("entity_type", "project");
       
       // 13. Delete child projects first
-      const { data: childProjects } = await supabase.from("projects").select("id").eq("parent_id", projectId);
+      const { data: childProjects } = await supabase
+        .from("projects")
+        .select("id, drive_folder_id")
+        .eq("parent_id", projectId);
       if (childProjects && childProjects.length > 0) {
         for (const child of childProjects) {
+          if (child.drive_folder_id) {
+            const childTrashResult = await trashFile(child.drive_folder_id);
+            if (!childTrashResult.success) {
+              toast({
+                title: "Cannot Delete Sub-project from Drive",
+                description:
+                  childTrashResult.error || "Failed to trash a sub-project Drive folder.",
+                variant: "destructive",
+              });
+              setIsDeleting(false);
+              return;
+            }
+            if (childTrashResult.alreadyDeleted) {
+              toast({
+                title: "Sub-project Folder Missing",
+                description: "Drive folder was already removed. Cleaning up the sub-project in Acceldocs.",
+              });
+            }
+          }
           // Recursively clean up child project's related data
           await supabase.from("project_members").delete().eq("project_id", child.id);
           await supabase.from("documents").delete().eq("project_id", child.id);
@@ -813,9 +933,21 @@ export const ProjectSettingsPanel = ({
 
           {/* Sync Status */}
           <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground">
-              Sync Status
-            </label>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-foreground">
+                Sync Status
+              </label>
+              {driveFolderStatus === "missing" && (
+                <Badge variant="destructive" className="text-[10px]">
+                  Missing in Drive
+                </Badge>
+              )}
+              {driveFolderStatus === "needs_access" && (
+                <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 bg-amber-50">
+                  Drive access required
+                </Badge>
+              )}
+            </div>
             <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
               <div>
                 <p className="text-sm font-medium text-foreground">
@@ -851,6 +983,14 @@ export const ProjectSettingsPanel = ({
                 </Button>
               </div>
             </div>
+            {driveFolderStatus === "missing" && (
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                <AlertTriangle className="mt-0.5 h-3 w-3" />
+                <span>
+                  Drive folder is missing or not accessible. You can delete this project to clean it up in Acceldocs.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Project Members */}
@@ -887,7 +1027,9 @@ export const ProjectSettingsPanel = ({
                   No members yet
                 </p>
               ) : (
-                members.map((member) => (
+                members.map((member) => {
+                  const isExternalMember = isExternalEmail(member.profile?.email ?? "");
+                  return (
                   <div
                     key={member.id}
                     className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/50"
@@ -918,7 +1060,7 @@ export const ProjectSettingsPanel = ({
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1 capitalize">
-                          {member.role}
+                          {isExternalMember ? "Viewer (External)" : member.role}
                           <ChevronDown className="w-3 h-3" />
                         </button>
                       </DropdownMenuTrigger>
@@ -927,6 +1069,7 @@ export const ProjectSettingsPanel = ({
                           <DropdownMenuItem 
                             key={role.value}
                             onClick={() => handleUpdateRole(member.id, role.value)}
+                            disabled={isExternalMember && role.value !== "viewer"}
                             className={member.role === role.value ? "bg-accent" : ""}
                           >
                             {role.label}
@@ -941,7 +1084,8 @@ export const ProjectSettingsPanel = ({
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                ))
+                );
+                })
               )}
             </div>
           </div>

@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ensureFreshSession } from "@/lib/authSession";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -76,6 +77,25 @@ interface TreeNode {
   children: TreeNode[];
 }
 
+interface CombinedNode {
+  id: string;
+  type: TreeNodeType;
+  name: string;
+  parentId: string | null;
+  displayOrder: number;
+  data: Topic | Document;
+}
+
+const normalizeDisplayOrder = (value?: number | null) =>
+  typeof value === "number" ? value : 999;
+
+const compareCombinedNodes = (a: CombinedNode, b: CombinedNode) => {
+  const orderDiff = a.displayOrder - b.displayOrder;
+  if (orderDiff !== 0) return orderDiff;
+  if (a.type !== b.type) return a.type === "topic" ? -1 : 1;
+  return a.name.localeCompare(b.name);
+};
+
 interface DragState {
   draggedId: string | null;
   draggedType: TreeNodeType | null;
@@ -122,7 +142,7 @@ export function UnifiedContentTree({
         id: topic.id,
         name: topic.name,
         parentId: topic.parent_id,
-        displayOrder: topic.display_order ?? 0,
+        displayOrder: normalizeDisplayOrder(topic.display_order),
         data: topic,
         children: [],
       });
@@ -135,7 +155,7 @@ export function UnifiedContentTree({
         id: doc.id,
         name: doc.title,
         parentId: doc.topic_id,
-        displayOrder: doc.display_order ?? 999,
+        displayOrder: normalizeDisplayOrder(doc.display_order),
         data: doc,
         children: [], // Documents have no children
       };
@@ -165,7 +185,7 @@ export function UnifiedContentTree({
           id: doc.id,
           name: doc.title,
           parentId: null,
-          displayOrder: doc.display_order ?? 999,
+          displayOrder: normalizeDisplayOrder(doc.display_order),
           data: doc,
           children: [],
         });
@@ -174,13 +194,10 @@ export function UnifiedContentTree({
 
     // Sort all children recursively
     const sortNodes = (nodes: TreeNode[]) => {
-      // Topics first, then documents; then by displayOrder, then by name
       nodes.sort((a, b) => {
-        if (a.type !== b.type) {
-          return a.type === "topic" ? -1 : 1;
-        }
         const orderDiff = a.displayOrder - b.displayOrder;
         if (orderDiff !== 0) return orderDiff;
+        if (a.type !== b.type) return a.type === "topic" ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
       for (const node of nodes) {
@@ -193,6 +210,35 @@ export function UnifiedContentTree({
 
     return rootNodes;
   }, [topics, documents]);
+
+  const buildCombinedSiblings = useCallback(
+    (parentId: string | null) => {
+      const combined: CombinedNode[] = [];
+      for (const topic of topics.filter((t) => t.parent_id === parentId)) {
+        combined.push({
+          id: topic.id,
+          type: "topic",
+          name: topic.name,
+          parentId: topic.parent_id,
+          displayOrder: normalizeDisplayOrder(topic.display_order),
+          data: topic,
+        });
+      }
+      for (const doc of documents.filter((d) => d.topic_id === parentId)) {
+        combined.push({
+          id: doc.id,
+          type: "document",
+          name: doc.title,
+          parentId: doc.topic_id,
+          displayOrder: normalizeDisplayOrder(doc.display_order),
+          data: doc,
+        });
+      }
+      combined.sort(compareCombinedNodes);
+      return combined;
+    },
+    [documents, topics]
+  );
 
   // NOTE: We no longer auto-expand nodes automatically.
   // Users must explicitly click to expand topics. This keeps the navigation collapsed by default.
@@ -210,7 +256,7 @@ export function UnifiedContentTree({
     });
   };
 
-  // ============ Drag & Drop (topics only for now) ============
+  // ============ Drag & Drop ============
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, nodeId: string, nodeType: TreeNodeType) => {
@@ -248,19 +294,24 @@ export function UnifiedContentTree({
       const y = e.clientY - rect.top;
       const height = rect.height;
 
-      // Mobile/trackpad UX: when dragging a *page* over a *topic*, treat the whole row as
-      // an "inside" drop target to avoid accidental "before/after" drops.
+      // On coarse pointers, treat a page-over-topic as "inside" to avoid accidental
+      // before/after drops. On fine pointers, keep the normal before/inside/after zones.
       const draggingDocOverTopic =
         nodeType === "topic" && dragState.draggedType === "document";
+      const isCoarsePointer =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(pointer: coarse)").matches;
 
       let dropPosition: "before" | "inside" | "after";
 
-      if (draggingDocOverTopic) {
+      if (draggingDocOverTopic && isCoarsePointer) {
         dropPosition = "inside";
       } else if (nodeType === "topic") {
-        if (y < height * 0.25) {
+        const edgeThreshold = draggingDocOverTopic ? 0.4 : 0.25;
+        if (y < height * edgeThreshold) {
           dropPosition = "before";
-        } else if (y > height * 0.75) {
+        } else if (y > height * (1 - edgeThreshold)) {
           dropPosition = "after";
         } else {
           dropPosition = "inside";
@@ -311,9 +362,16 @@ export function UnifiedContentTree({
       // Handle topic drop
       if (draggedType === "topic") {
         const draggedTopic = topics.find((t) => t.id === draggedId);
-        const targetTopic = topics.find((t) => t.id === targetNodeId);
+        const targetTopic =
+          targetNodeType === "topic"
+            ? topics.find((t) => t.id === targetNodeId)
+            : null;
+        const targetDoc =
+          targetNodeType === "document"
+            ? documents.find((d) => d.id === targetNodeId)
+            : null;
 
-        if (!draggedTopic || !targetTopic) {
+        if (!draggedTopic || (!targetTopic && !targetDoc)) {
           handleDragEnd();
           return;
         }
@@ -329,62 +387,96 @@ export function UnifiedContentTree({
           return false;
         };
 
-        if (isDescendant(draggedId, targetNodeId)) {
-          toast({
-            title: "Invalid move",
-            description: "Cannot move a topic into its own subtopic.",
-            variant: "destructive",
-          });
+        let destinationParentId: string | null = null;
+        if (dropPosition === "inside" && targetTopic) {
+          destinationParentId = targetTopic.id;
+        } else if (targetTopic) {
+          destinationParentId = targetTopic.parent_id;
+        } else if (targetDoc) {
+          destinationParentId = targetDoc.topic_id ?? null;
+        }
+
+        if (destinationParentId) {
+          if (destinationParentId === draggedId || isDescendant(draggedId, destinationParentId)) {
+            toast({
+              title: "Invalid move",
+              description: "Cannot move a topic into its own subtopic.",
+              variant: "destructive",
+            });
+            handleDragEnd();
+            return;
+          }
+        }
+
+        if (dropPosition === "inside" && !targetTopic) {
           handleDragEnd();
           return;
         }
 
+        if (dropPosition === "inside" && targetTopic) {
+          setExpandedNodes((prev) => new Set([...prev, targetTopic.id]));
+        }
+
         try {
-          let newParentId: string | null;
-          let newOrder: number;
+          const combined = buildCombinedSiblings(destinationParentId).filter(
+            (node) => !(node.id === draggedId && node.type === "topic")
+          );
 
-          if (dropPosition === "inside") {
-            newParentId = targetNodeId;
-            const siblings = topics.filter((t) => t.parent_id === targetNodeId);
-            newOrder =
-              siblings.length > 0
-                ? Math.max(...siblings.map((s) => s.display_order || 0)) + 1
-                : 0;
-            setExpandedNodes((prev) => new Set([...prev, targetNodeId]));
-          } else {
-            newParentId = targetTopic.parent_id;
-            const siblings = topics.filter(
-              (t) => t.parent_id === newParentId && t.id !== draggedId
+          let insertIndex = combined.length;
+          if (dropPosition !== "inside") {
+            const targetIndex = combined.findIndex(
+              (node) => node.id === targetNodeId && node.type === targetNodeType
             );
-            const targetIndex = siblings.findIndex((s) => s.id === targetNodeId);
-
-            if (dropPosition === "before") {
-              newOrder =
-                targetIndex > 0
-                  ? Math.floor(
-                      (siblings[targetIndex - 1].display_order +
-                        targetTopic.display_order) /
-                        2
-                    )
-                  : targetTopic.display_order - 1;
-            } else {
-              newOrder =
-                targetIndex < siblings.length - 1
-                  ? Math.floor(
-                      (targetTopic.display_order +
-                        siblings[targetIndex + 1].display_order) /
-                        2
-                    )
-                  : targetTopic.display_order + 1;
+            if (targetIndex !== -1) {
+              insertIndex = dropPosition === "before" ? targetIndex : targetIndex + 1;
             }
           }
 
-          const { error } = await supabase
-            .from("topics")
-            .update({ parent_id: newParentId, display_order: newOrder })
-            .eq("id", draggedId);
+          const movedNode: CombinedNode = {
+            id: draggedTopic.id,
+            type: "topic",
+            name: draggedTopic.name,
+            parentId: destinationParentId,
+            displayOrder: normalizeDisplayOrder(draggedTopic.display_order),
+            data: draggedTopic,
+          };
 
-          if (error) throw error;
+          combined.splice(insertIndex, 0, movedNode);
+
+          const updates = combined.map((node, idx) => ({
+            node,
+            displayOrder: idx * 10,
+          }));
+
+          for (const update of updates) {
+            if (update.node.type === "topic") {
+              const payload: { display_order: number; parent_id?: string | null } = {
+                display_order: update.displayOrder,
+              };
+              if (update.node.id === draggedId) {
+                payload.parent_id = destinationParentId;
+              }
+              const res = await supabase
+                .from("topics")
+                .update(payload)
+                .eq("id", update.node.id)
+                .select("id");
+              if (res.error) throw res.error;
+              if (!res.data || res.data.length === 0) {
+                throw new Error("Move was blocked. Please check your permissions.");
+              }
+            } else {
+              const res = await supabase
+                .from("documents")
+                .update({ display_order: update.displayOrder })
+                .eq("id", update.node.id)
+                .select("id");
+              if (res.error) throw res.error;
+              if (!res.data || res.data.length === 0) {
+                throw new Error("Move was blocked. Please check your permissions.");
+              }
+            }
+          }
 
           toast({
             title: "Topic moved",
@@ -392,6 +484,7 @@ export function UnifiedContentTree({
           });
 
           onTopicsReordered?.();
+          onDocumentsReordered?.();
         } catch (error: any) {
           toast({
             title: "Failed to move topic",
@@ -409,158 +502,169 @@ export function UnifiedContentTree({
           return;
         }
 
-          // Ensure we have an authenticated session before attempting writes.
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (!sessionData.session) {
+        // Ensure we have an authenticated session before attempting writes.
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData.session) {
+          toast({
+            title: "Session expired",
+            description: "Please sign in again and retry the move.",
+            variant: "destructive",
+          });
+          handleDragEnd();
+          return;
+        }
+
+        // Proactively refresh to avoid race conditions where requests go out as anon.
+        // (Those can look like "0 rows affected" due to missing auth context.)
+        const refreshedSession = await ensureFreshSession();
+        if (!refreshedSession) {
+          toast({
+            title: "Session expired",
+            description: "Please sign in again and retry the move.",
+            variant: "destructive",
+          });
+          handleDragEnd();
+          return;
+        }
+
+        // Some views pass a lightweight doc object that may not include project_id.
+        // Resolve the true project_id from the database when missing.
+        let sourceProjectId: string | null = (draggedDoc as any).project_id ?? null;
+        if (!sourceProjectId) {
+          const { data: docRow, error: docRowError } = await supabase
+            .from("documents")
+            .select("project_id")
+            .eq("id", draggedId)
+            .maybeSingle();
+
+          if (!docRowError && docRow?.project_id) {
+            sourceProjectId = docRow.project_id;
+          }
+        }
+
+        try {
+          // Determine destination "container" (topic_id) and insertion index
+          let destinationTopicId: string | null = draggedDoc.topic_id ?? null;
+          let destinationProjectId: string | null = sourceProjectId;
+
+          if (targetNodeType === "topic") {
+            const targetTopic = topics.find((t) => t.id === targetNodeId);
+            if (!targetTopic) {
+              handleDragEnd();
+              return;
+            }
+
+            destinationProjectId = targetTopic.project_id;
+            destinationTopicId =
+              dropPosition === "inside"
+                ? targetTopic.id
+                : targetTopic.parent_id ?? null;
+
+            if (dropPosition === "inside") {
+              setExpandedNodes((prev) => new Set([...prev, targetTopic.id]));
+            }
+          } else {
+            const targetDoc = documents.find((d) => d.id === targetNodeId);
+            if (!targetDoc) {
+              handleDragEnd();
+              return;
+            }
+
+            destinationProjectId = (targetDoc as any).project_id ?? destinationProjectId;
+            destinationTopicId = targetDoc.topic_id ?? null;
+          }
+
+          // Prevent cross-project moves (these should be done via project switcher)
+          if (
+            sourceProjectId &&
+            destinationProjectId &&
+            sourceProjectId !== destinationProjectId
+          ) {
             toast({
-              title: "Session expired",
-              description: "Please sign in again and retry the move.",
+              title: "Invalid move",
+              description:
+                "Pages can’t be moved between projects. Switch to that project and try again.",
               variant: "destructive",
             });
             handleDragEnd();
             return;
           }
 
-          // Proactively refresh to avoid race conditions where requests go out as anon.
-          // (Those can look like "0 rows affected" due to missing auth context.)
-          await supabase.auth.refreshSession();
+          // Best-effort permission precheck (do NOT hard-block, RLS below is the source of truth).
+          if (destinationProjectId) {
+            const { data: canEdit, error: canEditError } = await supabase.rpc(
+              "can_edit_project",
+              {
+                _project_id: destinationProjectId,
+                _user_id: sessionData.session.user.id,
+              }
+            );
 
-          // Some views pass a lightweight doc object that may not include project_id.
-          // Resolve the true project_id from the database when missing.
-          let sourceProjectId: string | null = (draggedDoc as any).project_id ?? null;
-          if (!sourceProjectId) {
-            const { data: docRow, error: docRowError } = await supabase
-              .from("documents")
-              .select("project_id")
-              .eq("id", draggedId)
-              .maybeSingle();
-
-            if (!docRowError && docRow?.project_id) {
-              sourceProjectId = docRow.project_id;
+            if (canEditError) {
+              console.warn("Permission precheck failed:", canEditError);
+            } else if (!canEdit) {
+              console.warn("Permission precheck returned false", {
+                destinationProjectId,
+                userId: sessionData.session.user.id,
+              });
             }
           }
 
-          try {
-            // Determine destination "container" (topic_id) and insertion index
-            let destinationTopicId: string | null = draggedDoc.topic_id ?? null;
-            let destinationProjectId: string | null = sourceProjectId;
-            let insertIndex: number | null = null;
+          const combined = buildCombinedSiblings(destinationTopicId).filter(
+            (node) => !(node.id === draggedId && node.type === "document")
+          );
 
-            if (targetNodeType === "topic") {
-              const targetTopic = topics.find((t) => t.id === targetNodeId);
-              if (!targetTopic) {
-                handleDragEnd();
-                return;
-              }
-
-              destinationProjectId = targetTopic.project_id;
-
-              // Dropping *inside* a topic → move into that topic.
-              // Dropping *before/after* a topic → move to the topic's parent level (i.e., sibling of that topic).
-              destinationTopicId =
-                dropPosition === "inside" ? targetTopic.id : targetTopic.parent_id ?? null;
-
-              if (dropPosition === "inside") {
-                setExpandedNodes((prev) => new Set([...prev, targetTopic.id]));
-              }
-
-              // Since topics and pages don't interleave in ordering (topics render first),
-              // treat before/after as "top" / "bottom" within that level's pages.
-              insertIndex = dropPosition === "before" ? 0 : null; // null means append
-            } else {
-              // Dropping before/after another document
-              const targetDoc = documents.find((d) => d.id === targetNodeId);
-              if (!targetDoc) {
-                handleDragEnd();
-                return;
-              }
-
-              destinationProjectId = (targetDoc as any).project_id ?? destinationProjectId;
-              destinationTopicId = targetDoc.topic_id ?? null;
-
-              const sorted = documents
-                .filter(
-                  (d) =>
-                    d.topic_id === destinationTopicId &&
-                    d.id !== draggedId &&
-                    (!destinationProjectId || d.project_id === destinationProjectId)
-                )
-                .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
-
-              const targetIndex = sorted.findIndex((d) => d.id === targetDoc.id);
-              if (targetIndex === -1) {
-                insertIndex = null;
-              } else {
-                insertIndex = dropPosition === "before" ? targetIndex : targetIndex + 1;
-              }
+          let insertIndex = combined.length;
+          if (dropPosition !== "inside") {
+            const targetIndex = combined.findIndex(
+              (node) => node.id === targetNodeId && node.type === targetNodeType
+            );
+            if (targetIndex !== -1) {
+              insertIndex = dropPosition === "before" ? targetIndex : targetIndex + 1;
             }
+          }
 
-            // Prevent cross-project moves (these should be done via project switcher)
-            if (sourceProjectId && destinationProjectId && sourceProjectId !== destinationProjectId) {
-              toast({
-                title: "Invalid move",
-                description:
-                  "Pages can’t be moved between projects. Switch to that project and try again.",
-                variant: "destructive",
-              });
-              handleDragEnd();
-              return;
-            }
+          const movedNode: CombinedNode = {
+            id: draggedDoc.id,
+            type: "document",
+            name: draggedDoc.title,
+            parentId: destinationTopicId,
+            displayOrder: normalizeDisplayOrder(draggedDoc.display_order),
+            data: draggedDoc,
+          };
 
-            // Best-effort permission precheck (do NOT hard-block, RLS below is the source of truth).
-            if (destinationProjectId) {
-              const { data: canEdit, error: canEditError } = await supabase.rpc(
-                "can_edit_project",
-                {
-                  _project_id: destinationProjectId,
-                  _user_id: sessionData.session.user.id,
+          combined.splice(insertIndex, 0, movedNode);
+
+          const updates = combined.map((node, idx) => ({
+            node,
+            displayOrder: idx * 10,
+          }));
+
+          const applyUpdates = async () => {
+            for (const update of updates) {
+              if (update.node.type === "topic") {
+                const res = await supabase
+                  .from("topics")
+                  .update({ display_order: update.displayOrder })
+                  .eq("id", update.node.id)
+                  .select("id");
+                if (res.error) throw res.error;
+                if (!res.data || res.data.length === 0) {
+                  throw new Error("Move was blocked. Please check your permissions.");
                 }
-              );
-
-              if (canEditError) {
-                console.warn("Permission precheck failed:", canEditError);
-              } else if (!canEdit) {
-                console.warn("Permission precheck returned false", {
-                  destinationProjectId,
-                  userId: sessionData.session.user.id,
-                });
-              }
-            }
-
-            // Build the destination ordering and reindex deterministically (avoids integer midpoint collisions)
-            const destinationDocs = documents
-              .filter(
-                (d) =>
-                  d.topic_id === destinationTopicId &&
-                  d.id !== draggedId &&
-                  (!destinationProjectId || d.project_id === destinationProjectId)
-              )
-              .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
-
-            const orderedIds = destinationDocs.map((d) => d.id);
-            const finalIndex =
-              insertIndex === null
-                ? orderedIds.length
-                : Math.max(0, Math.min(insertIndex, orderedIds.length));
-            orderedIds.splice(finalIndex, 0, draggedId);
-
-            const updates = orderedIds.map((id, idx) => ({
-              id,
-              topic_id: destinationTopicId,
-              display_order: idx * 10,
-            }));
-
-            const applyUpdates = async () => {
-              for (const u of updates) {
+              } else {
+                const payload: { display_order: number; topic_id?: string | null } = {
+                  display_order: update.displayOrder,
+                };
+                if (update.node.id === draggedId) {
+                  payload.topic_id = destinationTopicId;
+                }
                 const res = await supabase
                   .from("documents")
-                  .update({ topic_id: u.topic_id, display_order: u.display_order })
-                  .eq("id", u.id)
-                  // request returning rows so we can detect RLS "0 rows affected" cases
+                  .update(payload)
+                  .eq("id", update.node.id)
                   .select("id");
-
                 if (res.error) throw res.error;
-
                 if (!res.data || res.data.length === 0) {
                   const { data: authData } = await supabase.auth.getUser();
                   const signedInAs = authData.user?.email
@@ -571,34 +675,46 @@ export function UnifiedContentTree({
                   );
                 }
               }
-            };
-
-            // Retry once after a refresh (helps when access tokens are mid-refresh).
-            try {
-              await applyUpdates();
-            } catch (e) {
-              await supabase.auth.refreshSession();
-              await applyUpdates();
             }
+          };
 
-            toast({
-              title: "Page moved",
-              description: `"${draggedDoc.title}" has been moved.`,
-            });
-
-            onDocumentsReordered?.();
-          } catch (error: any) {
-            toast({
-              title: "Failed to move page",
-              description: error.message || "An error occurred.",
-              variant: "destructive",
-            });
+          // Retry once after a refresh (helps when access tokens are mid-refresh).
+          try {
+            await applyUpdates();
+          } catch (e) {
+            const refreshed = await ensureFreshSession();
+            if (!refreshed) throw e;
+            await applyUpdates();
           }
+
+          toast({
+            title: "Page moved",
+            description: `"${draggedDoc.title}" has been moved.`,
+          });
+
+          onDocumentsReordered?.();
+          onTopicsReordered?.();
+        } catch (error: any) {
+          toast({
+            title: "Failed to move page",
+            description: error.message || "An error occurred.",
+            variant: "destructive",
+          });
+        }
       }
 
       handleDragEnd();
     },
-    [dragState, topics, documents, toast, onTopicsReordered, onDocumentsReordered, handleDragEnd]
+    [
+      dragState,
+      topics,
+      documents,
+      toast,
+      onTopicsReordered,
+      onDocumentsReordered,
+      handleDragEnd,
+      buildCombinedSiblings,
+    ]
   );
 
   // ============ Render ============

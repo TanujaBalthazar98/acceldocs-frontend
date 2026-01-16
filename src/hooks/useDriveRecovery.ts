@@ -2,6 +2,7 @@ import { useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { ensureFreshSession } from "@/lib/authSession";
 
 // Centralized Drive failure recovery:
 // 1. Silent token refresh attempt
@@ -10,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const RECOVERY_COOLDOWN_MS = 30000; // 30 seconds between recovery attempts
 const NON_OWNER_NOTIFIED_KEY = "drive_non_owner_notified";
+const GOOGLE_TOKEN_KEY = "google_access_token";
 
 export interface DriveRecoveryState {
   isRecovering: boolean;
@@ -19,12 +21,13 @@ export interface DriveRecoveryState {
 
 export const useDriveRecovery = () => {
   const { toast } = useToast();
-  const { requestDriveAccess, user } = useAuth();
+  const { requestDriveAccess, user, googleAccessToken } = useAuth();
   
   const isRecoveringRef = useRef(false);
   const lastRecoveryRef = useRef<number | null>(null);
   const ownerNotifiedRef = useRef(false);
   const isOrgOwnerRef = useRef<boolean | null>(null);
+  const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
 
   // Check if current user is the organization owner
   const checkIsOrgOwner = useCallback(async (): Promise<boolean> => {
@@ -59,15 +62,10 @@ export const useDriveRecovery = () => {
   // Attempt silent session refresh
   const attemptSilentRefresh = async (): Promise<boolean> => {
     try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error || !session) {
-        const { error: refreshError, data } = await supabase.auth.refreshSession();
-        if (refreshError || !data.session) {
-          console.log("Silent session refresh failed:", refreshError?.message);
-          return false;
-        }
-        console.log("Silent session refresh successful");
-        return true;
+      const session = await ensureFreshSession();
+      if (!session) {
+        console.log("Silent session refresh failed");
+        return false;
       }
       return true;
     } catch (err) {
@@ -101,9 +99,11 @@ export const useDriveRecovery = () => {
       // Step 1: Try silent session refresh
       const refreshed = await attemptSilentRefresh();
       if (refreshed) {
+        const token = getGoogleToken();
         // Try to verify the token works by making a simple call
         const verifyResponse = await supabase.functions.invoke("google-drive", {
-          body: { action: "list_folder", folderId: "root" }
+          body: { action: "list_folder", folderId: "root" },
+          ...(token ? { headers: { "x-google-token": token } } : {}),
         });
 
         if (!verifyResponse.error && !verifyResponse.data?.needsReauth) {

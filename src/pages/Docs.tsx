@@ -141,7 +141,7 @@ function removeFirstHeadingIfMatches(html: string, title: string): string {
   return container.innerHTML;
 }
 
-export default function Docs() {
+export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const params = useParams<{ 
     orgSlug?: string; 
     projectSlug?: string; 
@@ -151,13 +151,16 @@ export default function Docs() {
   
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const isInternalView = mode === "internal";
+  const docsBasePath = isInternalView ? "/internal" : "/docs";
   
   // Track custom domain state early for URL interpretation
   const [isCustomDomain, setIsCustomDomain] = useState(false);
   
   // On custom domains, URL structure shifts: org is implicit from domain
   // Standard: /docs/:orgSlug/:projectSlug/:topicSlug/:pageSlug
-  // Custom domain: /docs/:projectSlug/:topicSlug/:pageSlug
+  // Internal: /internal/:orgSlug/:projectSlug/:topicSlug/:pageSlug
+  // Custom domain: /docs/:projectSlug/:topicSlug/:pageSlug (or /internal for internal view)
   const orgSlug = isCustomDomain ? undefined : params.orgSlug;
   const projectSlug = isCustomDomain ? params.orgSlug : params.projectSlug;
   const topicSlug = isCustomDomain 
@@ -184,6 +187,8 @@ export default function Docs() {
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
   const [isFullWidth, setIsFullWidth] = useState(false);
+  const [internalAccessDenied, setInternalAccessDenied] = useState(false);
+  const [internalAccessReason, setInternalAccessReason] = useState<"signed_out" | "not_member" | null>(null);
 
   // Check for custom domain on mount
   useEffect(() => {
@@ -218,9 +223,11 @@ export default function Docs() {
     }
   }, [authLoading, hasFetched]);
 
-  const setPublishedContent = async (doc: Document) => {
-    // Published docs view: NEVER show draft content.
-    setDocumentHtml(doc.published_content_html ?? null);
+  const getDocumentHtml = (doc: Document) =>
+    isInternalView ? (doc.content_html ?? doc.published_content_html) : doc.published_content_html;
+
+  const setDocumentContent = async (doc: Document) => {
+    setDocumentHtml(getDocumentHtml(doc) ?? null);
   };
 
   const buildDocUrl = (doc: Document, project: Project, org: Organization) => {
@@ -230,15 +237,15 @@ export default function Docs() {
     // For custom domains, use simplified URLs without org prefix
     if (isCustomDomain) {
       if (topic?.slug) {
-        return `/docs/${project.slug}/${topic.slug}/${doc.slug}`;
+        return `${docsBasePath}/${project.slug}/${topic.slug}/${doc.slug}`;
       }
-      return `/docs/${project.slug}/${doc.slug}`;
+      return `${docsBasePath}/${project.slug}/${doc.slug}`;
     }
     
     if (topic?.slug) {
-      return `/docs/${orgIdentifier}/${project.slug}/${topic.slug}/${doc.slug}`;
+      return `${docsBasePath}/${orgIdentifier}/${project.slug}/${topic.slug}/${doc.slug}`;
     }
-    return `/docs/${orgIdentifier}/${project.slug}/${doc.slug}`;
+    return `${docsBasePath}/${orgIdentifier}/${project.slug}/${doc.slug}`;
   };
 
   // Handle URL-based project and document selection
@@ -301,7 +308,7 @@ export default function Docs() {
       
       if (doc) {
         setSelectedDocument(doc);
-        setPublishedContent(doc);
+        setDocumentContent(doc);
         if (doc.topic_id) {
           setExpandedTopics(prev => new Set([...prev, doc.topic_id!]));
         }
@@ -317,6 +324,8 @@ export default function Docs() {
 
   const fetchContent = async () => {
     setLoading(true);
+    setInternalAccessDenied(false);
+    setInternalAccessReason(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const currentUser = session?.user;
@@ -384,6 +393,19 @@ export default function Docs() {
       // Set isOrgUser based on whether user belongs to the target organization
       const userBelongsToTargetOrg = currentUser && userOrgId && targetOrgId && userOrgId === targetOrgId;
       setIsOrgUser(!!userBelongsToTargetOrg);
+
+      if (isInternalView && !userBelongsToTargetOrg) {
+        setInternalAccessDenied(true);
+        setInternalAccessReason(currentUser ? "not_member" : "signed_out");
+        setProjects([]);
+        setTopics([]);
+        setDocuments([]);
+        setSelectedProject(null);
+        setSelectedDocument(null);
+        setDocumentHtml(null);
+        setLoading(false);
+        return;
+      }
       
       // If no organization context at all, show nothing (don't leak cross-org data)
       if (!targetOrgId) {
@@ -393,12 +415,16 @@ export default function Docs() {
       }
 
       // Build project query scoped to the target organization
-      const { data: projectsData, error: projectsError } = await supabase
+      let projectsQuery = supabase
         .from("projects")
         .select("id, name, slug, visibility, is_published, organization_id, parent_id, mcp_enabled, openapi_spec_json, openapi_spec_url")
-        .eq("organization_id", targetOrgId)
-        .eq("is_published", true)
-        .order("name");
+        .eq("organization_id", targetOrgId);
+
+      if (!isInternalView) {
+        projectsQuery = projectsQuery.eq("is_published", true);
+      }
+
+      const { data: projectsData, error: projectsError } = await projectsQuery.order("name");
 
       if (projectsError) {
         console.error("Error fetching projects:", projectsError);
@@ -448,14 +474,18 @@ export default function Docs() {
       setTopics(topicsData);
     }
 
-    // Published docs view: ONLY show pages with a published version.
-    const { data: docsData, error: docsError } = await supabase
+    let docsQuery = supabase
       .from("documents")
       .select(
         "id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, published_content_html, created_at, updated_at, owner_id, display_order"
       )
-      .in("project_id", projectIds)
-      .not("published_content_html", "is", null)
+      .in("project_id", projectIds);
+
+    if (!isInternalView) {
+      docsQuery = docsQuery.not("published_content_html", "is", null);
+    }
+
+    const { data: docsData, error: docsError } = await docsQuery
       .order("display_order")
       .order("title");
 
@@ -469,9 +499,9 @@ export default function Docs() {
   };
 
   const buildProjectUrl = (project: Project) => {
-    if (isCustomDomain) return `/docs/${project.slug}`;
-    if (currentOrg) return `/docs/${currentOrg.slug || currentOrg.domain}/${project.slug}`;
-    return "/docs";
+    if (isCustomDomain) return `${docsBasePath}/${project.slug}`;
+    if (currentOrg) return `${docsBasePath}/${currentOrg.slug || currentOrg.domain}/${project.slug}`;
+    return docsBasePath;
   };
 
   const getChildProjects = (projectId: string) =>
@@ -514,7 +544,7 @@ export default function Docs() {
 
   const selectDocument = (doc: Document) => {
     setSelectedDocument(doc);
-    setPublishedContent(doc);
+    setDocumentContent(doc);
     if (selectedProject && currentOrg) {
       navigate(buildDocUrl(doc, selectedProject, currentOrg));
     }
@@ -522,9 +552,9 @@ export default function Docs() {
   };
 
   const getDocsLandingPath = () => {
-    if (isCustomDomain) return "/docs";
-    if (currentOrg) return `/docs/${currentOrg.slug || currentOrg.domain}`;
-    return "/docs";
+    if (isCustomDomain) return docsBasePath;
+    if (currentOrg) return `${docsBasePath}/${currentOrg.slug || currentOrg.domain}`;
+    return docsBasePath;
   };
 
   const goToDocsLanding = () => {
@@ -803,6 +833,39 @@ const getTopicDocuments = (topicId: string) =>
   } : null);
 
   // If showing landing page
+  if (internalAccessDenied && isInternalView) {
+    const orgDomain = currentOrg?.domain;
+    const publicDocsPath = isCustomDomain
+      ? "/docs"
+      : currentOrg
+        ? `/docs/${currentOrg.slug || currentOrg.domain}`
+        : "/docs";
+
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6 docs-branded">
+        <div className="max-w-lg w-full rounded-xl border border-border bg-card p-6 text-center space-y-4">
+          <div className="flex items-center justify-center gap-2">
+            <Lock className="h-5 w-5 text-muted-foreground" />
+            <h1 className="text-lg font-semibold">Internal docs only</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {internalAccessReason === "signed_out"
+              ? `Sign in${orgDomain ? ` with your @${orgDomain} account` : ""} to access internal docs.`
+              : `This workspace is restricted to${orgDomain ? ` @${orgDomain}` : ""} accounts.`}
+          </p>
+          <div className="flex items-center justify-center gap-2">
+            <Link to="/auth">
+              <Button size="sm">Sign in</Button>
+            </Link>
+            <Link to={publicDocsPath}>
+              <Button variant="ghost" size="sm">View public docs</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (showLandingPage) {
     return (
       <div className="min-h-screen bg-background flex flex-col docs-branded">
@@ -810,7 +873,7 @@ const getTopicDocuments = (topicId: string) =>
         <header className="border-b border-border bg-card">
           <div className="flex items-center justify-between px-4 lg:px-6 h-14">
             <Link
-              to={isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`}
+              to={isCustomDomain ? docsBasePath : `${docsBasePath}/${currentOrg.slug || currentOrg.domain}`}
               onClick={(e) => {
                 e.preventDefault();
                 goToDocsLanding();
@@ -827,6 +890,29 @@ const getTopicDocuments = (topicId: string) =>
             <div className="flex items-center gap-2">
               <ThemeToggle />
               {/* Hide Dashboard on landing when all visible projects are public */}
+              {isInternalView && currentOrg ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    navigate(isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`);
+                  }}
+                >
+                  Public Docs
+                </Button>
+              ) : !isInternalView && user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (currentOrg) {
+                      navigate(isCustomDomain ? "/internal" : `/internal/${currentOrg.slug || currentOrg.domain}`);
+                    }
+                  }}
+                >
+                  Internal Docs
+                </Button>
+              ) : null}
               {user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
                 <Link to="/dashboard">
                   <Button variant="ghost" size="sm">Dashboard</Button>
@@ -850,7 +936,7 @@ const getTopicDocuments = (topicId: string) =>
             title: d.title,
             project_id: d.project_id,
             topic_id: d.topic_id,
-            content_html: d.published_content_html,
+            content_html: getDocumentHtml(d) ?? undefined,
           }))}
           topics={topics.map(t => ({
             id: t.id,
@@ -893,7 +979,7 @@ const getTopicDocuments = (topicId: string) =>
           {/* Left: Organization Logo/Name + Root Project */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link
-              to={currentOrg ? (isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`) : "/"}
+              to={currentOrg ? (isCustomDomain ? docsBasePath : `${docsBasePath}/${currentOrg.slug || currentOrg.domain}`) : "/"}
               onClick={(e) => {
                 e.preventDefault();
                 goToDocsLanding();
@@ -937,7 +1023,7 @@ const getTopicDocuments = (topicId: string) =>
                 title: d.title,
                 project_id: d.project_id,
                 topic_id: d.topic_id,
-                content_html: d.published_content_html,
+                content_html: getDocumentHtml(d) ?? undefined,
               }))}
               topics={topics.map(t => ({
                 id: t.id,
@@ -996,6 +1082,34 @@ const getTopicDocuments = (topicId: string) =>
                   </Button>
                 </Link>
               </>
+            ) : null}
+
+            {currentOrg && isInternalView ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
+                onClick={() => {
+                  navigate(isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`);
+                }}
+              >
+                <Globe className="h-4 w-4" />
+                <span className="hidden sm:inline">Public Docs</span>
+              </Button>
+            ) : !isInternalView && user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
+                onClick={() => {
+                  if (currentOrg) {
+                    navigate(isCustomDomain ? "/internal" : `/internal/${currentOrg.slug || currentOrg.domain}`);
+                  }
+                }}
+              >
+                <Lock className="h-4 w-4" />
+                <span className="hidden sm:inline">Internal Docs</span>
+              </Button>
             ) : null}
 
             {/* Mobile menu trigger */}
@@ -1207,12 +1321,14 @@ const getTopicDocuments = (topicId: string) =>
                   />
                 ) : (
                   <div className="text-center py-10 text-muted-foreground">
-                    <p className="font-medium">This page hasn't been published yet.</p>
+                    <p className="font-medium">
+                      {isInternalView ? "This page doesn't have content yet." : "This page hasn't been published yet."}
+                    </p>
                   </div>
                 )}
 
                 {/* Page Feedback - only for public docs pages */}
-                {selectedDocument.published_content_html && selectedProject?.visibility === "public" && (
+                {!isInternalView && selectedDocument.published_content_html && selectedProject?.visibility === "public" && (
                   <PageFeedback documentId={selectedDocument.id} isOrgUser={isOrgUser} />
                 )}
               </article>

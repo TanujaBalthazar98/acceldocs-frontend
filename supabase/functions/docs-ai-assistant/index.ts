@@ -7,6 +7,62 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-google-token",
 };
 
+const GEMINI_MODEL = "gemini-1.5-pro";
+
+type GeminiPart = {
+  text?: string;
+  functionCall?: {
+    name?: string;
+    args?: Record<string, unknown> | string | null;
+  };
+  functionResponse?: {
+    name?: string;
+    response?: Record<string, unknown>;
+  };
+};
+
+type GeminiContent = {
+  role: "user" | "model";
+  parts: GeminiPart[];
+};
+
+function getGeminiApiKey(): string {
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured");
+  }
+  return apiKey;
+}
+
+function normalizeGeminiArgs(args: unknown): Record<string, unknown> {
+  if (!args) return {};
+  if (typeof args === "string") {
+    try {
+      return JSON.parse(args);
+    } catch {
+      return {};
+    }
+  }
+  if (typeof args === "object") {
+    return args as Record<string, unknown>;
+  }
+  return {};
+}
+
+function extractGeminiText(parts: GeminiPart[]): string {
+  return parts.map((part) => part?.text || "").join("");
+}
+
+function buildGeminiContents(messages: Array<{ role: string; content: string }>): GeminiContent[] {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((message) => message?.content && message.role !== "system")
+    .map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: [{ text: message.content }],
+    }));
+}
+
 // Tool definitions for the AI
 const tools = [
   {
@@ -485,29 +541,41 @@ ${args.details ? `Additional requirements: ${args.details}` : ""}
 
 Generate well-structured HTML documentation with proper headings, paragraphs, code blocks if relevant, and lists where appropriate.`;
 
-        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-        
-        const genResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const apiKey = getGeminiApiKey();
+
+        const genResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
             "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-pro",
-            messages: [
-              { role: "system", content: "You are a technical documentation writer. Generate clean, professional HTML documentation. Use semantic HTML tags like <h1>, <h2>, <p>, <ul>, <li>, <code>, <pre>. Do not include <html>, <head>, or <body> tags - just the content." },
-              { role: "user", content: prompt }
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: prompt }],
+              },
             ],
+            systemInstruction: {
+              parts: [{
+                text: "You are a technical documentation writer. Generate clean, professional HTML documentation. Use semantic HTML tags like <h1>, <h2>, <p>, <ul>, <li>, <code>, <pre>. Do not include <html>, <head>, or <body> tags - just the content.",
+              }],
+            },
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 2048,
+            },
           }),
         });
         
         if (!genResponse.ok) {
+          const errorText = await genResponse.text();
+          console.error("Gemini generation error:", genResponse.status, errorText);
           return { success: false, error: "Failed to generate content" };
         }
         
         const genData = await genResponse.json();
-        const generatedContent = genData.choices?.[0]?.message?.content || "";
+        const generatedContent = extractGeminiText(genData?.candidates?.[0]?.content?.parts || []);
         
         return { success: true, result: { content: generatedContent, message: "✅ Documentation generated" } };
       }
@@ -586,11 +654,7 @@ serve(async (req) => {
     }
 
     const { messages, context } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
+    const geminiApiKey = getGeminiApiKey();
 
     // Build context-aware system prompt
     let contextInfo = "";
@@ -622,138 +686,126 @@ RESPONSE STYLE:
 
 DO NOT ask questions like "which project?" or "what ID?" - USE THE TOOLS TO FIND THEM.`;
 
-    // OpenAI-compatible tool format
-    const openAiTools = tools.map((t) => ({
-      type: "function",
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
+    const geminiTools = [
+      {
+        functionDeclarations: tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        })),
       },
-    }));
+    ];
 
-    console.log("Calling AI gateway...");
-    
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        tools: openAiTools,
-        tool_choice: "auto",
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      return new Response(JSON.stringify({ error: "AI service temporarily unavailable" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const data = await response.json();
-    let assistantMessage = data.choices?.[0]?.message;
-    
-    console.log("Initial AI response received, tool_calls:", assistantMessage?.tool_calls?.length || 0);
-    
-    // Process tool calls in a loop until no more tool calls
+    const contents = buildGeminiContents(messages);
+    let assistantText = "";
     let allToolResults: any[] = [];
     let allActions: any[] = [];
     let iterations = 0;
     const maxIterations = 5;
-    
-    while (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0 && iterations < maxIterations) {
+
+    while (iterations < maxIterations) {
       iterations++;
-      console.log(`Processing tool calls iteration ${iterations}`);
-      
-      const toolResults: any[] = [];
-      
-      for (const toolCall of assistantMessage.tool_calls) {
-        const functionName = toolCall.function?.name;
-        let functionArgs = {};
-        
-        try {
-          functionArgs = JSON.parse(toolCall.function?.arguments || "{}");
-        } catch (e) {
-          console.error("Failed to parse tool arguments:", e);
+      console.log(`Calling Gemini (iteration ${iterations})...`);
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiApiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            systemInstruction: {
+              role: "system",
+              parts: [{ text: systemPrompt }],
+            },
+            contents,
+            tools: geminiTools,
+            toolConfig: {
+              functionCallingConfig: { mode: "AUTO" },
+            },
+          }),
         }
-        
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Gemini API error:", response.status, errorText);
+        return new Response(JSON.stringify({ error: "AI service temporarily unavailable" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const data = await response.json();
+      const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts || [];
+
+      const functionCalls = parts
+        .filter((part) => part?.functionCall?.name)
+        .map((part) => ({
+          name: part.functionCall?.name as string,
+          args: normalizeGeminiArgs(part.functionCall?.args),
+        }));
+
+      console.log("Gemini response received, functionCalls:", functionCalls.length);
+
+      if (functionCalls.length === 0) {
+        assistantText = extractGeminiText(parts).trim();
+        break;
+      }
+
+      contents.push({ role: "model", parts });
+
+      for (const call of functionCalls) {
+        const functionName = call.name;
+        const functionArgs = call.args || {};
+
         console.log(`Executing tool: ${functionName}`, functionArgs);
-        
+
         const result = await executeTool(
-          functionName, 
-          functionArgs, 
-          supabase, 
-          userId, 
+          functionName,
+          functionArgs,
+          supabase,
+          userId,
           googleToken,
           organizationId
         );
-        
+
         console.log(`Tool ${functionName} result:`, result.success ? "success" : result.error);
-        
-        toolResults.push({
-          tool_call_id: toolCall.id,
-          role: "tool",
-          name: functionName,
-          content: JSON.stringify(result)
-        });
-        
+
         allToolResults.push(result);
         allActions.push({
           name: functionName,
           args: functionArgs,
-          result
+          result,
+        });
+
+        contents.push({
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: functionName,
+                response: result,
+              },
+            },
+          ],
         });
       }
-      
-      // Send tool results back for next response
-      const nextResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-pro",
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...messages,
-            assistantMessage,
-            ...toolResults,
-          ],
-          tools: openAiTools,
-          tool_choice: "auto",
-        }),
-      });
-      
-      if (!nextResponse.ok) {
-        const errorText = await nextResponse.text();
-        console.error("AI response error:", errorText);
-        break;
-      }
-      
-      const nextData = await nextResponse.json();
-      assistantMessage = nextData.choices?.[0]?.message;
     }
 
     console.log("Returning response with", allActions.length, "actions");
 
-    return new Response(JSON.stringify({
-      message: assistantMessage?.content || "Task completed",
-      toolResults: allToolResults,
-      actions: allActions
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        message: assistantText || "Task completed",
+        toolResults: allToolResults,
+        actions: allActions,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
     
   } catch (error) {
     console.error("docs-ai-assistant error:", error);

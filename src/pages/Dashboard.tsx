@@ -156,7 +156,7 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
 };
 
 const Dashboard = () => {
-  const { user, signOut, requestDriveAccess } = useAuth();
+  const { user, signOut, requestDriveAccess, googleAccessToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -221,6 +221,14 @@ const Dashboard = () => {
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading, isOrgOwner } = usePermissions(selectedProject?.id || null);
   const { logAction, logUnauthorizedAttempt } = useAuditLog();
+  const driveTokenAvailable = !!googleAccessToken;
+  const driveStepDone = driveTokenAvailable && !needsDriveAccess;
+  const rootStepDone = !!rootFolderId;
+  const projectStepDone = projects.length > 0;
+  const canCreateProject = rootStepDone && driveStepDone;
+  const showGettingStarted =
+    !!organizationId && (!driveStepDone || !rootStepDone || !projectStepDone);
+  const driveActionLabel = needsDriveAccess ? "Reconnect Drive" : "Connect Drive";
 
   // Helper: Check if user can publish for a specific project (used when no project is selected)
   const canPublishForProject = async (projectId: string): Promise<boolean> => {
@@ -543,6 +551,12 @@ const Dashboard = () => {
             "Failed to trash the Drive folder. Please reconnect to Google Drive and try again."
         );
       }
+      if (trashResult.alreadyDeleted) {
+        toast({
+          title: "Drive Folder Missing",
+          description: "Drive folder was already removed. Cleaning up the project in Acceldocs.",
+        });
+      }
     }
 
     // IMPORTANT: Projects have many related records with foreign keys.
@@ -743,6 +757,12 @@ const Dashboard = () => {
         });
         return false;
       }
+      if (trashResult.alreadyDeleted) {
+        toast({
+          title: "Drive Folder Missing",
+          description: "Drive folder was already removed. Cleaning up the topic in Acceldocs.",
+        });
+      }
     }
     
     // Delete all documents in the topic first
@@ -797,6 +817,12 @@ const Dashboard = () => {
           });
         }
         return false;
+      }
+      if (trashResult.alreadyDeleted) {
+        toast({
+          title: "Drive File Missing",
+          description: "Drive file was already removed. Cleaning up the page in Acceldocs.",
+        });
       }
     }
     
@@ -2550,15 +2576,26 @@ const Dashboard = () => {
                 <span className="hidden md:inline">AI Assistant</span>
               </Button>
               {organizationSlug && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="gap-1.5 h-8 px-2 sm:px-3" 
-                  onClick={() => window.open(`/docs/${organizationSlug}`, '_blank')}
-                >
-                  <BookOpen className="w-4 h-4" />
-                  <span className="hidden lg:inline">View Docs</span>
-                </Button>
+                <>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="gap-1.5 h-8 px-2 sm:px-3" 
+                    onClick={() => window.open(`/internal/${organizationSlug}`, '_blank')}
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span className="hidden lg:inline">Internal Docs</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="gap-1.5 h-8 px-2 sm:px-3" 
+                    onClick={() => window.open(`/docs/${organizationSlug}`, '_blank')}
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    <span className="hidden lg:inline">View Docs</span>
+                  </Button>
+                </>
               )}
               <Button 
                 variant="hero" 
@@ -2606,6 +2643,115 @@ const Dashboard = () => {
                 <ArrowRight className="w-4 h-4" />
                 Switch Workspace
               </Button>
+            </div>
+          )}
+
+          {showGettingStarted && (
+            <div className="mb-6 rounded-xl border border-border bg-card/50 p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h2 className="text-base sm:text-lg font-semibold">Getting started</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Complete these steps to publish your first docs.
+                  </p>
+                </div>
+                <Badge variant="secondary" className="w-fit">Setup</Badge>
+              </div>
+              <div className="mt-4 grid gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {driveStepDone ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <Circle className="w-5 h-5 text-muted-foreground" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Connect Google Drive</p>
+                      <p className="text-xs text-muted-foreground">
+                        Allow Acceldocs to read and create folders in Drive.
+                      </p>
+                    </div>
+                  </div>
+                  {driveStepDone ? (
+                    <Badge variant="secondary" className="w-fit">Connected</Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={handleConnectDrive}
+                      disabled={isConnectingDrive}
+                    >
+                      {isConnectingDrive ? "Connecting..." : driveActionLabel}
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {rootStepDone ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <Circle className="w-5 h-5 text-muted-foreground" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Set your root folder</p>
+                      <p className="text-xs text-muted-foreground">
+                        Pick the Drive folder that will store all docs.
+                      </p>
+                    </div>
+                  </div>
+                  {rootStepDone ? (
+                    <Badge variant="secondary" className="w-fit">Configured</Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setShowGeneralSettings(true);
+                        setShowAPISettings(false);
+                        setShowMCPSettings(false);
+                        setShowIntegrations(false);
+                      }}
+                    >
+                      Open Settings
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {projectStepDone ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <Circle className="w-5 h-5 text-muted-foreground" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Create your first project</p>
+                      <p className="text-xs text-muted-foreground">
+                        Organize docs into a project with topics and pages.
+                      </p>
+                    </div>
+                  </div>
+                  {projectStepDone ? (
+                    <Badge variant="secondary" className="w-fit">Ready</Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setParentProjectForCreate(null);
+                        setAddProjectOpen(true);
+                      }}
+                      disabled={!canCreateProject}
+                      title={
+                        !canCreateProject
+                          ? "Connect Drive and set a root folder first"
+                          : "Create a project"
+                      }
+                    >
+                      Create Project
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
           

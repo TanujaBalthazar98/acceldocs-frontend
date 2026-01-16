@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { ensureFreshSession } from "@/lib/authSession";
 
 type AccountType = "individual" | "team" | "enterprise";
 
@@ -22,6 +23,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const GOOGLE_TOKEN_KEY = "google_access_token";
 const GOOGLE_DRIVE_ACCESS_REQUESTED_KEY = "google_drive_access_requested";
+const AUTH_REDIRECT_BASE = import.meta.env.VITE_AUTH_REDIRECT_BASE as string | undefined;
+
+const getRedirectBase = () => {
+  const base = AUTH_REDIRECT_BASE?.trim() || window.location.origin;
+  return base.endsWith("/") ? base.slice(0, -1) : base;
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -48,6 +55,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   // Track if we've already tried to store refresh token for the current Drive-consent flow
   const hasAttemptedStoreTokenRef = useRef(false);
+  const refreshTimeoutRef = useRef<number | null>(null);
 
   // Store refresh token by calling backend function.
   // If refreshToken isn't provided, the backend will try to extract it from the user's Google identity.
@@ -113,6 +121,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setGoogleAccessToken(null);
         hasAttemptedStoreTokenRef.current = false;
       }
+
+      // Reschedule manual refresh when session updates
+      scheduleSessionRefresh(session);
     });
 
     // THEN check for existing session
@@ -127,10 +138,34 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         localStorage.setItem(GOOGLE_TOKEN_KEY, session.provider_token);
         setGoogleAccessToken(session.provider_token);
       }
+
+      scheduleSessionRefresh(session);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Schedule a single refresh per session, shortly before expiry.
+  const scheduleSessionRefresh = (currentSession: Session | null) => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = null;
+    }
+
+    if (!currentSession?.expires_at) return;
+
+    const expiresAtMs = currentSession.expires_at * 1000;
+    const now = Date.now();
+
+    // Refresh 60s before expiry, with a floor to avoid immediate fire.
+    const delay = Math.max(expiresAtMs - now - 60_000, 30_000);
+
+    refreshTimeoutRef.current = window.setTimeout(async () => {
+      // Avoid background tabs hammering the endpoint
+      if (document.visibilityState !== "visible") return;
+      await ensureFreshSession();
+    }, delay);
+  };
 
   useEffect(() => {
     let active = true;
@@ -172,14 +207,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // In preview (which runs embedded), the preview URL can be access-controlled.
   // Redirect OAuth back to the published site so the flow can complete reliably.
   const getAuthRedirectOrigin = (): string => {
+    const base = getRedirectBase();
     const host = window.location.host;
     const isPreviewHost = host.startsWith("id-preview--");
+
+    if (AUTH_REDIRECT_BASE?.trim()) {
+      return base;
+    }
 
     if (isEmbedded() && isPreviewHost) {
       return "https://acceldocs.lovable.app";
     }
 
-    return window.location.origin;
+    return base;
   };
 
   const navigateToOAuth = (url: string, existingWindow?: Window | null) => {
@@ -274,7 +314,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const signUpWithEmail = async (email: string, password: string, accountType: AccountType = "individual") => {
-    const redirectUrl = `${window.location.origin}/`;
+    const redirectUrl = `${getRedirectBase()}/`;
     
     const { error } = await supabase.auth.signUp({
       email,

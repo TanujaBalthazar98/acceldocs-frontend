@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-google-token",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 interface CreateFolderRequest {
@@ -45,6 +46,12 @@ interface TrashFileRequest {
 }
 
 type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | GetDocContentRequest | SyncDocContentRequest | TrashFileRequest;
+
+const isDriveNotFound = (errorText: string) =>
+  errorText.includes("File not found") || errorText.includes("\"notFound\"");
+
+const driveFolderAccessHint =
+  "Folder not accessible. Make sure the root folder belongs to the connected Google account, then re-select it in Settings.";
 
 // Check if user has permission for a Drive operation
 async function checkDrivePermission(
@@ -424,13 +431,24 @@ Deno.serve(async (req) => {
       const fields = encodeURIComponent("files(id,name,mimeType,modifiedTime,createdTime)");
       
       const response = await fetchWithRefresh(
-        `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=name`
+        `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=name&supportsAllDrives=true&includeItemsFromAllDrives=true`
       );
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
-        
+
+        if (response.status === 404 && isDriveNotFound(errorText)) {
+          return new Response(
+            JSON.stringify({
+              error: driveFolderAccessHint,
+              errorCode: "FOLDER_NOT_ACCESSIBLE",
+              details: errorText,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         if (errorText.includes("SCOPE_INSUFFICIENT") || errorText.includes("insufficientPermissions")) {
           return new Response(
             JSON.stringify({ error: "Insufficient scopes", needsDriveAccess: true }),
@@ -469,7 +487,7 @@ Deno.serve(async (req) => {
       console.log("Getting doc content via Drive export:", body.docId);
       
       const response = await fetchWithRefresh(
-        `https://www.googleapis.com/drive/v3/files/${body.docId}/export?mimeType=text/html`
+        `https://www.googleapis.com/drive/v3/files/${body.docId}/export?mimeType=text/html&supportsAllDrives=true`
       );
 
       if (!response.ok) {
@@ -520,7 +538,7 @@ Deno.serve(async (req) => {
       console.log("Syncing doc content:", body.googleDocId, "to document:", body.documentId);
       
       const metadataResponse = await fetchWithRefresh(
-        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}?fields=modifiedTime,name`
+        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}?fields=modifiedTime,name&supportsAllDrives=true`
       );
 
       let googleModifiedAt: string | null = null;
@@ -533,7 +551,7 @@ Deno.serve(async (req) => {
       }
       
       const response = await fetchWithRefresh(
-        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}/export?mimeType=text/html`
+        `https://www.googleapis.com/drive/v3/files/${body.googleDocId}/export?mimeType=text/html&supportsAllDrives=true`
       );
 
       if (!response.ok) {
@@ -623,7 +641,7 @@ Deno.serve(async (req) => {
         parents: [body.parentFolderId],
       };
 
-      const response = await fetchWithRefresh("https://www.googleapis.com/drive/v3/files", {
+      const response = await fetchWithRefresh("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -634,7 +652,18 @@ Deno.serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
-        
+
+        if (response.status === 404 && isDriveNotFound(errorText)) {
+          return new Response(
+            JSON.stringify({
+              error: driveFolderAccessHint,
+              errorCode: "FOLDER_NOT_ACCESSIBLE",
+              details: errorText,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({ 
@@ -682,7 +711,7 @@ Deno.serve(async (req) => {
         parents: [body.parentFolderId],
       };
 
-      const response = await fetchWithRefresh("https://www.googleapis.com/drive/v3/files", {
+      const response = await fetchWithRefresh("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -693,7 +722,18 @@ Deno.serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
-        
+
+        if (response.status === 404 && isDriveNotFound(errorText)) {
+          return new Response(
+            JSON.stringify({
+              error: driveFolderAccessHint,
+              errorCode: "FOLDER_NOT_ACCESSIBLE",
+              details: errorText,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({ 
@@ -735,7 +775,7 @@ Deno.serve(async (req) => {
     if (body.action === "trash_file") {
       console.log("Trashing file/folder:", body.fileId);
       
-      const response = await fetchWithRefresh(`https://www.googleapis.com/drive/v3/files/${body.fileId}`, {
+      const response = await fetchWithRefresh(`https://www.googleapis.com/drive/v3/files/${body.fileId}?supportsAllDrives=true`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

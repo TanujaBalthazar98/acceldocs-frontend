@@ -6,6 +6,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const GEMINI_MODEL_FLASH = "gemini-1.5-flash";
+const GEMINI_MODEL_PRO = "gemini-1.5-pro";
+
+function getGeminiApiKey(): string {
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured");
+  }
+  return apiKey;
+}
+
+function resolveGeminiModel(model?: string): string {
+  if (!model) return GEMINI_MODEL_FLASH;
+  const normalized = model.toLowerCase();
+  if (normalized.includes("flash")) return GEMINI_MODEL_FLASH;
+  if (normalized.includes("pro")) return GEMINI_MODEL_PRO;
+  return GEMINI_MODEL_PRO;
+}
+
+function extractGeminiText(parts: Array<{ text?: string }>): string {
+  return parts.map((part) => part?.text || "").join("");
+}
+
 interface MCPRequest {
   action: string;
   connector_id: string;
@@ -768,12 +791,14 @@ async function handleAIAction(
     documentTitle = doc.title;
   }
 
-  const apiKey = Deno.env.get('LOVABLE_API_KEY');
-  if (!apiKey) {
-    return { success: false, error: 'AI API key not configured' };
+  let apiKey: string;
+  try {
+    apiKey = getGeminiApiKey();
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "AI API key not configured" };
   }
 
-  const model = (config.model as string) || 'google/gemini-2.5-flash';
+  const model = resolveGeminiModel(config.model as string);
   const maxTokens = (config.max_tokens as number) || 4096;
 
   const systemPrompt = `You are a helpful documentation assistant. You help users with their documentation tasks.
@@ -798,21 +823,30 @@ ${documentContent ? 'You have access to the following document content. Base you
   }
 
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
-        max_tokens: maxTokens
-      })
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            role: "system",
+            parts: [{ text: systemPrompt }],
+          },
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: userMessage }],
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: maxTokens,
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const error = await response.text();
@@ -820,19 +854,20 @@ ${documentContent ? 'You have access to the following document content. Base you
     }
 
     const result = await response.json();
-    const content = result.choices?.[0]?.message?.content;
+    const parts = result?.candidates?.[0]?.content?.parts || [];
+    const content = extractGeminiText(parts);
 
-    return { 
-      success: true, 
-      data: { 
+    return {
+      success: true,
+      data: {
         response: content,
-        summary: action === 'summarize_page' ? content : undefined,
-        answer: action === 'answer_question' ? content : undefined,
-        analysis: action === 'analyze_document' ? content : undefined,
-        generated: action === 'generate_content' ? content : undefined,
-        model: result.model,
-        usage: result.usage
-      } 
+        summary: action === "summarize_page" ? content : undefined,
+        answer: action === "answer_question" ? content : undefined,
+        analysis: action === "analyze_document" ? content : undefined,
+        generated: action === "generate_content" ? content : undefined,
+        model,
+        usage: result?.usageMetadata,
+      },
     };
   } catch (err) {
     return { success: false, error: `AI request failed: ${err}` };

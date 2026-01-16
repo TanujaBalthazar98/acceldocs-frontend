@@ -41,6 +41,17 @@ export const useGoogleDrive = () => {
 
     // Handle invoke-level errors
     if (error) {
+      const action = body.action as string | undefined;
+      const errorStatus = (error as { context?: { status?: number } })?.context?.status;
+      const errorBody = (error as { context?: { body?: string } })?.context?.body;
+      const isNotFound =
+        errorStatus === 404 ||
+        (typeof errorBody === "string" && errorBody.includes("File not found")) ||
+        (typeof errorBody === "string" && errorBody.includes("\"notFound\""));
+      if (action === "trash_file" && isNotFound) {
+        return { data: { success: true, alreadyDeleted: true } as T };
+      }
+
       console.error(`${errorMessage}:`, error);
       
       // Try recovery if not in cooldown
@@ -125,6 +136,37 @@ export const useGoogleDrive = () => {
     return { files: result.data?.files || [] };
   };
 
+  const checkFolderAccess = async (
+    folderId: string,
+    projectId?: string,
+  ): Promise<{ exists: boolean; needsDriveAccess?: boolean; error?: string; errorCode?: string }> => {
+    const token = getGoogleToken();
+    const invokeOptions = {
+      body: { action: "list_folder", folderId, ...(projectId ? { projectId } : {}) },
+      ...(token ? { headers: { "x-google-token": token } } : {}),
+    };
+
+    const { data, error } = await supabase.functions.invoke("google-drive", invokeOptions);
+
+    if (error) {
+      return { exists: false, error: error.message, errorCode: "INVOKE_ERROR" };
+    }
+
+    if (data?.needsDriveAccess || data?.needsReauth) {
+      return { exists: false, needsDriveAccess: true, errorCode: "NEEDS_REAUTH" };
+    }
+
+    if (data?.errorCode === "FOLDER_NOT_ACCESSIBLE") {
+      return { exists: false, error: data?.error, errorCode: "FOLDER_NOT_ACCESSIBLE" };
+    }
+
+    if (data?.error) {
+      return { exists: false, error: data?.error, errorCode: "DRIVE_ERROR" };
+    }
+
+    return { exists: true };
+  };
+
   const createFolder = async (
     name: string,
     parentFolderId: string,
@@ -148,7 +190,7 @@ export const useGoogleDrive = () => {
 
   const trashFile = async (
     fileId: string,
-  ): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
+  ): Promise<{ success: boolean; alreadyDeleted?: boolean; error?: string; errorCode?: string }> => {
     const result = await invokeDriveFunction<{ success: boolean; error?: string; errorReason?: string }>(
       { action: "trash_file", fileId },
       "Failed to trash file"
@@ -167,12 +209,21 @@ export const useGoogleDrive = () => {
       return {
         success: false,
         error: result.data.error,
-        errorCode: errorReason === "appNotAuthorizedToChild" ? "NOT_AUTHORIZED" : "DRIVE_ERROR",
+        errorCode:
+          errorReason === "appNotAuthorizedToChild"
+            ? "NOT_AUTHORIZED"
+            : errorReason === "notFound"
+              ? "NOT_FOUND"
+              : "DRIVE_ERROR",
       };
+    }
+
+    if ((result.data as { alreadyDeleted?: boolean })?.alreadyDeleted) {
+      return { success: true, alreadyDeleted: true };
     }
 
     return { success: result.data.success || false };
   };
 
-  return { listFolder, createFolder, createDoc, trashFile, getGoogleToken };
+  return { listFolder, checkFolderAccess, createFolder, createDoc, trashFile, getGoogleToken };
 };

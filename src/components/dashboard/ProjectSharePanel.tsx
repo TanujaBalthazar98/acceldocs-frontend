@@ -112,6 +112,20 @@ export const ProjectSharePanel = ({
   const [inviting, setInviting] = useState(false);
   const [showRoleCapabilities, setShowRoleCapabilities] = useState(false);
   const [syncingDrive, setSyncingDrive] = useState(false);
+  const [organizationDomain, setOrganizationDomain] = useState<string | null>(null);
+
+  const normalizeEmail = (value: string) => value.trim().toLowerCase();
+  const normalizeDomain = (value: string | null) => value?.trim().toLowerCase() ?? "";
+  const getEmailDomain = (value: string) => normalizeEmail(value).split("@")[1] ?? "";
+  const isExternalEmail = (value: string) => {
+    const orgDomain = normalizeDomain(organizationDomain);
+    if (!orgDomain) return false;
+    const emailDomain = getEmailDomain(value);
+    if (!emailDomain) return false;
+    return emailDomain !== orgDomain;
+  };
+
+  const isExternalInvite = email.trim() !== "" && isExternalEmail(email);
 
   useEffect(() => {
     if (open && projectId) {
@@ -196,10 +210,11 @@ export const ProjectSharePanel = ({
       if (orgId) {
         const [{ data: orgRoles }, { data: org }] = await Promise.all([
           supabase.from("user_roles").select("user_id, role").eq("organization_id", orgId),
-          supabase.from("organizations").select("owner_id").eq("id", orgId).maybeSingle(),
+          supabase.from("organizations").select("owner_id, domain").eq("id", orgId).maybeSingle(),
         ]);
 
         const ownerId = org?.owner_id ?? null;
+        setOrganizationDomain(org?.domain ?? null);
         if (ownerId && !seen.has(ownerId)) {
           merged.push({ id: `org:${ownerId}`, user_id: ownerId, role: "admin" });
           seen.add(ownerId);
@@ -257,11 +272,21 @@ export const ProjectSharePanel = ({
     }
   };
 
+  useEffect(() => {
+    if (isExternalInvite && selectedRole !== "viewer") {
+      setSelectedRole("viewer");
+    }
+  }, [isExternalInvite, selectedRole]);
+
   const handleInvite = async () => {
     if (!email.trim()) {
       toast({ title: "Error", description: "Please enter an email address.", variant: "destructive" });
       return;
     }
+
+    const normalizedEmail = normalizeEmail(email);
+    const isExternal = isExternalEmail(normalizedEmail);
+    const effectiveRole: ProjectRole = isExternal ? "viewer" : selectedRole;
 
     setInviting(true);
     try {
@@ -269,7 +294,7 @@ export const ProjectSharePanel = ({
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("id")
-        .eq("email", email.trim().toLowerCase())
+        .eq("email", normalizedEmail)
         .maybeSingle();
 
       if (profileError) throw profileError;
@@ -296,12 +321,15 @@ export const ProjectSharePanel = ({
           .insert({
             project_id: projectId,
             user_id: profile.id,
-            role: selectedRole,
+            role: effectiveRole,
           });
 
         if (insertError) throw insertError;
 
-        toast({ title: "Member added", description: `${email} has been added as ${selectedRole}.` });
+        toast({
+          title: "Member added",
+          description: `${normalizedEmail} has been added as ${effectiveRole}.${isExternal ? " External collaborators are viewer-only." : ""}`,
+        });
       } else {
         // User doesn't exist - create pending invitation
         // Check if already invited
@@ -309,7 +337,7 @@ export const ProjectSharePanel = ({
           .from("project_invitations")
           .select("id")
           .eq("project_id", projectId)
-          .eq("email", email.trim().toLowerCase())
+          .eq("email", normalizedEmail)
           .is("accepted_at", null)
           .maybeSingle();
 
@@ -324,14 +352,17 @@ export const ProjectSharePanel = ({
           .from("project_invitations")
           .insert({
             project_id: projectId,
-            email: email.trim().toLowerCase(),
-            role: selectedRole,
+            email: normalizedEmail,
+            role: effectiveRole,
             invited_by: user?.id,
           });
 
         if (inviteError) throw inviteError;
 
-        toast({ title: "Invitation sent", description: `${email} has been invited as ${selectedRole}. They'll get access when they sign up.` });
+        toast({
+          title: "Invitation sent",
+          description: `${normalizedEmail} has been invited as ${effectiveRole}. They'll get access when they sign up.${isExternal ? " External collaborators are viewer-only." : ""}`,
+        });
       }
       
       setEmail("");
@@ -513,7 +544,9 @@ export const ProjectSharePanel = ({
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="flex-1 flex items-center justify-between px-4 py-2.5 rounded-lg bg-secondary border border-border hover:border-primary/30 transition-colors">
-                      <span className="text-sm text-foreground">{roleConfig[selectedRole].label}</span>
+                      <span className="text-sm text-foreground">
+                        {isExternalInvite ? "Viewer (External)" : roleConfig[selectedRole].label}
+                      </span>
                       <ChevronDown className="w-4 h-4 text-muted-foreground" />
                     </button>
                   </DropdownMenuTrigger>
@@ -523,6 +556,7 @@ export const ProjectSharePanel = ({
                         <DropdownMenuItem
                           key={key}
                           onClick={() => setSelectedRole(key)}
+                          disabled={isExternalInvite && key !== "viewer"}
                           className="flex flex-col items-start"
                         >
                           <span className="font-medium">{config.label}</span>
@@ -537,6 +571,12 @@ export const ProjectSharePanel = ({
                   {inviting ? "Adding..." : "Add"}
                 </Button>
               </div>
+              {isExternalInvite && (
+                <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <Info className="w-3.5 h-3.5 text-amber-500 mt-0.5" />
+                  <span>External collaborators are viewer-only. Set project visibility to External or Public.</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -557,49 +597,62 @@ export const ProjectSharePanel = ({
                       key={member.id}
                       className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/50"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                          <span className="text-sm font-medium text-primary">
-                            {member.email?.charAt(0).toUpperCase() || "?"}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {member.full_name || member.email?.split("@")[0]}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {member.email}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1">
-                              {roleConfig[member.role].label}
-                              <ChevronDown className="w-3 h-3" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {(Object.keys(roleConfig) as ProjectRole[]).map((role) => (
-                              <DropdownMenuItem
-                                key={role}
-                                onClick={() => handleUpdateRole(member.id, role)}
-                              >
-                                {roleConfig[role].label}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        {member.user_id !== user?.id && (
-                          <button
-                            onClick={() => handleRemoveMember(member.id)}
-                            className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
+                      {(() => {
+                        const isExternalMember = isExternalEmail(member.email ?? "");
+                        return (
+                          <>
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                                <span className="text-sm font-medium text-primary">
+                                  {member.email?.charAt(0).toUpperCase() || "?"}
+                                </span>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-foreground">
+                                  {member.full_name || member.email?.split("@")[0]}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {member.email}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {isExternalMember ? (
+                                <span className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground">
+                                  Viewer (External)
+                                </span>
+                              ) : (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1">
+                                      {roleConfig[member.role].label}
+                                      <ChevronDown className="w-3 h-3" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    {(Object.keys(roleConfig) as ProjectRole[]).map((role) => (
+                                      <DropdownMenuItem
+                                        key={role}
+                                        onClick={() => handleUpdateRole(member.id, role)}
+                                      >
+                                        {roleConfig[role].label}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                              {member.user_id !== user?.id && (
+                                <button
+                                  onClick={() => handleRemoveMember(member.id)}
+                                  className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                   {/* Pending invitations */}
@@ -623,7 +676,7 @@ export const ProjectSharePanel = ({
                       </div>
                       <div className="flex items-center gap-1">
                         <span className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                          {roleConfig[invitation.role].label}
+                          {isExternalEmail(invitation.email) ? "Viewer (External)" : roleConfig[invitation.role].label}
                         </span>
                         <button
                           onClick={() => handleCancelInvitation(invitation.id)}

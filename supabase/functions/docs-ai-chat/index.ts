@@ -12,10 +12,10 @@ serve(async (req) => {
 
   try {
     const { messages, documentContext } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const apiKey = Deno.env.get("GEMINI_API_KEY");
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     const systemPrompt = `You are a helpful documentation assistant. You answer questions about the documentation content provided to you.
@@ -30,19 +30,30 @@ Answer questions based on this documentation. If the question is not related to 
 
 Keep your answers clear, concise, and helpful. Use markdown formatting when appropriate.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const contents = Array.isArray(messages)
+      ? messages
+          .filter((message: { role?: string; content?: string }) => message?.content)
+          .map((message: { role: string; content: string }) => ({
+            role: message.role === "assistant" ? "model" : "user",
+            parts: [{ text: message.content }],
+          }))
+      : [];
+
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
+        contents,
+        systemInstruction: {
+          parts: [{ text: systemPrompt }],
+        },
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 1024,
+        },
       }),
     });
 
@@ -53,21 +64,31 @@ Keep your answers clear, concise, and helpful. Use markdown formatting when appr
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add credits to continue." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error("Gemini error:", response.status, errorText);
       return new Response(JSON.stringify({ error: "AI service temporarily unavailable" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(response.body, {
+    const data = await response.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const assistantText = parts.map((part: { text?: string }) => part?.text || "").join("");
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const payload = JSON.stringify({
+          choices: [{ delta: { content: assistantText } }],
+        });
+        controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {

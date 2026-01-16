@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 const Index = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loading } = useAuth();
 
   useEffect(() => {
@@ -11,10 +12,11 @@ const Index = () => {
       if (user) {
         navigate("/dashboard", { replace: true });
       } else {
-        navigate("/auth", { replace: true });
+        const redirectSuffix = `${location.search || ""}${location.hash || ""}`;
+        navigate(`/auth${redirectSuffix}`, { replace: true });
       }
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, location.search, location.hash]);
 
   // Show nothing while redirecting
   return (

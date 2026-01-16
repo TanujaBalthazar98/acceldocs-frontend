@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { ensureFreshSession } from "@/lib/authSession";
 import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
 import { ConnectorContextActions } from "@/components/dashboard/ConnectorContextActions";
 import { format } from "date-fns";
@@ -120,7 +121,7 @@ export default function PagePreview() {
 
     // Proactively refresh session to prevent premature timeouts
     try {
-      await supabase.auth.refreshSession();
+      await ensureFreshSession();
     } catch (e) {
       console.warn("Session refresh failed:", e);
     }

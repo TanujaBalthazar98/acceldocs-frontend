@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { ImportProgressIndicator } from "./ImportProgressIndicator";
 import { ZipImportDialog } from "./ZipImportDialog";
+import { splitImportBatches } from "@/lib/importBatching";
 
 interface AddProjectDialogProps {
   open: boolean;
@@ -197,23 +198,32 @@ export const AddProjectDialog = ({
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke("import-markdown", {
-        body: {
-          files,
-          projectId: project.id,
-          organizationId,
-        },
-        headers: {
-          "x-google-token": googleToken,
-        },
-      });
+      const { batches, offsets } = splitImportBatches(files);
+      const totalFiles = files.length;
+      const invokeBatch = (batchFiles: typeof files, batchStart: number, jobId?: string | null) =>
+        supabase.functions.invoke("import-markdown", {
+          body: {
+            files: batchFiles,
+            projectId: project.id,
+            organizationId,
+            jobId,
+            batchStart,
+            totalFiles,
+            filesAreBatch: true,
+          },
+          headers: {
+            "x-google-token": googleToken,
+          },
+        });
+
+      const { data, error } = await invokeBatch(batches[0], offsets[0], null);
 
       if (error) throw error;
 
       if (data?.needsReauth) {
         toast({
           title: "Re-authentication required",
-          description: "Please reconnect to Google Drive and try importing again.",
+          description: data?.error || "Please reconnect to Google Drive and try importing again.",
           variant: "destructive",
         });
         return;
@@ -227,6 +237,34 @@ export const AddProjectDialog = ({
           title: "Import started",
           description: `Importing ${files.length} files...`,
         });
+
+        if (batches.length > 1) {
+          void (async () => {
+            try {
+              for (let i = 1; i < batches.length; i += 1) {
+                const batchResponse = await invokeBatch(batches[i], offsets[i], data.jobId);
+                if (batchResponse.error) {
+                  throw new Error(batchResponse.error.message || "Failed to continue import");
+                }
+                if (batchResponse.data?.needsReauth) {
+                  toast({
+                    title: "Re-authentication required",
+                    description: batchResponse.data?.error || "Please reconnect to Google Drive and try importing again.",
+                    variant: "destructive",
+                  });
+                  break;
+                }
+              }
+            } catch (batchError) {
+              console.error("Import batch error:", batchError);
+              toast({
+                title: "Import failed",
+                description: batchError instanceof Error ? batchError.message : "An error occurred during import.",
+                variant: "destructive",
+              });
+            }
+          })();
+        }
       } else if (data.success) {
         toast({
           title: "Project created with imported content",

@@ -6,7 +6,17 @@ declare const EdgeRuntime: { waitUntil: (promise: Promise<any>) => void } | unde
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-google-token",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const DEFAULT_BATCH_SIZE = 25;
+const MAX_BATCH_SIZE = 100;
+const PROGRESS_UPDATE_INTERVAL_MS = 3000;
+const STOP_CHECK_INTERVAL_MS = 3000;
+const STOP_CHECK_EVERY_FILES = 10;
+const DRIVE_API_DELAY_MS = 10;
+const DRIVE_API_RETRY_BASE_DELAY_MS = 500;
+const FILE_IMPORT_CONCURRENCY = 3;
 
 // Token management for long-running imports
 interface TokenManager {
@@ -76,6 +86,11 @@ interface ImportRequest {
   }[];
   projectId: string;
   organizationId: string;
+  jobId?: string | null;
+  batchStart?: number;
+  batchSize?: number;
+  totalFiles?: number;
+  filesAreBatch?: boolean;
   /**
    * If provided, imported folders become subtopics under this topic, and root-level files become pages in it.
    * Used for both "import pages" (within a topic) and "import subtopics".
@@ -433,6 +448,41 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  handler: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+  if (limit <= 1) {
+    for (const item of items) {
+      await handler(item);
+    }
+    return;
+  }
+
+  let index = 0;
+  let stopError: Error | null = null;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      if (stopError) return;
+      const currentIndex = index++;
+      if (currentIndex >= items.length) return;
+      try {
+        await handler(items[currentIndex]);
+      } catch (err) {
+        stopError = err instanceof Error ? err : new Error("Import failed");
+        return;
+      }
+    }
+  });
+
+  await Promise.all(workers);
+  if (stopError) {
+    throw stopError;
+  }
+}
+
 // Create Google Doc by uploading HTML content with retry logic
 async function createGoogleDocWithHtml(
   tokenManager: TokenManager,
@@ -479,7 +529,7 @@ ${htmlContent}
         closeDelim;
 
       const response = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&convert=true',
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&convert=true&supportsAllDrives=true',
         {
           method: 'POST',
           headers: {
@@ -490,9 +540,10 @@ ${htmlContent}
         }
       );
 
-      if (response.status === 401 && attempt < retries) {
-        console.log(`Auth error on attempt ${attempt + 1}, retrying...`);
-        await delay(1000);
+      if ((response.status === 401 || response.status === 429 || response.status >= 500) && attempt < retries) {
+        const backoff = DRIVE_API_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+        console.log(`Retryable error ${response.status} on attempt ${attempt + 1}, retrying in ${backoff}ms...`);
+        await delay(backoff);
         continue;
       }
 
@@ -509,7 +560,8 @@ ${htmlContent}
       if (attempt === retries) {
         return { id: '', success: false, error: error instanceof Error ? error.message : 'Unknown error' };
       }
-      await delay(1000);
+      const backoff = DRIVE_API_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+      await delay(backoff);
     }
   }
   return { id: '', success: false, error: 'Max retries exceeded' };
@@ -526,7 +578,7 @@ async function createGoogleFolder(
     try {
       const googleToken = await tokenManager.getToken();
       
-      const response = await fetch("https://www.googleapis.com/drive/v3/files", {
+      const response = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${googleToken}`,
@@ -539,9 +591,10 @@ async function createGoogleFolder(
         }),
       });
 
-      if (response.status === 401 && attempt < retries) {
-        console.log(`Auth error creating folder on attempt ${attempt + 1}, retrying...`);
-        await delay(1000);
+      if ((response.status === 401 || response.status === 429 || response.status >= 500) && attempt < retries) {
+        const backoff = DRIVE_API_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+        console.log(`Retryable error ${response.status} creating folder on attempt ${attempt + 1}, retrying in ${backoff}ms...`);
+        await delay(backoff);
         continue;
       }
 
@@ -557,7 +610,8 @@ async function createGoogleFolder(
       if (attempt === retries) {
         return { id: '', success: false, error: error instanceof Error ? error.message : 'Unknown error' };
       }
-      await delay(1000);
+      const backoff = DRIVE_API_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+      await delay(backoff);
     }
   }
   return { id: '', success: false, error: 'Max retries exceeded' };
@@ -570,6 +624,7 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("authorization");
+    const requestGoogleToken = req.headers.get("x-google-token")?.trim();
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: "No authorization header" }),
@@ -613,6 +668,28 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Ensure caller has edit permissions for Drive-backed project changes
+    const { data: canEdit, error: permError } = await supabase.rpc("can_access_drive", {
+      _project_id: projectId,
+      _user_id: user.id,
+      _operation: "create",
+    });
+
+    if (permError) {
+      console.error("Permission check error:", permError);
+      return new Response(
+        JSON.stringify({ error: "Failed to check permissions" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!canEdit) {
+      return new Response(
+        JSON.stringify({ error: "Insufficient permissions to import into this project" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Determine base folder/topic (when importing into an existing topic)
     let baseFolderId = project.drive_folder_id;
     let baseTopicId: string | null = null;
@@ -651,6 +728,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    const canUseRequestToken = !!requestGoogleToken && !!canEdit;
+
     // Get owner's refresh token
     const { data: ownerProfile, error: ownerError } = await supabase
       .from("profiles")
@@ -659,10 +738,14 @@ Deno.serve(async (req) => {
       .single();
 
     if (ownerError || !ownerProfile?.google_refresh_token) {
+      if (canUseRequestToken) {
+        console.warn("Owner refresh token missing. Using request Google token.");
+      } else {
       return new Response(
         JSON.stringify({ error: "Organization owner needs to reconnect Google Drive", needsReauth: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+      }
     }
 
     // Get fresh access token from owner's refresh token
@@ -670,38 +753,176 @@ Deno.serve(async (req) => {
     const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
 
     if (!clientId || !clientSecret) {
+      if (canUseRequestToken) {
+        console.warn("Google OAuth not configured. Using request Google token.");
+      } else {
       return new Response(
         JSON.stringify({ error: "Google OAuth not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+      }
     }
 
-    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: ownerProfile.google_refresh_token,
-        grant_type: "refresh_token",
-      }),
-    });
+    let googleToken: string | null = null;
+    let tokenOwnerId = org.owner_id;
 
-    if (!tokenResponse.ok) {
-      console.error("Failed to refresh owner token:", await tokenResponse.text());
+    if (clientId && clientSecret && ownerProfile?.google_refresh_token) {
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: ownerProfile.google_refresh_token,
+          grant_type: "refresh_token",
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error("Failed to refresh owner token:", errorText);
+        if (!canUseRequestToken) {
+          return new Response(
+            JSON.stringify({
+              error: "Owner's Google Drive access expired. Ask organization owner to reconnect.",
+              details: errorText,
+              needsReauth: true,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } else {
+        const tokenData = await tokenResponse.json();
+        googleToken = tokenData.access_token;
+      }
+    }
+
+    if (!googleToken && canUseRequestToken) {
+      console.warn("Falling back to request Google token.");
+      googleToken = requestGoogleToken!;
+      tokenOwnerId = user.id;
+    }
+
+    if (!googleToken) {
       return new Response(
-        JSON.stringify({ error: "Owner's Google Drive access expired. Ask organization owner to reconnect.", needsReauth: true }),
+        JSON.stringify({ error: "No Google access token available", needsReauth: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    const tokenSource = googleToken === requestGoogleToken ? "request token" : "owner refresh token";
+    console.log(`Using ${tokenSource} for import (owner: ${org.owner_id}, user: ${user.id})`);
 
-    const tokenData = await tokenResponse.json();
-    const googleToken = tokenData.access_token;
-    console.log(`Using org owner's token for import (owner: ${org.owner_id}, user: ${user.id})`);
+    const totalFiles = typeof body.totalFiles === "number" ? body.totalFiles : files.length;
+    const filesAreBatch = body.filesAreBatch === true;
+    const requestedBatchSize = typeof body.batchSize === "number" ? body.batchSize : undefined;
+    const batchSize = Math.min(Math.max(requestedBatchSize ?? DEFAULT_BATCH_SIZE, 1), MAX_BATCH_SIZE);
+    const shouldChunk =
+      !filesAreBatch &&
+      (totalFiles > batchSize ||
+        body.jobId !== undefined ||
+        body.batchStart !== undefined ||
+        body.batchSize !== undefined);
 
-    // Parse nested folder structure
-    const { topicTree, rootFiles } = parseNestedStructure(files);
-    
+    let jobId = body.jobId ?? null;
+    let batchStart = typeof body.batchStart === "number" ? Math.max(body.batchStart, 0) : 0;
+    let progressBase = {
+      processedFiles: 0,
+      topicsCreated: 0,
+      pagesCreated: 0,
+      errors: [] as string[],
+    };
+
+    if (jobId) {
+      const { data: existingJob, error: existingJobError } = await supabase
+        .from("import_jobs")
+        .select("id, status, processed_files, topics_created, pages_created, errors")
+        .eq("id", jobId)
+        .maybeSingle();
+
+      if (existingJobError || !existingJob) {
+        return new Response(
+          JSON.stringify({ error: "Import job not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (existingJob.status === "stopped" || existingJob.status === "completed") {
+        return new Response(
+          JSON.stringify({ success: true, jobId, message: "Import already finalized." }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      progressBase = {
+        processedFiles: existingJob.processed_files ?? 0,
+        topicsCreated: existingJob.topics_created ?? 0,
+        pagesCreated: existingJob.pages_created ?? 0,
+        errors: existingJob.errors ?? [],
+      };
+
+      if (!filesAreBatch && body.batchStart === undefined) {
+        batchStart = progressBase.processedFiles;
+      }
+    } else {
+      // Create import job record for progress tracking
+      const { data: importJob, error: jobError } = await supabase
+        .from("import_jobs")
+        .insert({
+          project_id: projectId,
+          user_id: user.id,
+          status: "processing",
+          total_files: totalFiles,
+          processed_files: 0,
+          topics_created: 0,
+          pages_created: 0,
+          errors: [],
+        })
+        .select()
+        .single();
+
+      if (jobError) {
+        console.error("Failed to create import job:", jobError);
+      }
+
+      jobId = importJob?.id ?? null;
+      console.log(`Created import job ${jobId} for ${totalFiles} files`);
+    }
+
+    const filesToProcess = filesAreBatch
+      ? files
+      : shouldChunk
+      ? files.slice(batchStart, batchStart + batchSize)
+      : files;
+    const isFinalBatch = filesAreBatch
+      ? batchStart + filesToProcess.length >= totalFiles
+      : !shouldChunk || batchStart + filesToProcess.length >= totalFiles;
+
+    if (filesToProcess.length === 0) {
+      if (jobId && isFinalBatch) {
+        await supabase
+          .from("import_jobs")
+          .update({
+            status: "completed",
+            current_file: null,
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", jobId);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          jobId,
+          message: "No files remaining to import.",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Parse nested folder structure for this batch
+    const { topicTree, rootFiles } = parseNestedStructure(filesToProcess);
+
     // Count topics recursively
     const countTopics = (node: TopicNode): number => {
       let count = node.children.size;
@@ -710,82 +931,91 @@ Deno.serve(async (req) => {
       }
       return count;
     };
-    
-    const totalTopics = countTopics(topicTree);
-    console.log(`Found ${totalTopics} topics and ${rootFiles.length} root files`);
 
-    const totalFiles = files.length;
-    
-    // Create import job record for progress tracking
-    const { data: importJob, error: jobError } = await supabase
-      .from("import_jobs")
-      .insert({
-        project_id: projectId,
-        user_id: user.id,
-        status: 'processing',
-        total_files: totalFiles,
-        processed_files: 0,
-        topics_created: 0,
-        pages_created: 0,
-        errors: [],
-      })
-      .select()
-      .single();
-    
-    if (jobError) {
-      console.error("Failed to create import job:", jobError);
-    }
-    
-    const jobId = importJob?.id;
-    console.log(`Created import job ${jobId} for ${totalFiles} files`);
-    
+    const totalTopics = countTopics(topicTree);
+    console.log(
+      `Processing batch ${batchStart}-${batchStart + filesToProcess.length - 1} (${filesToProcess.length} files)`
+    );
+    console.log(`Found ${totalTopics} topics and ${rootFiles.length} root files in batch`);
+
     // Create token manager for automatic refresh during long imports (use owner's ID for refresh)
-    const tokenManager = await createTokenManager(supabase, googleToken, org.owner_id);
-    
-    // Start background processing
-    const backgroundTask = async () => {
-      try {
-        await processImportWithProgress(
-          supabase,
-          project,
-          tokenManager,
-          topicTree,
-          rootFiles,
+    const tokenManager = await createTokenManager(supabase, googleToken, tokenOwnerId);
+
+    await processImportWithProgress(
+      supabase,
+      project,
+      tokenManager,
+      topicTree,
+      rootFiles,
+      projectId,
+      user.id,
+      jobId,
+      baseFolderId,
+      baseTopicId,
+      progressBase,
+      isFinalBatch
+    );
+
+    if (!isFinalBatch && jobId && !filesAreBatch) {
+      const { data: jobStatus } = await supabase
+        .from("import_jobs")
+        .select("status, processed_files, errors")
+        .eq("id", jobId)
+        .maybeSingle();
+
+      if (jobStatus?.status === "processing") {
+        const nextStart = jobStatus.processed_files ?? batchStart + filesToProcess.length;
+        const scheduleBody = {
+          files,
           projectId,
-          user.id,
+          organizationId,
+          parentTopicId,
           jobId,
-          baseFolderId,
-          baseTopicId
-        );
-      } catch (err) {
-        console.error("Import failed:", err);
-        if (jobId) {
+          batchStart: nextStart,
+          batchSize,
+        };
+        const scheduleHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+          authorization: authHeader,
+          apikey: supabaseKey,
+        };
+        if (requestGoogleToken) {
+          scheduleHeaders["x-google-token"] = requestGoogleToken;
+        }
+
+        const schedulePromise = fetch(`${supabaseUrl}/functions/v1/import-markdown`, {
+          method: "POST",
+          headers: scheduleHeaders,
+          body: JSON.stringify(scheduleBody),
+        }).catch(async (err) => {
+          console.error("Failed to schedule next import batch:", err);
           await supabase
             .from("import_jobs")
-            .update({ 
-              status: 'failed', 
-              errors: [err instanceof Error ? err.message : 'Unknown error'],
-              completed_at: new Date().toISOString()
+            .update({
+              status: "failed",
+              errors: [
+                ...(jobStatus?.errors ?? []),
+                "Failed to schedule next import batch.",
+              ],
+              completed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
             })
             .eq("id", jobId);
+        });
+
+        if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+          EdgeRuntime.waitUntil(schedulePromise);
         }
       }
-    };
-    
-    // @ts-ignore - EdgeRuntime.waitUntil is available in Deno Deploy
-    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
-      EdgeRuntime.waitUntil(backgroundTask());
-    } else {
-      backgroundTask().catch(err => console.error("Background import failed:", err));
     }
-    
+
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         jobId,
-        message: `Import started for ${totalFiles} files.`,
+        message: `Import batch processed (${filesToProcess.length} files).`,
         estimatedTopics: totalTopics,
-        estimatedPages: totalFiles
+        estimatedPages: totalFiles,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -822,45 +1052,99 @@ async function createTopicsRecursively(
 ): Promise<void> {
   for (const [name, childNode] of node.children) {
     try {
-      await delay(100); // Increased delay for rate limiting
+      if (DRIVE_API_DELAY_MS > 0) {
+        await delay(DRIVE_API_DELAY_MS);
+      }
       await updateProgress(`Creating topic: ${name}`);
       
-      // Create folder in Google Drive with retry logic
-      const folderResult = await createGoogleFolder(tokenManager, name, parentFolderId);
+      // Reuse existing topic/folder when possible
+      let topic = null as { id: string; drive_folder_id: string | null } | null;
+      let createdTopic = false;
 
-      if (!folderResult.success) {
-        console.error(`Failed to create folder for topic ${name}:`, folderResult.error);
-        results.errors.push(`Failed to create folder: ${name}`);
-        continue;
-      }
-
-      // Create topic in database with parent reference
-      const { data: topic, error: topicError } = await supabase
+      const { data: existingTopic, error: existingError } = await supabase
         .from("topics")
-        .insert({
-          name: name,
-          slug: generateSlug(name),
-          project_id: projectId,
-          drive_folder_id: folderResult.id,
-          parent_id: parentTopicId,
-          display_order: displayOrder++,
-        })
-        .select()
-        .single();
+        .select("id, drive_folder_id")
+        .eq("project_id", projectId)
+        .eq("name", name)
+        .eq("parent_id", parentTopicId)
+        .maybeSingle();
 
-      if (topicError) {
-        console.error(`Failed to create topic ${name}:`, topicError);
-        results.errors.push(`Failed to create topic: ${name}`);
+      if (existingError) {
+        console.error(`Failed to check existing topic ${name}:`, existingError);
+        results.errors.push(`Failed to check topic: ${name}`);
         continue;
       }
 
-      results.topicsCreated++;
-      console.log(`Created topic: ${name} (parent: ${parentTopicId || 'root'})`);
+      if (existingTopic?.id) {
+        topic = existingTopic;
+      } else {
+        // Create folder in Google Drive with retry logic
+        const folderResult = await createGoogleFolder(tokenManager, name, parentFolderId);
+
+        if (!folderResult.success) {
+          console.error(`Failed to create folder for topic ${name}:`, folderResult.error);
+          results.errors.push(`Failed to create folder: ${name}`);
+          continue;
+        }
+
+        // Create topic in database with parent reference
+        const { data: created, error: topicError } = await supabase
+          .from("topics")
+          .insert({
+            name: name,
+            slug: generateSlug(name),
+            project_id: projectId,
+            drive_folder_id: folderResult.id,
+            parent_id: parentTopicId,
+            display_order: displayOrder++,
+          })
+          .select()
+          .single();
+
+        if (topicError || !created) {
+          console.error(`Failed to create topic ${name}:`, topicError);
+          results.errors.push(`Failed to create topic: ${name}`);
+          continue;
+        }
+
+        topic = created;
+        createdTopic = true;
+        results.topicsCreated++;
+        console.log(`Created topic: ${name} (parent: ${parentTopicId || 'root'})`);
+      }
+
+      if (!topic?.drive_folder_id) {
+        // Recover missing folder id if topic exists without Drive folder
+        const folderResult = await createGoogleFolder(tokenManager, name, parentFolderId);
+        if (!folderResult.success) {
+          console.error(`Failed to create folder for topic ${name}:`, folderResult.error);
+          results.errors.push(`Failed to create folder: ${name}`);
+          continue;
+        }
+
+        const { error: updateError } = await supabase
+          .from("topics")
+          .update({ drive_folder_id: folderResult.id })
+          .eq("id", topic.id);
+
+        if (updateError) {
+          console.error(`Failed to update topic folder ${name}:`, updateError);
+          results.errors.push(`Failed to update topic folder: ${name}`);
+          continue;
+        }
+
+        topic.drive_folder_id = folderResult.id;
+        if (!createdTopic) {
+          console.log(`Recovered folder for topic: ${name}`);
+        }
+      }
 
       // Create pages for this topic
-      for (const file of childNode.files) {
+      const processTopicFile = async (file: { path: string; content: string }) => {
         try {
-          await delay(100); // Increased delay for rate limiting
+          if (DRIVE_API_DELAY_MS > 0) {
+            await delay(DRIVE_API_DELAY_MS);
+          }
           
           const filename = file.path.split('/').pop() || 'Untitled';
           const title = extractTitle(file.content, filename);
@@ -873,14 +1157,14 @@ async function createTopicsRecursively(
             tokenManager,
             title,
             htmlContent,
-            folderResult.id
+            topic.drive_folder_id
           );
 
           if (!docResult.success) {
             results.errors.push(`Failed to create doc: ${title}`);
             results.processedFiles++;
             await updateProgress();
-            continue;
+            return;
           }
 
           // Use upsert to handle duplicate documents gracefully
@@ -921,7 +1205,9 @@ async function createTopicsRecursively(
           results.processedFiles++;
           await updateProgress();
         }
-      }
+      };
+
+      await runWithConcurrency(childNode.files, FILE_IMPORT_CONCURRENCY, processTopicFile);
 
       // Recursively create child topics
       await createTopicsRecursively(
@@ -929,7 +1215,7 @@ async function createTopicsRecursively(
         tokenManager,
         childNode,
         projectId,
-        folderResult.id,
+        topic.drive_folder_id,
         topic.id,
         userId,
         results,
@@ -958,57 +1244,80 @@ async function processImportWithProgress(
   userId: string,
   jobId: string | null,
   baseFolderId: string,
-  baseTopicId: string | null
+  baseTopicId: string | null,
+  progressBase: {
+    processedFiles: number;
+    topicsCreated: number;
+    pagesCreated: number;
+    errors: string[];
+  },
+  completeOnFinish: boolean
 ): Promise<void> {
   const results = {
-    topicsCreated: 0,
-    pagesCreated: 0,
-    processedFiles: 0,
-    errors: [] as string[],
+    topicsCreated: progressBase.topicsCreated,
+    pagesCreated: progressBase.pagesCreated,
+    processedFiles: progressBase.processedFiles,
+    errors: progressBase.errors,
   };
   
   // Wrap entire processing in try-catch to mark as failed on any unhandled error
   try {
 
   // Helper to update job progress and check for stop signal
+  let lastProgressAt = 0;
+  let lastStopCheckAt = 0;
   const updateProgress = async (currentFile?: string) => {
     if (!jobId) return;
+    const now = Date.now();
+    const shouldCheckStop =
+      now - lastStopCheckAt >= STOP_CHECK_INTERVAL_MS ||
+      results.processedFiles % STOP_CHECK_EVERY_FILES === 0;
+    const shouldUpdateProgress =
+      now - lastProgressAt >= PROGRESS_UPDATE_INTERVAL_MS ||
+      results.processedFiles % STOP_CHECK_EVERY_FILES === 0 ||
+      (currentFile && results.processedFiles === 0);
 
-    // Check if user stopped the import - this is critical for responsive stopping
-    try {
-      const { data: stopCheck } = await supabase
-        .from("import_jobs")
-        .select("status")
-        .eq("id", jobId)
-        .maybeSingle();
+    // Check if user stopped the import - avoid excessive polling
+    if (shouldCheckStop) {
+      lastStopCheckAt = now;
+      try {
+        const { data: stopCheck } = await supabase
+          .from("import_jobs")
+          .select("status")
+          .eq("id", jobId)
+          .maybeSingle();
 
-      if (stopCheck?.status === "stopped") {
-        console.log("Import stop detected, aborting...");
-        throw new ImportStoppedError();
+        if (stopCheck?.status === "stopped") {
+          console.log("Import stop detected, aborting...");
+          throw new ImportStoppedError();
+        }
+      } catch (err) {
+        // Re-throw stop errors
+        if (err instanceof ImportStoppedError) {
+          throw err;
+        }
+        // Continue on transient read errors
+        console.warn("Stop check failed:", err);
       }
-    } catch (err) {
-      // Re-throw stop errors
-      if (err instanceof ImportStoppedError) {
-        throw err;
-      }
-      // Continue on transient read errors
-      console.warn("Stop check failed:", err);
     }
 
-    try {
-      await supabase
-        .from("import_jobs")
-        .update({
-          processed_files: results.processedFiles,
-          topics_created: results.topicsCreated,
-          pages_created: results.pagesCreated,
-          errors: results.errors,
-          current_file: currentFile || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", jobId);
-    } catch (err) {
-      console.error("Failed to update progress:", err);
+    if (shouldUpdateProgress) {
+      lastProgressAt = now;
+      try {
+        await supabase
+          .from("import_jobs")
+          .update({
+            processed_files: results.processedFiles,
+            topics_created: results.topicsCreated,
+            pages_created: results.pagesCreated,
+            errors: results.errors,
+            current_file: currentFile || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", jobId);
+      } catch (err) {
+        console.error("Failed to update progress:", err);
+      }
     }
   };
 
@@ -1026,9 +1335,11 @@ async function processImportWithProgress(
   );
 
   // Create root-level pages
-  for (const file of rootFiles) {
+  const processRootFile = async (file: { path: string; content: string }) => {
     try {
-      await delay(100); // Increased delay for rate limiting
+      if (DRIVE_API_DELAY_MS > 0) {
+        await delay(DRIVE_API_DELAY_MS);
+      }
       
       const filename = file.path.split('/').pop() || 'Untitled';
       const title = extractTitle(file.content, filename);
@@ -1048,7 +1359,7 @@ async function processImportWithProgress(
         results.errors.push(`Failed to create doc: ${title}`);
         results.processedFiles++;
         await updateProgress();
-        continue;
+        return;
       }
 
       // Use upsert to handle duplicate documents gracefully
@@ -1098,10 +1409,12 @@ async function processImportWithProgress(
         }
       }
     }
-  }
+  };
 
-    // Mark job as complete (unless user stopped it)
-    if (jobId) {
+  await runWithConcurrency(rootFiles, FILE_IMPORT_CONCURRENCY, processRootFile);
+
+    // Mark job as complete only when this is the final batch
+    if (jobId && completeOnFinish) {
       const { data: finalStatus } = await supabase
         .from("import_jobs")
         .select("status")

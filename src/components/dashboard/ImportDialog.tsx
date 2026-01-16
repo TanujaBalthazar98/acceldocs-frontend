@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { ImportProgressIndicator } from "./ImportProgressIndicator";
 import { Progress } from "@/components/ui/progress";
+import { splitImportBatches } from "@/lib/importBatching";
 
 interface ImportDialogProps {
   open: boolean;
@@ -228,18 +229,27 @@ export const ImportDialog = ({
           }))
         : filesToImport;
 
-      // Call the edge function to start background import
-      const { data, error } = await supabase.functions.invoke('import-markdown', {
-        body: {
-          files: filesWithContext,
-          projectId,
-          organizationId,
-          parentTopicId: importParentTopicId,
-        },
-        headers: {
-          'x-google-token': googleAccessToken,
-        },
-      });
+      const { batches, offsets } = splitImportBatches(filesWithContext);
+      const totalFiles = filesWithContext.length;
+
+      const invokeBatch = (batchFiles: typeof filesWithContext, batchStart: number, jobId?: string | null) =>
+        supabase.functions.invoke("import-markdown", {
+          body: {
+            files: batchFiles,
+            projectId,
+            organizationId,
+            parentTopicId: importParentTopicId,
+            jobId,
+            batchStart,
+            totalFiles,
+            filesAreBatch: true,
+          },
+          headers: {
+            "x-google-token": googleAccessToken,
+          },
+        });
+
+      const { data, error } = await invokeBatch(batches[0], offsets[0], null);
 
       if (error) {
         throw new Error(error.message || 'Failed to start import');
@@ -248,7 +258,7 @@ export const ImportDialog = ({
       if (data?.needsReauth) {
         toast({
           title: "Google reconnection required",
-          description: "Please reconnect your Google account to continue.",
+          description: data?.error || "Please reconnect your Google account to continue.",
           variant: "destructive",
         });
         setIsImporting(false);
@@ -263,6 +273,34 @@ export const ImportDialog = ({
           title: "Import started",
           description: `Importing ${selectedFiles.length} files. Progress shown below.`,
         });
+
+        if (batches.length > 1) {
+          void (async () => {
+            try {
+              for (let i = 1; i < batches.length; i += 1) {
+                const batchResponse = await invokeBatch(batches[i], offsets[i], data.jobId);
+                if (batchResponse.error) {
+                  throw new Error(batchResponse.error.message || "Failed to continue import");
+                }
+                if (batchResponse.data?.needsReauth) {
+                  toast({
+                    title: "Google reconnection required",
+                    description: batchResponse.data?.error || "Please reconnect your Google account to continue.",
+                    variant: "destructive",
+                  });
+                  break;
+                }
+              }
+            } catch (batchError) {
+              console.error("Import batch error:", batchError);
+              toast({
+                title: "Import failed",
+                description: batchError instanceof Error ? batchError.message : "An error occurred during import.",
+                variant: "destructive",
+              });
+            }
+          })();
+        }
       } else {
         // No job ID means immediate completion or error
         toast({
@@ -301,10 +339,19 @@ export const ImportDialog = ({
     Array.from(folderStructure.keys()).some(path => path.includes('/'));
 
   return (
-    <Dialog open={open} onOpenChange={(open) => {
-      if (!open && !isImporting) resetState();
-      if (!isImporting) onOpenChange(open);
-    }}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          if (importJobId || !isImporting) {
+            resetState();
+            onOpenChange(false);
+          }
+          return;
+        }
+        onOpenChange(true);
+      }}
+    >
       <DialogContent className="sm:max-w-lg bg-card border-border">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-foreground">
@@ -385,13 +432,13 @@ export const ImportDialog = ({
 
               {/* Selected files preview */}
               {selectedFiles.length > 0 && (
-                <div className="border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-medium text-foreground">
+                <div className="border border-border rounded-lg p-3 max-h-48 w-full overflow-y-auto overflow-x-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
+                    <p className="text-sm font-medium text-foreground min-w-0">
                       {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
                     </p>
                     {hasSubfolders && (
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded max-w-full">
                         <FolderTree className="w-3 h-3" />
                         Nested folders detected
                       </span>
@@ -399,9 +446,9 @@ export const ImportDialog = ({
                   </div>
                   <div className="space-y-1">
                     {selectedFiles.slice(0, 10).map((file, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
                         <FileText className="w-3 h-3 flex-shrink-0" />
-                        <span className="truncate">{file.path}</span>
+                        <span className="truncate min-w-0 flex-1">{file.path}</span>
                       </div>
                     ))}
                     {selectedFiles.length > 10 && (

@@ -8,6 +8,7 @@ import {
   getRoleDefinition,
   ROLE_DEFINITIONS,
 } from '@/lib/rbac';
+import { ensureFreshSession } from '@/lib/authSession';
 
 // Re-export types from centralized RBAC module
 export type { ProjectRole, ProjectPermissions } from '@/lib/rbac';
@@ -60,6 +61,8 @@ export function usePermissions(projectId: string | null) {
       return;
     }
 
+    // Proactively refresh session to ensure auth context is fresh (rate-limited)
+    await ensureFreshSession();
     setLoading(true);
     
     try {

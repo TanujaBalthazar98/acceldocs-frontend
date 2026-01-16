@@ -1,6 +1,12 @@
 import JSZip from 'jszip';
 import yaml from 'js-yaml';
 
+const normalizePath = (path: string): string =>
+  path
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\/+/g, '/');
+
 export interface ImportedFile {
   path: string;
   content: string;
@@ -100,19 +106,41 @@ export async function parseZipFile(file: File): Promise<ParsedImport> {
   try {
     const zip = await JSZip.loadAsync(file);
     const entries = Object.entries(zip.files);
+    const fileEntries = entries.filter(([, zipEntry]) => !zipEntry.dir);
+    const entryPaths = fileEntries.map(([path]) => path);
+    let commonRoot = '';
+
+    if (entryPaths.length > 0) {
+      const firstParts = entryPaths[0].split('/');
+      if (firstParts.length > 1) {
+        const potentialRoot = firstParts[0];
+        const allShareRoot = entryPaths.every((p) => p.startsWith(potentialRoot + '/'));
+        if (allShareRoot) {
+          commonRoot = potentialRoot;
+        }
+      }
+    }
+
+    const stripCommonRoot = (path: string): string => {
+      if (commonRoot && path.startsWith(commonRoot + '/')) {
+        return path.slice(commonRoot.length + 1);
+      }
+      return path;
+    };
     
     // First pass: find and parse config files
     for (const [path, zipEntry] of entries) {
       if (zipEntry.dir) continue;
       
-      const fileName = path.split('/').pop()?.toLowerCase() || '';
-      const folderPath = path.split('/').slice(0, -1).join('/');
+      const configPath = stripCommonRoot(path);
+      const fileName = configPath.split('/').pop()?.toLowerCase() || '';
+      const folderPath = configPath.split('/').slice(0, -1).join('/');
       
       if (fileName === '_meta.json' || fileName === 'meta.json') {
         const content = await zipEntry.async('string');
         const config = parseMetaJson(content);
         if (config) {
-          if (folderPath === '' || path.split('/').length === 2) {
+          if (!folderPath || configPath.split('/').length <= 1) {
             result.rootConfig = config;
           } else {
             result.folderConfigs.set(folderPath, config);
@@ -160,7 +188,9 @@ export async function parseZipFile(file: File): Promise<ParsedImport> {
     for (const [path, zipEntry] of entries) {
       if (zipEntry.dir) continue;
       
-      const fileName = path.split('/').pop() || '';
+      const normalizedPath = normalizePath(path);
+      const configPath = stripCommonRoot(normalizedPath);
+      const fileName = normalizedPath.split('/').pop() || '';
       const ext = fileName.split('.').pop()?.toLowerCase();
       
       // Skip config files and non-markdown files
@@ -170,15 +200,8 @@ export async function parseZipFile(file: File): Promise<ParsedImport> {
       try {
         const content = await zipEntry.async('string');
         
-        // Normalize path (remove leading folder if all files are in one root folder)
-        let normalizedPath = path;
-        const firstFolder = path.split('/')[0];
-        if (entries.every(([p]) => p.startsWith(firstFolder + '/') || p === firstFolder)) {
-          normalizedPath = path.replace(firstFolder + '/', '');
-        }
-        
         // Calculate order from config
-        const folderPath = normalizedPath.split('/').slice(0, -1).join('/');
+        const folderPath = configPath.split('/').slice(0, -1).join('/');
         const baseName = fileName.replace(/\.(md|mdx|markdown)$/i, '');
         
         let order: number | undefined;
@@ -201,8 +224,8 @@ export async function parseZipFile(file: File): Promise<ParsedImport> {
           const idx = result.rootConfig.order.findIndex(o => 
             o === baseName || 
             o === fileName || 
-            o === normalizedPath ||
-            o === normalizedPath.replace(/\.(md|mdx|markdown)$/i, '')
+            o === configPath ||
+            o === configPath.replace(/\.(md|mdx|markdown)$/i, '')
           );
           if (idx >= 0) order = idx;
         }
@@ -217,7 +240,8 @@ export async function parseZipFile(file: File): Promise<ParsedImport> {
           title,
         });
       } catch (e) {
-        result.errors.push(`Failed to read ${path}`);
+        const message = e instanceof Error ? e.message : 'Unknown error';
+        result.errors.push(`Failed to read ${path}: ${message}`);
       }
     }
     
@@ -232,7 +256,8 @@ export async function parseZipFile(file: File): Promise<ParsedImport> {
     });
     
   } catch (e) {
-    result.errors.push(`Failed to read ZIP file: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    const message = e instanceof Error ? e.message : 'Unknown error';
+    result.errors.push(`Failed to read ZIP file: ${message}`);
   }
   
   return result;
@@ -249,7 +274,7 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
   
   const fileArray = Array.from(files);
   
-  // Determine root folder to strip (common prefix)
+  // Determine root folder for config lookups (common prefix)
   const firstPath = fileArray[0]?.webkitRelativePath || fileArray[0]?.name || '';
   const rootFolder = firstPath.split('/')[0];
   const allInSameRoot = fileArray.every(f => {
@@ -257,8 +282,7 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
     return p.startsWith(rootFolder + '/') || p === rootFolder;
   });
   
-  // Helper to normalize paths consistently
-  const normalizePath = (path: string): string => {
+  const normalizeConfigPath = (path: string): string => {
     if (allInSameRoot && path.startsWith(rootFolder + '/')) {
       return path.slice(rootFolder.length + 1);
     }
@@ -268,16 +292,16 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
   // First pass: find and parse config files with NORMALIZED paths
   for (const file of fileArray) {
     const rawPath = file.webkitRelativePath || file.name;
-    const normalizedPath = normalizePath(rawPath);
-    const fileName = normalizedPath.split('/').pop()?.toLowerCase() || '';
-    const folderPath = normalizedPath.split('/').slice(0, -1).join('/');
+    const configPath = normalizeConfigPath(rawPath);
+    const fileName = configPath.split('/').pop()?.toLowerCase() || '';
+    const folderPath = configPath.split('/').slice(0, -1).join('/');
     
     if (fileName === '_meta.json' || fileName === 'meta.json') {
       const content = await file.text();
       const config = parseMetaJson(content);
       if (config) {
         // Root level if no folder path after normalization
-        if (!folderPath || normalizedPath.split('/').length <= 1) {
+        if (!folderPath || configPath.split('/').length <= 1) {
           result.rootConfig = config;
         } else {
           result.folderConfigs.set(folderPath, config);
@@ -305,9 +329,9 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
     try {
       const content = await file.text();
       
-      // Normalize path using the same logic as config parsing
-      const normalizedPath = normalizePath(rawPath);
-      const folderPath = normalizedPath.split('/').slice(0, -1).join('/');
+      const importPath = rawPath.replace(/\\/g, '/');
+      const configPath = normalizeConfigPath(rawPath);
+      const folderPath = configPath.split('/').slice(0, -1).join('/');
       const baseName = fileName.replace(/\.(md|mdx|markdown)$/i, '');
       
       let order: number | undefined;
@@ -326,7 +350,7 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
       // Check root config if no folder config
       if (order === undefined && result.rootConfig?.order) {
         const idx = result.rootConfig.order.findIndex(o => 
-          o === baseName || o === fileName || o === normalizedPath
+          o === baseName || o === fileName || o === configPath
         );
         if (idx >= 0) order = idx;
       }
@@ -335,13 +359,14 @@ export async function parseFolderFiles(files: FileList): Promise<ParsedImport> {
       }
       
       result.files.push({
-        path: normalizedPath,
+        path: importPath,
         content,
         order,
         title,
       });
     } catch (e) {
-      result.errors.push(`Failed to read ${rawPath}`);
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      result.errors.push(`Failed to read ${rawPath}: ${message}`);
     }
   }
   

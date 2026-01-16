@@ -1,4 +1,4 @@
-project_id = "hojldwekecmdfasbiyyg"
+project_id = "spcuuubwonpmhfcumhpz"
 
 [functions.check-permission]
 verify_jwt = false

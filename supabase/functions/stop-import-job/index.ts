@@ -1,5 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Declare EdgeRuntime for background tasks (available in Supabase Edge Functions)
+declare const EdgeRuntime: { waitUntil: (promise: Promise<any>) => void } | undefined;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -18,6 +21,129 @@ function jsonResponse(body: unknown, status = 200) {
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getOwnerDriveAccessToken(supabase: any, projectId: string) {
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("organization_id")
+    .eq("id", projectId)
+    .single();
+
+  if (projectError || !project?.organization_id) {
+    console.error("Failed to load project organization:", projectError);
+    return { token: null, reason: "project_lookup_failed" };
+  }
+
+  const { data: org, error: orgError } = await supabase
+    .from("organizations")
+    .select("owner_id")
+    .eq("id", project.organization_id)
+    .single();
+
+  if (orgError || !org?.owner_id) {
+    console.error("Failed to load organization owner:", orgError);
+    return { token: null, reason: "org_lookup_failed" };
+  }
+
+  const { data: ownerProfile, error: ownerError } = await supabase
+    .from("profiles")
+    .select("google_refresh_token")
+    .eq("id", org.owner_id)
+    .single();
+
+  if (ownerError || !ownerProfile?.google_refresh_token) {
+    console.warn("Owner refresh token missing, skipping Drive cleanup.");
+    return { token: null, reason: "missing_refresh_token" };
+  }
+
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  if (!clientId || !clientSecret) {
+    console.warn("Google OAuth not configured, skipping Drive cleanup.");
+    return { token: null, reason: "missing_oauth_config" };
+  }
+
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: ownerProfile.google_refresh_token,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!tokenResponse.ok) {
+    const errorText = await tokenResponse.text();
+    console.error("Failed to refresh owner token:", errorText);
+    return { token: null, reason: "refresh_failed" };
+  }
+
+  const tokenData = await tokenResponse.json();
+  return { token: tokenData.access_token as string, reason: null };
+}
+
+async function deleteDriveFile(accessToken: string, fileId: string): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (response.status === 404) {
+      return true;
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Failed to delete Drive file ${fileId}:`, errorText);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`Error deleting Drive file ${fileId}:`, error);
+    return false;
+  }
+}
+
+async function cleanupDriveArtifacts(
+  accessToken: string | null,
+  docIds: string[],
+  folderIds: string[]
+) {
+  if (!accessToken) {
+    return { deletedDocs: 0, deletedFolders: 0, skipped: true };
+  }
+
+  const concurrency = 5;
+  let deletedDocs = 0;
+  let deletedFolders = 0;
+
+  const deleteInBatches = async (ids: string[]) => {
+    let deleted = 0;
+    for (let i = 0; i < ids.length; i += concurrency) {
+      const batch = ids.slice(i, i + concurrency);
+      const results = await Promise.all(batch.map((id) => deleteDriveFile(accessToken, id)));
+      deleted += results.filter(Boolean).length;
+    }
+    return deleted;
+  };
+
+  if (docIds.length) {
+    deletedDocs = await deleteInBatches(docIds);
+  }
+
+  if (folderIds.length) {
+    deletedFolders = await deleteInBatches(folderIds);
+  }
+
+  return { deletedDocs, deletedFolders, skipped: false };
 }
 
 Deno.serve(async (req) => {
@@ -123,7 +249,7 @@ Deno.serve(async (req) => {
 
     const { data: docsToDelete, error: docsFetchError } = await supabase
       .from("documents")
-      .select("id")
+      .select("id, google_doc_id")
       .eq("project_id", job.project_id)
       .gte("created_at", jobStartTime);
 
@@ -147,12 +273,27 @@ Deno.serve(async (req) => {
 
     const { data: topicsToDelete, error: topicsFetchError } = await supabase
       .from("topics")
-      .select("id")
+      .select("id, drive_folder_id")
       .eq("project_id", job.project_id)
       .gte("created_at", jobStartTime);
 
     if (topicsFetchError) {
       console.error("Failed to fetch topics for cleanup:", topicsFetchError);
+    }
+
+    const docIds = (docsToDelete ?? [])
+      .map((doc: any) => doc.google_doc_id)
+      .filter((id: string | null) => !!id) as string[];
+    const folderIds = (topicsToDelete ?? [])
+      .map((topic: any) => topic.drive_folder_id)
+      .filter((id: string | null) => !!id) as string[];
+
+    const { token: driveToken } = await getOwnerDriveAccessToken(supabase, job.project_id);
+    const driveCleanupPromise = cleanupDriveArtifacts(driveToken, docIds, folderIds);
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+      EdgeRuntime.waitUntil(driveCleanupPromise);
+    } else {
+      await driveCleanupPromise;
     }
 
     if (topicsToDelete?.length) {
@@ -173,6 +314,7 @@ Deno.serve(async (req) => {
       success: true,
       deletedPages: docsToDelete?.length ?? 0,
       deletedTopics: topicsToDelete?.length ?? 0,
+      driveCleanupScheduled: true,
     });
   } catch (err) {
     console.error("stop-import-job error:", err);

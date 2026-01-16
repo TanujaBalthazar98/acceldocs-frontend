@@ -24,6 +24,28 @@ const Auth = () => {
     }
   }, [user, navigate, from]);
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const hashParams = new URLSearchParams(location.hash.replace(/^#/, ""));
+
+    const error = searchParams.get("error") || hashParams.get("error");
+    const errorCode = searchParams.get("error_code") || hashParams.get("error_code");
+    const errorDescription =
+      searchParams.get("error_description") || hashParams.get("error_description");
+
+    if (error || errorDescription || errorCode) {
+      const baseMessage = errorDescription || errorCode || error || "Authentication failed.";
+      const hint = baseMessage.includes("Unable to exchange external code")
+        ? "Check Supabase Google provider credentials and callback URI."
+        : null;
+      setAuthError(hint ? `${baseMessage} ${hint}` : baseMessage);
+
+      if (location.search || location.hash) {
+        navigate("/auth", { replace: true });
+      }
+    }
+  }, [location.search, location.hash, navigate]);
+
   const isEmbedded = (() => {
     try {
       return window.self !== window.top;
