@@ -216,7 +216,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
 
     if (isEmbedded() && isPreviewHost) {
-      return "https://acceldocs.lovable.app";
+      return "https://docspeare.lovable.app";
     }
 
     return base;
@@ -250,7 +250,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Allow a fresh attempt to store refresh tokens after consent flows
     hasAttemptedStoreTokenRef.current = false;
 
-    // Restrict account chooser to acceldata.io and force account selection.
     // Use skipBrowserRedirect so we can control navigation (new tab in preview iframe).
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -258,7 +257,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         redirectTo: redirectUrl,
         skipBrowserRedirect: true,
         queryParams: {
-          hd: "acceldata.io",
           prompt: "select_account",
         },
       },
@@ -292,7 +290,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         queryParams: {
           access_type: "offline",
           prompt: "consent select_account",
-          hd: "acceldata.io",
         },
       },
     });

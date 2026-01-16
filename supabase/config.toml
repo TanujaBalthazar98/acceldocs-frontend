@@ -9,7 +9,7 @@ verify_jwt = false
 [functions.docs-ai-chat]
 verify_jwt = false
 
-[functions.ensure-acceldata-workspace]
+[functions.ensure-workspace]
 verify_jwt = false
 
 [functions.extract-website-styles]

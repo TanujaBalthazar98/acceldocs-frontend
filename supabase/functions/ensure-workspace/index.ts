@@ -43,20 +43,22 @@ Deno.serve(async (req) => {
     }
 
     const body = (await req.json()) as EnsureWorkspaceRequest;
-    const domain = (body.domain || "").toLowerCase().trim();
+    const requestedDomain = (body.domain || "").toLowerCase().trim();
     const name = (body.name || "").trim();
     const driveFolderId = body.driveFolderId?.trim();
 
-    // Hard-scope this helper to the single-tenant Acceldata setup.
-    if (domain !== "acceldata.io") {
-      return new Response(JSON.stringify({ ok: false, error: "Unsupported domain" }), {
-        status: 403,
+    const email = (user.email || "").toLowerCase();
+    const emailDomain = email.split("@")[1]?.trim();
+    const domain = requestedDomain || emailDomain;
+
+    if (!domain) {
+      return new Response(JSON.stringify({ ok: false, error: "Missing organization domain" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const email = (user.email || "").toLowerCase();
-    if (!email.endsWith(`@${domain}`)) {
+    if (emailDomain && emailDomain !== domain) {
       return new Response(JSON.stringify({ ok: false, error: "Email domain not allowed" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -74,7 +76,7 @@ Deno.serve(async (req) => {
     // 1) Try fetch existing org.
     const { data: existingOrg, error: existingErr } = await getOrgByDomain();
     if (existingErr) {
-      console.error("ensure-acceldata-workspace: org lookup error", existingErr);
+      console.error("ensure-workspace: org lookup error", existingErr);
     }
 
     let organizationId = existingOrg?.id as string | undefined;
@@ -86,7 +88,7 @@ Deno.serve(async (req) => {
         .from("organizations")
         .insert({
           domain,
-          name: name || "Acceldata",
+          name: name || domain,
           owner_id: user.id,
         })
         .select("id")
@@ -124,7 +126,7 @@ Deno.serve(async (req) => {
           .from("organizations")
           .update({ drive_folder_id: driveFolderId })
           .eq("id", organizationId);
-        if (updateErr) console.error("ensure-acceldata-workspace: drive folder update error", updateErr);
+        if (updateErr) console.error("ensure-workspace: drive folder update error", updateErr);
       }
     }
 
@@ -142,7 +144,7 @@ Deno.serve(async (req) => {
           },
           { onConflict: "id" }
         );
-      if (profileError) console.error("ensure-acceldata-workspace: profile upsert error", profileError);
+      if (profileError) console.error("ensure-workspace: profile upsert error", profileError);
 
       const { error: roleError } = await supabase
         .from("user_roles")
@@ -154,7 +156,7 @@ Deno.serve(async (req) => {
           },
           { onConflict: "user_id,organization_id" }
         );
-      if (roleError) console.error("ensure-acceldata-workspace: role upsert error", roleError);
+      if (roleError) console.error("ensure-workspace: role upsert error", roleError);
     }
 
     return new Response(
@@ -163,7 +165,7 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("ensure-acceldata-workspace error:", message);
+    console.error("ensure-workspace error:", message);
     return new Response(JSON.stringify({ ok: false, error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

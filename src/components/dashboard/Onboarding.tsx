@@ -11,10 +11,23 @@ interface OnboardingProps {
   organizationId: string | null;
 }
 
-const ACCELDATA_DOMAIN = "acceldata.io";
-const ACCELDATA_WORKSPACE_NAME = "Acceldata";
-
 type OnboardingMode = "first_user" | "join_existing" | "pending_request";
+
+const APP_NAME = "Docspeare";
+
+const getEmailDomain = (email?: string | null) => {
+  return email?.split("@")[1]?.toLowerCase().trim() || null;
+};
+
+const formatWorkspaceName = (domain?: string | null) => {
+  if (!domain) return "Workspace";
+  const base = domain.split(".")[0] || domain;
+  return base
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
 
 export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const { user, session, requestDriveAccess } = useAuth();
@@ -27,6 +40,9 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const [onboardingMode, setOnboardingMode] = useState<OnboardingMode | null>(null);
   const [isCheckingOrg, setIsCheckingOrg] = useState(true);
   const [existingOrgId, setExistingOrgId] = useState<string | null>(null);
+  const [existingOrgName, setExistingOrgName] = useState<string | null>(null);
+  const workspaceDomain = getEmailDomain(user?.email);
+  const workspaceName = existingOrgName?.trim() || formatWorkspaceName(workspaceDomain);
 
   // Check if Drive is already connected
   useEffect(() => {
@@ -35,12 +51,19 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     }
   }, [session]);
 
-  // Determine onboarding mode based on whether Acceldata org exists
+  // Determine onboarding mode based on whether the user's org exists
   useEffect(() => {
-    const checkAcceldataOrg = async () => {
+    const checkOrganization = async () => {
       if (!user) return;
 
       try {
+        if (!workspaceDomain) {
+          console.error("Missing email domain for onboarding");
+          setOnboardingMode("first_user");
+          setIsCheckingOrg(false);
+          return;
+        }
+
         // First check if user already has an org role (they're already a member)
         const { data: existingRole } = await supabase
           .from("user_roles")
@@ -71,12 +94,12 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           return;
         }
 
-        // Try to check if Acceldata org exists using RLS-visible query
+        // Try to check if org exists using RLS-visible query
         // This query works because of "Users can view organizations by domain" policy
         const { data: existingOrg, error } = await supabase
           .from("organizations")
-          .select("id, drive_folder_id")
-          .eq("domain", ACCELDATA_DOMAIN)
+          .select("id, name, drive_folder_id")
+          .eq("domain", workspaceDomain)
           .maybeSingle();
 
         if (error && error.code !== "PGRST116") {
@@ -85,6 +108,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
         if (existingOrg) {
           setExistingOrgId(existingOrg.id);
+          setExistingOrgName(existingOrg.name ?? null);
           setOnboardingMode("join_existing");
         } else {
           // No org found via RLS - this user will be the first/owner
@@ -99,8 +123,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       }
     };
 
-    checkAcceldataOrg();
-  }, [user, onComplete]);
+    checkOrganization();
+  }, [user, onComplete, workspaceDomain]);
 
   const handleBack = () => {
     if (step > 1) {
@@ -135,12 +159,16 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
     setIsCreating(true);
     try {
-      // Create (or fetch) the Acceldata workspace in an idempotent way.
+      if (!workspaceDomain) {
+        throw new Error("Missing email domain for workspace creation.");
+      }
+
+      // Create (or fetch) the workspace in an idempotent way.
       // This avoids "duplicate key" errors if the org already exists but isn't RLS-visible here.
-      const { data, error } = await supabase.functions.invoke("ensure-acceldata-workspace", {
+      const { data, error } = await supabase.functions.invoke("ensure-workspace", {
         body: {
-          domain: ACCELDATA_DOMAIN,
-          name: ACCELDATA_WORKSPACE_NAME,
+          domain: workspaceDomain,
+          name: workspaceName,
         },
       });
 
@@ -154,20 +182,20 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         setOnboardingMode("join_existing");
         toast({
           title: "Workspace already exists",
-          description: "Request access to join the existing Acceldata workspace.",
+          description: "Request access to join the existing workspace.",
         });
         return;
       }
 
       // Create Drive folder if connected, then store folder id (without overwriting if already set).
       if (driveConnected) {
-        const folderName = `Acceldocs - ${ACCELDATA_WORKSPACE_NAME}`;
+        const folderName = `${APP_NAME} - ${workspaceName}`;
         const folder = await createFolder(folderName, "root");
 
         if (folder?.id) {
-          await supabase.functions.invoke("ensure-acceldata-workspace", {
+          await supabase.functions.invoke("ensure-workspace", {
             body: {
-              domain: ACCELDATA_DOMAIN,
+              domain: workspaceDomain,
               driveFolderId: folder.id,
             },
           });
@@ -176,7 +204,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
       toast({
         title: "Workspace created!",
-        description: "You've created the Acceldata workspace and are now the owner.",
+        description: "You've created the workspace and are now the owner.",
       });
 
       onComplete();
@@ -245,14 +273,14 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="w-full max-w-md text-center">
-          <h1 className="text-3xl font-bold mb-8 text-foreground">Acceldocs</h1>
+          <h1 className="text-3xl font-bold mb-8 text-foreground">{APP_NAME}</h1>
           <div className="glass rounded-2xl p-8">
             <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-6">
               <Clock className="w-8 h-8 text-amber-500" />
             </div>
             <h2 className="text-2xl font-bold mb-3">Access Request Pending</h2>
             <p className="text-muted-foreground mb-6">
-              Your request to join the Acceldata workspace has been submitted. A workspace admin will review your request shortly.
+              Your request to join the {workspaceName} workspace has been submitted. A workspace admin will review your request shortly.
             </p>
             <div className="p-4 rounded-lg bg-secondary/50 mb-6">
               <p className="text-sm text-muted-foreground">
@@ -273,19 +301,19 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="w-full max-w-md text-center">
-          <h1 className="text-3xl font-bold mb-8 text-foreground">Acceldocs</h1>
+          <h1 className="text-3xl font-bold mb-8 text-foreground">{APP_NAME}</h1>
           <div className="glass rounded-2xl p-8">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
               <UserPlus className="w-8 h-8 text-primary" />
             </div>
             <h2 className="text-2xl font-bold mb-3">Request Workspace Access</h2>
             <p className="text-muted-foreground mb-6">
-              The Acceldata workspace already exists. Request access to join your team's documentation.
+              The {workspaceName} workspace already exists. Request access to join your team's documentation.
             </p>
             <div className="p-4 rounded-lg bg-secondary/50 mb-6">
-              <span className="font-semibold text-lg">{ACCELDATA_WORKSPACE_NAME}</span>
+              <span className="font-semibold text-lg">{workspaceName}</span>
               <p className="text-xs text-muted-foreground mt-1">
-                Internal documentation workspace
+                Documentation workspace
               </p>
             </div>
             <Button 
@@ -320,7 +348,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="w-full max-w-3xl">
-        <h1 className="text-3xl font-bold text-center mb-8 text-foreground">Acceldocs</h1>
+        <h1 className="text-3xl font-bold text-center mb-8 text-foreground">{APP_NAME}</h1>
 
         {/* Progress Steps */}
         <div className="flex items-center justify-center gap-2 mb-8">
@@ -352,9 +380,9 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <CheckCircle2 className="w-8 h-8 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold mb-3">Welcome to Acceldocs!</h2>
+              <h2 className="text-2xl font-bold mb-3">Welcome to {APP_NAME}!</h2>
               <p className="text-muted-foreground mb-6">
-                You're the first Acceldata user! Let's set up the workspace by connecting your Google Drive, which will serve as the root storage for all team documentation.
+                You're the first member of {workspaceName}! Let's set up the workspace by connecting your Google Drive, which will serve as the root storage for all team documentation.
               </p>
               <Button 
                 variant="hero" 
@@ -375,7 +403,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               </div>
               <h2 className="text-2xl font-bold mb-3">Connect Google Drive</h2>
               <p className="text-muted-foreground mb-6">
-                Your Google Drive will become the root storage for Acceldocs. All team members will access documentation through this shared drive.
+                Your Google Drive will become the root storage for {APP_NAME}. All team members will access documentation through this shared drive.
               </p>
 
               {driveConnected ? (
@@ -452,14 +480,14 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <Building2 className="w-8 h-8 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold mb-3 text-center">Create Acceldata Workspace</h2>
+              <h2 className="text-2xl font-bold mb-3 text-center">Create {workspaceName} Workspace</h2>
               <p className="text-muted-foreground mb-6 text-center">
-                You'll be the owner of this workspace. Other Acceldata team members will need your approval to join.
+                You'll be the owner of this workspace. Other team members will need your approval to join.
               </p>
 
               <div className="space-y-4">
                 <div className="p-4 rounded-lg bg-secondary/50 text-center">
-                  <span className="font-semibold text-lg">{ACCELDATA_WORKSPACE_NAME}</span>
+                  <span className="font-semibold text-lg">{workspaceName}</span>
                   <p className="text-xs text-muted-foreground mt-1">
                     Your Google Drive will be the root storage
                   </p>
@@ -507,7 +535,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Your documents stay in Google Drive. Acceldocs adds structure and governance on top.
+          Your documents stay in Google Drive. {APP_NAME} adds structure and governance on top.
         </p>
       </div>
     </div>

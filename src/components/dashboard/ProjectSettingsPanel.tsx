@@ -658,7 +658,7 @@ export const ProjectSettingsPanel = ({
         if (trashResult.alreadyDeleted) {
           toast({
             title: "Drive Folder Missing",
-            description: "Drive folder was already removed. Cleaning up the project in Acceldocs.",
+            description: "Drive folder was already removed. Cleaning up the project in Docspeare.",
           });
         }
       }
@@ -732,7 +732,7 @@ export const ProjectSettingsPanel = ({
             if (childTrashResult.alreadyDeleted) {
               toast({
                 title: "Sub-project Folder Missing",
-                description: "Drive folder was already removed. Cleaning up the sub-project in Acceldocs.",
+                description: "Drive folder was already removed. Cleaning up the sub-project in Docspeare.",
               });
             }
           }
@@ -987,7 +987,7 @@ export const ProjectSettingsPanel = ({
               <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
                 <AlertTriangle className="mt-0.5 h-3 w-3" />
                 <span>
-                  Drive folder is missing or not accessible. You can delete this project to clean it up in Acceldocs.
+                  Drive folder is missing or not accessible. You can delete this project to clean it up in Docspeare.
                 </span>
               </div>
             )}

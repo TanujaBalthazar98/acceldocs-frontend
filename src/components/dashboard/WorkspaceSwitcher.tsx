@@ -71,7 +71,7 @@ export const WorkspaceSwitcher = ({
     return null;
   }
 
-  // Single workspace display - simplified for Acceldata-only (no logo since it's in header)
+  // Single workspace display - simplified because the logo lives in the header
   if (collapsed) {
     return null; // Don't show anything when collapsed - logo is already in the header
   }

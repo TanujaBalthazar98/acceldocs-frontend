@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     // Fetch the website HTML
     const response = await fetch(formattedUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; DocLayer/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; Docspeare/1.0)",
       },
     });
 

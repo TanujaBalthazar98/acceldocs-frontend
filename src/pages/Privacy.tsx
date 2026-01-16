@@ -42,7 +42,7 @@ const Privacy = () => {
             <section>
               <h2 className="text-2xl font-semibold text-foreground mb-4">1. Introduction</h2>
               <p className="text-muted-foreground leading-relaxed">
-                Docspeare ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our documentation platform and services. This instance is currently deployed as an internal tool for Acceldata, restricted to users with @acceldata.io email addresses.
+                Docspeare ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our documentation platform and services. Access to a Docspeare workspace is managed by each organization.
               </p>
             </section>
 

@@ -96,20 +96,29 @@ export const useDriveRecovery = () => {
     lastRecoveryRef.current = now;
 
     try {
-      // Step 1: Try silent session refresh
-      const refreshed = await attemptSilentRefresh();
-      if (refreshed) {
-        const token = getGoogleToken();
-        // Try to verify the token works by making a simple call
-        const verifyResponse = await supabase.functions.invoke("google-drive", {
-          body: { action: "list_folder", folderId: "root" },
-          ...(token ? { headers: { "x-google-token": token } } : {}),
-        });
+      const hasInsufficientScope =
+        typeof errorContext === "string" &&
+        (errorContext.includes("Insufficient scopes") ||
+          errorContext.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT") ||
+          errorContext.includes("insufficientPermissions") ||
+          errorContext.includes("SCOPE_INSUFFICIENT"));
 
-        if (!verifyResponse.error && !verifyResponse.data?.needsReauth) {
-          console.log("Silent recovery successful");
-          isRecoveringRef.current = false;
-          return { recovered: true, shouldRetry: true, isOwner: isOrgOwnerRef.current ?? false };
+      // Step 1: Try silent session refresh unless we know scopes are insufficient
+      if (!hasInsufficientScope) {
+        const refreshed = await attemptSilentRefresh();
+        if (refreshed) {
+          const token = getGoogleToken();
+          // Try to verify the token works by making a simple call
+          const verifyResponse = await supabase.functions.invoke("google-drive", {
+            body: { action: "list_folder", folderId: "root" },
+            ...(token ? { headers: { "x-google-token": token } } : {}),
+          });
+
+          if (!verifyResponse.error && !verifyResponse.data?.needsReauth) {
+            console.log("Silent recovery successful");
+            isRecoveringRef.current = false;
+            return { recovered: true, shouldRetry: true, isOwner: isOrgOwnerRef.current ?? false };
+          }
         }
       }
 

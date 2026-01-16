@@ -3,9 +3,7 @@ import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Loader2 } from "lucide-react";
-import acceldataLogo from "@/assets/acceldata-logo.svg";
-
-const ALLOWED_DOMAIN = "acceldata.io";
+import docspeareLogo from "@/assets/docspeare-logo.png";
 
 const Auth = () => {
   const { user, signInWithGoogle } = useAuth();
@@ -104,21 +102,16 @@ const Auth = () => {
           <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
             {/* Logo */}
             <div className="mb-12">
-              <img src={acceldataLogo} alt="Acceldata" className="h-8" />
+              <img src={docspeareLogo} alt="Docspeare" className="h-8" />
             </div>
 
             <h1 className="text-5xl xl:text-6xl font-bold mb-4 tracking-tight">
-              Acceldocs
+              Docspeare
             </h1>
             
             <p className="text-xl text-muted-foreground mb-8 max-w-md">
-              Internal documentation platform for Acceldata teams.
+              Documentation platform for modern teams.
             </p>
-
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <div className="w-2 h-2 rounded-full bg-primary" />
-              <span>Restricted to @{ALLOWED_DOMAIN} accounts</span>
-            </div>
           </div>
         </div>
 
@@ -127,8 +120,8 @@ const Auth = () => {
           <div className="w-full max-w-sm">
             {/* Mobile Logo */}
             <div className="flex lg:hidden flex-col items-center mb-12">
-              <img src={acceldataLogo} alt="Acceldata" className="h-7 mb-4" />
-              <h1 className="text-2xl font-bold">Acceldocs</h1>
+              <img src={docspeareLogo} alt="Docspeare" className="h-7 mb-4" />
+              <h1 className="text-2xl font-bold">Docspeare</h1>
             </div>
 
             {/* Auth Card */}
@@ -136,7 +129,7 @@ const Auth = () => {
               <div className="text-center lg:text-left">
                 <h2 className="text-2xl font-semibold mb-2">Welcome</h2>
                 <p className="text-muted-foreground">
-                  Sign in with your Acceldata Google account (you may need to pick the right account)
+                  Sign in with your Google account (you may need to pick the right account)
                   {isEmbedded ? " — in preview, sign-in opens in a new tab (published site)." : ""}
                 </p>
               </div>
@@ -170,10 +163,6 @@ const Auth = () => {
                 Continue with Google
               </Button>
 
-              {/* Domain Notice */}
-              <p className="text-center text-xs text-muted-foreground">
-                Only @{ALLOWED_DOMAIN} accounts are allowed
-              </p>
             </div>
           </div>
         </div>

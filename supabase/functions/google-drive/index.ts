@@ -50,6 +50,12 @@ type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | 
 const isDriveNotFound = (errorText: string) =>
   errorText.includes("File not found") || errorText.includes("\"notFound\"");
 
+const isScopeInsufficient = (errorText: string) =>
+  errorText.includes("SCOPE_INSUFFICIENT") ||
+  errorText.includes("insufficientPermissions") ||
+  errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT") ||
+  errorText.includes("Insufficient Permission");
+
 const driveFolderAccessHint =
   "Folder not accessible. Make sure the root folder belongs to the connected Google account, then re-select it in Settings.";
 
@@ -664,6 +670,13 @@ Deno.serve(async (req) => {
           );
         }
 
+        if (isScopeInsufficient(errorText)) {
+          return new Response(
+            JSON.stringify({ error: "Insufficient scopes", needsDriveAccess: true, details: errorText }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({ 
@@ -730,6 +743,13 @@ Deno.serve(async (req) => {
               errorCode: "FOLDER_NOT_ACCESSIBLE",
               details: errorText,
             }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (isScopeInsufficient(errorText)) {
+          return new Response(
+            JSON.stringify({ error: "Insufficient scopes", needsDriveAccess: true, details: errorText }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }

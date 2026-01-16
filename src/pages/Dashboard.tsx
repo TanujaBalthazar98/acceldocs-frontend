@@ -101,7 +101,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
 import { useJoinRequestNotifications } from "@/hooks/useJoinRequestNotifications";
-import acceldataLogo from "@/assets/acceldata-logo.svg";
+import docspeareLogo from "@/assets/docspeare-logo.png";
 import { ProjectSwitcher } from "@/components/dashboard/ProjectSwitcher";
 
 const stateConfig = {
@@ -554,7 +554,7 @@ const Dashboard = () => {
       if (trashResult.alreadyDeleted) {
         toast({
           title: "Drive Folder Missing",
-          description: "Drive folder was already removed. Cleaning up the project in Acceldocs.",
+          description: "Drive folder was already removed. Cleaning up the project in Docspeare.",
         });
       }
     }
@@ -760,7 +760,7 @@ const Dashboard = () => {
       if (trashResult.alreadyDeleted) {
         toast({
           title: "Drive Folder Missing",
-          description: "Drive folder was already removed. Cleaning up the topic in Acceldocs.",
+          description: "Drive folder was already removed. Cleaning up the topic in Docspeare.",
         });
       }
     }
@@ -821,7 +821,7 @@ const Dashboard = () => {
       if (trashResult.alreadyDeleted) {
         toast({
           title: "Drive File Missing",
-          description: "Drive file was already removed. Cleaning up the page in Acceldocs.",
+          description: "Drive file was already removed. Cleaning up the page in Docspeare.",
         });
       }
     }
@@ -1473,7 +1473,7 @@ const Dashboard = () => {
             <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
               <BookOpen className="h-5 w-5 text-primary animate-pulse" />
             </div>
-            <span className="text-2xl font-semibold text-foreground">Acceldocs</span>
+            <span className="text-2xl font-semibold text-foreground">Docspeare</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -1576,7 +1576,7 @@ const Dashboard = () => {
         >
           <PanelLeft className="h-5 w-5" />
         </Button>
-        <span className="font-semibold text-sm truncate">Acceldocs</span>
+        <span className="font-semibold text-sm truncate">Docspeare</span>
         <Button
           variant="ghost"
           size="icon"
@@ -1604,11 +1604,11 @@ const Dashboard = () => {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="h-6 cursor-pointer">
-                    <img src={acceldataLogo} alt="Acceldocs" className="h-full" />
+                    <img src={docspeareLogo} alt="Docspeare" className="h-full" />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  <p className="font-semibold">Acceldocs</p>
+                  <p className="font-semibold">Docspeare</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -1631,7 +1631,7 @@ const Dashboard = () => {
             /* Expanded: Horizontal layout */
             <>
               <div className="flex items-center justify-between">
-                <span className="text-lg font-semibold text-foreground">Acceldocs</span>
+                <span className="text-lg font-semibold text-foreground">Docspeare</span>
 
                 <div className="flex items-center">
                   <Tooltip>
@@ -2668,7 +2668,7 @@ const Dashboard = () => {
                     <div className="min-w-0">
                       <p className="text-sm font-medium">Connect Google Drive</p>
                       <p className="text-xs text-muted-foreground">
-                        Allow Acceldocs to read and create folders in Drive.
+                        Allow Docspeare to read and create folders in Drive.
                       </p>
                     </div>
                   </div>

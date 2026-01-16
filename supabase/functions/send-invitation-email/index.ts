@@ -1,9 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-// Must be a verified sender on Resend, e.g. "DocLayer <no-reply@acceldata.io>"
+const APP_NAME = Deno.env.get("APP_NAME") || "Docspeare";
+// Must be a verified sender on Resend, e.g. "Docspeare <no-reply@yourdomain.com>"
 const RESEND_FROM_EMAIL =
-  Deno.env.get("RESEND_FROM_EMAIL") || "DocLayer <onboarding@resend.dev>";
+  Deno.env.get("RESEND_FROM_EMAIL") || `${APP_NAME} <onboarding@resend.dev>`;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,7 +71,7 @@ const handler = async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         from: RESEND_FROM_EMAIL,
         to: [email],
-        subject: `You're invited to join ${organizationName} on DocLayer`,
+        subject: `You're invited to join ${organizationName} on ${APP_NAME}`,
         html: `
           <!DOCTYPE html>
           <html>

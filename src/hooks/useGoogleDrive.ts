@@ -78,7 +78,7 @@ export const useGoogleDrive = () => {
     // Handle Drive-specific auth errors (needsReauth, needsDriveAccess)
     if (data?.needsReauth || data?.needsDriveAccess) {
       if (!isInCooldown()) {
-        const recovery = await attemptRecovery(errorMessage);
+        const recovery = await attemptRecovery(data?.error || errorMessage);
         if (recovery.recovered && recovery.shouldRetry) {
           // Retry once after recovery
           const retryResult = await supabase.functions.invoke("google-drive", invokeOptions);
