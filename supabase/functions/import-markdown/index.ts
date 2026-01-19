@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { marked } from "https://esm.sh/marked@13.0.0";
 
 // Declare EdgeRuntime for background tasks (available in Supabase Edge Functions)
 declare const EdgeRuntime: { waitUntil: (promise: Promise<any>) => void } | undefined;
@@ -105,73 +106,32 @@ interface TopicNode {
   children: Map<string, TopicNode>;
 }
 
-// Convert Markdown to clean semantic HTML (no inline styles - CSS handles styling)
+marked.setOptions({
+  gfm: true,
+  breaks: false,
+  mangle: false,
+  headerIds: false,
+});
+
+const markedRenderer = new marked.Renderer();
+markedRenderer.code = (code, infostring) => {
+  const lang = (infostring || "").trim();
+  const langAttr = lang ? ` data-language="${lang}"` : "";
+  return `<pre${langAttr}><code>${escapeHtml(code)}</code></pre>`;
+};
+marked.use({ renderer: markedRenderer });
+
+// Convert Markdown to clean semantic HTML using a proper GFM parser.
 function markdownToHtml(markdown: string): string {
-  let html = markdown;
-  
+  let content = markdown;
+
   // Remove frontmatter
-  html = html.replace(/^---[\s\S]*?---\n*/m, '');
-  
-  // Process callouts/admonitions before other processing
-  // Format: > [!NOTE] or > **Note:** or > ⚠️ Warning:
-  html = processCallouts(html);
-  
-  // Code blocks (must be before inline code)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    const langAttr = lang ? ` data-language="${lang}"` : '';
-    return `<pre${langAttr}><code>${escapeHtml(code.trim())}</code></pre>`;
-  });
-  
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  
-  // Headers (process from h6 to h1 to avoid conflicts)
-  html = html.replace(/^###### (.+)$/gm, '<h6>$1</h6>');
-  html = html.replace(/^##### (.+)$/gm, '<h5>$1</h5>');
-  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  
-  // Bold and italic (order matters)
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/___(.+?)___/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
-  html = html.replace(/_(.+?)_/g, '<em>$1</em>');
-  
-  // Links and images
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-  
-  // Blockquotes (multi-line support)
-  html = processBlockquotes(html);
-  
-  // Horizontal rules
-  html = html.replace(/^---$/gm, '<hr />');
-  html = html.replace(/^\*\*\*$/gm, '<hr />');
-  
-  // Process tables
-  html = processMarkdownTables(html);
-  
-  // Process lists
-  html = processLists(html);
-  
-  // Paragraphs - wrap remaining lines
-  const lines = html.split('\n');
-  html = lines.map(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return '';
-    if (trimmed.startsWith('<')) return line;
-    return `<p>${line}</p>`;
-  }).join('\n');
-  
-  // Clean up
-  html = html.replace(/<p>\s*<\/p>/g, '');
-  html = html.replace(/\n{3,}/g, '\n\n');
-  
-  return html.trim();
+  content = content.replace(/^---[\s\S]*?---\n*/m, "");
+
+  // Handle callouts before parsing markdown to preserve structure.
+  content = processCallouts(content);
+
+  return marked.parse(content).trim();
 }
 
 // Process callouts/admonitions like > [!NOTE], > [!WARNING], etc.
@@ -180,9 +140,10 @@ function processCallouts(html: string): string {
   const calloutRegex = /^> \[!(NOTE|TIP|WARNING|CAUTION|IMPORTANT|INFO|DANGER)\]\n((?:^>.*\n?)*)/gim;
   
   html = html.replace(calloutRegex, (_, type, content) => {
-    const cleanContent = content.replace(/^> ?/gm, '').trim();
+    const cleanContent = content.replace(/^> ?/gm, "").trim();
     const calloutType = type.toLowerCase();
-    return `<div class="callout callout-${calloutType}" data-callout="${calloutType}"><p>${cleanContent}</p></div>\n`;
+    const inner = marked.parse(cleanContent).trim();
+    return `<div class="callout callout-${calloutType}" data-callout="${calloutType}">${inner}</div>\n`;
   });
   
   return html;

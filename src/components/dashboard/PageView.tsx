@@ -30,8 +30,8 @@ import { SharePanel } from "./SharePanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import DOMPurify from "dompurify";
 import { ensureFreshSession } from "@/lib/authSession";
+import { normalizeHtml } from "@/lib/htmlNormalizer";
 
 type VisibilityLevel = "internal" | "external" | "public";
 const GOOGLE_TOKEN_KEY = "google_access_token";
@@ -309,10 +309,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
                   <div
                     className="google-doc-content"
                     dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize(contentHtml, {
-                        ADD_TAGS: ["style"],
-                        ADD_ATTR: ["target", "rel"],
-                      }),
+                      __html: normalizeHtml(contentHtml),
                     }}
                   />
                 ) : (
