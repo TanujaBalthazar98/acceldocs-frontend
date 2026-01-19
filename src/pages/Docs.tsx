@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ChevronRight,
@@ -42,6 +42,7 @@ import { PageFeedback } from "@/components/docs/PageFeedback";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
 import { SmartSearch } from "@/components/SmartSearch";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
+import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
 
 type VisibilityLevel = "internal" | "external" | "public";
 
@@ -141,6 +142,15 @@ function removeFirstHeadingIfMatches(html: string, title: string): string {
   return container.innerHTML;
 }
 
+function resolveDocumentHtml(html: string, title: string): string {
+  if (isLikelyMarkdown(html)) {
+    const stripped = stripFirstMarkdownHeading(html, title);
+    return normalizeHtml(renderMarkdownToHtml(stripped));
+  }
+
+  return removeFirstHeadingIfMatches(normalizeHtml(html), title);
+}
+
 export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const params = useParams<{ 
     orgSlug?: string; 
@@ -182,6 +192,10 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [documentHtml, setDocumentHtml] = useState<string | null>(null);
+  const resolvedDocumentHtml = useMemo(() => {
+    if (!documentHtml || !selectedDocument?.title) return null;
+    return resolveDocumentHtml(documentHtml, selectedDocument.title);
+  }, [documentHtml, selectedDocument?.title]);
   const [isOrgUser, setIsOrgUser] = useState(false);
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
@@ -1314,10 +1328,10 @@ const getTopicDocuments = (topicId: string) =>
                 )}
 
                 {/* Content - clean rendering */}
-                {documentHtml ? (
+                {resolvedDocumentHtml ? (
                   <div 
                     className="prose prose-sm sm:prose-base lg:prose-lg prose-neutral dark:prose-invert max-w-none docs-content overflow-x-hidden"
-                    dangerouslySetInnerHTML={{ __html: removeFirstHeadingIfMatches(normalizeHtml(documentHtml), selectedDocument.title) }}
+                    dangerouslySetInnerHTML={{ __html: resolvedDocumentHtml }}
                   />
                 ) : (
                   <div className="text-center py-10 text-muted-foreground">
@@ -1336,7 +1350,7 @@ const getTopicDocuments = (topicId: string) =>
               {/* Right sidebar - Table of Contents (hide in full width mode) */}
               {!isFullWidth && (
                 <aside className="hidden lg:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4">
-                  <TableOfContents html={documentHtml} />
+                  <TableOfContents html={resolvedDocumentHtml} />
                 </aside>
               )}
             </div>

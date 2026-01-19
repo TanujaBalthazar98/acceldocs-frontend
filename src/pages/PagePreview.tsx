@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Share2, User, Calendar, Eye, Lock, Globe, RefreshCw } from "lucide-react";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
+import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -106,7 +107,13 @@ export default function PagePreview() {
       
       // If we have cached content_html, use it immediately as fallback
       if (data.content_html) {
-        const cleanedHtml = normalizeHtml(data.content_html);
+        const cleanedHtml = isLikelyMarkdown(data.content_html)
+          ? normalizeHtml(
+              renderMarkdownToHtml(
+                stripFirstMarkdownHeading(data.content_html, data.title)
+              )
+            )
+          : normalizeHtml(data.content_html);
         setDocContent(cleanedHtml);
       }
     } catch (error) {

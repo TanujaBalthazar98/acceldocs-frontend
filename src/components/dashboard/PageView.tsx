@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { ensureFreshSession } from "@/lib/authSession";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
+import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
 
 type VisibilityLevel = "internal" | "external" | "public";
 const GOOGLE_TOKEN_KEY = "google_access_token";
@@ -309,7 +310,13 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
                   <div
                     className="google-doc-content"
                     dangerouslySetInnerHTML={{
-                      __html: normalizeHtml(contentHtml),
+                      __html: isLikelyMarkdown(contentHtml)
+                        ? normalizeHtml(
+                            renderMarkdownToHtml(
+                              stripFirstMarkdownHeading(contentHtml, document.title)
+                            )
+                          )
+                        : normalizeHtml(contentHtml),
                     }}
                   />
                 ) : (
