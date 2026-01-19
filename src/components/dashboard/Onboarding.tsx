@@ -85,6 +85,20 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       ? formatPersonalWorkspaceName(user?.email || null, user?.user_metadata?.full_name || null)
       : formatWorkspaceName(emailDomain));
 
+  const pendingRequestStorageKey = user?.id ? `pending_join_request:${user.id}` : null;
+  const getPendingRequestOrgId = () => {
+    if (!pendingRequestStorageKey || typeof sessionStorage === "undefined") return null;
+    return sessionStorage.getItem(pendingRequestStorageKey);
+  };
+  const setPendingRequestOrgId = (orgId: string) => {
+    if (!pendingRequestStorageKey || typeof sessionStorage === "undefined") return;
+    sessionStorage.setItem(pendingRequestStorageKey, orgId);
+  };
+  const clearPendingRequestOrgId = () => {
+    if (!pendingRequestStorageKey || typeof sessionStorage === "undefined") return;
+    sessionStorage.removeItem(pendingRequestStorageKey);
+  };
+
   // Check if Drive is already connected
   useEffect(() => {
     if (session?.provider_token) {
@@ -115,10 +129,13 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         if (existingRole) {
           // User is already a member - complete onboarding immediately
           console.log("User already has org role, completing onboarding");
+          clearPendingRequestOrgId();
           setIsCheckingOrg(false);
           onComplete();
           return;
         }
+
+        const storedPendingOrgId = getPendingRequestOrgId();
 
         // Check if user already has a pending join request (they can see their own requests)
         const { data: pendingRequest } = await supabase
@@ -130,6 +147,14 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
         if (pendingRequest) {
           setExistingOrgId(pendingRequest.organization_id);
+          setPendingRequestOrgId(pendingRequest.organization_id);
+          setOnboardingMode("pending_request");
+          setIsCheckingOrg(false);
+          return;
+        }
+
+        if (storedPendingOrgId && !isPersonalDomain) {
+          setExistingOrgId(storedPendingOrgId);
           setOnboardingMode("pending_request");
           setIsCheckingOrg(false);
           return;
@@ -158,6 +183,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           setExistingOrgName(existingOrg.name ?? null);
           setOnboardingMode("join_existing");
         } else {
+          clearPendingRequestOrgId();
           // No org found via RLS - this user will be the first/owner
           setOnboardingMode("first_user");
         }
@@ -299,6 +325,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         description: "Your request has been sent to workspace admins for approval.",
       });
 
+      setPendingRequestOrgId(existingOrgId);
       setOnboardingMode("pending_request");
     } catch (error: any) {
       console.error("Error requesting access:", error);
