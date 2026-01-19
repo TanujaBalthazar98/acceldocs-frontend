@@ -116,6 +116,8 @@ export function normalizeHtml(html: string): string {
   // Clean up structural issues
   content = cleanupStructure(content);
 
+  content = convertMarkdownTablesInHtml(content);
+
   const markdownText = extractMarkdownText(content);
   if (!/<(table|ul|ol|pre|code)\b/i.test(content) && isLikelyMarkdown(markdownText)) {
     content = renderMarkdownToHtml(markdownText);
@@ -144,6 +146,101 @@ function decodeHtmlEntities(text: string): string {
   const textarea = document.createElement("textarea");
   textarea.innerHTML = text;
   return textarea.value;
+}
+
+function convertMarkdownTablesInHtml(html: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const container = doc.body.firstElementChild as HTMLElement | null;
+  if (!container) return html;
+
+  const paragraphs = Array.from(container.querySelectorAll("p"));
+
+  for (let i = 0; i < paragraphs.length; i += 1) {
+    const headerRow = paragraphs[i];
+    const parent = headerRow.parentElement;
+    const separatorRow = paragraphs[i + 1];
+
+    if (!parent || !separatorRow || separatorRow.parentElement !== parent) continue;
+
+    const headerCells = parseMarkdownRowFromHtml(headerRow.innerHTML);
+    if (!headerCells) continue;
+
+    if (!isSeparatorRow(separatorRow.textContent || "")) continue;
+
+    const dataRows: string[][] = [];
+    const rowsToRemove: HTMLElement[] = [headerRow, separatorRow];
+
+    let j = i + 2;
+    while (j < paragraphs.length && paragraphs[j].parentElement === parent) {
+      const rowCells = parseMarkdownRowFromHtml(paragraphs[j].innerHTML);
+      if (!rowCells) break;
+      dataRows.push(rowCells);
+      rowsToRemove.push(paragraphs[j]);
+      j += 1;
+    }
+
+    if (dataRows.length === 0) continue;
+
+    const table = doc.createElement("table");
+    const thead = doc.createElement("thead");
+    const headRow = doc.createElement("tr");
+    headerCells.forEach((cell) => {
+      const th = doc.createElement("th");
+      th.innerHTML = cell;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = doc.createElement("tbody");
+    dataRows.forEach((row) => {
+      const tr = doc.createElement("tr");
+      row.forEach((cell) => {
+        const td = doc.createElement("td");
+        td.innerHTML = cell;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    parent.insertBefore(table, headerRow);
+    rowsToRemove.forEach((rowEl) => rowEl.remove());
+
+    i = j - 1;
+  }
+
+  return container.innerHTML;
+}
+
+function parseMarkdownRowFromHtml(html: string): string[] | null {
+  const row = decodeHtmlEntities(html.replace(/&nbsp;/g, " ")).trim();
+  if (!row.includes("|")) return null;
+
+  let trimmed = row;
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+
+  const cells = trimmed.split("|").map((cell) => cell.trim());
+  if (cells.length < 2) return null;
+
+  return cells;
+}
+
+function isSeparatorRow(text: string): boolean {
+  const row = decodeHtmlEntities(text).trim();
+  let trimmed = row;
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+
+  const cells = trimmed
+    .split("|")
+    .map((cell) => cell.trim().replace(/\s+/g, ""));
+
+  if (cells.length === 0) return false;
+
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 }
 
 
