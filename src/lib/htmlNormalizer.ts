@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import { isLikelyMarkdown, renderMarkdownToHtml } from "./markdown";
 
 /**
  * Normalizes and cleans HTML content for consistent display.
@@ -7,26 +8,7 @@ import DOMPurify from "dompurify";
 export function normalizeHtml(html: string): string {
   if (!html) return "";
 
-  // Extract body content if present
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  let content = bodyMatch ? bodyMatch[1] : html;
-
-  // Extract Google Docs CSS so we can infer semantics (headings/code) from class-based styling.
-  const cssText = extractCssFromHtml(html);
-  const classStyles = parseCssClassStyles(cssText);
-
-  // Convert Google Docs styled text to semantic elements BEFORE stripping classes/styles.
-  content = convertGoogleDocsHeadings(content, classStyles);
-  content = convertGoogleDocsCodeBlocks(content, classStyles);
-
-  // Remove Google Docs specific elements and styles
-  content = removeGoogleDocsStyles(content);
-
-  // Clean up structural issues
-  content = cleanupStructure(content);
-
-  // Sanitize to prevent XSS while preserving markdown/Docs HTML structure
-  content = DOMPurify.sanitize(content, {
+  const sanitizeOptions = {
     ALLOWED_TAGS: [
       "p",
       "br",
@@ -108,9 +90,51 @@ export function normalizeHtml(html: string): string {
     ],
     FORBID_ATTR: ["style", "onclick", "onerror", "onload"],
     ALLOW_DATA_ATTR: false,
-  });
+  };
+
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(html);
+  if (!looksLikeHtml && isLikelyMarkdown(html)) {
+    const rendered = renderMarkdownToHtml(html);
+    return DOMPurify.sanitize(rendered, sanitizeOptions).trim();
+  }
+
+  // Extract body content if present
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  let content = bodyMatch ? bodyMatch[1] : html;
+
+  // Extract Google Docs CSS so we can infer semantics (headings/code) from class-based styling.
+  const cssText = extractCssFromHtml(html);
+  const classStyles = parseCssClassStyles(cssText);
+
+  // Convert Google Docs styled text to semantic elements BEFORE stripping classes/styles.
+  content = convertGoogleDocsHeadings(content, classStyles);
+  content = convertGoogleDocsCodeBlocks(content, classStyles);
+
+  // Remove Google Docs specific elements and styles
+  content = removeGoogleDocsStyles(content);
+
+  // Clean up structural issues
+  content = cleanupStructure(content);
+
+  const markdownText = extractMarkdownText(content);
+  if (!/<(table|ul|ol|pre|code)\b/i.test(content) && isLikelyMarkdown(markdownText)) {
+    content = renderMarkdownToHtml(markdownText);
+  }
+
+  // Sanitize to prevent XSS while preserving markdown/Docs HTML structure
+  content = DOMPurify.sanitize(content, sanitizeOptions);
 
   return content.trim();
+}
+
+function extractMarkdownText(html: string): string {
+  return html
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 
