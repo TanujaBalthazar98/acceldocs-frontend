@@ -128,13 +128,22 @@ export function normalizeHtml(html: string): string {
 }
 
 function extractMarkdownText(html: string): string {
-  return html
+  const text = html
     .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
+  return decodeHtmlEntities(text);
+}
+
+function decodeHtmlEntities(text: string): string {
+  if (typeof document === "undefined") return text;
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = text;
+  return textarea.value;
 }
 
 
