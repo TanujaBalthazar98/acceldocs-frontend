@@ -185,7 +185,34 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         .maybeSingle();
 
       if (!active) return;
-      setProfileOrganizationId(data?.organization_id ?? null);
+      let organizationId = data?.organization_id ?? null;
+
+      if (!data && user.email) {
+        const accountTypeRaw = user.user_metadata?.account_type;
+        const accountType =
+          accountTypeRaw === "team" || accountTypeRaw === "enterprise" || accountTypeRaw === "individual"
+            ? accountTypeRaw
+            : "individual";
+
+        const { data: inserted, error: insertError } = await supabase
+          .from("profiles")
+          .insert({
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name ?? null,
+            account_type: accountType,
+          })
+          .select("organization_id")
+          .maybeSingle();
+
+        if (insertError && insertError.code !== "23505") {
+          console.error("Failed to create missing profile:", insertError);
+        } else if (inserted?.organization_id) {
+          organizationId = inserted.organization_id;
+        }
+      }
+
+      setProfileOrganizationId(organizationId);
       setProfileLoading(false);
     };
 
@@ -193,7 +220,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return () => {
       active = false;
     };
-  }, [user?.id]);
+  }, [user?.id, user?.email, user?.user_metadata?.full_name, user?.user_metadata?.account_type]);
 
   const isEmbedded = (): boolean => {
     try {
@@ -216,7 +243,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
 
     if (isEmbedded() && isPreviewHost) {
-      return "https://docspeare.lovable.app";
+      return "https://docspeare.com";
     }
 
     return base;

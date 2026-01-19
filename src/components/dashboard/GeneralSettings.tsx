@@ -299,7 +299,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
       toast({
         title: "Custom domain saved",
         description: domainValue 
-          ? "Your documentation domain has been configured. Set up DNS to point to Lovable."
+          ? "Your documentation domain has been configured. Set up DNS to point to this app."
           : "Custom domain has been removed.",
       });
     }

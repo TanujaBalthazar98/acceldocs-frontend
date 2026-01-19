@@ -208,9 +208,10 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   useEffect(() => {
     const checkCustomDomain = async () => {
       const hostname = window.location.hostname;
-      
+      const standardHosts = new Set(["localhost", "127.0.0.1", "docspeare.com", "www.docspeare.com"]);
+
       // Skip custom domain check for standard domains
-      if (hostname === 'localhost' || hostname.includes('lovable.app') || hostname.includes('lovable.dev')) {
+      if (standardHosts.has(hostname) || hostname.endsWith(".vercel.app")) {
         return;
       }
       

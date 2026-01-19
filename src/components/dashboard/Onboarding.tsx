@@ -65,7 +65,7 @@ const formatPersonalWorkspaceName = (email?: string | null, fullName?: string | 
 };
 
 export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
-  const { user, session, requestDriveAccess } = useAuth();
+  const { user, session, requestDriveAccess, profileLoading } = useAuth();
   const { toast } = useToast();
   const { createFolder } = useGoogleDrive();
   const [step, setStep] = useState(1);
@@ -110,6 +110,10 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   useEffect(() => {
     const checkOrganization = async () => {
       if (!user) return;
+      if (profileLoading) {
+        setIsCheckingOrg(true);
+        return;
+      }
 
       try {
         if (!emailDomain && !user?.email) {
@@ -197,7 +201,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     };
 
     checkOrganization();
-  }, [user, onComplete, emailDomain, isPersonalDomain]);
+  }, [user, onComplete, emailDomain, isPersonalDomain, profileLoading]);
 
   const handleBack = () => {
     if (step > 1) {
