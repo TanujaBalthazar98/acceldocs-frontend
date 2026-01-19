@@ -46,6 +46,7 @@ interface ProjectSharePanelProps {
   projectName: string;
   projectSlug?: string | null;
   organizationSlug?: string | null;
+  projectVersionSlug?: string | null;
 }
 
 type ProjectRole = "admin" | "editor" | "reviewer" | "viewer";
@@ -93,13 +94,14 @@ const roleConfig: Record<ProjectRole, { label: string; description: string; driv
   },
 };
 
-export const ProjectSharePanel = ({ 
-  open, 
-  onOpenChange, 
-  projectId, 
+export const ProjectSharePanel = ({
+  open,
+  onOpenChange,
+  projectId,
   projectName,
   projectSlug,
   organizationSlug,
+  projectVersionSlug,
 }: ProjectSharePanelProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -431,11 +433,12 @@ export const ProjectSharePanel = ({
 
   // Build the correct public docs URL using slugs
   const getDocsUrl = () => {
+    const versionSegment = projectVersionSlug ? `/${projectVersionSlug}` : "";
     if (organizationSlug && projectSlug) {
-      return `${window.location.origin}/docs/${organizationSlug}/${projectSlug}`;
+      return `${window.location.origin}/docs/${organizationSlug}/${projectSlug}${versionSegment}`;
     }
     // Fallback to ID-based if slugs not available (shouldn't happen in normal flow)
-    return `${window.location.origin}/docs/${projectId}`;
+    return `${window.location.origin}/docs/${projectId}${versionSegment}`;
   };
 
   const handleCopyLink = () => {
@@ -445,9 +448,10 @@ export const ProjectSharePanel = ({
   };
 
   const handleViewPreview = () => {
+    const versionSegment = projectVersionSlug ? `/${projectVersionSlug}` : "";
     const url = organizationSlug && projectSlug 
-      ? `/docs/${organizationSlug}/${projectSlug}`
-      : `/docs/${projectId}`;
+      ? `/docs/${organizationSlug}/${projectSlug}${versionSegment}`
+      : `/docs/${projectId}${versionSegment}`;
     window.open(url, '_blank');
   };
 
@@ -510,9 +514,10 @@ export const ProjectSharePanel = ({
               variant="outline"
               size="sm"
               onClick={() => {
+                const versionSegment = projectVersionSlug ? `/${projectVersionSlug}` : "";
                 const url = organizationSlug && projectSlug 
-                  ? `/docs/${organizationSlug}/${projectSlug}`
-                  : `/docs/${projectId}`;
+                  ? `/docs/${organizationSlug}/${projectSlug}${versionSegment}`
+                  : `/docs/${projectId}${versionSegment}`;
                 window.open(url, '_blank');
               }}
               className="flex-1 gap-2"

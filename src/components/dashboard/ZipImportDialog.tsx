@@ -31,6 +31,7 @@ interface ZipImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
+  projectVersionId?: string | null;
   projectName: string;
   projectFolderId: string;
   organizationId: string;
@@ -269,6 +270,7 @@ export function ZipImportDialog({
   open,
   onOpenChange,
   projectId,
+  projectVersionId,
   projectName,
   projectFolderId,
   organizationId,
@@ -462,16 +464,17 @@ export function ZipImportDialog({
     const totalFiles = filesToImport.length;
 
     const invokeBatch = (batchFiles: typeof filesToImport, batchStart: number, jobId?: string | null) =>
-      supabase.functions.invoke("import-markdown", {
-        body: {
-          files: batchFiles,
-          projectId: targetProjectId,
-          organizationId,
-          jobId,
-          batchStart,
-          totalFiles,
-          filesAreBatch: true,
-        },
+        supabase.functions.invoke("import-markdown", {
+          body: {
+            files: batchFiles,
+            projectId: targetProjectId,
+            organizationId,
+            projectVersionId,
+            jobId,
+            batchStart,
+            totalFiles,
+            filesAreBatch: true,
+          },
         headers: {
           "x-google-token": googleAccessToken,
         },

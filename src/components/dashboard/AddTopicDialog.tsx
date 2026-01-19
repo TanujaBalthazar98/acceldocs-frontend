@@ -19,6 +19,7 @@ interface AddTopicDialogProps {
   onOpenChange: (open: boolean) => void;
   projectName: string | null;
   projectId: string | null;
+  projectVersionId?: string | null;
   projectFolderId: string | null;
   parentTopic?: { id: string; name: string; drive_folder_id: string } | null;
   organizationId?: string | null;
@@ -30,6 +31,7 @@ export const AddTopicDialog = ({
   onOpenChange, 
   projectName, 
   projectId, 
+  projectVersionId,
   projectFolderId, 
   parentTopic,
   organizationId,
@@ -48,7 +50,7 @@ export const AddTopicDialog = ({
     : `"${projectName}"`;
 
   const handleCreate = async () => {
-    if (!topicName.trim() || !targetFolderId || !projectId) return;
+    if (!topicName.trim() || !targetFolderId || !projectId || !projectVersionId) return;
     
     setIsCreating(true);
     
@@ -63,6 +65,7 @@ export const AddTopicDialog = ({
           name: folder.name,
           drive_folder_id: folder.id,
           project_id: projectId,
+          project_version_id: projectVersionId,
           parent_id: parentTopic?.id || null,
         })
         .select("id, name, drive_folder_id")
@@ -180,6 +183,7 @@ export const AddTopicDialog = ({
         projectId={projectId}
         projectName={projectName}
         projectFolderId={targetFolderId}
+        projectVersionId={projectVersionId}
         parentTopicId={parentTopic?.id || null}
         parentTopicName={parentTopic?.name || null}
         organizationId={organizationId}

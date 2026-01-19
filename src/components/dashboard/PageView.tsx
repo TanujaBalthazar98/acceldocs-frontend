@@ -33,6 +33,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ensureFreshSession } from "@/lib/authSession";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
+import { VideoEmbed } from "@/components/docs/VideoEmbed";
 
 type VisibilityLevel = "internal" | "external" | "public";
 const GOOGLE_TOKEN_KEY = "google_access_token";
@@ -51,6 +52,8 @@ interface DocumentData {
   owner_name?: string;
   content_html: string | null;
   published_content_html: string | null;
+  video_url?: string | null;
+  video_title?: string | null;
 }
 
 interface PageViewProps {
@@ -69,6 +72,8 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   const [shareOpen, setShareOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
+  const [videoUrl, setVideoUrl] = useState<string | null>(document.video_url ?? null);
+  const [videoTitle, setVideoTitle] = useState<string | null>(document.video_title ?? null);
   // Use content_html or fall back to published_content_html
   const [contentHtml, setContentHtml] = useState<string | null>(
     document.content_html || document.published_content_html
@@ -86,14 +91,16 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
       // Content not loaded - fetch it from the database
       fetchContentFromDB();
     }
-  }, [document.id, document.content_html, document.published_content_html]);
+    setVideoUrl(document.video_url ?? null);
+    setVideoTitle(document.video_title ?? null);
+  }, [document.id, document.content_html, document.published_content_html, document.video_url, document.video_title]);
 
   const fetchContentFromDB = async () => {
     setIsLoadingContent(true);
     try {
       const { data } = await supabase
         .from("documents")
-        .select("content_html, published_content_html")
+        .select("content_html, published_content_html, video_url, video_title")
         .eq("id", document.id)
         .single();
       
@@ -102,6 +109,8 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
         if (content) {
           setContentHtml(content);
         }
+        setVideoUrl(data.video_url ?? null);
+        setVideoTitle(data.video_title ?? null);
       }
     } catch (error) {
       console.error("Error fetching document content:", error);
@@ -300,6 +309,11 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
 
             {/* Document Content */}
             <article className="prose prose-sm sm:prose-base prose-neutral dark:prose-invert prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-foreground/90 max-w-none overflow-x-hidden">
+              {videoUrl && (
+                <div className="mb-6 not-prose">
+                  <VideoEmbed url={videoUrl} title={videoTitle || document.title} />
+                </div>
+              )}
               <div className="rounded-xl border border-border bg-card/50 p-4 sm:p-6 lg:p-8 overflow-x-auto">
                 {isLoadingContent ? (
                   <div className="text-center py-12">

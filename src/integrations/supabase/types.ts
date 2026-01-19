@@ -298,11 +298,14 @@ export type Database = {
           last_synced_at: string | null
           owner_id: string | null
           project_id: string
+          project_version_id: string
           published_content_html: string | null
           slug: string | null
           title: string
           topic_id: string | null
           updated_at: string
+          video_title: string | null
+          video_url: string | null
           visibility: Database["public"]["Enums"]["visibility_level"]
         }
         Insert: {
@@ -317,11 +320,14 @@ export type Database = {
           last_synced_at?: string | null
           owner_id?: string | null
           project_id: string
+          project_version_id?: string
           published_content_html?: string | null
           slug?: string | null
           title: string
           topic_id?: string | null
           updated_at?: string
+          video_title?: string | null
+          video_url?: string | null
           visibility?: Database["public"]["Enums"]["visibility_level"]
         }
         Update: {
@@ -336,11 +342,14 @@ export type Database = {
           last_synced_at?: string | null
           owner_id?: string | null
           project_id?: string
+          project_version_id?: string
           published_content_html?: string | null
           slug?: string | null
           title?: string
           topic_id?: string | null
           updated_at?: string
+          video_title?: string | null
+          video_url?: string | null
           visibility?: Database["public"]["Enums"]["visibility_level"]
         }
         Relationships: [
@@ -356,6 +365,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_project_version_id_fkey"
+            columns: ["project_version_id"]
+            isOneToOne: false
+            referencedRelation: "project_versions"
             referencedColumns: ["id"]
           },
           {
@@ -725,7 +741,9 @@ export type Database = {
           document_id: string
           feedback_type: string
           id: string
+          issue_type: string | null
           is_resolved: boolean
+          rating: number | null
           updated_at: string
           user_email: string | null
           user_id: string | null
@@ -737,7 +755,9 @@ export type Database = {
           document_id: string
           feedback_type?: string
           id?: string
+          issue_type?: string | null
           is_resolved?: boolean
+          rating?: number | null
           updated_at?: string
           user_email?: string | null
           user_id?: string | null
@@ -749,7 +769,9 @@ export type Database = {
           document_id?: string
           feedback_type?: string
           id?: string
+          issue_type?: string | null
           is_resolved?: boolean
+          rating?: number | null
           updated_at?: string
           user_email?: string | null
           user_id?: string | null
@@ -981,6 +1003,76 @@ export type Database = {
           },
         ]
       }
+      project_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          created_from_version_id: string | null
+          id: string
+          is_default: boolean
+          is_published: boolean
+          name: string
+          project_id: string
+          semver_major: number
+          semver_minor: number
+          semver_patch: number
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          created_from_version_id?: string | null
+          id?: string
+          is_default?: boolean
+          is_published?: boolean
+          name: string
+          project_id: string
+          semver_major?: number
+          semver_minor?: number
+          semver_patch?: number
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          created_from_version_id?: string | null
+          id?: string
+          is_default?: boolean
+          is_published?: boolean
+          name?: string
+          project_id?: string
+          semver_major?: number
+          semver_minor?: number
+          semver_patch?: number
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_versions_created_from_version_id_fkey"
+            columns: ["created_from_version_id"]
+            isOneToOne: false
+            referencedRelation: "project_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_versions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       slug_history: {
         Row: {
           created_at: string
@@ -1014,6 +1106,7 @@ export type Database = {
           name: string
           parent_id: string | null
           project_id: string
+          project_version_id: string
           slug: string | null
           updated_at: string
         }
@@ -1025,6 +1118,7 @@ export type Database = {
           name: string
           parent_id?: string | null
           project_id: string
+          project_version_id?: string
           slug?: string | null
           updated_at?: string
         }
@@ -1036,6 +1130,7 @@ export type Database = {
           name?: string
           parent_id?: string | null
           project_id?: string
+          project_version_id?: string
           slug?: string | null
           updated_at?: string
         }
@@ -1052,6 +1147,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topics_project_version_id_fkey"
+            columns: ["project_version_id"]
+            isOneToOne: false
+            referencedRelation: "project_versions"
             referencedColumns: ["id"]
           },
         ]

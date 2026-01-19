@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureFreshSession } from "@/lib/authSession";
+import { identifyPosthog, resetPosthog } from "@/lib/analytics/posthog";
 
 type AccountType = "individual" | "team" | "enterprise";
 
@@ -221,6 +222,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       active = false;
     };
   }, [user?.id, user?.email, user?.user_metadata?.full_name, user?.user_metadata?.account_type]);
+
+  useEffect(() => {
+    if (user?.id) {
+      identifyPosthog({
+        userId: user.id,
+        email: user.email,
+        fullName: user.user_metadata?.full_name ?? null,
+        organizationId: profileOrganizationId,
+      });
+    } else {
+      resetPosthog();
+    }
+  }, [user?.id, user?.email, user?.user_metadata?.full_name, profileOrganizationId]);
 
   const isEmbedded = (): boolean => {
     try {

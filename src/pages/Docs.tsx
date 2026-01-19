@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import {
   ChevronRight,
   ChevronDown,
@@ -39,10 +39,12 @@ import { DocsLanding } from "@/components/docs/DocsLanding";
 import { TableOfContents } from "@/components/docs/TableOfContents";
 import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 import { PageFeedback } from "@/components/docs/PageFeedback";
+import { VideoEmbed } from "@/components/docs/VideoEmbed";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
 import { SmartSearch } from "@/components/SmartSearch";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
+import { captureDocView } from "@/lib/analytics/posthog";
 
 type VisibilityLevel = "internal" | "external" | "public";
 
@@ -57,6 +59,18 @@ interface Project {
   mcp_enabled?: boolean | null;
   openapi_spec_json?: any;
   openapi_spec_url?: string | null;
+}
+
+interface ProjectVersion {
+  id: string;
+  project_id: string;
+  name: string;
+  slug: string;
+  is_default: boolean;
+  is_published: boolean;
+  semver_major: number;
+  semver_minor: number;
+  semver_patch: number;
 }
 
 interface Organization {
@@ -87,6 +101,7 @@ interface Topic {
   name: string;
   slug: string | null;
   project_id: string;
+  project_version_id: string;
   parent_id: string | null;
   display_order: number | null;
 }
@@ -97,11 +112,14 @@ interface Document {
   slug: string | null;
   google_doc_id: string;
   project_id: string;
+  project_version_id: string;
   topic_id: string | null;
   visibility: VisibilityLevel;
   is_published: boolean;
   content_html: string | null;
   published_content_html: string | null;
+  video_url?: string | null;
+  video_title?: string | null;
   created_at: string;
   updated_at: string;
   owner_id: string | null;
@@ -152,14 +170,8 @@ function resolveDocumentHtml(html: string, title: string): string {
 }
 
 export default function Docs({ mode }: { mode?: "public" | "internal" }) {
-  const params = useParams<{ 
-    orgSlug?: string; 
-    projectSlug?: string; 
-    topicSlug?: string;
-    pageSlug?: string;
-  }>();
-  
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loading: authLoading } = useAuth();
   const isInternalView = mode === "internal";
   const docsBasePath = isInternalView ? "/internal" : "/docs";
@@ -168,23 +180,47 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [isCustomDomain, setIsCustomDomain] = useState(false);
   
   // On custom domains, URL structure shifts: org is implicit from domain
-  // Standard: /docs/:orgSlug/:projectSlug/:topicSlug/:pageSlug
-  // Internal: /internal/:orgSlug/:projectSlug/:topicSlug/:pageSlug
-  // Custom domain: /docs/:projectSlug/:topicSlug/:pageSlug (or /internal for internal view)
-  const orgSlug = isCustomDomain ? undefined : params.orgSlug;
-  const projectSlug = isCustomDomain ? params.orgSlug : params.projectSlug;
-  const topicSlug = isCustomDomain 
-    ? (params.topicSlug ? params.projectSlug : undefined)
-    : (params.pageSlug ? params.topicSlug : undefined);
-  const pageSlug = isCustomDomain
-    ? (params.topicSlug || params.projectSlug)
-    : (params.pageSlug || params.topicSlug);
-  const { theme } = useTheme();
+  // Standard: /docs/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug
+  // Internal: /internal/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug
+  // Custom domain: /docs/:projectSlug/:versionSlug/:topicSlug/:pageSlug (or /internal for internal view)
+  const pathSegments = useMemo(() => {
+    const normalized = location.pathname.replace(/\/+$/, "");
+    const base = docsBasePath === "/" ? "" : docsBasePath;
+    if (normalized.startsWith(base)) {
+      return normalized.slice(base.length).split("/").filter(Boolean);
+    }
+    return normalized.split("/").filter(Boolean);
+  }, [location.pathname, docsBasePath]);
+
+  const orgSlug = isCustomDomain ? undefined : pathSegments[0];
+  const projectSlug = isCustomDomain ? pathSegments[0] : pathSegments[1];
+  const remainingSegments = isCustomDomain ? pathSegments.slice(1) : pathSegments.slice(2);
 
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
+
+  const versionSlug = useMemo(() => {
+    if (!projectSlug || remainingSegments.length === 0) return undefined;
+    const project = projects.find(p => p.slug === projectSlug);
+    if (!project) return undefined;
+    const candidate = remainingSegments[0];
+    const versions = projectVersions.filter(v => v.project_id === project.id);
+    return versions.some(v => v.slug === candidate) ? candidate : undefined;
+  }, [projectSlug, remainingSegments, projects, projectVersions]);
+
+  const contentSegments = useMemo(
+    () => (versionSlug ? remainingSegments.slice(1) : remainingSegments),
+    [versionSlug, remainingSegments]
+  );
+
+  const topicSlug = contentSegments.length > 1 ? contentSegments[0] : undefined;
+  const pageSlug = contentSegments.length > 0 ? contentSegments[contentSegments.length - 1] : undefined;
+  const { theme } = useTheme();
+
   const [topics, setTopics] = useState<Topic[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<ProjectVersion | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -203,6 +239,39 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [isFullWidth, setIsFullWidth] = useState(false);
   const [internalAccessDenied, setInternalAccessDenied] = useState(false);
   const [internalAccessReason, setInternalAccessReason] = useState<"signed_out" | "not_member" | null>(null);
+
+  const getProjectVersions = (projectId: string) => {
+    const versions = projectVersions.filter(v => v.project_id === projectId);
+    return isInternalView ? versions : versions.filter(v => v.is_published);
+  };
+
+  const getHighestSemverVersion = (versions: ProjectVersion[]) =>
+    versions
+      .slice()
+      .sort((a, b) => {
+        if (a.semver_major !== b.semver_major) return b.semver_major - a.semver_major;
+        if (a.semver_minor !== b.semver_minor) return b.semver_minor - a.semver_minor;
+        return b.semver_patch - a.semver_patch;
+      })[0] ?? null;
+
+  const resolveDefaultVersion = (projectId: string, versionSlugOverride?: string) => {
+    const versions = getProjectVersions(projectId);
+    if (versions.length === 0) return null;
+
+    if (versionSlugOverride) {
+      const match = versions.find(v => v.slug === versionSlugOverride);
+      if (match) return match;
+    }
+
+    const defaultVersion = versions.find(v => v.is_default);
+    if (defaultVersion) return defaultVersion;
+
+    const publishedVersions = versions.filter(v => v.is_published);
+    return getHighestSemverVersion(publishedVersions) ?? getHighestSemverVersion(versions);
+  };
+
+  const getVersionById = (versionId?: string | null) =>
+    versionId ? projectVersions.find(v => v.id === versionId) ?? null : null;
 
   // Check for custom domain on mount
   useEffect(() => {
@@ -245,22 +314,51 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     setDocumentHtml(getDocumentHtml(doc) ?? null);
   };
 
+  useEffect(() => {
+    if (!selectedDocument || !selectedProject) return;
+
+    captureDocView({
+      documentId: selectedDocument.id,
+      documentTitle: selectedDocument.title,
+      documentSlug: selectedDocument.slug,
+      projectId: selectedProject.id,
+      projectSlug: selectedProject.slug,
+      organizationId: currentOrg?.id ?? null,
+      organizationSlug: currentOrg?.slug ?? currentOrg?.domain ?? null,
+      visibility: selectedProject.visibility,
+      isInternalView,
+    });
+  }, [
+    selectedDocument?.id,
+    selectedDocument?.slug,
+    selectedDocument?.title,
+    selectedProject?.id,
+    selectedProject?.slug,
+    selectedProject?.visibility,
+    currentOrg?.id,
+    currentOrg?.slug,
+    currentOrg?.domain,
+    isInternalView,
+  ]);
+
   const buildDocUrl = (doc: Document, project: Project, org: Organization) => {
     const orgIdentifier = org.slug || org.domain;
     const topic = doc.topic_id ? topics.find(t => t.id === doc.topic_id) : null;
+    const version = getVersionById(doc.project_version_id) || selectedVersion;
+    const versionSegment = version?.slug ? `/${version.slug}` : "";
     
     // For custom domains, use simplified URLs without org prefix
     if (isCustomDomain) {
       if (topic?.slug) {
-        return `${docsBasePath}/${project.slug}/${topic.slug}/${doc.slug}`;
+        return `${docsBasePath}/${project.slug}${versionSegment}/${topic.slug}/${doc.slug}`;
       }
-      return `${docsBasePath}/${project.slug}/${doc.slug}`;
+      return `${docsBasePath}/${project.slug}${versionSegment}/${doc.slug}`;
     }
     
     if (topic?.slug) {
-      return `${docsBasePath}/${orgIdentifier}/${project.slug}/${topic.slug}/${doc.slug}`;
+      return `${docsBasePath}/${orgIdentifier}/${project.slug}${versionSegment}/${topic.slug}/${doc.slug}`;
     }
-    return `${docsBasePath}/${orgIdentifier}/${project.slug}/${doc.slug}`;
+    return `${docsBasePath}/${orgIdentifier}/${project.slug}${versionSegment}/${doc.slug}`;
   };
 
   // Handle URL-based project and document selection
@@ -281,9 +379,26 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
   }, [projectSlug, projects, isCustomDomain]);
 
+  useEffect(() => {
+    if (!selectedProject) {
+      setSelectedVersion(null);
+      return;
+    }
+    const resolved = resolveDefaultVersion(selectedProject.id, versionSlug);
+    if (!resolved) {
+      setSelectedVersion(null);
+      return;
+    }
+    if (resolved.id !== selectedVersion?.id) {
+      setSelectedVersion(resolved);
+    }
+  }, [selectedProject, versionSlug, projectVersions, isInternalView]);
+
   // Helper to get the first available document for a project (considering display order)
   const getFirstDocumentForProject = (projectId: string) => {
-    const projectDocs = documents.filter(d => d.project_id === projectId);
+    const projectDocs = documents.filter(
+      d => d.project_id === projectId && (!selectedVersion || d.project_version_id === selectedVersion.id)
+    );
     if (projectDocs.length === 0) return null;
     
     // Sort by display_order, then by title
@@ -300,20 +415,42 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     if (!selectedProject) return;
 
     if (documents.length === 0) return;
+    if (!selectedVersion) return;
 
     if (pageSlug) {
       let doc: Document | undefined;
       
       if (topicSlug) {
-        const topic = topics.find(t => t.slug === topicSlug && t.project_id === selectedProject.id);
+        const topic = topics.find(
+          t =>
+            t.slug === topicSlug &&
+            t.project_id === selectedProject.id &&
+            t.project_version_id === selectedVersion.id
+        );
         if (topic) {
-          doc = documents.find(d => d.slug === pageSlug && d.topic_id === topic.id);
+          doc = documents.find(
+            d =>
+              d.slug === pageSlug &&
+              d.topic_id === topic.id &&
+              d.project_version_id === selectedVersion.id
+          );
         }
       } else {
-        doc = documents.find(d => d.slug === pageSlug && d.project_id === selectedProject.id && !d.topic_id);
+        doc = documents.find(
+          d =>
+            d.slug === pageSlug &&
+            d.project_id === selectedProject.id &&
+            d.project_version_id === selectedVersion.id &&
+            !d.topic_id
+        );
         
         if (!doc) {
-          doc = documents.find(d => d.slug === pageSlug && d.project_id === selectedProject.id);
+          doc = documents.find(
+            d =>
+              d.slug === pageSlug &&
+              d.project_id === selectedProject.id &&
+              d.project_version_id === selectedVersion.id
+          );
           if (doc?.topic_id && currentOrg) {
             navigate(buildDocUrl(doc, selectedProject, currentOrg), { replace: true });
             return;
@@ -335,7 +472,20 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         navigate(buildDocUrl(firstDoc, selectedProject, currentOrg), { replace: true });
       }
     }
-  }, [pageSlug, topicSlug, selectedProject, documents, topics, currentOrg]);
+  }, [pageSlug, topicSlug, selectedProject, documents, topics, currentOrg, selectedVersion]);
+
+  useEffect(() => {
+    if (!selectedProject || !selectedVersion) return;
+    if (versionSlug === selectedVersion.slug) return;
+    if (!isCustomDomain && !currentOrg) return;
+
+    if (selectedDocument && currentOrg) {
+      navigate(buildDocUrl(selectedDocument, selectedProject, currentOrg), { replace: true });
+      return;
+    }
+
+    navigate(buildProjectUrl(selectedProject, selectedVersion), { replace: true });
+  }, [selectedProject, selectedVersion, versionSlug, selectedDocument, currentOrg, isCustomDomain]);
 
   const fetchContent = async () => {
     setLoading(true);
@@ -466,7 +616,9 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         });
         
         setProjects(filteredProjects);
-        await fetchTopicsAndDocuments(filteredProjects.map(p => p.id), userOrgId, currentUser?.id || null);
+        const projectIds = filteredProjects.map(p => p.id);
+        await fetchProjectVersions(projectIds);
+        await fetchTopicsAndDocuments(projectIds, userOrgId, currentUser?.id || null);
       }
     } catch (error) {
       console.error("Error fetching content:", error);
@@ -475,12 +627,36 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
   };
 
+  const fetchProjectVersions = async (projectIds: string[]) => {
+    if (projectIds.length === 0) return;
+
+    let versionsQuery = supabase
+      .from("project_versions")
+      .select("id, project_id, name, slug, is_default, is_published, semver_major, semver_minor, semver_patch")
+      .in("project_id", projectIds);
+
+    if (!isInternalView) {
+      versionsQuery = versionsQuery.eq("is_published", true);
+    }
+
+    const { data: versionsData, error: versionsError } = await versionsQuery;
+
+    if (versionsError) {
+      console.error("Error fetching project versions:", versionsError);
+      return;
+    }
+
+    if (versionsData) {
+      setProjectVersions(versionsData as ProjectVersion[]);
+    }
+  };
+
   const fetchTopicsAndDocuments = async (projectIds: string[], userOrgId: string | null, userId: string | null) => {
     if (projectIds.length === 0) return;
 
     const { data: topicsData } = await supabase
       .from("topics")
-      .select("id, name, slug, project_id, parent_id, display_order")
+      .select("id, name, slug, project_id, project_version_id, parent_id, display_order")
       .in("project_id", projectIds)
       .order("display_order")
       .order("name");
@@ -492,7 +668,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     let docsQuery = supabase
       .from("documents")
       .select(
-        "id, title, slug, google_doc_id, project_id, topic_id, visibility, is_published, content_html, published_content_html, created_at, updated_at, owner_id, display_order"
+        "id, title, slug, google_doc_id, project_id, project_version_id, topic_id, visibility, is_published, content_html, published_content_html, video_url, video_title, created_at, updated_at, owner_id, display_order"
       )
       .in("project_id", projectIds);
 
@@ -513,9 +689,10 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
   };
 
-  const buildProjectUrl = (project: Project) => {
-    if (isCustomDomain) return `${docsBasePath}/${project.slug}`;
-    if (currentOrg) return `${docsBasePath}/${currentOrg.slug || currentOrg.domain}/${project.slug}`;
+  const buildProjectUrl = (project: Project, version?: ProjectVersion | null) => {
+    const versionSegment = version?.slug ? `/${version.slug}` : "";
+    if (isCustomDomain) return `${docsBasePath}/${project.slug}${versionSegment}`;
+    if (currentOrg) return `${docsBasePath}/${currentOrg.slug || currentOrg.domain}/${project.slug}${versionSegment}`;
     return docsBasePath;
   };
 
@@ -535,13 +712,14 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
   const selectProject = (project: Project, opts?: { replace?: boolean }) => {
     const target = resolveProjectForNavigation(project);
+    const targetVersion = resolveDefaultVersion(target.id);
 
     setSelectedProject(target);
     setSelectedDocument(null);
     setDocumentHtml(null);
 
     if (target.slug) {
-      navigate(buildProjectUrl(target), opts?.replace ? { replace: true } : undefined);
+      navigate(buildProjectUrl(target, targetVersion), opts?.replace ? { replace: true } : undefined);
     }
   };
 
@@ -605,18 +783,25 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     setSelectedProject(target);
     setSelectedDocument(null);
     setDocumentHtml(null);
-    if (target.slug) navigate(buildProjectUrl(target), { replace: true });
+    if (target.slug) {
+      const targetVersion = resolveDefaultVersion(target.id);
+      navigate(buildProjectUrl(target, targetVersion), { replace: true });
+    }
   }, [selectedProject, projects, documents, loading, pageSlug, isCustomDomain, currentOrg]);
 
   // Filter content by search
   const searchLower = searchQuery.toLowerCase();
   
   const projectTopics = selectedProject 
-    ? topics.filter(t => t.project_id === selectedProject.id)
+    ? topics.filter(
+        t => t.project_id === selectedProject.id && (!selectedVersion || t.project_version_id === selectedVersion.id)
+      )
     : [];
 
   const projectDocuments = selectedProject
-    ? documents.filter(d => d.project_id === selectedProject.id)
+    ? documents.filter(
+        d => d.project_id === selectedProject.id && (!selectedVersion || d.project_version_id === selectedVersion.id)
+      )
     : [];
   
   const filteredDocuments = projectDocuments.filter(d =>
@@ -833,6 +1018,21 @@ const getTopicDocuments = (topicId: string) =>
 
   // Show landing page when no project or page is selected
   const showLandingPage = !selectedDocument && !selectedProject && currentOrg && !loading;
+  const landingDocuments = useMemo(() => {
+    if (projectVersions.length === 0) return [];
+    return documents.filter((doc) => {
+      const version = resolveDefaultVersion(doc.project_id);
+      return version ? doc.project_version_id === version.id : false;
+    });
+  }, [documents, projectVersions, isInternalView]);
+
+  const landingTopics = useMemo(() => {
+    if (projectVersions.length === 0) return [];
+    return topics.filter((topic) => {
+      const version = resolveDefaultVersion(topic.project_id);
+      return version ? topic.project_version_id === version.id : false;
+    });
+  }, [topics, projectVersions, isInternalView]);
 
   // Load Google Fonts for branding
   useBrandingLoader([currentOrg?.font_heading || "", currentOrg?.font_body || ""]);
@@ -946,14 +1146,14 @@ const getTopicDocuments = (topicId: string) =>
         <DocsLanding
           organization={currentOrg}
           projects={projects.filter(p => !p.parent_id).map(p => ({ ...p, description: null }))}
-          documents={documents.map(d => ({
+          documents={landingDocuments.map(d => ({
             id: d.id,
             title: d.title,
             project_id: d.project_id,
             topic_id: d.topic_id,
             content_html: getDocumentHtml(d) ?? undefined,
           }))}
-          topics={topics.map(t => ({
+          topics={landingTopics.map(t => ({
             id: t.id,
             name: t.name,
             project_id: t.project_id,
@@ -1328,6 +1528,15 @@ const getTopicDocuments = (topicId: string) =>
                   </div>
                 )}
 
+                {selectedDocument.video_url && (
+                  <div className="mb-6">
+                    <VideoEmbed
+                      url={selectedDocument.video_url}
+                      title={selectedDocument.video_title || selectedDocument.title}
+                    />
+                  </div>
+                )}
+
                 {/* Content - clean rendering */}
                 {resolvedDocumentHtml ? (
                   <div 
@@ -1342,10 +1551,23 @@ const getTopicDocuments = (topicId: string) =>
                   </div>
                 )}
 
-                {/* Page Feedback - only for public docs pages */}
-                {!isInternalView && selectedDocument.published_content_html && selectedProject?.visibility === "public" && (
-                  <PageFeedback documentId={selectedDocument.id} isOrgUser={isOrgUser} />
-                )}
+                {/* Page Feedback */}
+                {(() => {
+                  const allowPublicFeedback =
+                    !isInternalView &&
+                    selectedProject?.visibility === "public" &&
+                    !!selectedDocument.published_content_html;
+                  const allowInternalFeedback = isInternalView && isOrgUser;
+                  const showFeedback = allowPublicFeedback || allowInternalFeedback;
+
+                  return showFeedback ? (
+                    <PageFeedback
+                      documentId={selectedDocument.id}
+                      isOrgUser={isOrgUser}
+                      isPublic={allowPublicFeedback}
+                    />
+                  ) : null;
+                })()}
               </article>
 
               {/* Right sidebar - Table of Contents (hide in full width mode) */}

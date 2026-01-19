@@ -20,6 +20,7 @@ interface AddPageDialogProps {
   onOpenChange: (open: boolean) => void;
   projectId?: string | null;
   projectName?: string | null;
+  projectVersionId?: string | null;
   topicId?: string | null;
   topicName?: string | null;
   parentFolderId: string | null;
@@ -32,6 +33,7 @@ export const AddPageDialog = ({
   onOpenChange, 
   projectId,
   projectName, 
+  projectVersionId,
   topicId,
   topicName, 
   parentFolderId,
@@ -53,7 +55,7 @@ export const AddPageDialog = ({
   const hasValidFolder = !!parentFolderId;
 
   const handleCreate = async () => {
-    if (!pageTitle.trim() || !hasValidFolder || !projectId) return;
+    if (!pageTitle.trim() || !hasValidFolder || !projectId || !projectVersionId) return;
     
     setIsCreating(true);
     
@@ -68,6 +70,7 @@ export const AddPageDialog = ({
           title: doc.name,
           google_doc_id: doc.id,
           project_id: projectId,
+          project_version_id: projectVersionId,
           topic_id: topicId || null,
           owner_id: user?.id || null,
         })
@@ -195,6 +198,7 @@ export const AddPageDialog = ({
         projectId={projectId || null}
         projectName={projectName || null}
         projectFolderId={parentFolderId}
+        projectVersionId={projectVersionId}
         topicId={topicId}
         topicName={topicName}
         topicFolderId={parentFolderId}

@@ -20,7 +20,10 @@ interface VideoEmbedProps {
 }
 
 // Parse video URL and return embed info
-function parseVideoUrl(url: string): { type: 'youtube' | 'vimeo' | 'loom' | 'unknown'; embedUrl: string | null } {
+function parseVideoUrl(url: string): {
+  type: "youtube" | "vimeo" | "loom" | "google_vids" | "google_drive" | "unknown";
+  embedUrl: string | null;
+} {
   try {
     const urlObj = new URL(url);
     
@@ -52,10 +55,37 @@ function parseVideoUrl(url: string): { type: 'youtube' | 'vimeo' | 'loom' | 'unk
         return { type: 'loom', embedUrl: `https://www.loom.com/embed/${match[1]}` };
       }
     }
+
+    // Google Vids
+    if (urlObj.hostname.includes("vids.google.com")) {
+      const pathParts = urlObj.pathname.split("/").filter(Boolean);
+      let videoId = "";
+      if (pathParts[0] && ["share", "watch", "embed"].includes(pathParts[0])) {
+        videoId = pathParts[1] || "";
+      }
+      if (!videoId) {
+        videoId = urlObj.searchParams.get("id") || "";
+      }
+      if (videoId) {
+        return { type: "google_vids", embedUrl: `https://vids.google.com/embed/${videoId}` };
+      }
+    }
+
+    // Google Drive
+    if (urlObj.hostname.includes("drive.google.com")) {
+      let fileId = urlObj.searchParams.get("id") || "";
+      const fileMatch = urlObj.pathname.match(/\\/file\\/d\\/([^/]+)/);
+      if (fileMatch) {
+        fileId = fileMatch[1];
+      }
+      if (fileId) {
+        return { type: "google_drive", embedUrl: `https://drive.google.com/file/d/${fileId}/preview` };
+      }
+    }
     
-    return { type: 'unknown', embedUrl: null };
+    return { type: "unknown", embedUrl: null };
   } catch {
-    return { type: 'unknown', embedUrl: null };
+    return { type: "unknown", embedUrl: null };
   }
 }
 
@@ -119,7 +149,7 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
     
     const { embedUrl: parsedUrl } = parseVideoUrl(embedUrl);
     if (!parsedUrl) {
-      setError("Unsupported video URL. Please use YouTube, Vimeo, or Loom links.");
+      setError("Unsupported video URL. Use YouTube, Vimeo, Loom, Google Vids, or Google Drive links.");
       return;
     }
     
@@ -144,7 +174,7 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
             Insert Video
           </DialogTitle>
           <DialogDescription>
-            Embed a video from YouTube, Vimeo, or Loom.
+            Embed a video from YouTube, Vimeo, Loom, Google Vids, or Google Drive.
           </DialogDescription>
         </DialogHeader>
         
@@ -165,7 +195,7 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
               <Label htmlFor="video-url">Video URL</Label>
               <Input
                 id="video-url"
-                placeholder="https://www.youtube.com/watch?v=..."
+                placeholder="https://drive.google.com/file/d/... or https://vids.google.com/share/..."
                 value={embedUrl}
                 onChange={(e) => {
                   setEmbedUrl(e.target.value);
@@ -174,7 +204,7 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
                 className="bg-secondary"
               />
               <p className="text-xs text-muted-foreground">
-                Supports YouTube, Vimeo, and Loom links
+                Supports YouTube, Vimeo, Loom, Google Vids, and Google Drive links
               </p>
             </div>
             

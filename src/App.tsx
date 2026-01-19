@@ -58,12 +58,14 @@ const App = () => (
                 <Route path="/docs/:orgSlug/:projectSlug" element={<Docs />} />
                 <Route path="/docs/:orgSlug/:projectSlug/:pageSlug" element={<Docs />} />
                 <Route path="/docs/:orgSlug/:projectSlug/:topicSlug/:pageSlug" element={<Docs />} />
+                <Route path="/docs/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug" element={<Docs />} />
                 {/* Internal documentation routes - domain-restricted */}
                 <Route path="/internal" element={<Docs mode="internal" />} />
                 <Route path="/internal/:orgSlug" element={<Docs mode="internal" />} />
                 <Route path="/internal/:orgSlug/:projectSlug" element={<Docs mode="internal" />} />
                 <Route path="/internal/:orgSlug/:projectSlug/:pageSlug" element={<Docs mode="internal" />} />
                 <Route path="/internal/:orgSlug/:projectSlug/:topicSlug/:pageSlug" element={<Docs mode="internal" />} />
+                <Route path="/internal/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug" element={<Docs mode="internal" />} />
                 {/* Standalone API documentation routes */}
                 <Route path="/api/:orgSlug" element={<APIDocs />} />
                 {/* Standalone MCP documentation routes */}

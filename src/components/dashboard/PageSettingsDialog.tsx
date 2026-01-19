@@ -71,6 +71,8 @@ export const PageSettingsDialog = ({
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [isMoving, setIsMoving] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoTitle, setVideoTitle] = useState("");
 
   // Fetch document data and topics when opened
   useEffect(() => {
@@ -85,7 +87,7 @@ export const PageSettingsDialog = ({
 
     const { data } = await supabase
       .from("documents")
-      .select("title, slug, is_published, content_html, published_content_html, topic_id")
+      .select("title, slug, is_published, content_html, published_content_html, topic_id, video_url, video_title")
       .eq("id", documentId)
       .single();
 
@@ -95,6 +97,8 @@ export const PageSettingsDialog = ({
       setIsPublished(data.is_published);
       setCurrentTopicId(data.topic_id);
       setSelectedTopicId(data.topic_id);
+      setVideoUrl(data.video_url || "");
+      setVideoTitle(data.video_title || "");
     }
   };
 
@@ -203,6 +207,9 @@ export const PageSettingsDialog = ({
     if (slug) {
       updateData.slug = slug;
     }
+
+    updateData.video_url = videoUrl.trim() ? videoUrl.trim() : null;
+    updateData.video_title = videoUrl.trim() ? (videoTitle.trim() || null) : null;
 
     // If publishing (was unpublished, now published), copy content_html to published_content_html
     if (isPublished && currentDoc && !currentDoc.is_published && currentDoc.content_html) {
@@ -324,6 +331,28 @@ export const PageSettingsDialog = ({
                   Customize the URL for this page. Leave empty to auto-generate from title.
                 </p>
               </div>
+            </div>
+
+            {/* Video Embed */}
+            <div className="space-y-2">
+              <Label htmlFor="video-url">Embedded Video (optional)</Label>
+              <Input
+                id="video-url"
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
+                placeholder="https://drive.google.com/file/d/... or https://vids.google.com/share/..."
+                className="bg-secondary"
+              />
+              <Input
+                id="video-title"
+                value={videoTitle}
+                onChange={(e) => setVideoTitle(e.target.value)}
+                placeholder="Video title (optional)"
+                className="bg-secondary"
+              />
+              <p className="text-xs text-muted-foreground">
+                Supports YouTube, Vimeo, Loom, Google Vids, and Google Drive embeds.
+              </p>
             </div>
 
             {/* Published */}

@@ -55,6 +55,7 @@ export const AddProjectDialog = ({
   const [createdFolder, setCreatedFolder] = useState<{ id: string; name: string } | null>(null);
   const [showZipImport, setShowZipImport] = useState(false);
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
+  const [createdProjectVersionId, setCreatedProjectVersionId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { createFolder } = useGoogleDrive();
   const { toast } = useToast();
@@ -81,6 +82,43 @@ export const AddProjectDialog = ({
     return folder;
   };
 
+  const ensureDefaultVersion = async (projectId: string, isPublished: boolean) => {
+    const { data: existing, error: existingError } = await supabase
+      .from("project_versions")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("is_default", true)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error("Error checking default version:", existingError);
+    }
+    if (existing?.id) return existing.id;
+
+    const { data: created, error: createError } = await supabase
+      .from("project_versions")
+      .insert({
+        project_id: projectId,
+        name: "v1.0",
+        slug: "v1.0",
+        is_default: true,
+        is_published: isPublished,
+        semver_major: 1,
+        semver_minor: 0,
+        semver_patch: 0,
+        created_by: user?.id ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (createError) {
+      console.error("Error creating default version:", createError);
+      return null;
+    }
+
+    return created?.id ?? null;
+  };
+
   const handleCreateEmpty = async () => {
     if (!projectName.trim() || !rootFolderId || !organizationId || !user) return;
 
@@ -90,15 +128,19 @@ export const AddProjectDialog = ({
       const folder = await tryCreateProjectFolder(projectName.trim());
       if (!folder) return;
 
-      const { error: createProjectError } = await supabase.from("projects").insert({
-        name: projectName.trim(),
-        organization_id: organizationId,
-        created_by: user.id,
-        drive_folder_id: folder.id,
-        parent_id: parentProjectId || null,
-      });
+      const { data: project, error: createProjectError } = await supabase
+        .from("projects")
+        .insert({
+          name: projectName.trim(),
+          organization_id: organizationId,
+          created_by: user.id,
+          drive_folder_id: folder.id,
+          parent_id: parentProjectId || null,
+        })
+        .select("id, is_published")
+        .single();
 
-      if (createProjectError) {
+      if (createProjectError || !project) {
         console.error("Create project error:", createProjectError);
         toast({
           title: "Project folder created",
@@ -109,6 +151,8 @@ export const AddProjectDialog = ({
         resetAndClose();
         return;
       }
+
+      await ensureDefaultVersion(project.id, project.is_published ?? false);
 
       toast({
         title: "Project created",
@@ -172,7 +216,7 @@ export const AddProjectDialog = ({
           drive_folder_id: folder.id,
           parent_id: parentProjectId || null,
         })
-        .select("id")
+        .select("id, is_published")
         .single();
 
       if (createProjectError || !project) {
@@ -186,6 +230,8 @@ export const AddProjectDialog = ({
         resetAndClose();
         return;
       }
+
+      const projectVersionId = await ensureDefaultVersion(project.id, project.is_published ?? false);
 
       // Step 3: Import markdown files
       const googleToken = localStorage.getItem("google_access_token");
@@ -206,6 +252,7 @@ export const AddProjectDialog = ({
             files: batchFiles,
             projectId: project.id,
             organizationId,
+            projectVersionId,
             jobId,
             batchStart,
             totalFiles,
@@ -306,6 +353,7 @@ export const AddProjectDialog = ({
     setCreatedFolder(null);
     setShowZipImport(false);
     setCreatedProjectId(null);
+    setCreatedProjectVersionId(null);
     onOpenChange(false);
   };
 
@@ -328,7 +376,7 @@ export const AddProjectDialog = ({
           drive_folder_id: folder.id,
           parent_id: parentProjectId || null,
         })
-        .select("id")
+        .select("id, is_published")
         .single();
 
       if (error || !project) {
@@ -340,8 +388,11 @@ export const AddProjectDialog = ({
         return;
       }
 
+      const projectVersionId = await ensureDefaultVersion(project.id, project.is_published ?? false);
+
       setCreatedFolder(folder);
       setCreatedProjectId(project.id);
+      setCreatedProjectVersionId(projectVersionId);
       setShowZipImport(true);
     } finally {
       setIsCreating(false);
@@ -630,6 +681,7 @@ export const AddProjectDialog = ({
               }
             }}
             projectId={createdProjectId}
+            projectVersionId={createdProjectVersionId}
             projectName={projectName}
             projectFolderId={createdFolder.id}
             organizationId={organizationId}

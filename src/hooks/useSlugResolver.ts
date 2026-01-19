@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 interface SlugResolution {
   organizationId: string | null;
   projectId: string | null;
+  projectVersionId: string | null;
   topicId: string | null;
   documentId: string | null;
   loading: boolean;
@@ -18,6 +19,7 @@ interface SlugResolution {
 export function useSlugResolver(
   orgSlug?: string,
   projectSlug?: string,
+  versionSlug?: string,
   topicSlug?: string,
   pageSlug?: string
 ): SlugResolution {
@@ -25,6 +27,7 @@ export function useSlugResolver(
   const [resolution, setResolution] = useState<SlugResolution>({
     organizationId: null,
     projectId: null,
+    projectVersionId: null,
     topicId: null,
     documentId: null,
     loading: true,
@@ -39,7 +42,7 @@ export function useSlugResolver(
     }
 
     resolveSlug();
-  }, [orgSlug, projectSlug, topicSlug, pageSlug]);
+  }, [orgSlug, projectSlug, versionSlug, topicSlug, pageSlug]);
 
   const resolveSlug = async () => {
     setResolution(prev => ({ ...prev, loading: true, error: null }));
@@ -126,12 +129,62 @@ export function useSlugResolver(
               .maybeSingle();
 
             if (currentProject?.slug) {
-              const newPath = buildRedirectPath(orgSlug, currentProject.slug, topicSlug, pageSlug);
+              const newPath = buildRedirectPath(orgSlug, currentProject.slug, versionSlug, topicSlug, pageSlug);
               navigate(newPath, { replace: true });
               setResolution(prev => ({ ...prev, redirected: true, loading: false }));
               return;
             }
           }
+        }
+      }
+
+      let projectVersionId: string | null = null;
+      if (projectId) {
+        if (versionSlug) {
+          const { data: versionData } = await supabase
+            .from("project_versions")
+            .select("id")
+            .eq("project_id", projectId)
+            .eq("slug", versionSlug)
+            .maybeSingle();
+          projectVersionId = versionData?.id ?? null;
+        }
+
+        if (!projectVersionId) {
+          const { data: defaultVersion } = await supabase
+            .from("project_versions")
+            .select("id")
+            .eq("project_id", projectId)
+            .eq("is_default", true)
+            .maybeSingle();
+          projectVersionId = defaultVersion?.id ?? null;
+        }
+
+        if (!projectVersionId) {
+          const { data: publishedVersion } = await supabase
+            .from("project_versions")
+            .select("id")
+            .eq("project_id", projectId)
+            .eq("is_published", true)
+            .order("semver_major", { ascending: false })
+            .order("semver_minor", { ascending: false })
+            .order("semver_patch", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          projectVersionId = publishedVersion?.id ?? null;
+        }
+
+        if (!projectVersionId) {
+          const { data: latestVersion } = await supabase
+            .from("project_versions")
+            .select("id")
+            .eq("project_id", projectId)
+            .order("semver_major", { ascending: false })
+            .order("semver_minor", { ascending: false })
+            .order("semver_patch", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          projectVersionId = latestVersion?.id ?? null;
         }
       }
 
@@ -142,6 +195,7 @@ export function useSlugResolver(
           .from("topics")
           .select("id, slug, project_id")
           .eq("project_id", projectId)
+          .eq("project_version_id", projectVersionId)
           .eq("slug", topicSlug)
           .maybeSingle();
 
@@ -164,10 +218,11 @@ export function useSlugResolver(
               .select("slug, project_id")
               .eq("id", historyData.entity_id)
               .eq("project_id", projectId)
+              .eq("project_version_id", projectVersionId)
               .maybeSingle();
 
             if (currentTopic?.slug) {
-              const newPath = buildRedirectPath(orgSlug, projectSlug, currentTopic.slug, pageSlug);
+              const newPath = buildRedirectPath(orgSlug, projectSlug, versionSlug, currentTopic.slug, pageSlug);
               navigate(newPath, { replace: true });
               setResolution(prev => ({ ...prev, redirected: true, loading: false }));
               return;
@@ -185,6 +240,7 @@ export function useSlugResolver(
           .from("documents")
           .select("id, slug, project_id, topic_id")
           .eq("project_id", projectId)
+          .eq("project_version_id", projectVersionId)
           .eq("slug", pageSlug);
         
         if (topicId) {
@@ -213,6 +269,8 @@ export function useSlugResolver(
               .eq("id", historyData.entity_id)
               .eq("project_id", projectId);
             
+            docQuery.eq("project_version_id", projectVersionId);
+            
             if (topicId) {
               docQuery.eq("topic_id", topicId);
             }
@@ -231,7 +289,7 @@ export function useSlugResolver(
                 newTopicSlug = topic?.slug || undefined;
               }
               
-              const newPath = buildRedirectPath(orgSlug, projectSlug, newTopicSlug, currentDoc.slug);
+              const newPath = buildRedirectPath(orgSlug, projectSlug, versionSlug, newTopicSlug, currentDoc.slug);
               navigate(newPath, { replace: true });
               setResolution(prev => ({ ...prev, redirected: true, loading: false }));
               return;
@@ -243,6 +301,7 @@ export function useSlugResolver(
       setResolution({
         organizationId: orgId,
         projectId,
+        projectVersionId,
         topicId,
         documentId,
         loading: false,
@@ -254,6 +313,7 @@ export function useSlugResolver(
       setResolution({
         organizationId: null,
         projectId: null,
+        projectVersionId: null,
         topicId: null,
         documentId: null,
         loading: false,
@@ -269,12 +329,14 @@ export function useSlugResolver(
 function buildRedirectPath(
   orgSlug?: string,
   projectSlug?: string,
+  versionSlug?: string,
   topicSlug?: string,
   pageSlug?: string
 ): string {
   let path = "/docs";
   if (orgSlug) path += `/${orgSlug}`;
   if (projectSlug) path += `/${projectSlug}`;
+  if (versionSlug) path += `/${versionSlug}`;
   if (topicSlug) path += `/${topicSlug}`;
   if (pageSlug) path += `/${pageSlug}`;
   return path;

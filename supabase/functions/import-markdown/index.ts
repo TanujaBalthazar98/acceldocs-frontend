@@ -87,6 +87,7 @@ interface ImportRequest {
   }[];
   projectId: string;
   organizationId: string;
+  projectVersionId?: string | null;
   jobId?: string | null;
   batchStart?: number;
   batchSize?: number;
@@ -97,6 +98,78 @@ interface ImportRequest {
    * Used for both "import pages" (within a topic) and "import subtopics".
    */
   parentTopicId?: string | null;
+}
+
+async function resolveProjectVersionId(
+  supabase: any,
+  projectId: string,
+  requestedVersionId?: string | null
+): Promise<string | null> {
+  if (requestedVersionId) {
+    const { data: version, error } = await supabase
+      .from("project_versions")
+      .select("id")
+      .eq("id", requestedVersionId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error resolving requested project version:", error);
+      return null;
+    }
+
+    return version?.id ?? null;
+  }
+
+  const { data: defaultVersion, error: defaultError } = await supabase
+    .from("project_versions")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("is_default", true)
+    .maybeSingle();
+
+  if (defaultError) {
+    console.error("Error fetching default project version:", defaultError);
+  }
+
+  if (defaultVersion?.id) {
+    return defaultVersion.id;
+  }
+
+  const { data: publishedVersion, error: publishedError } = await supabase
+    .from("project_versions")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("is_published", true)
+    .order("semver_major", { ascending: false })
+    .order("semver_minor", { ascending: false })
+    .order("semver_patch", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (publishedError) {
+    console.error("Error fetching published project version:", publishedError);
+  }
+
+  if (publishedVersion?.id) {
+    return publishedVersion.id;
+  }
+
+  const { data: latestVersion, error: latestError } = await supabase
+    .from("project_versions")
+    .select("id")
+    .eq("project_id", projectId)
+    .order("semver_major", { ascending: false })
+    .order("semver_minor", { ascending: false })
+    .order("semver_patch", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestError) {
+    console.error("Error fetching latest project version:", latestError);
+  }
+
+  return latestVersion?.id ?? null;
 }
 
 interface TopicNode {
@@ -608,7 +681,7 @@ Deno.serve(async (req) => {
     }
 
     const body: ImportRequest = await req.json();
-    const { files, projectId, organizationId, parentTopicId } = body;
+    const { files, projectId, organizationId, parentTopicId, projectVersionId } = body;
 
     console.log(`Importing ${files.length} markdown files to project ${projectId}`);
 
@@ -651,6 +724,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    const resolvedProjectVersionId = await resolveProjectVersionId(
+      supabase,
+      projectId,
+      projectVersionId
+    );
+
+    if (!resolvedProjectVersionId) {
+      return new Response(
+        JSON.stringify({ error: "Project version not found" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Determine base folder/topic (when importing into an existing topic)
     let baseFolderId = project.drive_folder_id;
     let baseTopicId: string | null = null;
@@ -658,7 +744,7 @@ Deno.serve(async (req) => {
     if (parentTopicId) {
       const { data: parentTopic, error: parentTopicError } = await supabase
         .from("topics")
-        .select("id, drive_folder_id")
+        .select("id, drive_folder_id, project_version_id")
         .eq("id", parentTopicId)
         .eq("project_id", projectId)
         .single();
@@ -666,6 +752,13 @@ Deno.serve(async (req) => {
       if (parentTopicError || !parentTopic?.drive_folder_id) {
         return new Response(
           JSON.stringify({ error: "Parent topic not found" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (parentTopic.project_version_id !== resolvedProjectVersionId) {
+        return new Response(
+          JSON.stringify({ error: "Parent topic is not part of the selected version" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -909,6 +1002,7 @@ Deno.serve(async (req) => {
       topicTree,
       rootFiles,
       projectId,
+      resolvedProjectVersionId,
       user.id,
       jobId,
       baseFolderId,
@@ -930,6 +1024,7 @@ Deno.serve(async (req) => {
           files,
           projectId,
           organizationId,
+          projectVersionId: resolvedProjectVersionId,
           parentTopicId,
           jobId,
           batchStart: nextStart,
@@ -1004,6 +1099,7 @@ async function createTopicsRecursively(
   tokenManager: TokenManager,
   node: TopicNode,
   projectId: string,
+  projectVersionId: string,
   parentFolderId: string,
   parentTopicId: string | null,
   userId: string,
@@ -1026,6 +1122,7 @@ async function createTopicsRecursively(
         .from("topics")
         .select("id, drive_folder_id")
         .eq("project_id", projectId)
+        .eq("project_version_id", projectVersionId)
         .eq("name", name)
         .eq("parent_id", parentTopicId)
         .maybeSingle();
@@ -1055,6 +1152,7 @@ async function createTopicsRecursively(
             name: name,
             slug: generateSlug(name),
             project_id: projectId,
+            project_version_id: projectVersionId,
             drive_folder_id: folderResult.id,
             parent_id: parentTopicId,
             display_order: displayOrder++,
@@ -1129,13 +1227,14 @@ async function createTopicsRecursively(
           }
 
           // Use upsert to handle duplicate documents gracefully
-          const { error: docError } = await supabase
+      const { error: docError } = await supabase
             .from("documents")
             .upsert({
               title,
               slug: generateSlug(title),
               google_doc_id: docResult.id,
               project_id: projectId,
+              project_version_id: projectVersionId,
               topic_id: topic.id,
               content_html: htmlContent,
               owner_id: userId,
@@ -1176,6 +1275,7 @@ async function createTopicsRecursively(
         tokenManager,
         childNode,
         projectId,
+        projectVersionId,
         topic.drive_folder_id,
         topic.id,
         userId,
@@ -1202,6 +1302,7 @@ async function processImportWithProgress(
   topicTree: TopicNode,
   rootFiles: { path: string; content: string }[],
   projectId: string,
+  projectVersionId: string,
   userId: string,
   jobId: string | null,
   baseFolderId: string,
@@ -1288,6 +1389,7 @@ async function processImportWithProgress(
     tokenManager,
     topicTree,
     projectId,
+    projectVersionId,
     baseFolderId,
     baseTopicId,
     userId,
@@ -1332,6 +1434,7 @@ async function processImportWithProgress(
             slug: generateSlug(title),
             google_doc_id: docResult.id,
             project_id: projectId,
+            project_version_id: projectVersionId,
             topic_id: baseTopicId,
             content_html: htmlContent,
             owner_id: userId,

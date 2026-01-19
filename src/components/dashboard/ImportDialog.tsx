@@ -22,6 +22,7 @@ interface ImportDialogProps {
   projectId: string | null;
   projectName: string | null;
   projectFolderId: string | null;
+  projectVersionId?: string | null;
   /** For page imports, this is the topic to import into. */
   topicId?: string | null;
   topicName?: string | null;
@@ -45,6 +46,7 @@ export const ImportDialog = ({
   projectId,
   projectName,
   projectFolderId,
+  projectVersionId,
   topicId,
   topicName,
   topicFolderId,
@@ -238,6 +240,7 @@ export const ImportDialog = ({
             files: batchFiles,
             projectId,
             organizationId,
+            projectVersionId,
             parentTopicId: importParentTopicId,
             jobId,
             batchStart,

@@ -75,6 +75,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { SmartSearch } from "@/components/SmartSearch";
 import { PageView } from "@/components/dashboard/PageView";
+import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
 import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
 import { AddPageDialog } from "@/components/dashboard/AddPageDialog";
 import { AddProjectDialog } from "@/components/dashboard/AddProjectDialog";
@@ -121,11 +122,24 @@ interface Project {
   parent_id: string | null;
 }
 
+interface ProjectVersion {
+  id: string;
+  project_id: string;
+  name: string;
+  slug: string;
+  is_default: boolean;
+  is_published: boolean;
+  semver_major: number;
+  semver_minor: number;
+  semver_patch: number;
+}
+
 interface Topic {
   id: string;
   name: string;
   drive_folder_id: string;
   project_id: string;
+  project_version_id: string;
   parent_id: string | null;
   display_order: number;
 }
@@ -137,6 +151,7 @@ interface Document {
   title: string;
   google_doc_id: string;
   project_id: string;
+  project_version_id: string;
   topic_id: string | null;
   display_order: number | null;
   google_modified_at: string | null;
@@ -147,6 +162,8 @@ interface Document {
   owner_name?: string;
   content_html: string | null;
   published_content_html: string | null;
+  video_url?: string | null;
+  video_title?: string | null;
 }
 
 const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: string; color: string }> = {
@@ -175,6 +192,8 @@ const Dashboard = () => {
   const [topicSettingsOpen, setTopicSettingsOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<ProjectVersion | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [parentTopicForCreate, setParentTopicForCreate] = useState<Topic | null>(null);
   const [settingsTopic, setSettingsTopic] = useState<Topic | null>(null);
@@ -369,9 +388,18 @@ const Dashboard = () => {
           // Get topics for all projects
           const projectIds = projectsData.map((p) => p.id);
           if (projectIds.length > 0) {
+            const { data: versionsData } = await supabase
+              .from("project_versions")
+              .select("id, project_id, name, slug, is_default, is_published, semver_major, semver_minor, semver_patch")
+              .in("project_id", projectIds);
+
+            if (versionsData) {
+              setProjectVersions(versionsData as ProjectVersion[]);
+            }
+
             const { data: topicsData } = await supabase
               .from("topics")
-              .select("id, name, drive_folder_id, project_id, parent_id, display_order")
+              .select("id, name, drive_folder_id, project_id, project_version_id, parent_id, display_order")
               .in("project_id", projectIds)
               .order("display_order");
 
@@ -385,7 +413,7 @@ const Dashboard = () => {
               .from("documents")
               .select(
                 `
-              id, title, google_doc_id, project_id, topic_id, display_order, google_modified_at, created_at, updated_at,
+              id, title, google_doc_id, project_id, project_version_id, topic_id, display_order, google_modified_at, created_at, updated_at, video_url, video_title,
               visibility, is_published, owner_id,
               owner:profiles!documents_owner_id_fkey(full_name, email)
             `,
@@ -442,6 +470,52 @@ const Dashboard = () => {
     fetchData();
   }, [user]);
 
+  const getHighestSemverVersion = (versions: ProjectVersion[]) =>
+    versions
+      .slice()
+      .sort((a, b) => {
+        if (a.semver_major !== b.semver_major) return b.semver_major - a.semver_major;
+        if (a.semver_minor !== b.semver_minor) return b.semver_minor - a.semver_minor;
+        return b.semver_patch - a.semver_patch;
+      })[0] ?? null;
+
+  const resolveDefaultVersion = (projectId: string) => {
+    const versions = projectVersions.filter(v => v.project_id === projectId);
+    if (versions.length === 0) return null;
+    const defaultVersion = versions.find(v => v.is_default);
+    if (defaultVersion) return defaultVersion;
+
+    const publishedVersions = versions.filter(v => v.is_published);
+    return getHighestSemverVersion(publishedVersions) ?? getHighestSemverVersion(versions);
+  };
+
+  useEffect(() => {
+    if (!selectedProject) {
+      setSelectedVersion(null);
+      return;
+    }
+
+    const resolved = resolveDefaultVersion(selectedProject.id);
+    if (!resolved) {
+      setSelectedVersion(null);
+      return;
+    }
+
+    if (resolved.id !== selectedVersion?.id) {
+      setSelectedVersion(resolved);
+    }
+  }, [selectedProject, projectVersions]);
+
+  useEffect(() => {
+    if (!selectedVersion) return;
+    if (selectedTopic && selectedTopic.project_version_id !== selectedVersion.id) {
+      setSelectedTopic(null);
+    }
+    if (selectedDocument && selectedDocument.project_version_id !== selectedVersion.id) {
+      setSelectedDocument(null);
+    }
+  }, [selectedVersion, selectedTopic, selectedDocument]);
+
   // Keep selectedDocument in sync with documents array after refetch
   useEffect(() => {
     if (selectedDocument && documents.length > 0) {
@@ -462,8 +536,16 @@ const Dashboard = () => {
     setVisiblePagesCount(10);
   }, [selectedProject, selectedTopic, searchQuery]);
 
+  const scopedDocuments = selectedVersion
+    ? documents.filter(doc => doc.project_version_id === selectedVersion.id)
+    : documents;
+
+  const scopedTopics = selectedVersion
+    ? topics.filter(topic => topic.project_version_id === selectedVersion.id)
+    : topics;
+
   // Filter documents based on selected project/topic and search query
-  const filteredDocuments = documents.filter(doc => {
+  const filteredDocuments = scopedDocuments.filter(doc => {
     // Filter by search query first
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -491,9 +573,20 @@ const Dashboard = () => {
     !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
   
-  const filteredTopics = topics.filter(t => 
+  const filteredTopics = scopedTopics.filter(t => 
     !searchQuery.trim() || t.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const selectedProjectVersions = selectedProject
+    ? projectVersions
+        .filter(v => v.project_id === selectedProject.id)
+        .slice()
+        .sort((a, b) => {
+          if (a.semver_major !== b.semver_major) return b.semver_major - a.semver_major;
+          if (a.semver_minor !== b.semver_minor) return b.semver_minor - a.semver_minor;
+          return b.semver_patch - a.semver_patch;
+        })
+    : [];
   
   // Delete handlers with RBAC enforcement
   const handleDeleteProject = async (projectId: string, forceDelete = false): Promise<boolean> => {
@@ -1709,7 +1802,7 @@ const Dashboard = () => {
               )}
               onClick={() => {
                 // Show first topic or just indicate documentation view
-                const projectTopics = topics.filter(t => t.project_id === selectedProject.id && !t.parent_id);
+                const projectTopics = scopedTopics.filter(t => t.project_id === selectedProject.id && !t.parent_id);
                 if (projectTopics.length > 0) {
                   setSelectedTopic(projectTopics[0]);
                 }
@@ -1730,20 +1823,51 @@ const Dashboard = () => {
             </div>
 
             {/* Version */}
-            <div
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-              onClick={() => {
-                // TODO: Open version management
-                toast({
-                  title: "Coming Soon",
-                  description: "Version management will be available soon.",
-                });
-              }}
-            >
-              <GitBranch className="w-4 h-4" />
-              <span>Version</span>
-              <Badge variant="outline" className="ml-auto text-xs py-0 h-5">v1.0</Badge>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                  type="button"
+                >
+                  <GitBranch className="w-4 h-4" />
+                  <span>Version</span>
+                  <Badge variant="outline" className="ml-auto text-xs py-0 h-5">
+                    {selectedVersion?.slug || "v1.0"}
+                  </Badge>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {selectedProjectVersions.length === 0 ? (
+                  <DropdownMenuItem disabled>No versions found</DropdownMenuItem>
+                ) : (
+                  selectedProjectVersions.map((version) => (
+                    <DropdownMenuItem
+                      key={version.id}
+                      onClick={() => {
+                        setSelectedVersion(version);
+                        setSelectedTopic(null);
+                        setSelectedDocument(null);
+                      }}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="flex items-center gap-2">
+                        {version.slug}
+                        {version.is_default && (
+                          <Badge variant="secondary" className="text-[10px] py-0 h-4">
+                            Default
+                          </Badge>
+                        )}
+                      </span>
+                      {!version.is_published && (
+                        <Badge variant="outline" className="text-[10px] py-0 h-4">
+                          Draft
+                        </Badge>
+                      )}
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* Project Settings */}
             {permissions.canEditProjectSettings && (
@@ -1943,14 +2067,14 @@ const Dashboard = () => {
           <div className="p-4">
             <SmartSearch
               placeholder="Search docs..."
-              documents={documents.filter(d => !selectedProject || d.project_id === selectedProject.id).map(d => ({
+              documents={scopedDocuments.filter(d => !selectedProject || d.project_id === selectedProject.id).map(d => ({
                 id: d.id,
                 title: d.title,
                 project_id: d.project_id,
                 topic_id: d.topic_id,
                 content_html: d.content_html,
               }))}
-              topics={topics.filter(t => !selectedProject || t.project_id === selectedProject.id).map(t => ({
+              topics={scopedTopics.filter(t => !selectedProject || t.project_id === selectedProject.id).map(t => ({
                 id: t.id,
                 name: t.name,
                 project_id: t.project_id,
@@ -1970,7 +2094,7 @@ const Dashboard = () => {
                     setExpandedProjects(prev => new Set([...prev, project.id]));
                   }
                 } else if (result.type === "topic") {
-                  const topic = topics.find(t => t.id === result.id);
+                  const topic = scopedTopics.find(t => t.id === result.id);
                   if (topic) {
                     const project = projects.find(p => p.id === topic.project_id);
                     if (project) {
@@ -1981,7 +2105,7 @@ const Dashboard = () => {
                   }
                 } else if (result.type === "page") {
                   // Use inline PageView instead of navigating to separate page
-                  const doc = documents.find(d => d.id === result.id);
+                  const doc = scopedDocuments.find(d => d.id === result.id);
                   if (doc) {
                     setSelectedDocument(doc);
                     setSelectedPage(doc.id);
@@ -1991,7 +2115,7 @@ const Dashboard = () => {
                       setSelectedProject(project);
                       setExpandedProjects(prev => new Set([...prev, project.id]));
                     }
-                    const docTopic = topics.find(t => t.id === doc.topic_id);
+                    const docTopic = scopedTopics.find(t => t.id === doc.topic_id);
                     if (docTopic) {
                       setSelectedTopic(docTopic);
                     } else {
@@ -2156,7 +2280,7 @@ const Dashboard = () => {
                 <div className="space-y-1 mt-1">
                   <UnifiedContentTree
                     topics={filteredTopics.filter(t => t.project_id === selectedProject.id)}
-                    documents={documents.filter(d => d.project_id === selectedProject.id).map(d => ({
+                    documents={scopedDocuments.filter(d => d.project_id === selectedProject.id).map(d => ({
                       id: d.id,
                       title: d.title,
                       google_doc_id: d.google_doc_id,
@@ -2174,13 +2298,13 @@ const Dashboard = () => {
                     }}
                     onSelectDocument={(doc) => {
                       // Find the full document object and set it for PageView
-                      const fullDoc = documents.find(d => d.id === doc.id);
+                      const fullDoc = scopedDocuments.find(d => d.id === doc.id);
                       if (fullDoc) {
                         setSelectedDocument(fullDoc);
                       }
                       setSelectedPage(doc.id);
                       // Find the topic for the doc
-                      const docTopic = topics.find(t => t.id === doc.topic_id);
+                      const docTopic = scopedTopics.find(t => t.id === doc.topic_id);
                       if (docTopic) {
                         setSelectedTopic(docTopic);
                       } else {
@@ -2819,6 +2943,12 @@ const Dashboard = () => {
             );
           })()}
 
+          <AnalyticsPanel
+            projectId={selectedProject?.id || null}
+            documentId={selectedDocument?.id || null}
+            className="mb-4 sm:mb-6"
+          />
+
           {/* Topics */}
           <div className="mb-4 sm:mb-6">
             <div className="flex items-center justify-between mb-3 sm:mb-4">
@@ -2839,7 +2969,7 @@ const Dashboard = () => {
                       let current: Topic | undefined = selectedTopic;
                       while (current) {
                         path.unshift(current);
-                        current = topics.find(t => t.id === current?.parent_id);
+                        current = scopedTopics.find(t => t.id === current?.parent_id);
                       }
                       return path.map((topic, idx) => (
                         <span key={topic.id} className="flex items-center">
@@ -2872,15 +3002,15 @@ const Dashboard = () => {
               <p className="text-sm text-muted-foreground">Select a project to view topics.</p>
             ) : (
               <SubtopicsView
-                topics={topics.filter(t => t.project_id === selectedProject.id)}
-                allTopics={topics.filter(t => t.project_id === selectedProject.id)}
+                topics={scopedTopics.filter(t => t.project_id === selectedProject.id)}
+                allTopics={scopedTopics.filter(t => t.project_id === selectedProject.id)}
                 selectedTopic={selectedTopic}
                 onSelectTopic={(topic) => setSelectedTopic(topic)}
                 onAddSubtopic={(parentTopic) => {
                   setParentTopicForCreate(parentTopic);
                   setAddTopicOpen(true);
                 }}
-                documents={documents}
+                documents={scopedDocuments}
               />
             )}
           </div>
@@ -3166,6 +3296,7 @@ const Dashboard = () => {
         projectName={selectedProject?.name || ""}
         projectSlug={selectedProject?.slug}
         organizationSlug={organizationSlug}
+        projectVersionSlug={selectedVersion?.slug || null}
       />
       
       <AddPageDialog
@@ -3173,6 +3304,7 @@ const Dashboard = () => {
         onOpenChange={setAddPageOpen}
         projectId={selectedProject?.id}
         projectName={selectedProject?.name}
+        projectVersionId={selectedVersion?.id || null}
         topicId={selectedTopic?.id}
         topicName={selectedTopic?.name}
         parentFolderId={selectedTopic?.drive_folder_id || selectedProject?.drive_folder_id || null}
@@ -3205,6 +3337,7 @@ const Dashboard = () => {
         }}
         projectName={selectedProject?.name || null}
         projectId={selectedProject?.id || null}
+        projectVersionId={selectedVersion?.id || null}
         projectFolderId={selectedProject?.drive_folder_id || null}
         parentTopic={parentTopicForCreate ? {
           id: parentTopicForCreate.id,
