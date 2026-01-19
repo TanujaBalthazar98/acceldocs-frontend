@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, Loader2 } from "lucide-react";
-import docspeareLogo from "@/assets/docspeare-logo.png";
+import { AlertCircle, BookOpen, Loader2 } from "lucide-react";
 
 const Auth = () => {
   const { user, signInWithGoogle } = useAuth();
@@ -100,17 +99,18 @@ const Auth = () => {
           </div>
           
           <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
-            {/* Logo */}
-            <div className="mb-12">
-              <img src={docspeareLogo} alt="Docspeare" className="h-8" />
+            <div className="mb-10 flex items-center gap-3 text-primary">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+                <BookOpen className="w-6 h-6" />
+              </div>
             </div>
 
             <h1 className="text-5xl xl:text-6xl font-bold mb-4 tracking-tight">
-              Docspeare
+              Knowledge Workspace
             </h1>
             
             <p className="text-xl text-muted-foreground mb-8 max-w-md">
-              Documentation platform for modern teams.
+              A calm, structured way to manage knowledge on top of Google Drive.
             </p>
           </div>
         </div>
@@ -120,8 +120,10 @@ const Auth = () => {
           <div className="w-full max-w-sm">
             {/* Mobile Logo */}
             <div className="flex lg:hidden flex-col items-center mb-12">
-              <img src={docspeareLogo} alt="Docspeare" className="h-7 mb-4" />
-              <h1 className="text-2xl font-bold">Docspeare</h1>
+              <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center mb-3 text-primary">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <h1 className="text-2xl font-bold">Knowledge Workspace</h1>
             </div>
 
             {/* Auth Card */}
@@ -171,8 +173,11 @@ const Auth = () => {
       {/* Footer with Legal Links */}
       <footer className="py-4 px-6 border-t border-border">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-6 text-xs text-muted-foreground">
-          <span>© 2025 Docspeare</span>
+          <span>© 2025 Knowledge Workspace</span>
           <div className="flex items-center gap-4">
+            <Link to="/help" className="hover:text-foreground transition-colors">
+              Docs
+            </Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">
               Privacy Policy
             </Link>

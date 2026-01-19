@@ -46,24 +46,27 @@ const Help = () => {
       content: (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">Welcome to Docspeare</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Welcome to your knowledge workspace</h2>
             <p className="text-muted-foreground mb-4">
-              Docspeare is a Google Drive-native documentation platform that transforms your existing Google Docs 
-              into structured, publishable documentation. Unlike traditional documentation tools, Docspeare 
-              doesn't require you to migrate content or learn a new editor—your Google Docs remain the single 
-              source of truth.
+              This workspace turns the documents you already keep in Google Drive into structured, publishable
+              knowledge. You keep using Google Docs as your editor, while the workspace organizes, structures,
+              and publishes content without duplicating files.
             </p>
           </div>
 
           <div className="bg-primary/10 rounded-lg p-6 border border-primary/20">
             <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
-              Why Docspeare?
+              Why this approach?
             </h3>
             <ul className="space-y-2 text-muted-foreground">
               <li className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
                 <span><strong>No migration required</strong> — Keep using Google Docs as your editor</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
+                <span><strong>Personal or team workspaces</strong> — Personal emails get a private workspace; business domains can share one</span>
               </li>
               <li className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
@@ -75,7 +78,7 @@ const Help = () => {
               </li>
               <li className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
-                <span><strong>Beautiful publishing</strong> — Transform docs into polished, branded documentation</span>
+                <span><strong>Publish confidently</strong> — Transform docs into organized, shareable knowledge</span>
               </li>
             </ul>
           </div>
@@ -87,35 +90,35 @@ const Help = () => {
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">1</div>
                 <div>
                   <span className="font-medium">Sign in with Google</span>
-                  <p className="text-sm text-muted-foreground">Docspeare uses your Google account to access your Drive files</p>
+                  <p className="text-sm text-muted-foreground">Your account grants Drive access for reading and creating folders</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">2</div>
                 <div>
-                  <span className="font-medium">Create or join an organization</span>
-                  <p className="text-sm text-muted-foreground">Organizations are workspaces for your team's documentation</p>
+                  <span className="font-medium">Create or join a workspace</span>
+                  <p className="text-sm text-muted-foreground">Personal emails create a private workspace; business domains can request access</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">3</div>
                 <div>
-                  <span className="font-medium">Create a project and connect a Google Drive folder</span>
-                  <p className="text-sm text-muted-foreground">Each project links to a Drive folder containing your docs</p>
+                  <span className="font-medium">Set your Drive root folder</span>
+                  <p className="text-sm text-muted-foreground">Choose the Drive folder that will store all projects</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">4</div>
                 <div>
-                  <span className="font-medium">Organize with topics and add pages</span>
-                  <p className="text-sm text-muted-foreground">Topics are folders; pages are linked Google Docs</p>
+                  <span className="font-medium">Create or import your first project</span>
+                  <p className="text-sm text-muted-foreground">Import folders or start empty and add pages</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">5</div>
                 <div>
-                  <span className="font-medium">Publish and share</span>
-                  <p className="text-sm text-muted-foreground">Make your documentation available to your audience</p>
+                  <span className="font-medium">Organize topics and publish</span>
+                  <p className="text-sm text-muted-foreground">Topics map to folders; pages map to Google Docs</p>
                 </div>
               </li>
             </ul>
@@ -124,18 +127,18 @@ const Help = () => {
           <div>
             <h3 className="font-semibold text-lg mb-3">Signing Up</h3>
             <p className="text-muted-foreground mb-3">
-              To get started with Docspeare:
+              To get started:
             </p>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Click "Get Started" on the homepage</li>
               <li>Sign in with your Google account (required for Drive integration)</li>
-              <li>Grant Docspeare permission to access your Google Drive</li>
-              <li>Create a new organization or accept an invitation to join one</li>
+              <li>Grant Drive permissions when prompted</li>
+              <li>If you use a personal email, a private workspace is created for you</li>
+              <li>If you use a business domain, request access or get invited to the workspace</li>
             </ol>
             <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
               <p className="text-sm text-muted-foreground">
-                <strong>Note:</strong> Docspeare requires Google sign-in because it integrates directly with 
-                Google Drive. Your documents never leave Google—Docspeare reads and displays them with your permission.
+                <strong>Note:</strong> Google sign-in is required because the workspace integrates directly with
+                Google Drive. Your documents never leave Google—content is read and organized with your permission.
               </p>
             </div>
           </div>
@@ -157,21 +160,20 @@ const Help = () => {
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Creating an Organization</h3>
+            <h3 className="font-semibold text-lg mb-3">Creating a Workspace</h3>
             <p className="text-muted-foreground mb-3">
-              When you first sign up, you'll be prompted to create an organization:
+              Workspaces are created automatically based on your email:
             </p>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Enter your organization name (e.g., "Acme Corp")</li>
-              <li>Set your organization domain (e.g., "acme.com")</li>
-              <li>Optionally upload a logo and set brand colors</li>
-              <li>Click "Create" to finish setup</li>
+              <li>Personal emails create a private workspace tied to your account</li>
+              <li>Business domains map to a shared workspace for that domain</li>
+              <li>Set the workspace name, logo, and brand colors in Settings</li>
+              <li>Invite teammates once the workspace is created</li>
             </ol>
             <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
               <p className="text-sm text-muted-foreground">
-                <strong>Tip:</strong> Your organization domain is used to generate your documentation URL 
-                (e.g., docs.docspeare.io/acme) and to allow team members with matching email domains to 
-                request access.
+                <strong>Tip:</strong> A workspace slug or custom domain can be used to create clean URLs
+                when you publish documentation.
               </p>
             </div>
           </div>
@@ -1048,7 +1050,7 @@ const Help = () => {
           <div>
             <h3 className="font-semibold text-lg mb-3">llms.txt Support</h3>
             <p className="text-muted-foreground mb-3">
-              Docspeare automatically generates an llms.txt file for your documentation:
+              The platform automatically generates an llms.txt file for your documentation:
             </p>
             <ul className="list-disc list-inside space-y-2 text-muted-foreground">
               <li>Provides AI-friendly access to your documentation structure</li>
@@ -1064,8 +1066,8 @@ const Help = () => {
   return (
     <>
       <Helmet>
-        <title>Documentation | Docspeare</title>
-        <meta name="description" content="Learn how to use Docspeare to transform your Google Docs into beautiful, organized documentation." />
+        <title>Documentation | Knowledge Workspace</title>
+        <meta name="description" content="Learn how to organize and publish knowledge from Google Drive using the workspace." />
       </Helmet>
 
       <div className="min-h-screen bg-background flex flex-col">
