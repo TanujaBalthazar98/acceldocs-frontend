@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { Play, Video, Link as LinkIcon, Upload, X, ExternalLink } from "lucide-react";
+import {
+  Play,
+  Video,
+  Link as LinkIcon,
+  Upload,
+  X,
+  ExternalLink,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,38 +28,56 @@ interface VideoEmbedProps {
 
 // Parse video URL and return embed info
 function parseVideoUrl(url: string): {
-  type: "youtube" | "vimeo" | "loom" | "google_vids" | "google_drive" | "unknown";
+  type:
+    | "youtube"
+    | "vimeo"
+    | "loom"
+    | "google_vids"
+    | "google_drive"
+    | "unknown";
   embedUrl: string | null;
 } {
   try {
     const urlObj = new URL(url);
-    
+
     // YouTube
-    if (urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')) {
-      let videoId = '';
-      if (urlObj.hostname.includes('youtu.be')) {
+    if (
+      urlObj.hostname.includes("youtube.com") ||
+      urlObj.hostname.includes("youtu.be")
+    ) {
+      let videoId = "";
+      if (urlObj.hostname.includes("youtu.be")) {
         videoId = urlObj.pathname.slice(1);
       } else {
-        videoId = urlObj.searchParams.get('v') || '';
+        videoId = urlObj.searchParams.get("v") || "";
       }
       if (videoId) {
-        return { type: 'youtube', embedUrl: `https://www.youtube.com/embed/${videoId}` };
+        return {
+          type: "youtube",
+          embedUrl: `https://www.youtube.com/embed/${videoId}`,
+        };
       }
     }
-    
+
     // Vimeo
-    if (urlObj.hostname.includes('vimeo.com')) {
-      const videoId = urlObj.pathname.split('/').pop();
+    if (urlObj.hostname.includes("vimeo.com")) {
+      const videoId = urlObj.pathname.split("/").pop();
       if (videoId) {
-        return { type: 'vimeo', embedUrl: `https://player.vimeo.com/video/${videoId}` };
+        return {
+          type: "vimeo",
+          embedUrl: `https://player.vimeo.com/video/${videoId}`,
+        };
       }
     }
-    
+
     // Loom
-    if (urlObj.hostname.includes('loom.com')) {
+    if (urlObj.hostname.includes("loom.com")) {
       const match = urlObj.pathname.match(/\/share\/([a-zA-Z0-9]+)/);
       if (match) {
-        return { type: 'loom', embedUrl: `https://www.loom.com/embed/${match[1]}` };
+        return {
+          type: "loom",
+          embedUrl: `https://www.loom.com/embed/${match[1]}`,
+        };
       }
     }
 
@@ -67,45 +92,53 @@ function parseVideoUrl(url: string): {
         videoId = urlObj.searchParams.get("id") || "";
       }
       if (videoId) {
-        return { type: "google_vids", embedUrl: `https://vids.google.com/embed/${videoId}` };
+        return {
+          type: "google_vids",
+          embedUrl: `https://vids.google.com/embed/${videoId}`,
+        };
       }
     }
 
     // Google Drive
     if (urlObj.hostname.includes("drive.google.com")) {
       let fileId = urlObj.searchParams.get("id") || "";
-      const fileMatch = urlObj.pathname.match(/\\/file\\/d\\/([^/]+)/);
+
+      // ✅ matches: /file/d/<id>/...
+      const fileMatch = urlObj.pathname.match(/\/file\/d\/([^/]+)/);
+
       if (fileMatch) {
         fileId = fileMatch[1];
       }
-      if (fileId) {
-        return { type: "google_drive", embedUrl: `https://drive.google.com/file/d/${fileId}/preview` };
-      }
     }
-    
+
     return { type: "unknown", embedUrl: null };
   } catch {
     return { type: "unknown", embedUrl: null };
   }
 }
 
-export function VideoEmbed({ url, title, aspectRatio = "16:9", className = "" }: VideoEmbedProps) {
+export function VideoEmbed({
+  url,
+  title,
+  aspectRatio = "16:9",
+  className = "",
+}: VideoEmbedProps) {
   if (!url) return null;
-  
+
   const { embedUrl, type } = parseVideoUrl(url);
-  
+
   const aspectRatioClass = {
     "16:9": "aspect-video",
     "4:3": "aspect-[4/3]",
     "1:1": "aspect-square",
   }[aspectRatio];
-  
+
   if (!embedUrl) {
     // Unknown video type - show as link
     return (
-      <a 
-        href={url} 
-        target="_blank" 
+      <a
+        href={url}
+        target="_blank"
         rel="noopener noreferrer"
         className={`flex items-center gap-2 p-4 rounded-lg border border-border bg-muted/50 hover:bg-muted transition-colors ${className}`}
       >
@@ -115,7 +148,7 @@ export function VideoEmbed({ url, title, aspectRatio = "16:9", className = "" }:
       </a>
     );
   }
-  
+
   return (
     <div className={`relative ${aspectRatioClass} ${className}`}>
       <iframe
@@ -132,31 +165,41 @@ export function VideoEmbed({ url, title, aspectRatio = "16:9", className = "" }:
 interface VideoInsertDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onInsert: (videoData: { type: 'embed' | 'upload'; url: string; title?: string }) => void;
+  onInsert: (videoData: {
+    type: "embed" | "upload";
+    url: string;
+    title?: string;
+  }) => void;
 }
 
-export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertDialogProps) {
+export function VideoInsertDialog({
+  open,
+  onOpenChange,
+  onInsert,
+}: VideoInsertDialogProps) {
   const [activeTab, setActiveTab] = useState<"embed" | "upload">("embed");
   const [embedUrl, setEmbedUrl] = useState("");
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
-  
+
   const handleEmbedInsert = () => {
     if (!embedUrl.trim()) {
       setError("Please enter a video URL");
       return;
     }
-    
+
     const { embedUrl: parsedUrl } = parseVideoUrl(embedUrl);
     if (!parsedUrl) {
-      setError("Unsupported video URL. Use YouTube, Vimeo, Loom, Google Vids, or Google Drive links.");
+      setError(
+        "Unsupported video URL. Use YouTube, Vimeo, Loom, Google Vids, or Google Drive links."
+      );
       return;
     }
-    
-    onInsert({ type: 'embed', url: embedUrl, title: title || undefined });
+
+    onInsert({ type: "embed", url: embedUrl, title: title || undefined });
     resetAndClose();
   };
-  
+
   const resetAndClose = () => {
     setEmbedUrl("");
     setTitle("");
@@ -164,7 +207,7 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
     setActiveTab("embed");
     onOpenChange(false);
   };
-  
+
   return (
     <Dialog open={open} onOpenChange={resetAndClose}>
       <DialogContent className="sm:max-w-md">
@@ -174,11 +217,15 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
             Insert Video
           </DialogTitle>
           <DialogDescription>
-            Embed a video from YouTube, Vimeo, Loom, Google Vids, or Google Drive.
+            Embed a video from YouTube, Vimeo, Loom, Google Vids, or Google
+            Drive.
           </DialogDescription>
         </DialogHeader>
-        
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "embed" | "upload")}>
+
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as "embed" | "upload")}
+        >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="embed" className="gap-2">
               <LinkIcon className="h-4 w-4" />
@@ -189,7 +236,7 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
               Upload (Soon)
             </TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="embed" className="space-y-4 mt-4">
             <div className="space-y-2">
               <Label htmlFor="video-url">Video URL</Label>
@@ -204,10 +251,11 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
                 className="bg-secondary"
               />
               <p className="text-xs text-muted-foreground">
-                Supports YouTube, Vimeo, Loom, Google Vids, and Google Drive links
+                Supports YouTube, Vimeo, Loom, Google Vids, and Google Drive
+                links
               </p>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="video-title">Title (optional)</Label>
               <Input
@@ -218,11 +266,9 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
                 className="bg-secondary"
               />
             </div>
-            
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-            
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
             {/* Preview */}
             {embedUrl && parseVideoUrl(embedUrl).embedUrl && (
               <div className="space-y-2">
@@ -231,7 +277,7 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
               </div>
             )}
           </TabsContent>
-          
+
           <TabsContent value="upload" className="mt-4">
             <div className="text-center py-8 text-muted-foreground">
               <Upload className="h-10 w-10 mx-auto mb-3 opacity-50" />
@@ -240,7 +286,7 @@ export function VideoInsertDialog({ open, onOpenChange, onInsert }: VideoInsertD
             </div>
           </TabsContent>
         </Tabs>
-        
+
         <div className="flex justify-end gap-2 pt-4 border-t border-border">
           <Button variant="outline" onClick={resetAndClose}>
             Cancel
