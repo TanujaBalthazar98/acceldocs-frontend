@@ -218,6 +218,19 @@ async function getDriveTokenOwnerIdForProject(
   return (org?.owner_id as string | null) ?? null;
 }
 
+async function getDriveTokenOwnerIdForOrgFolder(
+  supabase: any,
+  folderId: string
+): Promise<string | null> {
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("owner_id")
+    .eq("drive_folder_id", folderId)
+    .maybeSingle();
+
+  return (org?.owner_id as string | null) ?? null;
+}
+
 // Refresh Google access token using refresh token
 async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
@@ -368,9 +381,20 @@ Deno.serve(async (req) => {
 
     // IMPORTANT: For project-scoped Drive actions we always use the org owner's Drive connection.
     // This ensures non-owners can still create/move/delete pages without having Drive scopes.
+    const fallbackFolderId =
+      body.action === "list_folder"
+        ? body.folderId
+        : body.action === "create_folder" || body.action === "create_doc"
+          ? body.parentFolderId
+          : null;
+
+    const orgOwnerId = fallbackFolderId
+      ? await getDriveTokenOwnerIdForOrgFolder(supabase, fallbackFolderId)
+      : null;
+
     const driveTokenUserId = resolvedProjectId
       ? await getDriveTokenOwnerIdForProject(supabase, resolvedProjectId)
-      : user.id;
+      : (orgOwnerId ?? user.id);
 
     if (!driveTokenUserId) {
       return new Response(

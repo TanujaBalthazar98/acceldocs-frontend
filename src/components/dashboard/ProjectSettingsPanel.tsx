@@ -38,17 +38,20 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 import { useAuth } from "@/contexts/AuthContext";
+import { buildDriveFolderTree } from "@/lib/driveFolderTree";
 import { formatDistanceToNow } from "date-fns";
 import { SEOSettings } from "./SEOSettings";
 
 type VisibilityLevel = "internal" | "external" | "public";
 type ProjectRole = "admin" | "editor" | "reviewer" | "viewer";
+type ProjectMemberRole = ProjectRole | "owner";
 
 interface ProjectMember {
   id: string;
   user_id: string;
-  role: ProjectRole;
+  role: ProjectMemberRole;
   profile?: {
     full_name: string | null;
     email: string;
@@ -86,6 +89,7 @@ export const ProjectSettingsPanel = ({
 }: ProjectSettingsProps) => {
   const { toast } = useToast();
   const { listFolder, checkFolderAccess, trashFile } = useGoogleDrive();
+  const { attemptRecovery } = useDriveRecovery();
   const { user, googleAccessToken } = useAuth();
   
   const [name, setName] = useState(projectName || "");
@@ -267,11 +271,11 @@ export const ProjectSettingsPanel = ({
 
       if (error) throw error;
 
-      const merged: Array<{ id: string; user_id: string; role: ProjectRole }> =
+      const merged: Array<{ id: string; user_id: string; role: ProjectMemberRole }> =
         (membersData || []).map((m: any) => ({
           id: m.id,
           user_id: m.user_id,
-          role: m.role as ProjectRole,
+          role: m.role as ProjectMemberRole,
         }));
 
       const seen = new Set(merged.map((m) => m.user_id));
@@ -289,9 +293,14 @@ export const ProjectSettingsPanel = ({
         // Ensure org owner is listed even if not present in user_roles
         const ownerId = org?.owner_id ?? null;
         setOrganizationDomain(org?.domain ?? null);
-        if (ownerId && !seen.has(ownerId)) {
-          merged.push({ id: `org:${ownerId}`, user_id: ownerId, role: "admin" });
-          seen.add(ownerId);
+        if (ownerId) {
+          const ownerIndex = merged.findIndex((entry) => entry.user_id === ownerId);
+          if (ownerIndex >= 0) {
+            merged[ownerIndex] = { ...merged[ownerIndex], role: "owner" };
+          } else if (!seen.has(ownerId)) {
+            merged.push({ id: `org:${ownerId}`, user_id: ownerId, role: "owner" });
+            seen.add(ownerId);
+          }
         }
 
         for (const r of orgRoles || []) {
@@ -460,79 +469,125 @@ export const ProjectSettingsPanel = ({
     }
 
     if (!googleAccessToken) {
-      toast({ 
-        title: "Authentication required", 
-        description: "Please reconnect to Google Drive.", 
-        variant: "destructive" 
-      });
+      await attemptRecovery("Google authentication expired");
       return;
     }
 
     setIsSyncing(true);
 
     try {
-      // Fetch documents from Google Drive
-      const result = await listFolder(driveFolderId);
-      
-      if (result.needsDriveAccess) {
-        toast({ 
-          title: "Drive access required", 
-          description: "Please grant Google Drive access.", 
-          variant: "destructive" 
-        });
-        return;
+      const nowIso = new Date().toISOString();
+      const { data: defaultVersion } = await supabase
+        .from("project_versions")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("is_default", true)
+        .maybeSingle();
+      const defaultVersionId = defaultVersion?.id ?? null;
+
+      const { data: existingTopics } = await supabase
+        .from("topics")
+        .select("id, drive_folder_id")
+        .eq("project_id", projectId);
+
+      const topicIdByFolderId = new Map<string, string>();
+      for (const topic of existingTopics || []) {
+        if (topic.drive_folder_id) {
+          topicIdByFolderId.set(topic.drive_folder_id, topic.id);
+        }
       }
 
-      if (!result.files) {
-        toast({ title: "Sync complete", description: "No files found in folder." });
-        return;
-      }
+      const { root, folders } = await buildDriveFolderTree(listFolder, {
+        rootFolderId: driveFolderId,
+        rootName: projectName ?? "Project",
+        maxDepth: 8,
+      });
 
-      // Filter for Google Docs
-      const googleDocs = result.files.filter(
-        f => f.mimeType === "application/vnd.google-apps.document"
-      );
+      let topicsCreated = 0;
+      const sortedFolders = folders.slice().sort((a, b) => a.depth - b.depth);
+      for (const folder of sortedFolders) {
+        if (folder.depth === 0) continue;
+        if (topicIdByFolderId.has(folder.id)) continue;
 
-      // Sync each document
-      let syncedCount = 0;
-      for (const doc of googleDocs) {
-        // Check if document already exists
-        const { data: existing } = await supabase
-          .from("documents")
+        const parentId =
+          folder.parentId && folder.parentId !== root.id
+            ? topicIdByFolderId.get(folder.parentId) ?? null
+            : null;
+
+        const payload: Record<string, any> = {
+          project_id: projectId,
+          name: folder.name,
+          drive_folder_id: folder.id,
+          parent_id: parentId,
+        };
+        if (defaultVersionId) {
+          payload.project_version_id = defaultVersionId;
+        }
+
+        const { data: inserted } = await supabase
+          .from("topics")
+          .insert(payload)
           .select("id")
-          .eq("google_doc_id", doc.id)
-          .eq("project_id", projectId)
           .single();
 
-        if (existing) {
-          // Update existing document
-          await supabase
+        if (inserted?.id) {
+          topicIdByFolderId.set(folder.id, inserted.id);
+          topicsCreated += 1;
+        }
+      }
+
+      let docsSynced = 0;
+      const allFolders = [root, ...folders.filter((folder) => folder.id !== root.id)];
+      for (const folder of allFolders) {
+        const { files, needsDriveAccess } = await listFolder(folder.id);
+        if (needsDriveAccess) {
+          await attemptRecovery("Drive access required");
+          return;
+        }
+
+        const googleDocs = (files || []).filter(
+          (item) => item.mimeType === "application/vnd.google-apps.document"
+        );
+        const topicId = folder.depth === 0 ? null : topicIdByFolderId.get(folder.id) ?? null;
+
+        for (const doc of googleDocs) {
+          const { data: existing } = await supabase
             .from("documents")
-            .update({
-              title: doc.name,
-              last_synced_at: new Date().toISOString(),
-              google_modified_at: doc.modifiedTime || null,
-            })
-            .eq("id", existing.id);
-        } else {
-          // Create new document
-          await supabase
-            .from("documents")
-            .insert({
+            .select("id")
+            .eq("google_doc_id", doc.id)
+            .eq("project_id", projectId)
+            .maybeSingle();
+
+          if (existing?.id) {
+            await supabase
+              .from("documents")
+              .update({
+                title: doc.name,
+                last_synced_at: nowIso,
+                google_modified_at: doc.modifiedTime || null,
+                topic_id: topicId,
+                ...(defaultVersionId ? { project_version_id: defaultVersionId } : {}),
+              })
+              .eq("id", existing.id);
+          } else {
+            await supabase.from("documents").insert({
               google_doc_id: doc.id,
               project_id: projectId,
               title: doc.name,
               owner_id: user?.id,
-              last_synced_at: new Date().toISOString(),
+              last_synced_at: nowIso,
               google_modified_at: doc.modifiedTime || null,
+              topic_id: topicId,
+              ...(defaultVersionId ? { project_version_id: defaultVersionId } : {}),
             });
+          }
+          docsSynced += 1;
         }
-        syncedCount++;
       }
 
-      toast({ 
-        title: "Sync complete", 
-        description: `${syncedCount} document(s) synced from Google Drive.` 
+      toast({
+        title: "Sync complete",
+        description: `${docsSynced} document(s) synced, ${topicsCreated} topic(s) created.`,
       });
       
       fetchSyncStatus();
@@ -550,7 +605,23 @@ export const ProjectSettingsPanel = ({
   };
 
   const handleUpdateRole = async (memberId: string, newRole: ProjectRole) => {
+    if (memberId.startsWith("org:")) {
+      toast({
+        title: "Org role",
+        description: "Org-level roles can't be edited from project settings.",
+        variant: "destructive",
+      });
+      return;
+    }
     const member = members.find((item) => item.id === memberId);
+    if (member?.role === "owner") {
+      toast({
+        title: "Owner role",
+        description: "The workspace owner role cannot be changed.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (member && isExternalEmail(member.profile?.email ?? "") && newRole !== "viewer") {
       toast({
         title: "External collaborators are viewer-only",
@@ -600,6 +671,22 @@ export const ProjectSettingsPanel = ({
       });
     } catch (error: any) {
       console.error("Sync Drive permissions error:", error);
+      const errorMessage = error?.message || "";
+      if (
+        errorMessage.includes("Google access token") ||
+        errorMessage.includes("reconnect") ||
+        errorMessage.includes("Drive")
+      ) {
+        const recovery = await attemptRecovery(errorMessage);
+        toast({
+          title: "Drive access required",
+          description: recovery.isOwner
+            ? "Please reconnect Google Drive to sync permissions."
+            : "The workspace owner needs to reconnect Google Drive.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({
         title: "Sync failed",
         description: error.message || "Failed to sync Drive permissions.",
@@ -611,6 +698,14 @@ export const ProjectSettingsPanel = ({
   };
 
   const handleRemoveMember = async (memberId: string) => {
+    if (memberId.startsWith("org:")) {
+      toast({
+        title: "Org role",
+        description: "Org-level members can't be removed from a project.",
+        variant: "destructive",
+      });
+      return;
+    }
     const { error } = await supabase
       .from("project_members")
       .delete()
@@ -1029,6 +1124,8 @@ export const ProjectSettingsPanel = ({
               ) : (
                 members.map((member) => {
                   const isExternalMember = isExternalEmail(member.profile?.email ?? "");
+                  const isOrgRole = member.id.startsWith("org:");
+                  const roleLabel = member.role === "owner" ? "Owner" : member.role;
                   return (
                   <div
                     key={member.id}
@@ -1057,32 +1154,38 @@ export const ProjectSettingsPanel = ({
                         </p>
                       </div>
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1 capitalize">
-                          {isExternalMember ? "Viewer (External)" : member.role}
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {roleOptions.map((role) => (
+                    {isOrgRole || member.role === "owner" ? (
+                      <div className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground capitalize">
+                        {isExternalMember ? "Viewer (External)" : roleLabel}
+                      </div>
+                    ) : (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1 capitalize">
+                            {isExternalMember ? "Viewer (External)" : roleLabel}
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {roleOptions.map((role) => (
+                            <DropdownMenuItem 
+                              key={role.value}
+                              onClick={() => handleUpdateRole(member.id, role.value)}
+                              disabled={isExternalMember && role.value !== "viewer"}
+                              className={member.role === role.value ? "bg-accent" : ""}
+                            >
+                              {role.label}
+                            </DropdownMenuItem>
+                          ))}
                           <DropdownMenuItem 
-                            key={role.value}
-                            onClick={() => handleUpdateRole(member.id, role.value)}
-                            disabled={isExternalMember && role.value !== "viewer"}
-                            className={member.role === role.value ? "bg-accent" : ""}
+                            className="text-destructive"
+                            onClick={() => handleRemoveMember(member.id)}
                           >
-                            {role.label}
+                            Remove
                           </DropdownMenuItem>
-                        ))}
-                        <DropdownMenuItem 
-                          className="text-destructive"
-                          onClick={() => handleRemoveMember(member.id)}
-                        >
-                          Remove
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                 );
                 })
