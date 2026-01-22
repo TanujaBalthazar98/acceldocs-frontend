@@ -100,6 +100,7 @@ import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
 import { GlobalImportProgress } from "@/components/dashboard/GlobalImportProgress";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
+import { buildDriveFolderTree } from "@/lib/driveFolderTree";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
 import { useJoinRequestNotifications } from "@/hooks/useJoinRequestNotifications";
 import docspeareLogo from "@/assets/docspeare-logo.png";
@@ -1380,6 +1381,43 @@ const Dashboard = () => {
     }
   };
 
+  const ensureDefaultVersionForProject = async (projectId: string, isPublished: boolean) => {
+    const { data: existing, error: existingError } = await supabase
+      .from("project_versions")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("is_default", true)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error("Error checking default version:", existingError);
+    }
+    if (existing?.id) return existing.id as string;
+
+    const { data: created, error: createError } = await supabase
+      .from("project_versions")
+      .insert({
+        project_id: projectId,
+        name: "v1.0",
+        slug: "v1.0",
+        is_default: true,
+        is_published: isPublished,
+        semver_major: 1,
+        semver_minor: 0,
+        semver_patch: 0,
+        created_by: user?.id ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (createError) {
+      console.error("Error creating default version:", createError);
+      return null;
+    }
+
+    return created?.id ?? null;
+  };
+
   // Sync projects from Google Drive
   const handleSyncFromDrive = async () => {
     if (!rootFolderId || !organizationId || !user) {
@@ -1394,71 +1432,81 @@ const Dashboard = () => {
     setIsSyncing(true);
     
     try {
-      // List all items in root folder
-      const rootResult = await listFolder(rootFolderId);
-      
-      // Check if we need Drive access
-      if (rootResult.needsDriveAccess) {
-        setNeedsDriveAccess(true);
-        setIsSyncing(false);
+      const folderTree = await buildDriveFolderTree(listFolder, {
+        rootFolderId,
+        rootName: organizationName || "Root",
+      });
+
+      const folderNodes = folderTree.folders
+        .filter((node) => node.id !== rootFolderId)
+        .sort((a, b) => a.depth - b.depth);
+
+      if (folderNodes.length === 0) {
         toast({
-          title: "Drive access required",
-          description: "Click 'Connect Google Drive' to grant access.",
+          title: "No folders found",
+          description: "Your root folder doesn't contain any subfolders yet.",
         });
         return;
       }
-      
-      setNeedsDriveAccess(false);
-      
-      if (!rootResult.files) {
-        throw new Error("Failed to access Google Drive.");
-      }
 
-      // Filter for folders (projects)
+      setNeedsDriveAccess(false);
+
       const folderMimeType = "application/vnd.google-apps.folder";
-      const projectFolders = rootResult.files.filter(item => item.mimeType === folderMimeType);
-      
+      const docMimeType = "application/vnd.google-apps.document";
+      const projectIdByFolderId = new Map<string, string>();
+      const versionIdByProjectId = new Map<string, string | null>();
       let syncedProjects = 0;
       let syncedDocs = 0;
 
-      for (const folder of projectFolders) {
-        // Check if project already exists
+      for (const node of folderNodes) {
         const { data: existingProject } = await supabase
           .from("projects")
-          .select("id")
-          .eq("drive_folder_id", folder.id)
+          .select("id, is_published")
+          .eq("drive_folder_id", node.id)
           .maybeSingle();
 
-        let projectId: string;
+        let projectId = existingProject?.id ?? null;
+        let projectIsPublished = existingProject?.is_published ?? false;
 
-        if (existingProject) {
-          projectId = existingProject.id;
-        } else {
-          // Create new project
+        if (!projectId) {
+          const parentProjectId = node.parentId === rootFolderId ? null : projectIdByFolderId.get(node.parentId ?? "") ?? null;
+
           const { data: newProject, error: projectError } = await supabase
             .from("projects")
             .insert({
-              name: folder.name,
-              drive_folder_id: folder.id,
+              name: node.name,
+              drive_folder_id: node.id,
               organization_id: organizationId,
               created_by: user.id,
               is_connected: true,
+              parent_id: parentProjectId,
             })
-            .select("id")
+            .select("id, is_published")
             .single();
 
-          if (projectError) {
+          if (projectError || !newProject) {
             console.error("Error creating project:", projectError);
             continue;
           }
-          
+
           projectId = newProject.id;
+          projectIsPublished = newProject.is_published ?? false;
           syncedProjects++;
         }
 
-        // List items in this project folder (topics = subfolders, docs = pages)
-        const projectResult = await listFolder(folder.id);
-        
+        projectIdByFolderId.set(node.id, projectId);
+
+        const defaultVersionId = await ensureDefaultVersionForProject(projectId, projectIsPublished);
+        versionIdByProjectId.set(projectId, defaultVersionId ?? null);
+      }
+
+      for (const node of folderNodes) {
+        const projectId = projectIdByFolderId.get(node.id);
+        if (!projectId) continue;
+
+        const defaultVersionId = versionIdByProjectId.get(projectId) ?? null;
+        const projectResult = await listFolder(node.id);
+
         if (projectResult.needsDriveAccess) {
           toast({
             title: "Drive access required",
@@ -1467,90 +1515,46 @@ const Dashboard = () => {
           await requestDriveAccess();
           return;
         }
-        
-        let syncedTopics = 0;
-        
-        if (projectResult.files) {
-          const folderMimeType = "application/vnd.google-apps.folder";
-          const docMimeType = "application/vnd.google-apps.document";
-          
-          // Sync topic folders within the project
-          const topicFolders = projectResult.files.filter(item => item.mimeType === folderMimeType);
-          
-          for (const topicFolder of topicFolders) {
-            // Check if topic already exists
-            const { data: existingTopic } = await supabase
-              .from("topics")
-              .select("id")
-              .eq("drive_folder_id", topicFolder.id)
-              .maybeSingle();
 
-            let topicId: string;
+        if (!projectResult.files) continue;
 
-            if (existingTopic) {
-              topicId = existingTopic.id;
-            } else {
-              // Create new topic
-              const { data: newTopic, error: topicError } = await supabase
-                .from("topics")
-                .insert({
-                  name: topicFolder.name,
-                  drive_folder_id: topicFolder.id,
-                  project_id: projectId,
-                })
-                .select("id")
-                .single();
+        const docs = projectResult.files.filter(item => item.mimeType === docMimeType);
 
-              if (topicError) {
-                console.error("Error creating topic:", topicError);
-                continue;
-              }
-              
-              topicId = newTopic.id;
-              syncedTopics++;
+        for (const doc of docs) {
+          const { data: existingDoc } = await supabase
+            .from("documents")
+            .select("id, project_version_id")
+            .eq("google_doc_id", doc.id)
+            .maybeSingle();
+
+          if (existingDoc) {
+            const updatePayload: Record<string, unknown> = {
+              title: doc.name,
+              google_modified_at: doc.modifiedTime,
+            };
+
+            if (!existingDoc.project_version_id && defaultVersionId) {
+              updatePayload.project_version_id = defaultVersionId;
             }
-            
-            // List docs within this topic folder
-            const topicResult = await listFolder(topicFolder.id);
-            
-            if (topicResult.files) {
-              const docs = topicResult.files.filter(item => item.mimeType === docMimeType);
-              
-              for (const doc of docs) {
-                // Check if document already exists
-                const { data: existingDoc } = await supabase
-                  .from("documents")
-                  .select("id")
-                  .eq("google_doc_id", doc.id)
-                  .maybeSingle();
 
-                if (existingDoc) {
-                  // Update existing document's title and modified time (NOT is_published!)
-                  await supabase
-                    .from("documents")
-                    .update({
-                      title: doc.name,
-                      google_modified_at: doc.modifiedTime,
-                    })
-                    .eq("id", existingDoc.id);
-                } else {
-                  // Create new document with topic_id - set current user as owner
-                  const { error: docError } = await supabase
-                    .from("documents")
-                    .insert({
-                      title: doc.name,
-                      google_doc_id: doc.id,
-                      project_id: projectId,
-                      topic_id: topicId,
-                      google_modified_at: doc.modifiedTime,
-                      owner_id: user.id,
-                    });
+            await supabase
+              .from("documents")
+              .update(updatePayload)
+              .eq("id", existingDoc.id);
+          } else {
+            const { error: docError } = await supabase
+              .from("documents")
+              .insert({
+                title: doc.name,
+                google_doc_id: doc.id,
+                project_id: projectId,
+                project_version_id: defaultVersionId,
+                google_modified_at: doc.modifiedTime,
+                owner_id: user.id,
+              });
 
-                  if (!docError) {
-                    syncedDocs++;
-                  }
-                }
-              }
+            if (!docError) {
+              syncedDocs++;
             }
           }
         }
@@ -1569,7 +1573,13 @@ const Dashboard = () => {
       
       // Check if it's a scope/permission error
       const errorMessage = error.message || "";
-      if (errorMessage.includes("insufficient") || errorMessage.includes("scope") || errorMessage.includes("re-authenticate")) {
+      if (
+        errorMessage.includes("Drive access required") ||
+        errorMessage.includes("insufficient") ||
+        errorMessage.includes("scope") ||
+        errorMessage.includes("re-authenticate")
+      ) {
+        setNeedsDriveAccess(true);
         toast({
           title: "Drive access required",
           description: "Please grant Google Drive access to sync your folders.",
