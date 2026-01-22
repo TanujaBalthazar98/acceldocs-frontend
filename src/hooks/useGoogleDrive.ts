@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, IS_SUPABASE_CONFIGURED } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
@@ -30,6 +30,16 @@ export const useGoogleDrive = () => {
     body: Record<string, unknown>,
     errorMessage: string
   ): Promise<{ data: T | null; needsDriveAccess?: boolean }> => {
+    if (!IS_SUPABASE_CONFIGURED) {
+      toast({
+        title: "Supabase config missing",
+        description: "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY).",
+        variant: "destructive",
+        duration: 12000,
+      });
+      return { data: null };
+    }
+
     const token = getGoogleToken();
 
     const invokeOptions = {

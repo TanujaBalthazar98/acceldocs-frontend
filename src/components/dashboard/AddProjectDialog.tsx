@@ -14,7 +14,8 @@ import { FolderPlus, Upload, FileText, FolderTree, Loader2, FolderArchive } from
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { useDriveRecovery } from "@/hooks/useDriveRecovery";
+import { supabase, IS_SUPABASE_CONFIGURED } from "@/integrations/supabase/client";
 import { ImportProgressIndicator } from "./ImportProgressIndicator";
 import { ZipImportDialog } from "./ZipImportDialog";
 import { splitImportBatches } from "@/lib/importBatching";
@@ -60,6 +61,7 @@ export const AddProjectDialog = ({
   const { createFolder } = useGoogleDrive();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { attemptRecovery } = useDriveRecovery();
 
   const tryCreateProjectFolder = async (name: string) => {
     if (!rootFolderId) return null;
@@ -127,6 +129,15 @@ export const AddProjectDialog = ({
     try {
       const folder = await tryCreateProjectFolder(projectName.trim());
       if (!folder) return;
+
+      if (!IS_SUPABASE_CONFIGURED) {
+        toast({
+          title: "Supabase not configured",
+          description: "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY).",
+          variant: "destructive",
+        });
+        return;
+      }
 
       const { data: project, error: createProjectError } = await supabase
         .from("projects")
@@ -241,6 +252,7 @@ export const AddProjectDialog = ({
           description: "Please reconnect to Google Drive to import files.",
           variant: "destructive",
         });
+        await attemptRecovery("Google authentication expired");
         return;
       }
 

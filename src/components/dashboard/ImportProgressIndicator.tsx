@@ -114,8 +114,8 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
         const jobData = data as ImportJob;
         setJob(jobData);
         
-        // Check for stall - if processing but no progress in STALL_TIMEOUT_MS
-        if (jobData.status === 'processing') {
+        // Check for stall - if pending/processing but no progress in STALL_TIMEOUT_MS
+        if (jobData.status === 'processing' || jobData.status === 'pending') {
           const now = Date.now();
           const updatedAt = new Date(jobData.updated_at).getTime();
           
@@ -215,7 +215,9 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
   const isComplete = job.status === 'completed';
   const isFailed = job.status === 'failed' || isStalled;
   const isStopped = job.status === 'stopped';
+  const isPending = job.status === 'pending' && !isStalled;
   const isProcessing = job.status === 'processing' && !isStalled;
+  const isActive = isProcessing || isPending;
 
   const handleDismiss = async () => {
     if (isStalled) {
@@ -238,12 +240,13 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
         (isFailed || isStopped) && "bg-destructive/10",
         isProcessing && "bg-primary/5"
       )}>
-        {isProcessing && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+        {isActive && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
         {isComplete && <CheckCircle2 className="h-5 w-5 text-green-500" />}
         {(isFailed || isStopped) && <XCircle className="h-5 w-5 text-destructive" />}
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm">
             {isProcessing && "Importing files..."}
+            {isPending && "Import queued"}
             {isComplete && "Import completed"}
             {isStalled && "Import stalled"}
             {isStopped && "Import stopped"}
@@ -256,7 +259,7 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
         <span className="text-2xl font-bold text-foreground">{progress}%</span>
         
         {/* Stop button - only show when processing */}
-        {isProcessing && (
+        {isActive && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button 
@@ -341,7 +344,7 @@ export function ImportProgressIndicator({ jobId, onComplete, onDismiss }: Import
       </div>
 
       {/* Current file */}
-      {job.current_file && isProcessing && (
+        {job.current_file && isProcessing && (
         <div className="px-4 py-2 bg-muted/30 border-t border-border/50">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <FileText className="h-3.5 w-3.5 shrink-0" />

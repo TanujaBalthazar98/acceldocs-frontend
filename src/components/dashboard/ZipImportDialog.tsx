@@ -10,9 +10,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, IS_SUPABASE_CONFIGURED } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 import { parseZipFile, parseFolderFiles, ParsedImport } from "@/lib/zipImporter";
 import { splitImportBatches } from "@/lib/importBatching";
 import { 
@@ -289,6 +290,7 @@ export function ZipImportDialog({
   const { toast } = useToast();
   const { user, googleAccessToken } = useAuth();
   const { createFolder } = useGoogleDrive();
+  const { attemptRecovery } = useDriveRecovery();
 
   const resetState = useCallback(() => {
     setParsedImport(null);
@@ -522,7 +524,24 @@ export function ZipImportDialog({
   };
 
   const handleImport = async () => {
-    if (!parsedImport || parsedImport.files.length === 0 || !user || !googleAccessToken) return;
+    if (!parsedImport || parsedImport.files.length === 0 || !user) return;
+    if (!IS_SUPABASE_CONFIGURED) {
+      toast({
+        title: "Supabase not configured",
+        description: "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY).",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!googleAccessToken) {
+      toast({
+        title: "Google reconnection required",
+        description: "Please reconnect your Google account to continue.",
+        variant: "destructive",
+      });
+      await attemptRecovery("Google authentication expired");
+      return;
+    }
     
     setImporting(true);
     
