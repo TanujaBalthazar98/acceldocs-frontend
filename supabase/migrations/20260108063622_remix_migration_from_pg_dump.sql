@@ -36,75 +36,108 @@ SET row_security = off;
 -- Name: account_type; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE public.account_type AS ENUM (
-    'individual',
-    'team',
-    'enterprise'
-);
+DO $$
+BEGIN
+  CREATE TYPE public.account_type AS ENUM (
+      'individual',
+      'team',
+      'enterprise'
+  );
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
+
 
 
 --
 -- Name: app_role; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE public.app_role AS ENUM (
-    'owner',
-    'admin',
-    'editor',
-    'viewer'
-);
+DO $$
+BEGIN
+  CREATE TYPE public.app_role AS ENUM (
+      'owner',
+      'admin',
+      'editor',
+      'viewer'
+  );
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
 
 
 --
 -- Name: connector_status; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE public.connector_status AS ENUM (
-    'connected',
-    'disconnected',
-    'error',
-    'configuring'
-);
+DO $$
+BEGIN
+  CREATE TYPE public.connector_status AS ENUM (
+      'connected',
+      'disconnected',
+      'error',
+      'configuring'
+  );
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
 
 
 --
 -- Name: connector_type; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE public.connector_type AS ENUM (
-    'atlassian',
-    'claude',
-    'custom_mcp'
-);
+DO $$
+BEGIN
+  CREATE TYPE public.connector_type AS ENUM (
+      'atlassian',
+      'claude',
+      'custom_mcp'
+  );
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
 
 
 --
 -- Name: project_role; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE public.project_role AS ENUM (
-    'admin',
-    'editor',
-    'reviewer',
-    'viewer'
-);
+DO $$
+BEGIN
+  CREATE TYPE public.project_role AS ENUM (
+      'admin',
+      'editor',
+      'reviewer',
+      'viewer'
+  );
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
 
 
 --
 -- Name: visibility_level; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE public.visibility_level AS ENUM (
-    'internal',
-    'external',
-    'public'
-);
+DO $$
+BEGIN
+  CREATE TYPE public.visibility_level AS ENUM (
+      'internal',
+      'external',
+      'public'
+  );
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
 
 
 --
 -- Name: accept_invitation(uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.accept_invitation(uuid);
+DROP FUNCTION IF EXISTS public.accept_invitation(invitation_token uuid) CASCADE;
 CREATE FUNCTION public.accept_invitation(invitation_token uuid) RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -169,6 +202,8 @@ $$;
 -- Name: accept_project_invitation(uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.accept_project_invitation(uuid);
+DROP FUNCTION IF EXISTS public.accept_project_invitation(invitation_token uuid) CASCADE;
 CREATE FUNCTION public.accept_project_invitation(invitation_token uuid) RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -217,6 +252,8 @@ $$;
 -- Name: approve_join_request(uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.approve_join_request(uuid);
+DROP FUNCTION IF EXISTS public.approve_join_request(_request_id uuid) CASCADE;
 CREATE FUNCTION public.approve_join_request(_request_id uuid) RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -268,6 +305,7 @@ $$;
 -- Name: auto_generate_document_slug(); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.auto_generate_document_slug() CASCADE;
 CREATE FUNCTION public.auto_generate_document_slug() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'public'
@@ -296,6 +334,7 @@ $$;
 -- Name: auto_generate_project_slug(); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.auto_generate_project_slug() CASCADE;
 CREATE FUNCTION public.auto_generate_project_slug() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'public'
@@ -324,6 +363,7 @@ $$;
 -- Name: auto_generate_topic_slug(); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.auto_generate_topic_slug() CASCADE;
 CREATE FUNCTION public.auto_generate_topic_slug() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'public'
@@ -351,6 +391,8 @@ $$;
 --
 -- Name: can_access_drive(uuid, uuid, text); Type: FUNCTION; Schema: public; Owner: -
 --
+
+DROP FUNCTION IF EXISTS public.can_access_drive(_project_id uuid, _user_id uuid, _operation text) CASCADE;
 
 CREATE FUNCTION public.can_access_drive(_project_id uuid, _user_id uuid, _operation text) RETURNS boolean
     LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -419,6 +461,7 @@ $$;
 -- Name: can_change_member_role(uuid, uuid, uuid, public.project_role); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.can_change_member_role(_project_id uuid, _actor_id uuid, _target_user_id uuid, _new_role public.project_role) CASCADE;
 CREATE FUNCTION public.can_change_member_role(_project_id uuid, _actor_id uuid, _target_user_id uuid, _new_role public.project_role) RETURNS boolean
     LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -475,6 +518,7 @@ $$;
 -- Name: can_configure_connector(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.can_configure_connector(_connector_id uuid, _user_id uuid) CASCADE;
 CREATE FUNCTION public.can_configure_connector(_connector_id uuid, _user_id uuid) RETURNS boolean
     LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -504,6 +548,7 @@ $$;
 -- Name: can_edit_project(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.can_edit_project(_project_id uuid, _user_id uuid) CASCADE;
 CREATE FUNCTION public.can_edit_project(_project_id uuid, _user_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -529,6 +574,7 @@ $$;
 -- Name: can_manage_project_members(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.can_manage_project_members(_project_id uuid, _user_id uuid) CASCADE;
 CREATE FUNCTION public.can_manage_project_members(_project_id uuid, _user_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -546,6 +592,7 @@ $$;
 -- Name: can_use_connector(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.can_use_connector(_connector_id uuid, _user_id uuid) CASCADE;
 CREATE FUNCTION public.can_use_connector(_connector_id uuid, _user_id uuid) RETURNS boolean
     LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -601,6 +648,7 @@ $$;
 -- Name: can_view_project_members(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.can_view_project_members(_project_id uuid, _user_id uuid) CASCADE;
 CREATE FUNCTION public.can_view_project_members(_project_id uuid, _user_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -624,6 +672,7 @@ $$;
 -- Name: check_project_permission(uuid, uuid, text); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.check_project_permission(_project_id uuid, _user_id uuid, _action text) CASCADE;
 CREATE FUNCTION public.check_project_permission(_project_id uuid, _user_id uuid, _action text) RETURNS boolean
     LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -696,6 +745,8 @@ $$;
 -- Name: ensure_unique_slug(text, text, text, uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.ensure_unique_slug(base_slug text, table_name text, scope_column text, scope_value uuid, exclude_id uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.ensure_unique_slug(base_slug text, table_name text, scope_column text, scope_value uuid, exclude_id uuid) CASCADE;
 CREATE FUNCTION public.ensure_unique_slug(base_slug text, table_name text, scope_column text, scope_value uuid, exclude_id uuid DEFAULT NULL::uuid) RETURNS text
     LANGUAGE plpgsql
     SET search_path TO 'public'
@@ -738,6 +789,9 @@ $_$;
 -- Name: generate_slug(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.generate_slug(text) CASCADE;
+
+DROP FUNCTION IF EXISTS public.generate_slug(title text) CASCADE;
 CREATE FUNCTION public.generate_slug(title text) RETURNS text
     LANGUAGE sql IMMUTABLE
     SET search_path TO 'public'
@@ -758,6 +812,9 @@ $$;
 -- Name: get_drive_permission_for_role(public.project_role); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.get_drive_permission_for_role(public.project_role);
+
+DROP FUNCTION IF EXISTS public.get_drive_permission_for_role(_role public.project_role) CASCADE;
 CREATE FUNCTION public.get_drive_permission_for_role(_role public.project_role) RETURNS text
     LANGUAGE sql IMMUTABLE
     AS $$
@@ -775,6 +832,9 @@ $$;
 -- Name: get_project_role(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.get_project_role(uuid, uuid) CASCADE;
+
+DROP FUNCTION IF EXISTS public.get_project_role(_project_id uuid, _user_id uuid) CASCADE;
 CREATE FUNCTION public.get_project_role(_project_id uuid, _user_id uuid) RETURNS public.project_role
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -798,6 +858,9 @@ $$;
 -- Name: get_user_org_id(uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.get_user_org_id(uuid) CASCADE;
+
+DROP FUNCTION IF EXISTS public.get_user_org_id(_user_id uuid) CASCADE;
 CREATE FUNCTION public.get_user_org_id(_user_id uuid) RETURNS uuid
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -809,6 +872,8 @@ $$;
 --
 -- Name: handle_new_user(); Type: FUNCTION; Schema: public; Owner: -
 --
+
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
 
 CREATE FUNCTION public.handle_new_user() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
@@ -880,6 +945,8 @@ $$;
 -- Name: has_org_role(uuid, uuid, public.app_role); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.has_org_role(uuid, uuid, public.app_role) CASCADE;
+DROP FUNCTION IF EXISTS public.has_org_role(_user_id uuid, _org_id uuid, _role public.app_role) CASCADE;
 CREATE FUNCTION public.has_org_role(_user_id uuid, _org_id uuid, _role public.app_role) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -898,6 +965,9 @@ $$;
 -- Name: has_project_role(uuid, uuid, public.project_role[]); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.has_project_role(uuid, uuid, public.project_role[]) CASCADE;
+
+DROP FUNCTION IF EXISTS public.has_project_role(_project_id uuid, _user_id uuid, _roles public.project_role[]) CASCADE;
 CREATE FUNCTION public.has_project_role(_project_id uuid, _user_id uuid, _roles public.project_role[]) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -916,6 +986,9 @@ $$;
 -- Name: is_org_member(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.is_org_member(uuid, uuid) CASCADE;
+
+DROP FUNCTION IF EXISTS public.is_org_member(_org_id uuid, _user_id uuid) CASCADE;
 CREATE FUNCTION public.is_org_member(_org_id uuid, _user_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -939,6 +1012,7 @@ $$;
 -- Name: is_org_owner(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.is_org_owner(_org_id uuid, _user_id uuid) CASCADE;
 CREATE FUNCTION public.is_org_owner(_org_id uuid, _user_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -956,6 +1030,7 @@ $$;
 -- Name: is_personal_email_domain(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.is_personal_email_domain(email_domain text) CASCADE;
 CREATE FUNCTION public.is_personal_email_domain(email_domain text) RETURNS boolean
     LANGUAGE sql IMMUTABLE
     SET search_path TO 'public'
@@ -973,6 +1048,7 @@ $$;
 -- Name: is_project_member(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.is_project_member(_project_id uuid, _user_id uuid) CASCADE;
 CREATE FUNCTION public.is_project_member(_project_id uuid, _user_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -990,6 +1066,7 @@ $$;
 -- Name: log_audit_action(text, text, uuid, uuid, jsonb, boolean, text); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.log_audit_action(_action text, _entity_type text, _entity_id uuid, _project_id uuid, _metadata jsonb, _success boolean, _error_message text) CASCADE;
 CREATE FUNCTION public.log_audit_action(_action text, _entity_type text, _entity_id uuid, _project_id uuid, _metadata jsonb DEFAULT '{}'::jsonb, _success boolean DEFAULT true, _error_message text DEFAULT NULL::text) RETURNS uuid
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -1027,6 +1104,7 @@ $$;
 -- Name: org_has_public_published_projects(uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.org_has_public_published_projects(_org_id uuid) CASCADE;
 CREATE FUNCTION public.org_has_public_published_projects(_org_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -1045,6 +1123,7 @@ $$;
 -- Name: queue_drive_permission_sync(); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.queue_drive_permission_sync() CASCADE;
 CREATE FUNCTION public.queue_drive_permission_sync() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -1084,6 +1163,7 @@ $$;
 -- Name: reject_join_request(uuid, text); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.reject_join_request(_request_id uuid, _reason text) CASCADE;
 CREATE FUNCTION public.reject_join_request(_request_id uuid, _reason text DEFAULT NULL::text) RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -1125,6 +1205,7 @@ $$;
 -- Name: update_updated_at_column(); Type: FUNCTION; Schema: public; Owner: -
 --
 
+DROP FUNCTION IF EXISTS public.update_updated_at_column() CASCADE;
 CREATE FUNCTION public.update_updated_at_column() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'public'
@@ -1142,6 +1223,7 @@ SET default_table_access_method = heap;
 -- Name: audit_logs; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.audit_logs CASCADE;
 CREATE TABLE public.audit_logs (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     user_id uuid,
@@ -1162,6 +1244,7 @@ CREATE TABLE public.audit_logs (
 -- Name: connector_actions; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.connector_actions CASCADE;
 CREATE TABLE public.connector_actions (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     connector_id uuid NOT NULL,
@@ -1182,6 +1265,7 @@ CREATE TABLE public.connector_actions (
 -- Name: connector_credentials; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.connector_credentials CASCADE;
 CREATE TABLE public.connector_credentials (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     connector_id uuid NOT NULL,
@@ -1198,6 +1282,7 @@ CREATE TABLE public.connector_credentials (
 -- Name: connector_permissions; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.connector_permissions CASCADE;
 CREATE TABLE public.connector_permissions (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     connector_id uuid NOT NULL,
@@ -1213,6 +1298,7 @@ CREATE TABLE public.connector_permissions (
 -- Name: connectors; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.connectors CASCADE;
 CREATE TABLE public.connectors (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     project_id uuid,
@@ -1237,6 +1323,7 @@ CREATE TABLE public.connectors (
 -- Name: documents; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.documents CASCADE;
 CREATE TABLE public.documents (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     project_id uuid NOT NULL,
@@ -1261,6 +1348,7 @@ CREATE TABLE public.documents (
 -- Name: domains; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.domains CASCADE;
 CREATE TABLE public.domains (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     organization_id uuid,
@@ -1284,6 +1372,7 @@ CREATE TABLE public.domains (
 -- Name: drive_permission_sync; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.drive_permission_sync CASCADE;
 CREATE TABLE public.drive_permission_sync (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     project_member_id uuid,
@@ -1304,6 +1393,7 @@ CREATE TABLE public.drive_permission_sync (
 -- Name: import_jobs; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.import_jobs CASCADE;
 CREATE TABLE public.import_jobs (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     project_id uuid NOT NULL,
@@ -1326,6 +1416,7 @@ CREATE TABLE public.import_jobs (
 -- Name: invitations; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.invitations CASCADE;
 CREATE TABLE public.invitations (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     organization_id uuid NOT NULL,
@@ -1343,6 +1434,7 @@ CREATE TABLE public.invitations (
 -- Name: join_requests; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.join_requests CASCADE;
 CREATE TABLE public.join_requests (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     organization_id uuid NOT NULL,
@@ -1362,6 +1454,7 @@ CREATE TABLE public.join_requests (
 -- Name: organizations; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.organizations CASCADE;
 CREATE TABLE public.organizations (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     domain text NOT NULL,
@@ -1395,6 +1488,7 @@ CREATE TABLE public.organizations (
 -- Name: page_feedback; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.page_feedback CASCADE;
 CREATE TABLE public.page_feedback (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     document_id uuid NOT NULL,
@@ -1413,6 +1507,7 @@ CREATE TABLE public.page_feedback (
 -- Name: profiles; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.profiles CASCADE;
 CREATE TABLE public.profiles (
     id uuid NOT NULL,
     email text NOT NULL,
@@ -1432,6 +1527,7 @@ CREATE TABLE public.profiles (
 -- Name: project_invitations; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.project_invitations CASCADE;
 CREATE TABLE public.project_invitations (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     project_id uuid NOT NULL,
@@ -1449,6 +1545,7 @@ CREATE TABLE public.project_invitations (
 -- Name: project_members; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.project_members CASCADE;
 CREATE TABLE public.project_members (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     project_id uuid NOT NULL,
@@ -1463,6 +1560,7 @@ CREATE TABLE public.project_members (
 -- Name: projects; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.projects CASCADE;
 CREATE TABLE public.projects (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     organization_id uuid NOT NULL,
@@ -1491,6 +1589,7 @@ CREATE TABLE public.projects (
 -- Name: slug_history; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.slug_history CASCADE;
 CREATE TABLE public.slug_history (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     entity_type text NOT NULL,
@@ -1505,6 +1604,7 @@ CREATE TABLE public.slug_history (
 -- Name: topics; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.topics CASCADE;
 CREATE TABLE public.topics (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     name text NOT NULL,
@@ -1522,6 +1622,7 @@ CREATE TABLE public.topics (
 -- Name: user_roles; Type: TABLE; Schema: public; Owner: -
 --
 
+DROP TABLE IF EXISTS public.user_roles CASCADE;
 CREATE TABLE public.user_roles (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     user_id uuid NOT NULL,

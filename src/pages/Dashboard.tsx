@@ -202,6 +202,7 @@ const Dashboard = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [appRole, setAppRole] = useState<string | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
@@ -244,7 +245,12 @@ const Dashboard = () => {
   const driveStepDone = driveTokenAvailable && !needsDriveAccess;
   const rootStepDone = !!rootFolderId;
   const projectStepDone = projects.length > 0;
-  const canCreateProject = rootStepDone && driveStepDone;
+  const canProjectCreateRole =
+    appRole === "owner" || appRole === "admin" || appRole === "editor";
+  const canCreateProject = rootStepDone && driveStepDone && canProjectCreateRole;
+  const createProjectDisabledTitle = !canProjectCreateRole
+    ? "You must be an owner, admin, or editor to create a project"
+    : "Connect Drive and set a root folder first";
   const showGettingStarted =
     !!organizationId && (!driveStepDone || !rootStepDone || !projectStepDone);
   const driveActionLabel = needsDriveAccess ? "Reconnect Drive" : "Connect Drive";
@@ -309,6 +315,7 @@ const Dashboard = () => {
   const fetchData = async () => {
     if (!user) {
       setIsLoading(false);
+      setAppRole(null);
       return;
     }
 
@@ -334,7 +341,7 @@ const Dashboard = () => {
       if (!effectiveOrgId) {
         const { data: userRole } = await supabase
           .from("user_roles")
-          .select("organization_id")
+          .select("organization_id, role")
           .eq("user_id", user.id)
           .maybeSingle();
 
@@ -355,7 +362,7 @@ const Dashboard = () => {
         const { data: org } = await supabase
           .from("organizations")
           .select(
-            "id, drive_folder_id, name, slug, domain, mcp_enabled, openapi_spec_json, openapi_spec_url",
+            "id, drive_folder_id, name, slug, domain, mcp_enabled, openapi_spec_json, openapi_spec_url, owner_id",
           )
           .eq("id", effectiveOrgId)
           .single();
@@ -448,10 +455,35 @@ const Dashboard = () => {
                 setDocuments(merged as Document[]);
               } else {
                 setDocuments(baseDocs as Document[]);
-              }
-            }
-          }
         }
+      }
+
+      const { data: orgRoleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("organization_id", effectiveOrgId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const resolvedRole = org?.owner_id === user.id ? "owner" : orgRoleData?.role ?? null;
+      setAppRole(resolvedRole ?? "viewer");
+      } else {
+        setAppRole(null);
+        }
+
+        const { data: orgRoleData } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("organization_id", effectiveOrgId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        const resolvedRole = org?.owner_id === user.id ? "owner" : orgRoleData?.role ?? null;
+        setAppRole(resolvedRole ?? "viewer");
+      } else {
+        setOrganizationId(null);
+        setAppRole(null);
+      }
       } else {
         // No organization - individual user needs onboarding to create one
         setNeedsOnboarding(true);
@@ -2858,21 +2890,17 @@ const Dashboard = () => {
                   {projectStepDone ? (
                     <Badge variant="secondary" className="w-fit">Ready</Badge>
                   ) : (
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setParentProjectForCreate(null);
-                        setAddProjectOpen(true);
-                      }}
-                      disabled={!canCreateProject}
-                      title={
-                        !canCreateProject
-                          ? "Connect Drive and set a root folder first"
-                          : "Create a project"
-                      }
-                    >
-                      Create Project
-                    </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setParentProjectForCreate(null);
+                          setAddProjectOpen(true);
+                        }}
+                        disabled={!canCreateProject}
+                        title={!canCreateProject ? createProjectDisabledTitle : "Create a project"}
+                      >
+                        Create Project
+                      </Button>
                   )}
                 </div>
               </div>

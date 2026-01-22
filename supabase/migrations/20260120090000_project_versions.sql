@@ -118,25 +118,6 @@ CREATE POLICY "Editors can manage project versions" ON public.project_versions
     )
   );
 
--- Seed default versions per project
-INSERT INTO public.project_versions (project_id, name, slug, is_default, is_published, semver_major, semver_minor, semver_patch, created_by)
-SELECT
-  p.id,
-  'v1.0' AS name,
-  'v1.0' AS slug,
-  true AS is_default,
-  p.is_published,
-  1,
-  0,
-  0,
-  p.created_by
-FROM public.projects p
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM public.project_versions pv
-  WHERE pv.project_id = p.id
-);
-
 -- Add version reference to topics/documents
 ALTER TABLE public.topics ADD COLUMN IF NOT EXISTS project_version_id uuid;
 ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS project_version_id uuid;
