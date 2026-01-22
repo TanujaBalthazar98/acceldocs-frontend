@@ -100,6 +100,7 @@ import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
 import { GlobalImportProgress } from "@/components/dashboard/GlobalImportProgress";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
+import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 import { buildDriveFolderTree } from "@/lib/driveFolderTree";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
 import { useJoinRequestNotifications } from "@/hooks/useJoinRequestNotifications";
@@ -179,6 +180,7 @@ const Dashboard = () => {
   const location = useLocation();
   const { toast } = useToast();
   const { listFolder, trashFile, getGoogleToken } = useGoogleDrive();
+  const { attemptRecovery } = useDriveRecovery();
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [addPageOpen, setAddPageOpen] = useState(false);
@@ -1440,8 +1442,12 @@ const Dashboard = () => {
       const folderNodes = folderTree.folders
         .filter((node) => node.id !== rootFolderId)
         .sort((a, b) => a.depth - b.depth);
+      const nodeById = new Map(folderNodes.map((node) => [node.id, node]));
+      const topLevelFolders = folderNodes.filter(
+        (node) => node.parentId === rootFolderId && node.depth === 1
+      );
 
-      if (folderNodes.length === 0) {
+      if (topLevelFolders.length === 0) {
         toast({
           title: "No folders found",
           description: "Your root folder doesn't contain any subfolders yet.",
@@ -1451,14 +1457,24 @@ const Dashboard = () => {
 
       setNeedsDriveAccess(false);
 
-      const folderMimeType = "application/vnd.google-apps.folder";
       const docMimeType = "application/vnd.google-apps.document";
       const projectIdByFolderId = new Map<string, string>();
       const versionIdByProjectId = new Map<string, string | null>();
+      const topicIdByFolderId = new Map<string, string>();
       let syncedProjects = 0;
+      let syncedTopics = 0;
       let syncedDocs = 0;
 
-      for (const node of folderNodes) {
+      const getTopFolderId = (nodeId: string): string | null => {
+        let current = nodeById.get(nodeId);
+        while (current) {
+          if (current.parentId === rootFolderId) return current.id;
+          current = current.parentId ? nodeById.get(current.parentId) : undefined;
+        }
+        return null;
+      };
+
+      for (const node of topLevelFolders) {
         const { data: existingProject } = await supabase
           .from("projects")
           .select("id, is_published")
@@ -1469,8 +1485,6 @@ const Dashboard = () => {
         let projectIsPublished = existingProject?.is_published ?? false;
 
         if (!projectId) {
-          const parentProjectId = node.parentId === rootFolderId ? null : projectIdByFolderId.get(node.parentId ?? "") ?? null;
-
           const { data: newProject, error: projectError } = await supabase
             .from("projects")
             .insert({
@@ -1479,7 +1493,7 @@ const Dashboard = () => {
               organization_id: organizationId,
               created_by: user.id,
               is_connected: true,
-              parent_id: parentProjectId,
+              parent_id: null,
             })
             .select("id, is_published")
             .single();
@@ -1500,19 +1514,69 @@ const Dashboard = () => {
         versionIdByProjectId.set(projectId, defaultVersionId ?? null);
       }
 
-      for (const node of folderNodes) {
-        const projectId = projectIdByFolderId.get(node.id);
+      const topicNodes = folderNodes
+        .filter((node) => node.depth >= 2)
+        .sort((a, b) => a.depth - b.depth);
+
+      for (const node of topicNodes) {
+        const topFolderId = getTopFolderId(node.id);
+        const projectId = topFolderId ? projectIdByFolderId.get(topFolderId) : null;
         if (!projectId) continue;
 
         const defaultVersionId = versionIdByProjectId.get(projectId) ?? null;
+        const parentTopicId = node.parentId ? topicIdByFolderId.get(node.parentId) ?? null : null;
+
+        const { data: existingTopic } = await supabase
+          .from("topics")
+          .select("id")
+          .eq("drive_folder_id", node.id)
+          .maybeSingle();
+
+        if (existingTopic?.id) {
+          topicIdByFolderId.set(node.id, existingTopic.id);
+          continue;
+        }
+
+        const { data: newTopic, error: topicError } = await supabase
+          .from("topics")
+          .insert({
+            name: node.name,
+            drive_folder_id: node.id,
+            project_id: projectId,
+            project_version_id: defaultVersionId,
+            parent_id: parentTopicId,
+          })
+          .select("id")
+          .single();
+
+        if (topicError || !newTopic) {
+          console.error("Error creating topic:", topicError);
+          continue;
+        }
+
+        topicIdByFolderId.set(node.id, newTopic.id);
+        syncedTopics++;
+      }
+
+      for (const node of folderNodes) {
+        const topFolderId = getTopFolderId(node.id);
+        const projectId = topFolderId ? projectIdByFolderId.get(topFolderId) : null;
+        if (!projectId) continue;
+
+        const defaultVersionId = versionIdByProjectId.get(projectId) ?? null;
+        const topicId = node.depth >= 2 ? topicIdByFolderId.get(node.id) ?? null : null;
         const projectResult = await listFolder(node.id);
 
         if (projectResult.needsDriveAccess) {
           toast({
             title: "Drive access required",
-            description: "Please grant Google Drive access to sync your folders.",
+            description:
+              appRole === "owner"
+                ? "Please reconnect Google Drive to sync your folders."
+                : "The workspace owner needs to reconnect Google Drive.",
           });
-          await requestDriveAccess();
+          const recovery = await attemptRecovery("Drive access required");
+          setNeedsDriveAccess(recovery.isOwner);
           return;
         }
 
@@ -1523,7 +1587,7 @@ const Dashboard = () => {
         for (const doc of docs) {
           const { data: existingDoc } = await supabase
             .from("documents")
-            .select("id, project_version_id")
+            .select("id, project_version_id, topic_id")
             .eq("google_doc_id", doc.id)
             .maybeSingle();
 
@@ -1535,6 +1599,9 @@ const Dashboard = () => {
 
             if (!existingDoc.project_version_id && defaultVersionId) {
               updatePayload.project_version_id = defaultVersionId;
+            }
+            if (!existingDoc.topic_id && topicId) {
+              updatePayload.topic_id = topicId;
             }
 
             await supabase
@@ -1549,6 +1616,7 @@ const Dashboard = () => {
                 google_doc_id: doc.id,
                 project_id: projectId,
                 project_version_id: defaultVersionId,
+                topic_id: topicId,
                 google_modified_at: doc.modifiedTime,
                 owner_id: user.id,
               });
@@ -1562,7 +1630,7 @@ const Dashboard = () => {
 
       toast({
         title: "Sync complete",
-        description: `Synced ${syncedProjects} new projects and ${syncedDocs} new documents.`,
+        description: `Synced ${syncedProjects} new projects, ${syncedTopics} topics, and ${syncedDocs} documents.`,
       });
 
       // Refresh the projects list
@@ -1579,13 +1647,16 @@ const Dashboard = () => {
         errorMessage.includes("scope") ||
         errorMessage.includes("re-authenticate")
       ) {
-        setNeedsDriveAccess(true);
+        const recovery = await attemptRecovery(errorMessage);
+        setNeedsDriveAccess(recovery.isOwner);
         toast({
           title: "Drive access required",
-          description: "Please grant Google Drive access to sync your folders.",
+          description:
+            recovery.isOwner
+              ? "Please reconnect Google Drive to continue syncing."
+              : "The workspace owner needs to reconnect Google Drive.",
+          variant: "destructive",
         });
-        // Request Drive access
-        await requestDriveAccess();
         return;
       }
       

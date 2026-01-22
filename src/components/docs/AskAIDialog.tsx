@@ -19,6 +19,9 @@ interface AskAIDialogProps {
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/docs-ai-chat`;
+const SUPABASE_PUBLISHABLE_KEY =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export function AskAIDialog({ open, onOpenChange, documentContent, documentTitle }: AskAIDialogProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -54,8 +57,8 @@ export function AskAIDialog({ open, onOpenChange, documentContent, documentTitle
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+          apikey: SUPABASE_PUBLISHABLE_KEY,
         },
         body: JSON.stringify({
           messages: [...messages, userMessage],

@@ -36,6 +36,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 import { ROLE_DEFINITIONS } from "@/lib/rbac";
 import { RoleCapabilitiesDialog } from "./RoleCapabilitiesDialog";
 
@@ -50,11 +51,12 @@ interface ProjectSharePanelProps {
 }
 
 type ProjectRole = "admin" | "editor" | "reviewer" | "viewer";
+type ProjectMemberRole = ProjectRole | "owner";
 
 interface ProjectMember {
   id: string;
   user_id: string;
-  role: ProjectRole;
+  role: ProjectMemberRole;
   email?: string;
   full_name?: string;
 }
@@ -105,6 +107,7 @@ export const ProjectSharePanel = ({
 }: ProjectSharePanelProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { attemptRecovery } = useDriveRecovery();
   const [copied, setCopied] = useState(false);
   const [email, setEmail] = useState("");
   const [selectedRole, setSelectedRole] = useState<ProjectRole>("viewer");
@@ -159,6 +162,22 @@ export const ProjectSharePanel = ({
       }
     } catch (error) {
       console.error("Drive sync error:", error);
+      const message = (error as { message?: string })?.message ?? "";
+      if (
+        message.includes("Google access token") ||
+        message.includes("reconnect") ||
+        message.includes("Drive")
+      ) {
+        const recovery = await attemptRecovery(message);
+        toast({
+          title: "Drive access required",
+          description: recovery.isOwner
+            ? "Please reconnect Google Drive to sync permissions."
+            : "The workspace owner needs to reconnect Google Drive.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({ 
         title: "Sync failed", 
         description: "Could not sync Drive permissions. Please try again.",
@@ -203,7 +222,7 @@ export const ProjectSharePanel = ({
 
       if (error) throw error;
 
-      const merged: Array<{ id: string; user_id: string; role: ProjectRole }> =
+      const merged: Array<{ id: string; user_id: string; role: ProjectMemberRole }> =
         (data || []).map((m: any) => ({ id: m.id, user_id: m.user_id, role: m.role as ProjectRole }));
 
       const seen = new Set(merged.map((m) => m.user_id));
@@ -217,9 +236,14 @@ export const ProjectSharePanel = ({
 
         const ownerId = org?.owner_id ?? null;
         setOrganizationDomain(org?.domain ?? null);
-        if (ownerId && !seen.has(ownerId)) {
-          merged.push({ id: `org:${ownerId}`, user_id: ownerId, role: "admin" });
-          seen.add(ownerId);
+        if (ownerId) {
+          const ownerIndex = merged.findIndex((entry) => entry.user_id === ownerId);
+          if (ownerIndex >= 0) {
+            merged[ownerIndex] = { ...merged[ownerIndex], role: "owner" };
+          } else if (!seen.has(ownerId)) {
+            merged.push({ id: `org:${ownerId}`, user_id: ownerId, role: "owner" });
+            seen.add(ownerId);
+          }
         }
 
         for (const r of orgRoles || []) {
@@ -378,6 +402,23 @@ export const ProjectSharePanel = ({
   };
 
   const handleUpdateRole = async (memberId: string, newRole: ProjectRole) => {
+    if (memberId.startsWith("org:")) {
+      toast({
+        title: "Org role",
+        description: "Org-level roles can't be edited from project sharing.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const member = members.find((item) => item.id === memberId);
+    if (member?.role === "owner") {
+      toast({
+        title: "Owner role",
+        description: "The workspace owner role cannot be changed.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       const { error } = await supabase
         .from("project_members")
@@ -398,6 +439,23 @@ export const ProjectSharePanel = ({
   };
 
   const handleRemoveMember = async (memberId: string) => {
+    if (memberId.startsWith("org:")) {
+      toast({
+        title: "Org role",
+        description: "Org-level members can't be removed from a project.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const member = members.find((item) => item.id === memberId);
+    if (member?.role === "owner") {
+      toast({
+        title: "Owner role",
+        description: "The workspace owner cannot be removed.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       const { error } = await supabase
         .from("project_members")
@@ -604,6 +662,11 @@ export const ProjectSharePanel = ({
                     >
                       {(() => {
                         const isExternalMember = isExternalEmail(member.email ?? "");
+                        const isOrgRole = member.id.startsWith("org:");
+                        const roleLabel = member.role === "owner"
+                          ? "Owner"
+                          : roleConfig[member.role as ProjectRole].label;
+                        const allowRoleEdit = !isOrgRole && member.role !== "owner" && !isExternalMember;
                         return (
                           <>
                             <div className="flex items-center gap-3">
@@ -626,11 +689,11 @@ export const ProjectSharePanel = ({
                                 <span className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground">
                                   Viewer (External)
                                 </span>
-                              ) : (
+                              ) : allowRoleEdit ? (
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <button className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-background transition-colors flex items-center gap-1">
-                                      {roleConfig[member.role].label}
+                                      {roleLabel}
                                       <ChevronDown className="w-3 h-3" />
                                     </button>
                                   </DropdownMenuTrigger>
@@ -645,8 +708,12 @@ export const ProjectSharePanel = ({
                                     ))}
                                   </DropdownMenuContent>
                                 </DropdownMenu>
+                              ) : (
+                                <span className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground">
+                                  {roleLabel}
+                                </span>
                               )}
-                              {member.user_id !== user?.id && (
+                              {member.user_id !== user?.id && !isOrgRole && member.role !== "owner" && (
                                 <button
                                   onClick={() => handleRemoveMember(member.id)}
                                   className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors"

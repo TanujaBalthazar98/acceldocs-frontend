@@ -1,6 +1,7 @@
 import { useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { ensureFreshSession } from "@/lib/authSession";
 
@@ -146,28 +147,33 @@ export const useDriveRecovery = () => {
       // Step 3: Owner - show reconnect prompt (once)
       if (!ownerNotifiedRef.current) {
         ownerNotifiedRef.current = true;
-        
+
+        const handleReconnect = async () => {
+          const { error } = await requestDriveAccess();
+          if (error) {
+            toast({
+              title: "Reconnect failed",
+              description: error.message,
+              duration: 12000,
+              variant: "destructive",
+            });
+          }
+        };
+
         toast({
-          title: "Google Drive access expired",
-          description: "Reconnecting to restore file access...",
-          duration: 5000,
+          title: hasInsufficientScope ? "Drive permissions required" : "Google Drive access expired",
+          description: hasInsufficientScope
+            ? "Reconnect Google Drive to grant the required permissions."
+            : "Reconnect to restore file access.",
+          duration: 12000,
+          variant: "destructive",
+          action: (
+            <ToastAction altText="Reconnect Google Drive" onClick={handleReconnect}>
+              Reconnect
+            </ToastAction>
+          ),
         });
 
-        // Auto-trigger reconnect flow for owner
-        const { error } = await requestDriveAccess();
-        
-        if (error) {
-          toast({
-            title: "Reconnect failed",
-            description: error.message,
-            duration: 12000,
-            variant: "destructive",
-          });
-          isRecoveringRef.current = false;
-          return { recovered: false, shouldRetry: false, isOwner: true };
-        }
-        
-        // requestDriveAccess triggers a redirect, so we won't reach here normally
         isRecoveringRef.current = false;
         return { recovered: false, shouldRetry: false, isOwner: true };
       }

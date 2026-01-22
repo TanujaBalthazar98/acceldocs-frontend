@@ -5,6 +5,7 @@ import { Loader2, FolderTree, FileStack, X, CheckCircle2, AlertCircle, StopCircl
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +29,7 @@ interface ImportJob {
   current_file: string | null;
   project_id: string;
   created_at: string;
+  updated_at?: string;
 }
 
 interface GlobalImportProgressProps {
@@ -41,6 +43,7 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
   const [projectNames, setProjectNames] = useState<Record<string, string>>({});
   const [stoppingJobs, setStoppingJobs] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+  const { user } = useAuth();
 
   // Stop import and cleanup partial content
   const stopAndCleanup = useCallback(async (job: ImportJob) => {
@@ -85,33 +88,57 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
     const fetchActiveJobs = async () => {
       if (!isActive) return;
 
-      // Get all projects for this organization first
-      const { data: projects } = await supabase
-        .from("projects")
-        .select("id, name")
-        .eq("organization_id", organizationId);
+      let projectIds: string[] = [];
+      let names: Record<string, string> = {};
 
-      if (!projects?.length) return;
+      if (organizationId) {
+        const { data: projects } = await supabase
+          .from("projects")
+          .select("id, name")
+          .eq("organization_id", organizationId);
 
-      // Store project names
-      const names: Record<string, string> = {};
-      projects.forEach(p => { names[p.id] = p.name; });
+        if (projects?.length) {
+          projects.forEach((project) => {
+            names[project.id] = project.name;
+          });
+          projectIds = projects.map((project) => project.id);
+        }
+      }
+
+      let jobs: ImportJob[] | null = null;
+      if (projectIds.length > 0) {
+        const { data, error } = await supabase
+          .from("import_jobs")
+          .select("*")
+          .in("project_id", projectIds)
+          .in("status", ["pending", "processing", "failed", "stopped"])
+          .order("created_at", { ascending: false });
+        if (!error && data) jobs = data as ImportJob[];
+      } else if (user?.id) {
+        const { data, error } = await supabase
+          .from("import_jobs")
+          .select("*")
+          .eq("user_id", user.id)
+          .in("status", ["pending", "processing", "failed", "stopped"])
+          .order("created_at", { ascending: false });
+        if (!error && data) {
+          jobs = data as ImportJob[];
+          const jobProjectIds = Array.from(new Set(data.map((job) => job.project_id)));
+          if (jobProjectIds.length > 0) {
+            const { data: jobProjects } = await supabase
+              .from("projects")
+              .select("id, name")
+              .in("id", jobProjectIds);
+            jobProjects?.forEach((project) => {
+              names[project.id] = project.name;
+            });
+          }
+        }
+      }
+
       setProjectNames(names);
-
-      const projectIds = projects.map(p => p.id);
-
-      // Get active import jobs
-      const { data: jobs, error } = await supabase
-        .from("import_jobs")
-        .select("*")
-        .in("project_id", projectIds)
-        .in("status", ["pending", "processing"])
-        .order("created_at", { ascending: false });
-
-      if (!error && jobs) {
-        setActiveJobs(jobs as ImportJob[]);
-        
-        // If no more active jobs, call onComplete
+      if (jobs) {
+        setActiveJobs(jobs);
         if (jobs.length === 0 && activeJobs.length > 0) {
           onComplete?.();
         }
@@ -142,7 +169,7 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
       if (pollInterval) clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
-  }, [organizationId, onComplete]);
+  }, [organizationId, onComplete, user?.id]);
 
   // Filter out dismissed jobs and only show active ones
   const visibleJobs = activeJobs.filter(job => !dismissed.has(job.id));

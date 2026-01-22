@@ -731,7 +731,14 @@ export const ProjectSettingsPanel = ({
             toast({
               title: "Cannot Delete from Drive",
               description:
-                "This folder contains files not created by this app. Delete them in Google Drive first.",
+                "Docspeare does not have permission to delete this Drive folder. Ensure the connected Google account owns the folder (or has edit access) and try again.",
+              variant: "destructive",
+            });
+          } else if (trashResult.errorCode === "NOT_FOUND") {
+            toast({
+              title: "Drive folder not found",
+              description:
+                "The Drive folder ID cannot be accessed. Reconnect the owner account or update the folder in Settings, then retry the delete.",
               variant: "destructive",
             });
           } else if (trashResult.errorCode === "NEEDS_REAUTH") {
@@ -752,8 +759,8 @@ export const ProjectSettingsPanel = ({
         }
         if (trashResult.alreadyDeleted) {
           toast({
-            title: "Drive Folder Missing",
-            description: "Drive folder was already removed. Cleaning up the project in Docspeare.",
+            title: "Drive folder already removed",
+            description: "Drive folder was already deleted. Cleaning up the project in Docspeare.",
           });
         }
       }
@@ -815,10 +822,19 @@ export const ProjectSettingsPanel = ({
           if (child.drive_folder_id) {
             const childTrashResult = await trashFile(child.drive_folder_id);
             if (!childTrashResult.success) {
+              const errorTitle =
+                childTrashResult.errorCode === "NOT_FOUND"
+                  ? "Sub-project folder not found"
+                  : "Cannot Delete Sub-project from Drive";
+              const errorDescription =
+                childTrashResult.errorCode === "NOT_AUTHORIZED"
+                  ? "Docspeare does not have permission to delete this folder. Ensure the connected Google account owns it or has edit access."
+                  : childTrashResult.errorCode === "NOT_FOUND"
+                    ? "Drive folder ID cannot be accessed. Reconnect the owner account or update the folder in Settings."
+                    : childTrashResult.error || "Failed to trash a sub-project Drive folder.";
               toast({
-                title: "Cannot Delete Sub-project from Drive",
-                description:
-                  childTrashResult.error || "Failed to trash a sub-project Drive folder.",
+                title: errorTitle,
+                description: errorDescription,
                 variant: "destructive",
               });
               setIsDeleting(false);
