@@ -1,6 +1,7 @@
 import { useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import * as React from "react";
 import { ToastAction } from "@/components/ui/toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { ensureFreshSession } from "@/lib/authSession";
@@ -167,10 +168,10 @@ export const useDriveRecovery = () => {
             : "Reconnect to restore file access.",
           duration: 12000,
           variant: "destructive",
-          action: (
-            <ToastAction altText="Reconnect Google Drive" onClick={handleReconnect}>
-              Reconnect
-            </ToastAction>
+          action: React.createElement(
+            ToastAction,
+            { altText: "Reconnect Google Drive", onClick: handleReconnect },
+            "Reconnect"
           ),
         });
 
