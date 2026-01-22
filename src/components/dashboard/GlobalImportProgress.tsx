@@ -82,11 +82,20 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
   }, [toast, onComplete]);
 
   useEffect(() => {
+    if (!user && !organizationId) {
+      setActiveJobs([]);
+      return;
+    }
+
     let pollInterval: NodeJS.Timeout | null = null;
     let isActive = true;
 
     const fetchActiveJobs = async () => {
       if (!isActive) return;
+      if (!user && !organizationId) {
+        setActiveJobs([]);
+        return;
+      }
 
       let projectIds: string[] = [];
       let names: Record<string, string> = {};
@@ -169,7 +178,7 @@ export function GlobalImportProgress({ organizationId, onComplete }: GlobalImpor
       if (pollInterval) clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
-  }, [organizationId, onComplete, user?.id]);
+  }, [organizationId, onComplete, user, user?.id]);
 
   // Filter out dismissed jobs and only show active ones
   const visibleJobs = activeJobs.filter(job => !dismissed.has(job.id));
