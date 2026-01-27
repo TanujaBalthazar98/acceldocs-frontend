@@ -7,6 +7,10 @@
     "https://www.googleapis.com/auth/script.external_request",
     "https://www.googleapis.com/auth/userinfo.email"
   ],
+  "urlFetchWhitelist": [
+    "https://www.docspeare.com/api/",
+    "https://docspeare.com/api/"
+  ],
   "addOns": {
     "common": {
       "name": "Docspeare Publisher",
