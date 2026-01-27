@@ -244,19 +244,15 @@ const Dashboard = () => {
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading, isOrgOwner } = usePermissions(selectedProject?.id || null);
   const { logAction, logUnauthorizedAttempt } = useAuditLog();
-  const driveTokenAvailable = !!googleAccessToken;
-  const driveStepDone = driveTokenAvailable && !needsDriveAccess;
-  const rootStepDone = !!rootFolderId;
   const projectStepDone = projects.length > 0;
   const canProjectCreateRole =
     appRole === "owner" || appRole === "admin" || appRole === "editor";
-  const canCreateProject = rootStepDone && driveStepDone && canProjectCreateRole;
+  const canCreateProject = canProjectCreateRole;
   const createProjectDisabledTitle = !canProjectCreateRole
     ? "You must be an owner, admin, or editor to create a project"
-    : "Connect Drive and set a root folder first";
+    : "Create your first project";
   const showGettingStarted =
-    !!organizationId && (!driveStepDone || !rootStepDone || !projectStepDone);
-  const driveActionLabel = needsDriveAccess ? "Reconnect Drive" : "Connect Drive";
+    !!organizationId && !projectStepDone;
 
   // Helper: Check if user can publish for a specific project (used when no project is selected)
   const canPublishForProject = async (projectId: string): Promise<boolean> => {
@@ -2889,7 +2885,7 @@ const Dashboard = () => {
                 <div>
                   <h2 className="text-base sm:text-lg font-semibold">Getting started</h2>
                   <p className="text-sm text-muted-foreground">
-                    Complete these steps to publish your first docs.
+                    Complete these steps to publish from Google Docs.
                   </p>
                 </div>
                 <Badge variant="secondary" className="w-fit">Setup</Badge>
@@ -2897,61 +2893,45 @@ const Dashboard = () => {
               <div className="mt-4 grid gap-3">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    {driveStepDone ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <Circle className="w-5 h-5 text-muted-foreground" />
-                    )}
+                    <Circle className="w-5 h-5 text-muted-foreground" />
                     <div className="min-w-0">
-                      <p className="text-sm font-medium">Connect Google Drive</p>
+                      <p className="text-sm font-medium">Install the Docs add-on</p>
                       <p className="text-xs text-muted-foreground">
-                        Allow Docspeare to read and create folders in Drive.
+                        Install the Docspeare Publisher add-on in Google Docs.
                       </p>
                     </div>
                   </div>
-                  {driveStepDone ? (
-                    <Badge variant="secondary" className="w-fit">Connected</Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={handleConnectDrive}
-                      disabled={isConnectingDrive}
-                    >
-                      {isConnectingDrive ? "Connecting..." : driveActionLabel}
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.open("https://workspace.google.com/marketplace", "_blank")}
+                  >
+                    Open Marketplace
+                  </Button>
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    {rootStepDone ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <Circle className="w-5 h-5 text-muted-foreground" />
-                    )}
+                    <Circle className="w-5 h-5 text-muted-foreground" />
                     <div className="min-w-0">
-                      <p className="text-sm font-medium">Set your root folder</p>
+                      <p className="text-sm font-medium">Generate an add-on token</p>
                       <p className="text-xs text-muted-foreground">
-                        Pick the Drive folder that will store all docs.
+                        Generate a short-lived token and paste it into the add-on.
                       </p>
                     </div>
                   </div>
-                  {rootStepDone ? (
-                    <Badge variant="secondary" className="w-fit">Configured</Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setShowGeneralSettings(true);
-                        setShowAPISettings(false);
-                        setShowMCPSettings(false);
-                        setShowIntegrations(false);
-                      }}
-                    >
-                      Open Settings
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setShowGeneralSettings(false);
+                      setShowAPISettings(false);
+                      setShowMCPSettings(false);
+                      setShowIntegrations(true);
+                    }}
+                  >
+                    Open Integrations
+                  </Button>
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">

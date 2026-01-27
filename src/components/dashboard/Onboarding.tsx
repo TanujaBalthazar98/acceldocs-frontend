@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, ArrowRight, ArrowLeft, Loader2, Link2, Building2, Clock, UserPlus } from "lucide-react";
+import { CheckCircle2, ArrowRight, ArrowLeft, Loader2, Building2, Clock, UserPlus, Puzzle, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -65,13 +64,10 @@ const formatPersonalWorkspaceName = (email?: string | null, fullName?: string | 
 };
 
 export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
-  const { user, session, requestDriveAccess, profileLoading } = useAuth();
+  const { user, profileLoading } = useAuth();
   const { toast } = useToast();
-  const { createFolder } = useGoogleDrive();
   const [step, setStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [driveConnected, setDriveConnected] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<OnboardingMode | null>(null);
   const [isCheckingOrg, setIsCheckingOrg] = useState(true);
   const [existingOrgId, setExistingOrgId] = useState<string | null>(null);
@@ -98,13 +94,6 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     if (!pendingRequestStorageKey || typeof sessionStorage === "undefined") return;
     sessionStorage.removeItem(pendingRequestStorageKey);
   };
-
-  // Check if Drive is already connected
-  useEffect(() => {
-    if (session?.provider_token) {
-      setDriveConnected(true);
-    }
-  }, [session]);
 
   // Determine onboarding mode based on whether the user's org exists
   useEffect(() => {
@@ -209,28 +198,6 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     }
   };
 
-  const handleConnectDrive = async () => {
-    setIsConnecting(true);
-    try {
-      const { error } = await requestDriveAccess();
-      if (error) {
-        toast({
-          title: "Error",
-          description: "Failed to connect Google Drive. Please try again.",
-          variant: "destructive",
-        });
-        setIsConnecting(false);
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to connect Google Drive.",
-        variant: "destructive",
-      });
-      setIsConnecting(false);
-    }
-  };
-
   const handleCreateWorkspace = async () => {
     if (!user) return;
 
@@ -273,27 +240,12 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         return;
       }
 
-      // Create Drive folder if connected, then store folder id (without overwriting if already set).
-      if (driveConnected) {
-        const folderName = `${APP_NAME} - ${workspaceName}`;
-        const folder = await createFolder(folderName, "root");
-
-        if (folder?.id) {
-          await supabase.functions.invoke("ensure-workspace", {
-            body: {
-              domain: workspaceDomain,
-              driveFolderId: folder.id,
-            },
-          });
-        }
-      }
-
       toast({
         title: "Workspace created!",
         description: "You've created the workspace and are now the owner.",
       });
 
-      onComplete();
+      setStep(3);
     } catch (error: any) {
       console.error("Error creating workspace:", error);
       toast({
@@ -431,7 +383,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     );
   }
 
-  // First user flow - create workspace with Drive connection
+  // First user flow - create workspace and install the Docs add-on
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="w-full max-w-3xl">
@@ -456,8 +408,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         {/* Step Labels */}
         <div className="flex justify-center gap-6 mb-8 text-xs text-muted-foreground">
           <span className={step >= 1 ? "text-primary" : ""}>Welcome</span>
-          <span className={step >= 2 ? "text-primary" : ""}>Connect Drive</span>
-          <span className={step >= 3 ? "text-primary" : ""}>Create Workspace</span>
+          <span className={step >= 2 ? "text-primary" : ""}>Create Workspace</span>
+          <span className={step >= 3 ? "text-primary" : ""}>Install Add-on</span>
         </div>
 
         {/* Step Content */}
@@ -469,7 +421,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               </div>
               <h2 className="text-2xl font-bold mb-3">Welcome to {APP_NAME}!</h2>
               <p className="text-muted-foreground mb-6">
-                You're the first member of {workspaceName}! Let's set up the workspace by connecting your Google Drive, which will serve as the root storage for all team documentation.
+                You're the first member of {workspaceName}! Let's create your workspace and connect the Docs add-on so publishing works right away.
               </p>
               <Button 
                 variant="hero" 
@@ -484,85 +436,6 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           )}
 
           {step === 2 && (
-            <div className="text-center max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
-                <Link2 className="w-8 h-8 text-primary" />
-              </div>
-              <h2 className="text-2xl font-bold mb-3">Connect Google Drive</h2>
-              <p className="text-muted-foreground mb-6">
-                Your Google Drive will become the root storage for {APP_NAME}. All team members will access documentation through this shared drive.
-              </p>
-
-              {driveConnected ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-center gap-2 text-primary">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span className="font-medium">Google Drive connected!</span>
-                  </div>
-                  <div className="flex gap-3 justify-center">
-                    <Button 
-                      variant="outline" 
-                      size="lg" 
-                      onClick={handleBack}
-                      className="gap-2"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                      Back
-                    </Button>
-                    <Button 
-                      variant="hero" 
-                      size="lg" 
-                      onClick={() => setStep(3)}
-                      className="gap-2"
-                    >
-                      Continue
-                      <ArrowRight className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <Button 
-                    variant="hero" 
-                    size="lg" 
-                    onClick={handleConnectDrive}
-                    disabled={isConnecting}
-                    className="w-full gap-3"
-                  >
-                    {isConnecting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Connecting...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
-                          <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-                          <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
-                          <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 13.25z" fill="#ea4335"/>
-                          <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-                          <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-                          <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
-                        </svg>
-                        Connect Google Drive
-                      </>
-                    )}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="lg" 
-                    onClick={handleBack}
-                    className="gap-2"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {step === 3 && (
             <div className="max-w-md mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <Building2 className="w-8 h-8 text-primary" />
@@ -576,7 +449,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                 <div className="p-4 rounded-lg bg-secondary/50 text-center">
                   <span className="font-semibold text-lg">{workspaceName}</span>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Your Google Drive will be the root storage
+                    Docs are edited in Google Docs and published into Docspeare.
                   </p>
                 </div>
 
@@ -594,7 +467,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                     variant="hero" 
                     size="lg" 
                     onClick={handleCreateWorkspace}
-                    disabled={isCreating || !driveConnected}
+                    disabled={isCreating}
                     className="gap-2"
                   >
                     {isCreating ? (
@@ -610,19 +483,54 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                     )}
                   </Button>
                 </div>
-                
-                {!driveConnected && (
-                  <p className="text-xs text-center text-amber-500">
-                    Please connect Google Drive first to create the workspace.
-                  </p>
-                )}
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="text-center max-w-md mx-auto">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                <Puzzle className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold mb-3">Install the Docs Add-on</h2>
+              <p className="text-muted-foreground mb-6">
+                The add-on is where publishing happens. Install it in Google Docs, then generate a short‑lived token from Docspeare.
+              </p>
+              <div className="space-y-3">
+                <Button
+                  variant="hero"
+                  size="lg"
+                  onClick={onComplete}
+                  className="w-full gap-2"
+                >
+                  Continue to Docspeare
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => window.open("https://workspace.google.com/marketplace", "_blank")}
+                  className="w-full gap-2"
+                >
+                  Open Marketplace
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={handleBack}
+                  className="w-full gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </Button>
               </div>
             </div>
           )}
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Your documents stay in Google Drive. {APP_NAME} adds structure and governance on top.
+          Docs are edited in Google Docs. {APP_NAME} stores published versions and access controls.
         </p>
       </div>
     </div>

@@ -184,9 +184,22 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
         body: JSON.stringify({})
       });
 
-      const payload = await response.json();
+      const responseText = await response.text();
+      let payload: { token?: string; error?: string } | null = null;
+      try {
+        payload = responseText ? JSON.parse(responseText) : null;
+      } catch (parseError) {
+        payload = null;
+      }
+
       if (!response.ok) {
-        setAddonTokenError(payload?.error || 'Failed to generate token.');
+        const fallbackMessage = responseText || 'Failed to generate token.';
+        setAddonTokenError(payload?.error || fallbackMessage);
+        return;
+      }
+
+      if (!payload?.token) {
+        setAddonTokenError('Unexpected response from server. Please try again.');
         return;
       }
 
