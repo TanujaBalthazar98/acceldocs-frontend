@@ -1,5 +1,5 @@
-import { createAddonToken } from "../_lib/addonToken";
-import { getSupabaseAdmin } from "../_lib/supabaseAdmin";
+import { createAddonToken } from "../_lib/addonToken.js";
+import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",

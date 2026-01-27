@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { base64UrlEncode, base64UrlDecode } from "./base64url";
+import { base64UrlEncode, base64UrlDecode } from "./base64url.js";
 
 export interface AddonTokenPayload {
   sub: string;
