@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ensureFreshSession } from "@/lib/authSession";
 import { 
   FileText, 
   FolderTree, 
@@ -48,6 +49,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -198,6 +200,9 @@ const Dashboard = () => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<ProjectVersion | null>(null);
+  const [addonToken, setAddonToken] = useState<string | null>(null);
+  const [addonTokenLoading, setAddonTokenLoading] = useState(false);
+  const [addonTokenError, setAddonTokenError] = useState<string | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [parentTopicForCreate, setParentTopicForCreate] = useState<Topic | null>(null);
   const [settingsTopic, setSettingsTopic] = useState<Topic | null>(null);
@@ -255,6 +260,11 @@ const Dashboard = () => {
   const showGettingStarted =
     !!organizationId && !projectStepDone;
 
+  useEffect(() => {
+    setAddonToken(null);
+    setAddonTokenError(null);
+  }, [selectedProject?.id]);
+
   // Helper: Check if user can publish for a specific project (used when no project is selected)
   const canPublishForProject = async (projectId: string): Promise<boolean> => {
     if (!user) return false;
@@ -310,6 +320,75 @@ const Dashboard = () => {
     navigate('/dashboard', { replace: true });
     setDeepLinkHandled(true);
   }, [deepLinkHandled, location.search, navigate, projects]);
+
+  const handleGenerateAddonToken = async () => {
+    setAddonTokenLoading(true);
+    setAddonTokenError(null);
+    try {
+      if (!selectedProject?.id) {
+        setAddonTokenError("Select a project before generating a token.");
+        return;
+      }
+
+      const session = await ensureFreshSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        setAddonTokenError("Please sign in to generate a token.");
+        return;
+      }
+
+      const response = await fetch("/api/addon/auth", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+
+      const responseText = await response.text();
+      let payload: { token?: string; error?: string } | null = null;
+      try {
+        payload = responseText ? JSON.parse(responseText) : null;
+      } catch (parseError) {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const trimmed = (responseText || "").trim();
+        const looksLikeHtml = trimmed.startsWith("<");
+        const isInvocationFailed = trimmed.includes("FUNCTION_INVOCATION_FAILED");
+        const fallbackMessage = responseText || "Failed to generate token.";
+        if (looksLikeHtml || isInvocationFailed) {
+          setAddonTokenError(
+            payload?.error ||
+              "Server error. Check Vercel logs and ensure ADDON_JWT_SECRET, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_URL are set."
+          );
+        } else {
+          setAddonTokenError(payload?.error || fallbackMessage);
+        }
+        return;
+      }
+
+      if (!payload?.token) {
+        setAddonTokenError("Unexpected response from server. Please try again.");
+        return;
+      }
+
+      setAddonToken(payload.token);
+      toast({ title: "Add-on token generated" });
+    } catch (error: any) {
+      setAddonTokenError(error?.message || "Failed to generate token.");
+    } finally {
+      setAddonTokenLoading(false);
+    }
+  };
+
+  const handleCopyAddonToken = async () => {
+    if (!addonToken) return;
+    await navigator.clipboard.writeText(addonToken);
+    toast({ title: "Token copied" });
+  };
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -2955,18 +3034,58 @@ const Dashboard = () => {
                       </p>
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setShowGeneralSettings(false);
-                      setShowAPISettings(false);
-                      setShowMCPSettings(false);
-                      setShowIntegrations(true);
-                    }}
-                  >
-                    Open Integrations
-                  </Button>
+                  <div className="flex flex-col sm:items-end gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleGenerateAddonToken}
+                        disabled={addonTokenLoading || !selectedProject?.id}
+                        title={!selectedProject?.id ? "Select a project first" : "Generate token"}
+                      >
+                        {addonTokenLoading ? (
+                          <span className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Generating
+                          </span>
+                        ) : (
+                          "Generate Token"
+                        )}
+                      </Button>
+                      {addonToken && (
+                        <Button size="sm" variant="outline" onClick={handleCopyAddonToken}>
+                          Copy Token
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setShowGeneralSettings(false);
+                          setShowAPISettings(false);
+                          setShowMCPSettings(false);
+                          setShowIntegrations(true);
+                        }}
+                      >
+                        Advanced
+                      </Button>
+                    </div>
+                    {addonTokenError && (
+                      <p className="text-xs text-destructive text-right max-w-[320px]">
+                        {addonTokenError}
+                      </p>
+                    )}
+                    {addonToken && (
+                      <div className="w-full sm:w-[320px] space-y-2">
+                        <Textarea readOnly value={addonToken} rows={3} />
+                        <div className="text-xs text-muted-foreground">
+                          Project ID: {selectedProject?.id || "Select a project"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Default Version ID: {selectedVersion?.id || "No default version"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
             </div>
           )}
