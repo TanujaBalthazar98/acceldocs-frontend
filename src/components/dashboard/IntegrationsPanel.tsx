@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   ArrowLeft, 
   Building2, 
@@ -198,8 +199,18 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
       }
 
       if (!response.ok) {
+        const trimmed = (responseText || '').trim();
+        const looksLikeHtml = trimmed.startsWith('<');
+        const isInvocationFailed = trimmed.includes('FUNCTION_INVOCATION_FAILED');
         const fallbackMessage = responseText || 'Failed to generate token.';
-        setAddonTokenError(payload?.error || fallbackMessage);
+        if (looksLikeHtml || isInvocationFailed) {
+          setAddonTokenError(
+            payload?.error ||
+              'Server error. Check Vercel logs and ensure ADDON_JWT_SECRET, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_URL are set.'
+          );
+        } else {
+          setAddonTokenError(payload?.error || fallbackMessage);
+        }
         return;
       }
 
@@ -271,12 +282,15 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
           </h3>
           <Card className="bg-card/50">
             <CardContent className="p-4 space-y-4">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">
-                  Generate a short-lived token for the Docs add-on. Paste it into the add-on to load projects and publish.
-                </p>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">Quick setup</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Install the Docs add-on from the private Marketplace listing.</li>
+                  <li>Generate a short-lived token below.</li>
+                  <li>Paste the token in the add-on to load projects and publish.</li>
+                </ol>
                 <p className="text-xs text-muted-foreground">
-                  The add-on is listed as a private Google Workspace app. If you don’t see it, ask your admin to install it.
+                  If you don’t see the add-on, ask your Workspace admin to allow internal apps.
                 </p>
               </div>
 
@@ -295,6 +309,14 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
                   </Button>
                 )}
               </div>
+
+              {addonToken && (
+                <Textarea
+                  readOnly
+                  value={addonToken}
+                  className="min-h-[96px] font-mono text-xs"
+                />
+              )}
 
               {!projectId && (
                 <p className="text-sm text-muted-foreground">
