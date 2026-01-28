@@ -5,6 +5,7 @@ export interface AddonTokenPayload {
   sub: string;
   workspaceId: string;
   role?: string;
+  jti?: string;
   exp: number;
   iat: number;
 }
@@ -24,6 +25,7 @@ export const createAddonToken = (payload: Omit<AddonTokenPayload, "iat" | "exp">
   const issuedAt = Math.floor(Date.now() / 1000);
   const body: AddonTokenPayload = {
     ...payload,
+    jti: crypto.randomUUID(),
     iat: issuedAt,
     exp: issuedAt + ttlSeconds,
   };
