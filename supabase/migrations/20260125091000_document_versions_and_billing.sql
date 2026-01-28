@@ -74,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_document_versions_document_id
 
 ALTER TABLE public.document_versions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view document versions in their org" ON public.document_versions;
 CREATE POLICY "Users can view document versions in their org" ON public.document_versions
   FOR SELECT
   USING (
@@ -85,6 +86,7 @@ CREATE POLICY "Users can view document versions in their org" ON public.document
     )
   );
 
+DROP POLICY IF EXISTS "Public document versions are viewable" ON public.document_versions;
 CREATE POLICY "Public document versions are viewable" ON public.document_versions
   FOR SELECT
   USING (
@@ -98,6 +100,7 @@ CREATE POLICY "Public document versions are viewable" ON public.document_version
     AND is_published = true
   );
 
+DROP POLICY IF EXISTS "Editors can create document versions" ON public.document_versions;
 CREATE POLICY "Editors can create document versions" ON public.document_versions
   FOR INSERT
   WITH CHECK (
