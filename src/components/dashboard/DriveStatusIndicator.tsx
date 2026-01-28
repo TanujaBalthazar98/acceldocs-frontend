@@ -9,6 +9,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
+import { DRIVE_INTEGRATION_ENABLED } from "@/lib/featureFlags";
 
 interface DriveStatusIndicatorProps {
   onStatusChange?: (connected: boolean) => void;
@@ -17,6 +18,10 @@ interface DriveStatusIndicatorProps {
 type ConnectionStatus = 'connected' | 'disconnected' | 'needs_reauth' | 'checking' | 'not_owner' | null;
 
 export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorProps) => {
+  if (!DRIVE_INTEGRATION_ENABLED) {
+    return null;
+  }
+
   const { requestDriveAccess, user } = useAuth();
   const { resetRecoveryState } = useDriveRecovery();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(null);

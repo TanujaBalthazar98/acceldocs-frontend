@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -7,25 +7,16 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FolderPlus, Upload, FileText, FolderTree, Loader2, FolderArchive } from "lucide-react";
-import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 import { supabase, IS_SUPABASE_CONFIGURED } from "@/integrations/supabase/client";
-import { ImportProgressIndicator } from "./ImportProgressIndicator";
-import { ZipImportDialog } from "./ZipImportDialog";
-import { splitImportBatches } from "@/lib/importBatching";
 
 interface AddProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Organization root Drive folder id */
+  /** Organization root Drive folder id (unused when Drive is disabled) */
   rootFolderId: string | null;
-  /** Optional preferred Drive parent folder id (e.g. parent project folder) */
+  /** Optional preferred Drive parent folder id (unused when Drive is disabled) */
   driveParentFolderId?: string | null;
   organizationId?: string;
   parentProjectId?: string | null;
@@ -33,68 +24,27 @@ interface AddProjectDialogProps {
   onCreated?: (folder: { id: string; name: string }) => void;
 }
 
-interface FileEntry {
-  path: string;
-  content: string;
-}
-
-export const AddProjectDialog = ({ 
-  open, 
-  onOpenChange, 
-  rootFolderId,
-  driveParentFolderId,
+export const AddProjectDialog = ({
+  open,
+  onOpenChange,
   organizationId,
   parentProjectId,
   parentProjectName,
-  onCreated 
+  onCreated,
 }: AddProjectDialogProps) => {
   const [projectName, setProjectName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState("empty");
-  const [files, setFiles] = useState<FileEntry[]>([]);
-  const [importJobId, setImportJobId] = useState<string | null>(null);
-  const [createdFolder, setCreatedFolder] = useState<{ id: string; name: string } | null>(null);
-  const [showZipImport, setShowZipImport] = useState(false);
-  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
-  const [createdProjectVersionId, setCreatedProjectVersionId] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const { createFolder } = useGoogleDrive();
   const { toast } = useToast();
   const { user } = useAuth();
-  const { attemptRecovery } = useDriveRecovery();
-
-  const tryCreateProjectFolder = async (name: string) => {
-    if (!rootFolderId) return null;
-
-    const primaryParentId = driveParentFolderId || rootFolderId;
-    let folder = await createFolder(name, primaryParentId);
-
-    // If we tried to create inside the parent project folder and it failed,
-    // fall back to the org root folder so users can still create sub-projects.
-    if (!folder && driveParentFolderId && driveParentFolderId !== rootFolderId) {
-      folder = await createFolder(name, rootFolderId);
-      if (folder) {
-        toast({
-          title: "Created in root folder",
-          description: "Could not create inside the parent project folder. Created under the root instead.",
-        });
-      }
-    }
-
-    return folder;
-  };
 
   const ensureDefaultVersion = async (projectId: string, isPublished: boolean) => {
-    const { data: existing, error: existingError } = await supabase
+    const { data: existing } = await supabase
       .from("project_versions")
       .select("id")
       .eq("project_id", projectId)
       .eq("is_default", true)
       .maybeSingle();
 
-    if (existingError) {
-      console.error("Error checking default version:", existingError);
-    }
     if (existing?.id) return existing.id;
 
     const { data: created, error: createError } = await supabase
@@ -121,45 +71,43 @@ export const AddProjectDialog = ({
     return created?.id ?? null;
   };
 
-  const handleCreateEmpty = async () => {
-    if (!projectName.trim() || !rootFolderId || !organizationId || !user) return;
+  const resetAndClose = () => {
+    setProjectName("");
+    onOpenChange(false);
+  };
+
+  const handleCreate = async () => {
+    if (!projectName.trim() || !organizationId || !user) return;
+
+    if (!IS_SUPABASE_CONFIGURED) {
+      toast({
+        title: "Supabase not configured",
+        description: "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY).",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsCreating(true);
-
     try {
-      const folder = await tryCreateProjectFolder(projectName.trim());
-      if (!folder) return;
-
-      if (!IS_SUPABASE_CONFIGURED) {
-        toast({
-          title: "Supabase not configured",
-          description: "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY).",
-          variant: "destructive",
-        });
-        return;
-      }
-
       const { data: project, error: createProjectError } = await supabase
         .from("projects")
         .insert({
           name: projectName.trim(),
           organization_id: organizationId,
           created_by: user.id,
-          drive_folder_id: folder.id,
           parent_id: parentProjectId || null,
         })
-        .select("id, is_published")
+        .select("id, name, is_published")
         .single();
 
       if (createProjectError || !project) {
         console.error("Create project error:", createProjectError);
         toast({
-          title: "Project folder created",
-          description: "Folder created, but the project record could not be created. Try Sync from Drive.",
+          title: "Project not created",
+          description: "Failed to create the project. Please try again.",
           variant: "destructive",
         });
-        onCreated?.({ id: folder.id, name: folder.name });
-        resetAndClose();
         return;
       }
 
@@ -167,539 +115,51 @@ export const AddProjectDialog = ({
 
       toast({
         title: "Project created",
-        description: `"${projectName}" created successfully.`,
+        description: `"${project.name}" created successfully.`,
       });
-      onCreated?.({ id: folder.id, name: folder.name });
+      onCreated?.({ id: project.id, name: project.name });
       resetAndClose();
     } finally {
       setIsCreating(false);
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files;
-    if (!selectedFiles) return;
-
-    const entries: FileEntry[] = [];
-    let folderName = "";
-
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      if (!file.name.endsWith('.md')) continue;
-      
-      try {
-        const content = await file.text();
-        const path = file.webkitRelativePath || file.name;
-        entries.push({ path, content });
-        
-        // Extract folder name from first file
-        if (!folderName && path.includes('/')) {
-          folderName = path.split('/')[0];
-        }
-      } catch (err) {
-        console.error(`Error reading file: ${file.name}`, err);
-      }
-    }
-
-    setFiles(entries);
-    if (folderName && !projectName) {
-      setProjectName(folderName);
-    }
-  };
-
-  const handleImportCreate = async () => {
-    if (!projectName.trim() || !rootFolderId || !organizationId || !user || files.length === 0) return;
-
-    setIsCreating(true);
-
-    try {
-      // Step 1: Create the project folder
-      const folder = await tryCreateProjectFolder(projectName.trim());
-      if (!folder) return;
-
-      // Step 2: Create the project record immediately (no manual sync required)
-      const { data: project, error: createProjectError } = await supabase
-        .from("projects")
-        .insert({
-          name: projectName.trim(),
-          organization_id: organizationId,
-          created_by: user.id,
-          drive_folder_id: folder.id,
-          parent_id: parentProjectId || null,
-        })
-        .select("id, is_published")
-        .single();
-
-      if (createProjectError || !project) {
-        console.error("Create project error:", createProjectError);
-        toast({
-          title: "Project folder created",
-          description: "Folder created, but the project record could not be created. Try Sync from Drive.",
-          variant: "destructive",
-        });
-        onCreated?.({ id: folder.id, name: folder.name });
-        resetAndClose();
-        return;
-      }
-
-      const projectVersionId = await ensureDefaultVersion(project.id, project.is_published ?? false);
-
-      // Step 3: Import markdown files
-      const googleToken = localStorage.getItem("google_access_token");
-      if (!googleToken) {
-        toast({
-          title: "Authentication required",
-          description: "Please reconnect to Google Drive to import files.",
-          variant: "destructive",
-        });
-        await attemptRecovery("Google authentication expired");
-        return;
-      }
-
-      const { batches, offsets } = splitImportBatches(files);
-      const totalFiles = files.length;
-      const invokeBatch = (batchFiles: typeof files, batchStart: number, jobId?: string | null) =>
-        supabase.functions.invoke("import-markdown", {
-          body: {
-            files: batchFiles,
-            projectId: project.id,
-            organizationId,
-            projectVersionId,
-            jobId,
-            batchStart,
-            totalFiles,
-            filesAreBatch: true,
-          },
-          headers: {
-            "x-google-token": googleToken,
-          },
-        });
-
-      const { data, error } = await invokeBatch(batches[0], offsets[0], null);
-
-      if (error) throw error;
-
-      if (data?.needsReauth) {
-        toast({
-          title: "Re-authentication required",
-          description: data?.error || "Please reconnect to Google Drive and try importing again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (data.success && data.jobId) {
-        // Show progress indicator
-        setImportJobId(data.jobId);
-        setCreatedFolder({ id: folder.id, name: folder.name });
-        toast({
-          title: "Import started",
-          description: `Importing ${files.length} files...`,
-        });
-
-        if (batches.length > 1) {
-          void (async () => {
-            try {
-              for (let i = 1; i < batches.length; i += 1) {
-                const batchResponse = await invokeBatch(batches[i], offsets[i], data.jobId);
-                if (batchResponse.error) {
-                  throw new Error(batchResponse.error.message || "Failed to continue import");
-                }
-                if (batchResponse.data?.needsReauth) {
-                  toast({
-                    title: "Re-authentication required",
-                    description: batchResponse.data?.error || "Please reconnect to Google Drive and try importing again.",
-                    variant: "destructive",
-                  });
-                  break;
-                }
-              }
-            } catch (batchError) {
-              console.error("Import batch error:", batchError);
-              toast({
-                title: "Import failed",
-                description: batchError instanceof Error ? batchError.message : "An error occurred during import.",
-                variant: "destructive",
-              });
-            }
-          })();
-        }
-      } else if (data.success) {
-        toast({
-          title: "Project created with imported content",
-          description: `Created ${data.topicsCreated || 0} topics and ${data.pagesCreated || 0} pages.`,
-        });
-        onCreated?.({ id: folder.id, name: folder.name });
-        resetAndClose();
-      } else {
-        toast({
-          title: "Import failed",
-          description: "An error occurred during import.",
-          variant: "destructive",
-        });
-      }
-    } catch (err) {
-      console.error("Import error:", err);
-      toast({
-        title: "Import failed",
-        description: err instanceof Error ? err.message : "An error occurred during import.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const handleImportComplete = () => {
-    if (createdFolder) {
-      onCreated?.(createdFolder);
-    }
-    resetAndClose();
-  };
-
-  const resetAndClose = () => {
-    setProjectName("");
-    setFiles([]);
-    setActiveTab("empty");
-    setImportJobId(null);
-    setCreatedFolder(null);
-    setShowZipImport(false);
-    setCreatedProjectId(null);
-    setCreatedProjectVersionId(null);
-    onOpenChange(false);
-  };
-
-  const handleStartZipImport = async () => {
-    if (!projectName.trim() || !rootFolderId || !organizationId || !user) return;
-
-    setIsCreating(true);
-    try {
-      // Create project folder first
-      const folder = await tryCreateProjectFolder(projectName.trim());
-      if (!folder) return;
-
-      // Create project record
-      const { data: project, error } = await supabase
-        .from("projects")
-        .insert({
-          name: projectName.trim(),
-          organization_id: organizationId,
-          created_by: user.id,
-          drive_folder_id: folder.id,
-          parent_id: parentProjectId || null,
-        })
-        .select("id, is_published")
-        .single();
-
-      if (error || !project) {
-        toast({
-          title: "Failed to create project",
-          description: "Project record could not be created.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const projectVersionId = await ensureDefaultVersion(project.id, project.is_published ?? false);
-
-      setCreatedFolder(folder);
-      setCreatedProjectId(project.id);
-      setCreatedProjectVersionId(projectVersionId);
-      setShowZipImport(true);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const handleZipImportComplete = () => {
-    if (createdFolder) {
-      onCreated?.(createdFolder);
-    }
-    resetAndClose();
-  };
-
-  // Group files by topic for preview
-  const filesByTopic = files.reduce((acc, file) => {
-    const parts = file.path.split('/');
-    const rootFolder = parts.length > 1 ? parts[0] : '';
-    const pathWithoutRoot = rootFolder ? parts.slice(1) : parts;
-    const filename = pathWithoutRoot.pop() || '';
-    const topicPath = pathWithoutRoot.length > 0 ? pathWithoutRoot.join(' / ') : '(Project Root)';
-    
-    if (!acc[topicPath]) acc[topicPath] = [];
-    acc[topicPath].push({ ...file, displayName: filename });
-    return acc;
-  }, {} as Record<string, (FileEntry & { displayName: string })[]>);
-
   return (
     <Dialog open={open} onOpenChange={resetAndClose}>
-      <DialogContent className="sm:max-w-lg bg-card border-border">
+      <DialogContent className="sm:max-w-md bg-card border-border">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-foreground">
-            {importJobId ? "Importing Files" : parentProjectId ? "Create Sub-Project" : "Create Project"}
+            {parentProjectId ? "Create Sub-Project" : "Create Project"}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            {importJobId 
-              ? "Your files are being imported. This may take a few minutes."
-              : parentProjectId
-                ? `Create a sub-project under "${parentProjectName}".`
-                : "Start with an empty project or import existing Markdown documentation."
-            }
+            {parentProjectId
+              ? `Create a sub-project under "${parentProjectName}".`
+              : "Create a project in Docspeare. Google Drive setup is not required."}
           </DialogDescription>
         </DialogHeader>
 
-        {importJobId ? (
-          <div className="space-y-4">
-            <ImportProgressIndicator 
-              jobId={importJobId} 
-              onComplete={handleImportComplete}
-            />
-            <div className="flex justify-end">
-              <Button variant="outline" onClick={handleImportComplete}>
-                Close & Continue in Background
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {!rootFolderId && (
-              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                <p className="text-sm text-destructive">
-                  No root folder configured. Please set your root folder in Settings first.
-                </p>
-              </div>
-            )}
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="empty" className="gap-2">
-              <FolderPlus className="h-4 w-4" />
-              Empty
-            </TabsTrigger>
-            <TabsTrigger value="zip" className="gap-2">
-              <FolderArchive className="h-4 w-4" />
-              ZIP Import
-            </TabsTrigger>
-            <TabsTrigger value="import" className="gap-2">
-              <Upload className="h-4 w-4" />
-              Folder
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="empty" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Project Name
-              </label>
-              <div className="relative">
-                <FolderPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="e.g., API Documentation"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  disabled={!rootFolderId}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                A folder with this name will be created in your organization's root Drive folder.
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-border">
-              <Button variant="outline" onClick={resetAndClose}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleCreateEmpty} 
-                disabled={!projectName.trim() || isCreating || !rootFolderId}
-              >
-                {isCreating ? "Creating..." : "Create Project"}
-              </Button>
-            </div>
-          </TabsContent>
-
-          {/* ZIP Import Tab - New reliable method */}
-          <TabsContent value="zip" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Project Name
-              </label>
-              <input
-                type="text"
-                placeholder="e.g., API Documentation"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                disabled={!rootFolderId}
-                className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
-              />
-            </div>
-
-            <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-              <div className="flex items-start gap-3">
-                <FolderArchive className="h-8 w-8 text-primary shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium mb-1">ZIP or Folder Import</p>
-                  <p className="text-muted-foreground text-xs">
-                    Upload a ZIP file or select a folder with your markdown files. 
-                    Folder structure will be preserved as topics.
-                  </p>
-                </div>
-              </div>
-              <div className="text-xs text-muted-foreground bg-background rounded p-2">
-                <p className="font-medium mb-1">Supports config files:</p>
-                <code className="block">_meta.json</code> - Per-folder ordering/titles<br/>
-                <code className="block">toc.yml</code> - GitBook/Mintlify style TOC
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-border">
-              <Button variant="outline" onClick={resetAndClose}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleStartZipImport} 
-                disabled={!projectName.trim() || isCreating || !rootFolderId}
-              >
-                {isCreating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <FolderArchive className="h-4 w-4 mr-2" />
-                    Continue to Import
-                  </>
-                )}
-              </Button>
-            </div>
-          </TabsContent>
-
-          {/* Legacy folder import */}
-          <TabsContent value="import" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Project Name
-              </label>
-              <input
-                type="text"
-                placeholder="Project name (auto-filled from folder)"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                disabled={!rootFolderId}
-                className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
-              />
-            </div>
-
-            {/* File input */}
-            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".md"
-                multiple
-                // @ts-ignore
-                webkitdirectory=""
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-              <FolderTree className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground mb-3">
-                Select a folder containing Markdown files
-              </p>
-              <Button 
-                variant="outline" 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!rootFolderId}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Select Folder
-              </Button>
-            </div>
-
-            {/* File preview */}
-            {files.length > 0 && (
-              <div className="border rounded-lg">
-                <div className="px-4 py-2 border-b bg-muted/50">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">Structure Preview</span>
-                    <Badge variant="secondary">{files.length} files</Badge>
-                  </div>
-                </div>
-                <ScrollArea className="h-40">
-                  <div className="p-3 space-y-3">
-                    {Object.entries(filesByTopic).map(([topic, topicFiles]) => (
-                      <div key={topic}>
-                        <div className="flex items-center gap-2 text-sm font-medium mb-1">
-                          <FolderTree className="h-3.5 w-3.5 text-muted-foreground" />
-                          {topic === '(Project Root)' ? 'Project Root' : topic}
-                          <Badge variant="outline" className="text-xs">{topicFiles.length}</Badge>
-                        </div>
-                        <div className="pl-5 space-y-0.5">
-                          {topicFiles.slice(0, 3).map((file, idx) => (
-                            <div key={idx} className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <FileText className="h-3 w-3" />
-                              {file.displayName}
-                            </div>
-                          ))}
-                          {topicFiles.length > 3 && (
-                            <div className="text-xs text-muted-foreground pl-5">
-                              ...and {topicFiles.length - 3} more
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-border">
-              <Button variant="outline" onClick={resetAndClose}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleImportCreate} 
-                disabled={!projectName.trim() || isCreating || !rootFolderId || files.length === 0}
-              >
-                {isCreating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Create & Import
-                  </>
-                )}
-              </Button>
-            </div>
-          </TabsContent>
-        </Tabs>
-          </>
-        )}
-
-        {/* ZIP Import Dialog */}
-        {showZipImport && createdFolder && createdProjectId && organizationId && (
-          <ZipImportDialog
-            open={showZipImport}
-            onOpenChange={(open) => {
-              if (!open) {
-                handleZipImportComplete();
-              }
-            }}
-            projectId={createdProjectId}
-            projectVersionId={createdProjectVersionId}
-            projectName={projectName}
-            projectFolderId={createdFolder.id}
-            organizationId={organizationId}
-            onImported={handleZipImportComplete}
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Project Name</label>
+          <input
+            type="text"
+            placeholder="e.g., API Documentation"
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+            className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
           />
-        )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-border">
+          <Button variant="outline" onClick={resetAndClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreate}
+            disabled={!projectName.trim() || isCreating}
+          >
+            {isCreating ? "Creating..." : "Create Project"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

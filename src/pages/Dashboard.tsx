@@ -96,6 +96,7 @@ import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
 
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { DriveStatusIndicator } from "@/components/dashboard/DriveStatusIndicator";
+import { DRIVE_INTEGRATION_ENABLED } from "@/lib/featureFlags";
 import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
 import { GlobalImportProgress } from "@/components/dashboard/GlobalImportProgress";
 import { supabase } from "@/integrations/supabase/client";
@@ -2296,7 +2297,7 @@ const Dashboard = () => {
             /* Expanded: Show topics tree for selected project */
             <>
               {/* Connect Drive Banner */}
-              {needsDriveAccess && rootFolderId && (
+              {DRIVE_INTEGRATION_ENABLED && needsDriveAccess && rootFolderId && (
                 <div className="mx-2 mb-2 p-3 rounded-lg bg-primary/10 border border-primary/20">
                   <p className="text-xs text-muted-foreground mb-2">
                     Connect Google Drive to sync your folders
@@ -2321,16 +2322,18 @@ const Dashboard = () => {
                   Content
                 </span>
                 <div className="flex items-center gap-1">
-                  <span
-                    className="p-1 rounded hover:bg-secondary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSyncFromDrive();
-                    }}
-                    title="Sync from Google Drive"
-                  >
-                    <RefreshCw className={cn("w-4 h-4 text-muted-foreground", isSyncing && "animate-spin")} />
-                  </span>
+                  {DRIVE_INTEGRATION_ENABLED && (
+                    <span
+                      className="p-1 rounded hover:bg-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSyncFromDrive();
+                      }}
+                      title="Sync from Google Drive"
+                    >
+                      <RefreshCw className={cn("w-4 h-4 text-muted-foreground", isSyncing && "animate-spin")} />
+                    </span>
+                  )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <span
