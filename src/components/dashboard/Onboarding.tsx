@@ -494,7 +494,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               </div>
               <h2 className="text-2xl font-bold mb-3">Install the Docs Add-on</h2>
               <p className="text-muted-foreground mb-6">
-                The add-on is where publishing happens. Install it in Google Docs, then generate a short‑lived token from Docspeare.
+                The add-on is where publishing happens. It’s a private Google Workspace app, so your admin may need to install it.
               </p>
               <div className="space-y-3">
                 <Button
@@ -512,7 +512,16 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                   onClick={() => window.open("https://workspace.google.com/marketplace", "_blank")}
                   className="w-full gap-2"
                 >
-                  Open Marketplace
+                  Open Marketplace (Private Listing)
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => window.open("https://admin.google.com/ac/apps/gwhmarketplace/", "_blank")}
+                  className="w-full gap-2"
+                >
+                  Open Admin Console
                   <ExternalLink className="w-4 h-4" />
                 </Button>
                 <Button

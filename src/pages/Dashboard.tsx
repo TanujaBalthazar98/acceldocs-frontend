@@ -2893,11 +2893,43 @@ const Dashboard = () => {
               <div className="mt-4 grid gap-3">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
                   <div className="flex items-center gap-3 min-w-0">
+                    {projectStepDone ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <Circle className="w-5 h-5 text-muted-foreground" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Create your first project</p>
+                      <p className="text-xs text-muted-foreground">
+                        Organize docs into a project with topics and pages.
+                      </p>
+                    </div>
+                  </div>
+                  {projectStepDone ? (
+                    <Badge variant="secondary" className="w-fit">Ready</Badge>
+                  ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setParentProjectForCreate(null);
+                          setAddProjectOpen(true);
+                        }}
+                        disabled={!canCreateProject}
+                        title={!canCreateProject ? createProjectDisabledTitle : "Create a project"}
+                      >
+                        Create Project
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <Circle className="w-5 h-5 text-muted-foreground" />
                     <div className="min-w-0">
-                      <p className="text-sm font-medium">Install the Docs add-on</p>
+                      <p className="text-sm font-medium">Install the Docs add-on (private listing)</p>
                       <p className="text-xs text-muted-foreground">
-                        Install the Docspeare Publisher add-on in Google Docs.
+                        If you don’t see it, ask your Workspace admin to install the internal app.
                       </p>
                     </div>
                   </div>
@@ -2933,38 +2965,6 @@ const Dashboard = () => {
                     Open Integrations
                   </Button>
                 </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {projectStepDone ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <Circle className="w-5 h-5 text-muted-foreground" />
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">Create your first project</p>
-                      <p className="text-xs text-muted-foreground">
-                        Organize docs into a project with topics and pages.
-                      </p>
-                    </div>
-                  </div>
-                  {projectStepDone ? (
-                    <Badge variant="secondary" className="w-fit">Ready</Badge>
-                  ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setParentProjectForCreate(null);
-                          setAddProjectOpen(true);
-                        }}
-                        disabled={!canCreateProject}
-                        title={!canCreateProject ? createProjectDisabledTitle : "Create a project"}
-                      >
-                        Create Project
-                      </Button>
-                  )}
-                </div>
-              </div>
             </div>
           )}
           

@@ -168,6 +168,11 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
     setAddonTokenLoading(true);
     setAddonTokenError(null);
     try {
+      if (!projectId) {
+        setAddonTokenError('Select a project before generating a token.');
+        return;
+      }
+
       const session = await ensureFreshSession();
       const accessToken = session?.access_token;
       if (!accessToken) {
@@ -266,9 +271,12 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
           </h3>
           <Card className="bg-card/50">
             <CardContent className="p-4 space-y-4">
-              <div>
+              <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">
                   Generate a short-lived token for the Docs add-on. Paste it into the add-on to load projects and publish.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  The add-on is listed as a private Google Workspace app. If you don’t see it, ask your admin to install it.
                 </p>
               </div>
 
@@ -277,7 +285,7 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
                   variant="outline"
                   size="sm"
                   onClick={handleGenerateAddonToken}
-                  disabled={addonTokenLoading}
+                  disabled={addonTokenLoading || !projectId}
                 >
                   {addonTokenLoading ? 'Generating...' : 'Generate Add-on Token'}
                 </Button>
@@ -288,6 +296,11 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
                 )}
               </div>
 
+              {!projectId && (
+                <p className="text-sm text-muted-foreground">
+                  Select a project first to generate a token.
+                </p>
+              )}
               {addonTokenError && (
                 <p className="text-sm text-destructive">{addonTokenError}</p>
               )}
