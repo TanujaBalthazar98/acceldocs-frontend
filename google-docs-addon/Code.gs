@@ -1,10 +1,19 @@
 var DEFAULT_API_BASE = "https://www.docspeare.com";
 
 function onHomepage(e) {
-  return buildHomeCard_(null);
+  try {
+    return buildHomeCard_(null);
+  } catch (err) {
+    return buildErrorCard_("Add-on failed to load: " + err.message);
+  }
 }
 
 function buildHomeCard_(message) {
+  var authInfo = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+  if (authInfo.getAuthorizationStatus() === ScriptApp.AuthorizationStatus.REQUIRED) {
+    return buildAuthCard_();
+  }
+
   var props = PropertiesService.getUserProperties();
   var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
   var token = props.getProperty("SAAS_TOKEN") || "";
@@ -40,13 +49,12 @@ function buildHomeCard_(message) {
 
   var section = CardService.newCardSection()
     .addWidget(CardService.newTextParagraph().setText("Connect your Docspeare workspace and publish from Google Docs."))
-    .addWidget(buildTextInput_("API_BASE_URL", "SaaS Base URL", apiBase, "https://www.docspeare.com"))
-    .addWidget(buildTextInput_("SAAS_TOKEN", "SaaS Token", token, "Paste the add-on token"))
+    .addWidget(buildTextInput_("SAAS_TOKEN", "Docspeare Token", token, "Paste the add-on token"))
     .addWidget(
       CardService.newButtonSet()
         .addButton(
           CardService.newTextButton()
-            .setText("Refresh Projects")
+            .setText("Refresh")
             .setOnClickAction(CardService.newAction().setFunctionName("refreshBootstrap"))
         )
     );
@@ -59,9 +67,10 @@ function buildHomeCard_(message) {
     section.addWidget(CardService.newTextParagraph().setText("No projects found for this workspace."));
   } else {
     section
-      .addWidget(buildSelectInput_("PROJECT_ID", "Project", projectOptions, autoProjectId, false))
-      .addWidget(buildSelectInput_("PROJECT_VERSION_ID", "Project Version", versionOptions, autoVersionId, true, "Use default version"))
-      .addWidget(buildSelectInput_("TOPIC_ID", "Topic (optional)", topicOptions, topicId, true, "No topic"));
+      .addWidget(CardService.newTextParagraph().setText("Publish target"))
+    appendLabeledSelect_(section, "Project", "PROJECT_ID", projectOptions, autoProjectId, false);
+    appendLabeledSelect_(section, "Version", "PROJECT_VERSION_ID", versionOptions, autoVersionId, true, "Default version");
+    appendLabeledSelect_(section, "Topic", "TOPIC_ID", topicOptions, topicId, true, "No topic");
   }
 
   section.addWidget(
@@ -128,6 +137,11 @@ function buildSelectInput_(fieldName, title, options, selectedValue, allowEmpty,
   return input;
 }
 
+function appendLabeledSelect_(section, label, fieldName, options, selectedValue, allowEmpty, emptyLabel) {
+  section.addWidget(CardService.newTextParagraph().setText(label));
+  section.addWidget(buildSelectInput_(fieldName, "", options, selectedValue, allowEmpty, emptyLabel));
+}
+
 function saveSettings(e) {
   var props = PropertiesService.getUserProperties();
   var form = e.formInput || {};
@@ -164,11 +178,19 @@ function refreshBootstrap(e) {
 }
 
 function publishDoc() {
-  return submitDoc_("publish");
+  try {
+    return submitDoc_("publish");
+  } catch (err) {
+    return buildErrorCard_("Publish failed: " + err.message);
+  }
 }
 
 function previewDoc() {
-  return submitDoc_("preview");
+  try {
+    return submitDoc_("preview");
+  } catch (err) {
+    return buildErrorCard_("Preview failed: " + err.message);
+  }
 }
 
 function submitDoc_(mode) {
@@ -222,6 +244,44 @@ function submitDoc_(mode) {
   }
 
   return buildHomeCard_("Error (" + statusCode + "): " + bodyText);
+}
+
+function buildAuthCard_() {
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle("Docspeare Publisher"))
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph().setText("Authorize Docspeare Publisher to access external requests."))
+        .addWidget(
+          CardService.newButtonSet()
+            .addButton(
+              CardService.newTextButton()
+                .setText("Authorize")
+                .setOnClickAction(CardService.newAction().setFunctionName("requestAuthorization"))
+                .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+            )
+        )
+    )
+    .build();
+}
+
+function requestAuthorization() {
+  try {
+    UrlFetchApp.fetch("https://www.docspeare.com/api/ping", { muteHttpExceptions: true });
+  } catch (err) {
+    return buildErrorCard_("Authorization failed: " + err.message);
+  }
+  return buildHomeCard_("Authorization complete. Please reopen the add-on.");
+}
+
+function buildErrorCard_(message) {
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle("Docspeare Publisher"))
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph().setText(message || "Something went wrong."))
+    )
+    .build();
 }
 
 function loadBootstrap_(apiBase, token, forceRefresh) {

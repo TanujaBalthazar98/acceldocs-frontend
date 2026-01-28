@@ -5,6 +5,7 @@ const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Cache-Control": "no-store",
 };
 
 const send = (res: any, status: number, body: unknown) => {
@@ -95,14 +96,15 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const token = createAddonToken({ sub: userId, workspaceId, role }, 10 * 60);
+    const ttlSeconds = 60 * 60;
+    const token = createAddonToken({ sub: userId, workspaceId, role }, ttlSeconds);
 
     send(res, 200, {
       token,
       userId,
       workspaceId,
       role,
-      expiresIn: 600,
+      expiresIn: ttlSeconds,
     });
   } catch (err: any) {
     console.error("addon/auth error", err);

@@ -5,7 +5,11 @@
   "oauthScopes": [
     "https://www.googleapis.com/auth/documents.readonly",
     "https://www.googleapis.com/auth/script.external_request",
-    "https://www.googleapis.com/auth/userinfo.email"
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/documents.currentonly",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/script.locale"
   ],
   "urlFetchWhitelist": [
     "https://www.docspeare.com/api/",
@@ -14,7 +18,7 @@
   "addOns": {
     "common": {
       "name": "Docspeare Publisher",
-      "logoUrl": "https://www.docspeare.com/favicon.ico",
+      "logoUrl": "https://www.docspeare.com/brand/docspeare-addon-logo.svg",
       "useLocaleFromApp": true
     },
     "docs": {

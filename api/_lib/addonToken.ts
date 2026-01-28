@@ -52,7 +52,9 @@ export const verifyAddonToken = (token: string): AddonTokenPayload => {
   }
 
   const payload = JSON.parse(base64UrlDecode(encodedPayload)) as AddonTokenPayload;
-  if (payload.exp < Math.floor(Date.now() / 1000)) {
+  const now = Math.floor(Date.now() / 1000);
+  const clockSkewSeconds = 60;
+  if (payload.exp + clockSkewSeconds < now) {
     throw new Error("Token expired");
   }
 

@@ -339,6 +339,7 @@ const Dashboard = () => {
 
       const response = await fetch("/api/addon/auth", {
         method: "POST",
+        cache: "no-store",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
