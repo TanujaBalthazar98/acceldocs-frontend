@@ -1,4 +1,5 @@
 var DEFAULT_API_BASE = "https://www.docspeare.com";
+var BRAND_NAME = "Docspeare Publisher";
 
 function onHomepage(e) {
   try {
@@ -48,7 +49,7 @@ function buildHomeCard_(message) {
   var topicOptions = buildTopicOptions_(topics, autoProjectId);
 
   var section = CardService.newCardSection()
-    .addWidget(CardService.newTextParagraph().setText("Connect your Docspeare workspace and publish from Google Docs."))
+    .addWidget(CardService.newTextParagraph().setText("<b>Connect</b><br/>Publish from Google Docs using your Docspeare workspace."))
     .addWidget(buildTextInput_("SAAS_TOKEN", "Docspeare Token", token, "Paste the add-on token"))
     .addWidget(
       CardService.newButtonSet()
@@ -60,14 +61,14 @@ function buildHomeCard_(message) {
     );
 
   if (!token) {
-    section.addWidget(CardService.newTextParagraph().setText("Paste your SaaS token to load projects and topics."));
+    section.addWidget(buildStatusWidget_("info", "Paste your Docspeare token to load projects and topics."));
   } else if (bootstrapError) {
-    section.addWidget(CardService.newTextParagraph().setText("Could not load projects: " + bootstrapError));
+    section.addWidget(buildStatusWidget_("error", "Could not load projects: " + bootstrapError));
   } else if (projectOptions.length === 0) {
-    section.addWidget(CardService.newTextParagraph().setText("No projects found for this workspace."));
+    section.addWidget(buildStatusWidget_("info", "No projects found for this workspace."));
   } else {
     section
-      .addWidget(CardService.newTextParagraph().setText("Publish target"))
+      .addWidget(CardService.newTextParagraph().setText("<b>Publish target</b>"));
     appendLabeledSelect_(section, "Project", "PROJECT_ID", projectOptions, autoProjectId, false);
     appendLabeledSelect_(section, "Version", "PROJECT_VERSION_ID", versionOptions, autoVersionId, true, "Default version");
     appendLabeledSelect_(section, "Topic", "TOPIC_ID", topicOptions, topicId, true, "No topic");
@@ -84,7 +85,7 @@ function buildHomeCard_(message) {
   );
 
   var actionSection = CardService.newCardSection()
-    .addWidget(CardService.newTextParagraph().setText("Publish or preview the current document."))
+    .addWidget(CardService.newTextParagraph().setText("<b>Actions</b><br/>Publish or preview the current document."))
     .addWidget(
       CardService.newButtonSet()
         .addButton(
@@ -98,13 +99,19 @@ function buildHomeCard_(message) {
             .setText("Preview")
             .setOnClickAction(CardService.newAction().setFunctionName("previewDoc"))
         )
+        .addButton(
+          CardService.newTextButton()
+            .setText("Unpublish")
+            .setOnClickAction(CardService.newAction().setFunctionName("unpublishDoc"))
+        )
     );
 
   if (message) {
-    actionSection.addWidget(CardService.newTextParagraph().setText(message));
+    actionSection.addWidget(buildStatusWidgetFromMessage_(message));
   }
 
   return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle(BRAND_NAME))
     .addSection(section)
     .addSection(actionSection)
     .build();
@@ -161,7 +168,7 @@ function saveSettings(e) {
     props.setProperty("TOPIC_ID", form.TOPIC_ID);
   }
 
-  return buildHomeCard_("Settings saved.");
+  return buildHomeCard_({ type: "success", text: "Settings saved." });
 }
 
 function refreshBootstrap(e) {
@@ -170,11 +177,11 @@ function refreshBootstrap(e) {
   var token = props.getProperty("SAAS_TOKEN") || "";
 
   if (!token) {
-    return buildHomeCard_("Paste your SaaS token first.");
+    return buildHomeCard_({ type: "info", text: "Paste your Docspeare token first." });
   }
 
   loadBootstrap_(apiBase, token, true);
-  return buildHomeCard_("Projects refreshed.");
+  return buildHomeCard_({ type: "success", text: "Projects refreshed." });
 }
 
 function publishDoc() {
@@ -193,6 +200,14 @@ function previewDoc() {
   }
 }
 
+function unpublishDoc() {
+  try {
+    return submitDoc_("unpublish");
+  } catch (err) {
+    return buildErrorCard_("Unpublish failed: " + err.message);
+  }
+}
+
 function submitDoc_(mode) {
   var props = PropertiesService.getUserProperties();
   var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
@@ -202,7 +217,7 @@ function submitDoc_(mode) {
   var topicId = props.getProperty("TOPIC_ID") || "";
 
   if (!token || !projectId) {
-    return buildHomeCard_("Missing token or project id. Save settings first.");
+    return buildHomeCard_({ type: "error", text: "Missing token or project. Save settings first." });
   }
 
   var doc = DocumentApp.getActiveDocument();
@@ -221,6 +236,9 @@ function submitDoc_(mode) {
   };
 
   var url = apiBase.replace(/\/$/, "") + (mode === "publish" ? "/api/publish" : "/api/preview");
+  if (mode === "unpublish") {
+    url = apiBase.replace(/\/$/, "") + "/api/unpublish";
+  }
   var response;
   try {
     response = UrlFetchApp.fetch(url, {
@@ -240,18 +258,18 @@ function submitDoc_(mode) {
   var bodyText = response.getContentText();
 
   if (statusCode >= 200 && statusCode < 300) {
-    return buildHomeCard_("Success: " + bodyText);
+    return buildHomeCard_(formatApiMessage_(mode, statusCode, bodyText, true));
   }
 
-  return buildHomeCard_("Error (" + statusCode + "): " + bodyText);
+  return buildHomeCard_(formatApiMessage_(mode, statusCode, bodyText, false));
 }
 
 function buildAuthCard_() {
   return CardService.newCardBuilder()
-    .setHeader(CardService.newCardHeader().setTitle("Docspeare Publisher"))
+    .setHeader(CardService.newCardHeader().setTitle(BRAND_NAME))
     .addSection(
       CardService.newCardSection()
-        .addWidget(CardService.newTextParagraph().setText("Authorize Docspeare Publisher to access external requests."))
+        .addWidget(CardService.newTextParagraph().setText("<b>Authorize access</b><br/>We need permission to call Docspeare APIs."))
         .addWidget(
           CardService.newButtonSet()
             .addButton(
@@ -271,15 +289,15 @@ function requestAuthorization() {
   } catch (err) {
     return buildErrorCard_("Authorization failed: " + err.message);
   }
-  return buildHomeCard_("Authorization complete. Please reopen the add-on.");
+  return buildHomeCard_({ type: "success", text: "Authorization complete. Please reopen the add-on." });
 }
 
 function buildErrorCard_(message) {
   return CardService.newCardBuilder()
-    .setHeader(CardService.newCardHeader().setTitle("Docspeare Publisher"))
+    .setHeader(CardService.newCardHeader().setTitle(BRAND_NAME))
     .addSection(
       CardService.newCardSection()
-        .addWidget(CardService.newTextParagraph().setText(message || "Something went wrong."))
+        .addWidget(buildStatusWidget_("error", message || "Something went wrong."))
     )
     .build();
 }
@@ -313,7 +331,7 @@ function loadBootstrap_(apiBase, token, forceRefresh) {
       return { data: data, error: null };
     }
 
-    return { data: null, error: response.getContentText() };
+    return { data: null, error: formatApiErrorText_(response.getResponseCode(), response.getContentText()) };
   } catch (err) {
     return { data: null, error: err.message };
   }
@@ -444,4 +462,67 @@ function escapeHtml_(text) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function buildStatusWidget_(type, text) {
+  var label = "Info";
+  if (type === "success") label = "Success";
+  if (type === "error") label = "Error";
+  return CardService.newTextParagraph().setText("<b>" + label + ":</b> " + escapeHtml_(text || ""));
+}
+
+function buildStatusWidgetFromMessage_(message) {
+  if (typeof message === "string") {
+    return buildStatusWidget_("info", message);
+  }
+  if (!message) {
+    return buildStatusWidget_("info", "");
+  }
+  return buildStatusWidget_(message.type || "info", message.text || "");
+}
+
+function formatApiMessage_(mode, statusCode, bodyText, isSuccess) {
+  var json = null;
+  try {
+    json = JSON.parse(bodyText);
+  } catch (err) {
+    json = null;
+  }
+
+  if (isSuccess) {
+    return {
+      type: "success",
+      text: formatApiSuccessText_(mode, json, bodyText)
+    };
+  }
+
+  return {
+    type: "error",
+    text: formatApiErrorText_(statusCode, json || bodyText)
+  };
+}
+
+function formatApiSuccessText_(mode, json, bodyText) {
+  if (json) {
+    if (json.previewUrl) return "Preview ready: " + json.previewUrl;
+    if (json.previewId) return "Preview created (ID: " + json.previewId + ")";
+    if (json.publishedUrl) return "Published: " + json.publishedUrl;
+    if (json.url) {
+      return (mode === "publish" ? "Published: " : "Preview ready: ") + json.url;
+    }
+    if (json.status) return "Status: " + json.status;
+  }
+  return bodyText || "Request succeeded.";
+}
+
+function formatApiErrorText_(statusCode, payload) {
+  if (payload && typeof payload === "object") {
+    if (payload.error) return payload.error;
+    if (payload.message) return payload.message;
+  }
+  var text = payload && typeof payload === "string" ? payload : "Request failed.";
+  if (statusCode) {
+    return "HTTP " + statusCode + ". " + text;
+  }
+  return text;
 }
