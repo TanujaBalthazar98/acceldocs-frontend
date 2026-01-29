@@ -17,10 +17,16 @@ function buildHomeCard_(message) {
 
   var props = PropertiesService.getUserProperties();
   var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
+  var webBase = getWebBase_(apiBase);
   var token = props.getProperty("SAAS_TOKEN") || "";
   var projectId = props.getProperty("PROJECT_ID") || "";
   var projectVersionId = props.getProperty("PROJECT_VERSION_ID") || "";
   var topicId = props.getProperty("TOPIC_ID") || "";
+  var lastResultUrl = props.getProperty("LAST_RESULT_URL") || "";
+  var lastResultLabel = props.getProperty("LAST_RESULT_LABEL") || "Open Result";
+  var lastActionLabel = props.getProperty("LAST_ACTION_LABEL") || "";
+  var lastActionAt = props.getProperty("LAST_ACTION_AT") || "";
+  var docSlug = props.getProperty("DOC_SLUG") || "";
 
   var bootstrap = null;
   var bootstrapError = null;
@@ -48,33 +54,50 @@ function buildHomeCard_(message) {
   var topics = (bootstrap && bootstrap.topics) ? bootstrap.topics : [];
   var topicOptions = buildTopicOptions_(topics, autoProjectId);
 
-  var section = CardService.newCardSection()
-    .addWidget(CardService.newTextParagraph().setText("<b>Connect</b><br/>Publish from Google Docs using your Docspeare workspace."))
-    .addWidget(buildTextInput_("SAAS_TOKEN", "Docspeare Token", token, "Paste the add-on token"))
-    .addWidget(
-      CardService.newButtonSet()
-        .addButton(
-          CardService.newTextButton()
-            .setText("Refresh")
-            .setOnClickAction(CardService.newAction().setFunctionName("refreshBootstrap"))
-        )
-    );
+  var statusSection = CardService.newCardSection()
+    .setHeader("Workspace");
 
-  if (!token) {
-    section.addWidget(buildStatusWidget_("info", "Paste your Docspeare token to load projects and topics."));
-  } else if (bootstrapError) {
-    section.addWidget(buildStatusWidget_("error", "Could not load projects: " + bootstrapError));
-  } else if (projectOptions.length === 0) {
-    section.addWidget(buildStatusWidget_("info", "No projects found for this workspace."));
-  } else {
-    section
-      .addWidget(CardService.newTextParagraph().setText("<b>Publish target</b>"));
-    appendLabeledSelect_(section, "Project", "PROJECT_ID", projectOptions, autoProjectId, false);
-    appendLabeledSelect_(section, "Version", "PROJECT_VERSION_ID", versionOptions, autoVersionId, true, "Default version");
-    appendLabeledSelect_(section, "Topic", "TOPIC_ID", topicOptions, topicId, true, "No topic");
+  var statusText = "Not connected";
+  var statusDetail = "Open Settings to connect your Docspeare token.";
+  if (token && !bootstrapError && projectOptions.length > 0) {
+    statusText = "Connected";
+    statusDetail = "Ready to publish from Google Docs.";
+  } else if (token && bootstrapError) {
+    statusText = "Needs attention";
+    statusDetail = bootstrapError;
   }
 
-  section.addWidget(
+  statusSection.addWidget(
+    CardService.newDecoratedText()
+      .setTopLabel("Connection")
+      .setText(statusText)
+      .setBottomLabel(statusDetail)
+      .setIconUrl("https://www.docspeare.com/brand/docspeare-addon-logo.svg")
+  );
+
+  statusSection.addWidget(
+    CardService.newButtonSet()
+      .addButton(
+        CardService.newTextButton()
+          .setText("Settings")
+          .setOnClickAction(CardService.newAction().setFunctionName("openSettings"))
+          .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      )
+  );
+
+  var targetSection = CardService.newCardSection()
+    .setHeader("Publish target");
+
+  if (token && !bootstrapError && projectOptions.length > 0) {
+    targetSection
+      .addWidget(buildSelectInput_("PROJECT_ID", "Project", projectOptions, autoProjectId, false))
+      .addWidget(buildSelectInput_("PROJECT_VERSION_ID", "Version", versionOptions, autoVersionId, true, "Default version"))
+      .addWidget(buildSelectInput_("TOPIC_ID", "Topic", topicOptions, topicId, true, "No topic"));
+  } else {
+    targetSection.addWidget(CardService.newTextParagraph().setText("Open Settings to connect and load projects."));
+  }
+
+  targetSection.addWidget(
     CardService.newButtonSet()
       .addButton(
         CardService.newTextButton()
@@ -84,8 +107,21 @@ function buildHomeCard_(message) {
       )
   );
 
+  var visibility = props.getProperty("DOC_VISIBILITY") || "internal";
+  if (visibility !== "internal" && visibility !== "external" && visibility !== "public") {
+    visibility = "internal";
+    props.setProperty("DOC_VISIBILITY", visibility);
+  }
+
   var actionSection = CardService.newCardSection()
-    .addWidget(CardService.newTextParagraph().setText("<b>Actions</b><br/>Publish or preview the current document."))
+    .setHeader("Actions")
+    .addWidget(CardService.newTextParagraph().setText("Publish or preview the current document."))
+    .addWidget(
+      CardService.newDecoratedText()
+        .setTopLabel("Visibility")
+        .setText(visibilityLabel_(visibility))
+    )
+    .addWidget(buildVisibilityButtons_(visibility))
     .addWidget(
       CardService.newButtonSet()
         .addButton(
@@ -106,14 +142,68 @@ function buildHomeCard_(message) {
         )
     );
 
-  if (message) {
+  if (docSlug) {
+    actionSection.addWidget(
+      CardService.newDecoratedText()
+        .setTopLabel("Slug")
+        .setText(docSlug)
+        .setWrapText(true)
+        .setIcon(CardService.Icon.BOOKMARK)
+    );
+  }
+
+  if (lastActionLabel) {
+    actionSection.addWidget(
+      CardService.newDecoratedText()
+        .setTopLabel("Last action")
+        .setText(lastActionLabel + (lastActionAt ? " • " + lastActionAt : ""))
+        .setWrapText(true)
+        .setIcon(CardService.Icon.CLOCK)
+    );
+  }
+
+  if (message && message.type === "error") {
     actionSection.addWidget(buildStatusWidgetFromMessage_(message));
+  }
+
+  var advancedSection = CardService.newCardSection()
+    .setHeader("Advanced")
+    .setCollapsible(true)
+    .setNumUncollapsibleWidgets(0)
+    .addWidget(buildTextInput_("DOC_SLUG", "Custom slug (optional)", docSlug, "leave blank to auto-generate"))
+    .addWidget(
+      CardService.newButtonSet()
+        .addButton(buildOpenLinkButton_("Open Dashboard", webBase + "/dashboard"))
+    );
+
+  if (projectId) {
+    advancedSection.addWidget(
+      CardService.newButtonSet()
+        .addButton(buildOpenLinkButton_("Open Integrations", webBase + "/dashboard?integrations=1&project=" + projectId))
+        .addButton(buildOpenLinkButton_("Import Markdown (Dashboard)", webBase + "/dashboard"))
+    );
+  }
+
+  advancedSection.addWidget(
+    CardService.newButtonSet()
+      .addButton(buildOpenLinkButton_("Internal Docs", webBase + "/internal"))
+      .addButton(buildOpenLinkButton_("External Docs", webBase + "/docs?view=external"))
+      .addButton(buildOpenLinkButton_("Public Docs", webBase + "/docs"))
+  );
+
+  if (lastResultUrl) {
+    advancedSection.addWidget(
+      CardService.newButtonSet()
+        .addButton(buildOpenLinkButton_(lastResultLabel, lastResultUrl))
+    );
   }
 
   return CardService.newCardBuilder()
     .setHeader(CardService.newCardHeader().setTitle(BRAND_NAME))
-    .addSection(section)
+    .addSection(statusSection)
+    .addSection(targetSection)
     .addSection(actionSection)
+    .addSection(advancedSection)
     .build();
 }
 
@@ -149,6 +239,183 @@ function appendLabeledSelect_(section, label, fieldName, options, selectedValue,
   section.addWidget(buildSelectInput_(fieldName, "", options, selectedValue, allowEmpty, emptyLabel));
 }
 
+function buildOpenLinkButton_(label, url) {
+  return CardService.newTextButton()
+    .setText(label)
+    .setOpenLink(CardService.newOpenLink().setUrl(url));
+}
+
+function getWebBase_(apiBase) {
+  var base = (apiBase || DEFAULT_API_BASE).replace(/\/$/, "");
+  if (base.match(/\/api$/)) {
+    base = base.replace(/\/api$/, "");
+  }
+  return base;
+}
+
+function visibilityLabel_(visibility) {
+  if (visibility === "external") return "External";
+  if (visibility === "public") return "Public";
+  return "Internal";
+}
+
+function buildVisibilityButtons_(current) {
+  var setInternal = CardService.newTextButton()
+    .setText("Internal")
+    .setOnClickAction(
+      CardService.newAction().setFunctionName("setVisibility").setParameters({ value: "internal" })
+    );
+  var setExternal = CardService.newTextButton()
+    .setText("External")
+    .setOnClickAction(
+      CardService.newAction().setFunctionName("setVisibility").setParameters({ value: "external" })
+    );
+  var setPublic = CardService.newTextButton()
+    .setText("Public")
+    .setOnClickAction(
+      CardService.newAction().setFunctionName("setVisibility").setParameters({ value: "public" })
+    );
+
+  if (current === "internal") {
+    setInternal.setTextButtonStyle(CardService.TextButtonStyle.FILLED);
+  } else if (current === "external") {
+    setExternal.setTextButtonStyle(CardService.TextButtonStyle.FILLED);
+  } else if (current === "public") {
+    setPublic.setTextButtonStyle(CardService.TextButtonStyle.FILLED);
+  }
+
+  return CardService.newButtonSet()
+    .addButton(setInternal)
+    .addButton(setExternal)
+    .addButton(setPublic);
+}
+
+function setVisibility(e) {
+  var props = PropertiesService.getUserProperties();
+  var value = (e && e.parameters && e.parameters.value) ? e.parameters.value : "internal";
+  if (value !== "internal" && value !== "external" && value !== "public") {
+    value = "internal";
+  }
+  props.setProperty("DOC_VISIBILITY", value);
+  return buildActionResponse_({ type: "success", text: "Visibility set to " + visibilityLabel_(value) + "." }, false, "home");
+}
+
+function openSettings() {
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().pushCard(buildSettingsCard_(null)))
+    .build();
+}
+
+function goHome() {
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().updateCard(buildHomeCard_(null)))
+    .build();
+}
+
+function buildSettingsCard_(message) {
+  var props = PropertiesService.getUserProperties();
+  var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
+  var webBase = getWebBase_(apiBase);
+  var token = props.getProperty("SAAS_TOKEN") || "";
+  var projectId = props.getProperty("PROJECT_ID") || "";
+  var lastResultUrl = props.getProperty("LAST_RESULT_URL") || "";
+  var lastResultLabel = props.getProperty("LAST_RESULT_LABEL") || "Open Result";
+
+  var bootstrapError = null;
+  if (token) {
+    var bootstrapResult = loadBootstrap_(apiBase, token);
+    bootstrapError = bootstrapResult.error;
+  }
+
+  var settingsSection = CardService.newCardSection()
+    .setHeader("Settings")
+    .addWidget(
+      CardService.newDecoratedText()
+        .setTopLabel("Docspeare token")
+        .setText(token ? "Token saved" : "No token yet")
+        .setIcon(CardService.Icon.KEY)
+    )
+    .addWidget(buildTextInput_("SAAS_TOKEN", "Docspeare Token", token, "Paste the add-on token"))
+    .addWidget(
+      CardService.newButtonSet()
+        .addButton(
+          CardService.newTextButton()
+            .setText("Refresh")
+            .setOnClickAction(
+              CardService.newAction()
+                .setFunctionName("refreshBootstrap")
+                .setParameters({ target: "settings" })
+            )
+        )
+        .addButton(
+          CardService.newTextButton()
+            .setText("Save")
+            .setOnClickAction(
+              CardService.newAction()
+                .setFunctionName("saveSettings")
+                .setParameters({ target: "settings" })
+            )
+            .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+        )
+    );
+
+  if (!token) {
+    settingsSection.addWidget(buildStatusWidget_("info", "Paste your Docspeare token to load projects and topics."));
+  } else if (bootstrapError) {
+    settingsSection.addWidget(buildStatusWidget_("error", "Could not load projects: " + bootstrapError));
+  }
+
+  if (message) {
+    settingsSection.addWidget(buildStatusWidgetFromMessage_(message));
+  }
+
+  var linksSection = CardService.newCardSection()
+    .setHeader("Docs links")
+    .addWidget(
+      CardService.newButtonSet()
+        .addButton(buildOpenLinkButton_("Open Dashboard", webBase + "/dashboard"))
+    );
+
+  if (projectId) {
+    linksSection.addWidget(
+      CardService.newButtonSet()
+        .addButton(buildOpenLinkButton_("Open Integrations", webBase + "/dashboard?integrations=1&project=" + projectId))
+        .addButton(buildOpenLinkButton_("Import Markdown (Dashboard)", webBase + "/dashboard"))
+    );
+  }
+
+  linksSection.addWidget(
+    CardService.newButtonSet()
+      .addButton(buildOpenLinkButton_("Internal Docs", webBase + "/internal"))
+      .addButton(buildOpenLinkButton_("External Docs", webBase + "/docs?view=external"))
+      .addButton(buildOpenLinkButton_("Public Docs", webBase + "/docs"))
+  );
+
+  if (lastResultUrl) {
+    linksSection.addWidget(
+      CardService.newButtonSet()
+        .addButton(buildOpenLinkButton_(lastResultLabel, lastResultUrl))
+    );
+  }
+
+  var navSection = CardService.newCardSection()
+    .addWidget(
+      CardService.newButtonSet()
+        .addButton(
+          CardService.newTextButton()
+            .setText("Back")
+            .setOnClickAction(CardService.newAction().setFunctionName("goHome"))
+        )
+    );
+
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle(BRAND_NAME))
+    .addSection(settingsSection)
+    .addSection(linksSection)
+    .addSection(navSection)
+    .build();
+}
+
 function saveSettings(e) {
   var props = PropertiesService.getUserProperties();
   var form = e.formInput || {};
@@ -167,8 +434,12 @@ function saveSettings(e) {
   if (form.TOPIC_ID !== undefined) {
     props.setProperty("TOPIC_ID", form.TOPIC_ID);
   }
+  if (form.DOC_SLUG !== undefined) {
+    props.setProperty("DOC_SLUG", form.DOC_SLUG);
+  }
 
-  return buildHomeCard_({ type: "success", text: "Settings saved." });
+  var target = (e && e.parameters && e.parameters.target) ? e.parameters.target : "home";
+  return buildActionResponse_({ type: "success", text: "Settings saved." }, false, target);
 }
 
 function refreshBootstrap(e) {
@@ -177,11 +448,12 @@ function refreshBootstrap(e) {
   var token = props.getProperty("SAAS_TOKEN") || "";
 
   if (!token) {
-    return buildHomeCard_({ type: "info", text: "Paste your Docspeare token first." });
+    return buildActionResponse_({ type: "info", text: "Paste your Docspeare token first." }, false, "settings");
   }
 
   loadBootstrap_(apiBase, token, true);
-  return buildHomeCard_({ type: "success", text: "Projects refreshed." });
+  var target = (e && e.parameters && e.parameters.target) ? e.parameters.target : "home";
+  return buildActionResponse_({ type: "success", text: "Projects refreshed." }, false, target);
 }
 
 function publishDoc() {
@@ -215,6 +487,8 @@ function submitDoc_(mode) {
   var projectId = props.getProperty("PROJECT_ID") || "";
   var projectVersionId = props.getProperty("PROJECT_VERSION_ID") || "";
   var topicId = props.getProperty("TOPIC_ID") || "";
+  var docSlug = props.getProperty("DOC_SLUG") || "";
+  var visibility = props.getProperty("DOC_VISIBILITY") || "internal";
 
   if (!token || !projectId) {
     return buildHomeCard_({ type: "error", text: "Missing token or project. Save settings first." });
@@ -229,6 +503,8 @@ function submitDoc_(mode) {
     projectId: projectId,
     projectVersionId: projectVersionId || null,
     topicId: topicId || null,
+    slug: docSlug || null,
+    visibility: visibility || null,
     sourceDocId: doc.getId(),
     title: doc.getName(),
     contentText: contentText,
@@ -251,17 +527,64 @@ function submitDoc_(mode) {
       muteHttpExceptions: true
     });
   } catch (err) {
-    return buildHomeCard_("Request failed: " + err.message);
+    return buildActionResponse_({ type: "error", text: "Request failed: " + err.message }, true);
   }
 
   var statusCode = response.getResponseCode();
   var bodyText = response.getContentText();
 
   if (statusCode >= 200 && statusCode < 300) {
-    return buildHomeCard_(formatApiMessage_(mode, statusCode, bodyText, true));
+    storeLastResultUrl_(props, mode, bodyText);
+    storeLastAction_(props, mode);
+    var openUrl = getOpenUrlFromResponse_(props, mode, bodyText);
+    return buildActionResponse_(formatApiMessage_(mode, statusCode, bodyText, true), false, "home", openUrl);
   }
 
-  return buildHomeCard_(formatApiMessage_(mode, statusCode, bodyText, false));
+  storeLastAction_(props, mode);
+  return buildActionResponse_(formatApiMessage_(mode, statusCode, bodyText, false), true, "home");
+}
+
+function storeLastResultUrl_(props, mode, bodyText) {
+  var url = "";
+  try {
+    var json = JSON.parse(bodyText);
+    url = json.previewUrl || json.publishedUrl || json.url || "";
+  } catch (err) {
+    url = "";
+  }
+
+  if (!url) {
+    return;
+  }
+
+  props.setProperty("LAST_RESULT_URL", url);
+  var label = "Open Result";
+  if (mode === "preview") label = "Open Preview";
+  if (mode === "publish") label = "Open Published";
+  props.setProperty("LAST_RESULT_LABEL", label);
+}
+
+function getOpenUrlFromResponse_(props, mode, bodyText) {
+  if (mode !== "preview") return "";
+  var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
+  var webBase = getWebBase_(apiBase);
+  try {
+    var json = JSON.parse(bodyText);
+    if (json.previewUrl) return json.previewUrl;
+    if (json.documentId) return webBase + "/page/" + json.documentId;
+  } catch (err) {
+    return "";
+  }
+  return "";
+}
+
+function storeLastAction_(props, mode) {
+  var label = "Updated";
+  if (mode === "publish") label = "Published";
+  if (mode === "preview") label = "Previewed";
+  if (mode === "unpublish") label = "Unpublished";
+  props.setProperty("LAST_ACTION_LABEL", label);
+  props.setProperty("LAST_ACTION_AT", new Date().toLocaleString());
 }
 
 function buildAuthCard_() {
@@ -289,7 +612,7 @@ function requestAuthorization() {
   } catch (err) {
     return buildErrorCard_("Authorization failed: " + err.message);
   }
-  return buildHomeCard_({ type: "success", text: "Authorization complete. Please reopen the add-on." });
+  return buildActionResponse_({ type: "success", text: "Authorization complete. Please reopen the add-on." }, false);
 }
 
 function buildErrorCard_(message) {
@@ -300,6 +623,36 @@ function buildErrorCard_(message) {
         .addWidget(buildStatusWidget_("error", message || "Something went wrong."))
     )
     .build();
+}
+
+function buildActionResponse_(message, showInlineError, target, openUrl) {
+  var builder = CardService.newActionResponseBuilder();
+
+  if (message && message.text) {
+    builder.setNotification(
+      CardService.newNotification().setText(message.text)
+    );
+  }
+
+  var cardMessage = null;
+  if (showInlineError && message && message.type === "error") {
+    cardMessage = message;
+  }
+
+  var destinationCard = buildHomeCard_(cardMessage);
+  if (target === "settings") {
+    destinationCard = buildSettingsCard_(cardMessage);
+  }
+
+  builder.setNavigation(
+    CardService.newNavigation().updateCard(destinationCard)
+  );
+
+  if (openUrl) {
+    builder.setOpenLink(CardService.newOpenLink().setUrl(openUrl));
+  }
+
+  return builder.build();
 }
 
 function loadBootstrap_(apiBase, token, forceRefresh) {
@@ -521,6 +874,17 @@ function formatApiErrorText_(statusCode, payload) {
     if (payload.message) return payload.message;
   }
   var text = payload && typeof payload === "string" ? payload : "Request failed.";
+  if (text && typeof text === "string") {
+    try {
+      var parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object") {
+        if (parsed.error) text = parsed.error;
+        else if (parsed.message) text = parsed.message;
+      }
+    } catch (err) {
+      // leave as-is if not JSON
+    }
+  }
   if (statusCode) {
     return "HTTP " + statusCode + ". " + text;
   }
