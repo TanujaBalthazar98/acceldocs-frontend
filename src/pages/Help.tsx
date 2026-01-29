@@ -538,7 +538,7 @@ const Help = () => {
             </p>
             <ul className="list-disc list-inside space-y-2 text-muted-foreground">
               <li><strong>Slug:</strong> Customize the URL path for the page</li>
-              <li><strong>Visibility:</strong> Override project visibility for this specific page</li>
+              <li><strong>Visibility:</strong> Inherits the project visibility (Internal, External, or Public)</li>
               <li><strong>Publish/Unpublish:</strong> Control whether the page appears in published docs</li>
             </ul>
           </div>
@@ -563,8 +563,8 @@ const Help = () => {
             <h3 className="font-semibold text-lg mb-3">How Publishing Works</h3>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
               <li>Configure your project's visibility (Internal, External, or Public)</li>
-              <li>Add topics and pages with content</li>
-              <li>Publish individual pages when they're ready</li>
+              <li>Add topics and pages with content in Docspeare</li>
+              <li>Publish individual pages when they're ready (from the dashboard or the Google Docs add‑on)</li>
               <li>Your documentation is available at your organization's URL</li>
             </ol>
             <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
@@ -577,10 +577,14 @@ const Help = () => {
 
           <div>
             <h3 className="font-semibold text-lg mb-3">Publishing a Page</h3>
+            <p className="text-muted-foreground mb-3">
+              You can publish from the dashboard or directly inside Google Docs.
+            </p>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Navigate to the page in your dashboard</li>
-              <li>Review the content in the preview</li>
-              <li>Click the "Publish" toggle or button</li>
+              <li>Open the Google Doc for the page</li>
+              <li>Open the Docspeare add‑on</li>
+              <li>Select the target project, version, and optional topic</li>
+              <li>Click <strong>Preview</strong> to verify, then <strong>Publish</strong></li>
               <li>The page becomes visible based on project visibility settings</li>
             </ol>
             <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary/20">
@@ -590,6 +594,19 @@ const Help = () => {
                 remains visible even if you later unpublish a page (showing the last published version).
               </p>
             </div>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Google Docs Add‑on (Token)</h3>
+            <p className="text-muted-foreground mb-3">
+              The add‑on uses a short‑lived token so it can load your projects and publish securely.
+            </p>
+            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <li>In Docspeare, go to <strong>Integrations → Docs Add‑on</strong></li>
+              <li>Generate a short‑lived token</li>
+              <li>Paste the token into the add‑on in Google Docs</li>
+              <li>Click <strong>Refresh</strong> to load projects and topics</li>
+            </ol>
           </div>
 
           <div>
