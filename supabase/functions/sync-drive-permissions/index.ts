@@ -9,6 +9,8 @@ interface SyncRequest {
   projectId?: string;
   userId?: string;
   syncId?: string;
+  direction?: "push" | "pull";
+  enforceNoDownload?: boolean;
 }
 
 // Map application roles to Google Drive permission roles
@@ -22,6 +24,23 @@ function getDriveRoleForAppRole(role: string): string {
     case 'viewer':
     default:
       return 'reader';
+  }
+}
+
+// Map Drive permission roles to project roles
+function getProjectRoleForDriveRole(role: string): string {
+  switch (role) {
+    case 'owner':
+    case 'organizer':
+    case 'fileOrganizer':
+      return 'admin';
+    case 'writer':
+      return 'editor';
+    case 'commenter':
+      return 'reviewer';
+    case 'reader':
+    default:
+      return 'viewer';
   }
 }
 
@@ -103,6 +122,74 @@ async function getOrgOwnerToken(supabase: any, projectId: string): Promise<strin
   }
 
   return await refreshGoogleToken(profile.google_refresh_token);
+}
+
+async function listDrivePermissions(accessToken: string, fileId: string): Promise<any[]> {
+  const response = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}/permissions?supportsAllDrives=true&fields=permissions(id,emailAddress,role,type,deleted)`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to list permissions: ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data?.permissions || [];
+}
+
+async function setNoDownloadRestriction(
+  accessToken: string,
+  fileId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          copyRequiresWriterPermission: true,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: errorText };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+async function enforceNoDownloadForProject(
+  supabase: any,
+  accessToken: string,
+  projectId: string,
+  driveFolderId: string
+) {
+  // Apply restriction to the project folder
+  await setNoDownloadRestriction(accessToken, driveFolderId);
+
+  // Apply restriction to all Google Docs tracked in the project
+  const { data: docs } = await supabase
+    .from("documents")
+    .select("google_doc_id")
+    .eq("project_id", projectId);
+
+  if (!docs) return;
+
+  for (const doc of docs) {
+    if (!doc?.google_doc_id) continue;
+    await setNoDownloadRestriction(accessToken, doc.google_doc_id);
+  }
 }
 
 // Create or update a Drive permission
@@ -235,7 +322,7 @@ Deno.serve(async (req) => {
     const body: SyncRequest = await req.json();
     console.log("Sync request:", body);
 
-    const { projectId } = body;
+    const { projectId, direction = "push", enforceNoDownload = true } = body;
 
     if (!projectId) {
       return new Response(
@@ -299,6 +386,56 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (direction === "pull") {
+      const permissions = await listDrivePermissions(accessToken, driveFileId);
+      const userPerms = permissions.filter((p) => p?.type === "user" && p?.emailAddress && !p?.deleted);
+
+      const emails = userPerms.map((p) => p.emailAddress);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id,email")
+        .in("email", emails);
+
+      const emailToUserId = new Map<string, string>();
+      for (const profile of profiles || []) {
+        if (profile.email) {
+          emailToUserId.set(profile.email, profile.id);
+        }
+      }
+
+      const membersToUpsert = userPerms
+        .map((perm) => {
+          const userId = emailToUserId.get(perm.emailAddress);
+          if (!userId) return null;
+          return {
+            project_id: projectId,
+            user_id: userId,
+            role: getProjectRoleForDriveRole(perm.role),
+          };
+        })
+        .filter(Boolean);
+
+      if (membersToUpsert.length > 0) {
+        await supabase.from("project_members").upsert(membersToUpsert, {
+          onConflict: "project_id,user_id",
+        });
+      }
+
+      if (enforceNoDownload) {
+        await enforceNoDownloadForProject(supabase, accessToken, projectId, driveFileId);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          synced: membersToUpsert.length,
+          direction: "pull",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Push mode (default): sync Docspeare roles to Drive
     // Collect all users who need Drive access for this project
     // This includes: org-level admins/editors/viewers from user_roles + explicit project_members
     const usersToSync: Array<{ userId: string; email: string; role: string; source: string }> = [];
@@ -417,6 +554,10 @@ Deno.serve(async (req) => {
           error 
         });
       }
+    }
+
+    if (enforceNoDownload) {
+      await enforceNoDownloadForProject(supabase, accessToken, projectId, driveFileId);
     }
 
     console.log(`Sync complete: ${successCount} success, ${failCount} failed`);

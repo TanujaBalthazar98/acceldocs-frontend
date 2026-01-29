@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -52,6 +52,7 @@ export function usePermissions(projectId: string | null) {
   const [permissions, setPermissions] = useState<ProjectPermissions>(EMPTY_PERMISSIONS);
   const [loading, setLoading] = useState(true);
   const [isOrgOwner, setIsOrgOwner] = useState(false);
+  const didDrivePullSync = useRef(false);
 
   const fetchRole = useCallback(async () => {
     if (!user || !projectId) {
@@ -190,6 +191,24 @@ export function usePermissions(projectId: string | null) {
       console.error('Failed to sync drive permissions:', error);
     }
   }, [projectId]);
+
+  const syncDrivePermissionsFromDrive = useCallback(async () => {
+    if (!projectId) return;
+    if (didDrivePullSync.current) return;
+
+    didDrivePullSync.current = true;
+    try {
+      await supabase.functions.invoke('sync-drive-permissions', {
+        body: { projectId, direction: "pull", enforceNoDownload: true }
+      });
+    } catch (error) {
+      // Non-admins will be denied; ignore silently.
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    syncDrivePermissionsFromDrive();
+  }, [syncDrivePermissionsFromDrive]);
 
   return {
     role,
