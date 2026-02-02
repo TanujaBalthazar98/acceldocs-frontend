@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
     // Find Drive-backed projects
     const { data: projects, error: projectError } = await supabase
       .from("projects")
-      .select("id")
+      .select("id, organization_id")
       .not("drive_folder_id", "is", null);
 
     if (projectError) {
@@ -28,7 +28,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    const projectIds = (projects || []).map((p: { id: string }) => p.id);
+    const projectEntries = (projects || []).map((p: { id: string; organization_id: string | null }) => ({
+      id: p.id,
+      organization_id: p.organization_id,
+    }));
+    const projectIds = projectEntries.map((p) => p.id);
     if (projectIds.length === 0) {
       return new Response(
         JSON.stringify({ success: true, synced: 0 }),
@@ -57,6 +61,19 @@ Deno.serve(async (req) => {
     const results = await Promise.all(syncPromises);
     const successCount = results.filter((r) => r.ok).length;
     const failCount = results.length - successCount;
+
+    const successOrgIds = new Set(
+      results
+        .map((result, index) => (result.ok ? projectEntries[index]?.organization_id : null))
+        .filter((orgId): orgId is string => !!orgId)
+    );
+
+    if (successOrgIds.size > 0) {
+      await supabase
+        .from("organizations")
+        .update({ drive_permissions_last_synced_at: new Date().toISOString() })
+        .in("id", Array.from(successOrgIds));
+    }
 
     return new Response(
       JSON.stringify({
