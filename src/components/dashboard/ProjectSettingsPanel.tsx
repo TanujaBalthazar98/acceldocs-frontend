@@ -1102,15 +1102,6 @@ export const ProjectSettingsPanel = ({
                 </span>
               </div>
             )}
-            {!driveFolderId && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-300/40 bg-amber-50/60 p-3 text-xs text-amber-800">
-                <AlertTriangle className="mt-0.5 h-3 w-3" />
-                <span>
-                  This project is not connected to a Drive folder. Drive‑based sharing and permission sync
-                  won’t work until a folder is linked.
-                </span>
-              </div>
-            )}
           </div>
 
           {/* Project Members */}
