@@ -131,15 +131,6 @@ export const ProjectSharePanel = ({
 
   const isExternalInvite = email.trim() !== "" && isExternalEmail(email);
 
-  useEffect(() => {
-    const hydrate = async () => {
-      if (!open || !projectId) return;
-      await syncDriveFromDrive();
-      await fetchMembers();
-    };
-    hydrate();
-  }, [open, projectId, syncDriveFromDrive]);
-
   // Push Docspeare roles to Drive when members change
   const syncDrivePermissions = async () => {
     setSyncingDrive(true);
@@ -313,6 +304,15 @@ export const ProjectSharePanel = ({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const hydrate = async () => {
+      if (!open || !projectId) return;
+      await syncDriveFromDrive();
+      await fetchMembers();
+    };
+    hydrate();
+  }, [open, projectId, syncDriveFromDrive]);
 
   useEffect(() => {
     if (isExternalInvite && selectedRole !== "viewer") {
