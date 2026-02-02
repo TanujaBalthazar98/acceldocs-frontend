@@ -104,6 +104,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const [rootFolderId, setRootFolderId] = useState("");
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [isSavingFolder, setIsSavingFolder] = useState(false);
+  const [drivePermissionsLastSyncedAt, setDrivePermissionsLastSyncedAt] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [savingBranding, setSavingBranding] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -166,7 +167,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         const { data: org, error: orgError } = await supabase
           .from("organizations")
           .select(
-            "name, domain, slug, subdomain, drive_folder_id, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects"
+            "name, domain, slug, subdomain, drive_folder_id, drive_permissions_last_synced_at, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects"
           )
           .eq("id", orgId)
           .maybeSingle();
@@ -198,6 +199,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         setDomain(org.domain);
         setCustomDocsDomain(org.custom_docs_domain || "");
         setRootFolderId(org.drive_folder_id || "");
+        setDrivePermissionsLastSyncedAt(org.drive_permissions_last_synced_at || null);
         setBranding({
           logo_url: org.logo_url,
           tagline: org.tagline,
@@ -631,6 +633,15 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                 <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
                   Drive sharing is the source of truth. Permissions sync automatically (hourly) and the org
                   owner can reconnect Drive if access expires.
+                </div>
+
+                <div className="text-xs text-muted-foreground">
+                  Last permission sync:{" "}
+                  <span className="font-medium text-foreground">
+                    {drivePermissionsLastSyncedAt
+                      ? new Date(drivePermissionsLastSyncedAt).toLocaleString()
+                      : "Not synced yet"}
+                  </span>
                 </div>
 
                 <div className="space-y-2">
