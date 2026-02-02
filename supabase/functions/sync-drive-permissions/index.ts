@@ -300,23 +300,31 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify auth
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const serviceHeader = req.headers.get("x-service-role");
+    const isServiceRole = serviceHeader && serviceHeader === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    let user: { id: string } | null = null;
+    if (!isServiceRole) {
+      // Verify auth
+      const authHeader = req.headers.get("authorization");
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Invalid session" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser(token);
+
+      if (userError || !authUser) {
+        return new Response(
+          JSON.stringify({ error: "Invalid session" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      user = authUser;
     }
 
     const body: SyncRequest = await req.json();
@@ -331,18 +339,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify caller has permission to sync this project
-    const { data: canManage } = await supabase.rpc('can_manage_project_members', {
-      _project_id: projectId,
-      _user_id: user.id,
-    });
+    if (!isServiceRole) {
+      // Verify caller has permission to sync this project
+      const { data: canManage } = await supabase.rpc('can_manage_project_members', {
+        _project_id: projectId,
+        _user_id: user?.id,
+      });
 
-    if (!canManage) {
-      console.log(`User ${user.id} cannot manage project ${projectId}`);
-      return new Response(
-        JSON.stringify({ error: "Permission denied" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      if (!canManage) {
+        console.log(`User ${user?.id} cannot manage project ${projectId}`);
+        return new Response(
+          JSON.stringify({ error: "Permission denied" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Get project with org and drive folder info
@@ -531,8 +541,9 @@ Deno.serve(async (req) => {
         });
 
         // Log successful sync
-        await supabase.from('audit_logs').insert({
-          user_id: user.id,
+        if (!isServiceRole) {
+          await supabase.from('audit_logs').insert({
+            user_id: user?.id,
           action: 'sync_drive_permission',
           entity_type: 'user',
           entity_id: userSync.userId,
@@ -544,7 +555,8 @@ Deno.serve(async (req) => {
             source: userSync.source
           },
           success: true,
-        });
+          });
+        }
       } else {
         failCount++;
         results.push({ 

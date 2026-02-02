@@ -18,7 +18,6 @@ import {
   BookOpen,
   ExternalLink,
   Info,
-  RefreshCw,
   Shield,
 } from "lucide-react";
 import {
@@ -133,12 +132,15 @@ export const ProjectSharePanel = ({
   const isExternalInvite = email.trim() !== "" && isExternalEmail(email);
 
   useEffect(() => {
-    if (open && projectId) {
-      fetchMembers();
-    }
-  }, [open, projectId]);
+    const hydrate = async () => {
+      if (!open || !projectId) return;
+      await syncDriveFromDrive();
+      await fetchMembers();
+    };
+    hydrate();
+  }, [open, projectId, syncDriveFromDrive]);
 
-  // Sync Drive permissions when members change
+  // Push Docspeare roles to Drive when members change
   const syncDrivePermissions = async () => {
     setSyncingDrive(true);
     try {
@@ -183,6 +185,20 @@ export const ProjectSharePanel = ({
         description: "Could not sync Drive permissions. Please try again.",
         variant: "destructive"
       });
+    } finally {
+      setSyncingDrive(false);
+    }
+  };
+
+  // Pull Drive permissions into Docspeare roles
+  const syncDriveFromDrive = async () => {
+    setSyncingDrive(true);
+    try {
+      await supabase.functions.invoke('sync-drive-permissions', {
+        body: { projectId, direction: "pull", enforceNoDownload: true }
+      });
+    } catch (error) {
+      // Non-admins will be denied; ignore silently.
     } finally {
       setSyncingDrive(false);
     }
@@ -536,27 +552,19 @@ export const ProjectSharePanel = ({
                   <TooltipContent>View role permissions</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={syncDrivePermissions}
-                      disabled={syncingDrive}
-                    >
-                      <RefreshCw className={`w-4 h-4 ${syncingDrive ? 'animate-spin' : ''}`} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Sync Drive permissions</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
             </div>
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 pt-2">
+          <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground flex gap-2">
+            <Info className="w-4 h-4 mt-0.5 shrink-0" />
+            <div>
+              Sharing is managed in Google Drive. Add people to the project’s Drive folder and Docspeare will
+              sync roles automatically (Editor → Editor, Commenter → Reviewer, Viewer → Viewer). Viewers and
+              commenters can’t download/print/copy from Drive.
+            </div>
+          </div>
           {/* Quick Links */}
           <div className="flex gap-2">
             <Button

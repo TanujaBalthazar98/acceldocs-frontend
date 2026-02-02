@@ -628,6 +628,11 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                   Enter your Google Drive folder ID. All projects and pages will be created within this folder.
                 </p>
 
+                <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                  Drive sharing is the source of truth. Permissions sync automatically (hourly) and the org
+                  owner can reconnect Drive if access expires.
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">
                     Root Folder ID

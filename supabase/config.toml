@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.sync-drive-permissions]
 verify_jwt = false
+
+[functions.sync-drive-permissions-cron]
+verify_jwt = false

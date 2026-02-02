@@ -72,7 +72,7 @@ function buildHomeCard_(message) {
       .setTopLabel("Connection")
       .setText(statusText)
       .setBottomLabel(statusDetail)
-      .setIconUrl("https://www.docspeare.com/brand/docspeare-addon-logo.svg")
+      .setIcon(CardService.Icon.DESCRIPTION)
   );
 
   statusSection.addWidget(
@@ -89,10 +89,9 @@ function buildHomeCard_(message) {
     .setHeader("Publish target");
 
   if (token && !bootstrapError && projectOptions.length > 0) {
-    targetSection
-      .addWidget(buildSelectInput_("PROJECT_ID", "Project", projectOptions, autoProjectId, false))
-      .addWidget(buildSelectInput_("PROJECT_VERSION_ID", "Version", versionOptions, autoVersionId, true, "Default version"))
-      .addWidget(buildSelectInput_("TOPIC_ID", "Topic", topicOptions, topicId, true, "No topic"));
+    appendLabeledSelect_(targetSection, "Project", "PROJECT_ID", projectOptions, autoProjectId, false);
+    appendLabeledSelect_(targetSection, "Version", "PROJECT_VERSION_ID", versionOptions, autoVersionId, true, "Default version");
+    appendLabeledSelect_(targetSection, "Topic", "TOPIC_ID", topicOptions, topicId, true, "No topic");
   } else {
     targetSection.addWidget(CardService.newTextParagraph().setText("Open Settings to connect and load projects."));
   }
@@ -107,21 +106,14 @@ function buildHomeCard_(message) {
       )
   );
 
-  var visibility = props.getProperty("DOC_VISIBILITY") || "internal";
-  if (visibility !== "internal" && visibility !== "external" && visibility !== "public") {
-    visibility = "internal";
-    props.setProperty("DOC_VISIBILITY", visibility);
-  }
-
   var actionSection = CardService.newCardSection()
     .setHeader("Actions")
     .addWidget(CardService.newTextParagraph().setText("Publish or preview the current document."))
     .addWidget(
       CardService.newDecoratedText()
         .setTopLabel("Visibility")
-        .setText(visibilityLabel_(visibility))
+        .setText("Set by project in Docspeare")
     )
-    .addWidget(buildVisibilityButtons_(visibility))
     .addWidget(
       CardService.newButtonSet()
         .addButton(
@@ -185,10 +177,12 @@ function buildHomeCard_(message) {
   }
 
   advancedSection.addWidget(
-    CardService.newButtonSet()
-      .addButton(buildOpenLinkButton_("Internal Docs", webBase + "/internal"))
-      .addButton(buildOpenLinkButton_("External Docs", webBase + "/docs?view=external"))
-      .addButton(buildOpenLinkButton_("Public Docs", webBase + "/docs"))
+    CardService.newTextParagraph().setText(
+      "<b>Docs views:</b> " +
+        '<a href="' + webBase + '/internal">Internal</a> · ' +
+        '<a href="' + webBase + '/docs?view=external">External</a> · ' +
+        '<a href="' + webBase + '/docs">Public</a>'
+    )
   );
 
   if (lastResultUrl) {
@@ -218,7 +212,7 @@ function buildTextInput_(fieldName, title, value, hint) {
 function buildSelectInput_(fieldName, title, options, selectedValue, allowEmpty, emptyLabel) {
   var input = CardService.newSelectionInput()
     .setFieldName(fieldName)
-    .setTitle(title)
+    .setTitle(title || " ")
     .setType(CardService.SelectionInputType.DROPDOWN);
 
   if (allowEmpty) {
@@ -251,53 +245,6 @@ function getWebBase_(apiBase) {
     base = base.replace(/\/api$/, "");
   }
   return base;
-}
-
-function visibilityLabel_(visibility) {
-  if (visibility === "external") return "External";
-  if (visibility === "public") return "Public";
-  return "Internal";
-}
-
-function buildVisibilityButtons_(current) {
-  var setInternal = CardService.newTextButton()
-    .setText("Internal")
-    .setOnClickAction(
-      CardService.newAction().setFunctionName("setVisibility").setParameters({ value: "internal" })
-    );
-  var setExternal = CardService.newTextButton()
-    .setText("External")
-    .setOnClickAction(
-      CardService.newAction().setFunctionName("setVisibility").setParameters({ value: "external" })
-    );
-  var setPublic = CardService.newTextButton()
-    .setText("Public")
-    .setOnClickAction(
-      CardService.newAction().setFunctionName("setVisibility").setParameters({ value: "public" })
-    );
-
-  if (current === "internal") {
-    setInternal.setTextButtonStyle(CardService.TextButtonStyle.FILLED);
-  } else if (current === "external") {
-    setExternal.setTextButtonStyle(CardService.TextButtonStyle.FILLED);
-  } else if (current === "public") {
-    setPublic.setTextButtonStyle(CardService.TextButtonStyle.FILLED);
-  }
-
-  return CardService.newButtonSet()
-    .addButton(setInternal)
-    .addButton(setExternal)
-    .addButton(setPublic);
-}
-
-function setVisibility(e) {
-  var props = PropertiesService.getUserProperties();
-  var value = (e && e.parameters && e.parameters.value) ? e.parameters.value : "internal";
-  if (value !== "internal" && value !== "external" && value !== "public") {
-    value = "internal";
-  }
-  props.setProperty("DOC_VISIBILITY", value);
-  return buildActionResponse_({ type: "success", text: "Visibility set to " + visibilityLabel_(value) + "." }, false, "home");
 }
 
 function openSettings() {
@@ -385,10 +332,12 @@ function buildSettingsCard_(message) {
   }
 
   linksSection.addWidget(
-    CardService.newButtonSet()
-      .addButton(buildOpenLinkButton_("Internal Docs", webBase + "/internal"))
-      .addButton(buildOpenLinkButton_("External Docs", webBase + "/docs?view=external"))
-      .addButton(buildOpenLinkButton_("Public Docs", webBase + "/docs"))
+    CardService.newTextParagraph().setText(
+      "<b>Docs views:</b> " +
+        '<a href="' + webBase + '/internal">Internal</a> · ' +
+        '<a href="' + webBase + '/docs?view=external">External</a> · ' +
+        '<a href="' + webBase + '/docs">Public</a>'
+    )
   );
 
   if (lastResultUrl) {
@@ -488,7 +437,6 @@ function submitDoc_(mode) {
   var projectVersionId = props.getProperty("PROJECT_VERSION_ID") || "";
   var topicId = props.getProperty("TOPIC_ID") || "";
   var docSlug = props.getProperty("DOC_SLUG") || "";
-  var visibility = props.getProperty("DOC_VISIBILITY") || "internal";
 
   if (!token || !projectId) {
     return buildHomeCard_({ type: "error", text: "Missing token or project. Save settings first." });
@@ -504,7 +452,6 @@ function submitDoc_(mode) {
     projectVersionId: projectVersionId || null,
     topicId: topicId || null,
     slug: docSlug || null,
-    visibility: visibility || null,
     sourceDocId: doc.getId(),
     title: doc.getName(),
     contentText: contentText,
