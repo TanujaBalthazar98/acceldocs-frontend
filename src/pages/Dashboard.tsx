@@ -491,8 +491,15 @@ const Dashboard = () => {
         if (projectsData) {
           setProjects(projectsData as Project[]);
 
-          // Get topics for all projects
           const projectIds = projectsData.map((p) => p.id);
+          const docsSelect = `
+              id, title, google_doc_id, project_id, project_version_id, topic_id, display_order, google_modified_at, created_at, updated_at, video_url, video_title,
+              visibility, is_published, owner_id,
+              owner:profiles!documents_owner_id_fkey(full_name, email)
+            `;
+
+          let docsData: any[] = [];
+
           if (projectIds.length > 0) {
             const { data: versionsData } = await supabase
               .from("project_versions")
@@ -513,61 +520,61 @@ const Dashboard = () => {
               setTopics(topicsData as Topic[]);
             }
 
-            // Get documents for all projects with owner info
-            // Note: avoid fetching heavy HTML content for already-published pages (faster dashboard load)
-            const { data: docsData } = await supabase
+            const { data: projectDocs } = await supabase
               .from("documents")
-              .select(
-                `
-              id, title, google_doc_id, project_id, project_version_id, topic_id, display_order, google_modified_at, created_at, updated_at, video_url, video_title,
-              visibility, is_published, owner_id,
-              owner:profiles!documents_owner_id_fkey(full_name, email)
-            `,
-              )
+              .select(docsSelect)
               .in("project_id", projectIds)
               .order("display_order", { ascending: true, nullsFirst: false });
 
-            if (docsData) {
-              const baseDocs = docsData.map((doc: any) => ({
-                ...doc,
-                // default to null so the rest of the dashboard logic keeps working
-                content_html: null,
-                published_content_html: null,
-                owner_name: doc.owner?.full_name || doc.owner?.email?.split("@")[0] || null,
+            docsData = projectDocs || [];
+          } else {
+            setProjectVersions([]);
+            setTopics([]);
+          }
+
+          const { data: unassignedDocs } = await supabase
+            .from("documents")
+            .select(docsSelect)
+            .is("project_id", null)
+            .order("display_order", { ascending: true, nullsFirst: false });
+
+          const combinedDocs = [...docsData, ...(unassignedDocs || [])];
+
+          if (combinedDocs.length > 0) {
+            const baseDocs = combinedDocs.map((doc: any) => ({
+              ...doc,
+              content_html: null,
+              published_content_html: null,
+              owner_name: doc.owner?.full_name || doc.owner?.email?.split("@")[0] || null,
+            }));
+
+            const unpublishedIds = baseDocs.filter((d: any) => !d.is_published).map((d: any) => d.id);
+
+            if (unpublishedIds.length > 0) {
+              const { data: contentRows } = await supabase
+                .from("documents")
+                .select("id, content_html, published_content_html")
+                .in("id", unpublishedIds);
+
+              const contentById = new Map((contentRows || []).map((r: any) => [r.id, r]));
+
+              const merged = baseDocs.map((d: any) => ({
+                ...d,
+                ...(contentById.get(d.id) || {}),
               }));
 
-              const unpublishedIds = baseDocs.filter((d: any) => !d.is_published).map((d: any) => d.id);
-
-              if (unpublishedIds.length > 0) {
-                const { data: contentRows } = await supabase
-                  .from("documents")
-                  .select("id, content_html, published_content_html")
-                  .in("id", unpublishedIds);
-
-                const contentById = new Map((contentRows || []).map((r: any) => [r.id, r]));
-
-                const merged = baseDocs.map((d: any) => ({
-                  ...d,
-                  ...(contentById.get(d.id) || {}),
-                }));
-
-                setDocuments(merged as Document[]);
-              } else {
-                setDocuments(baseDocs as Document[]);
-        }
-      }
-
-      const { data: orgRoleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("organization_id", effectiveOrgId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      const resolvedRole = org?.owner_id === user.id ? "owner" : orgRoleData?.role ?? null;
-      setAppRole(resolvedRole ?? "viewer");
-      } else {
-        setAppRole(null);
+              setDocuments(merged as Document[]);
+            } else {
+              setDocuments(baseDocs as Document[]);
+            }
+          } else {
+            setDocuments([]);
+          }
+        } else {
+          setProjects([]);
+          setProjectVersions([]);
+          setTopics([]);
+          setDocuments([]);
         }
 
         const { data: orgRoleData } = await supabase
@@ -580,13 +587,10 @@ const Dashboard = () => {
         const resolvedRole = org?.owner_id === user.id ? "owner" : orgRoleData?.role ?? null;
         setAppRole(resolvedRole ?? "viewer");
       } else {
-        setOrganizationId(null);
-        setAppRole(null);
-      }
-      } else {
         // No organization - individual user needs onboarding to create one
         setNeedsOnboarding(true);
         setOrganizationId(null);
+        setAppRole(null);
       }
     } finally {
       if (blockUI) {
@@ -3516,6 +3520,20 @@ const Dashboard = () => {
                             selectedDocIds.has(doc.id) && "bg-primary/5"
                           )}
                           onClick={() => {
+                            if (!doc.project_id) {
+                              setAssignTargetDoc(doc);
+                              setAssignProjectId("");
+                              setAssignTopicId("");
+                              setAssignProjectOpen(true);
+                              return;
+                            }
+
+                            const docProject = projects.find((p) => p.id === doc.project_id) || null;
+                            if (docProject && (!selectedProject || selectedProject.id !== docProject.id)) {
+                              setSelectedProject(docProject);
+                              setSelectedTopic(null);
+                            }
+
                             // Use inline PageView instead of navigating to separate page
                             setSelectedDocument(doc);
                             setSelectedPage(doc.id);
