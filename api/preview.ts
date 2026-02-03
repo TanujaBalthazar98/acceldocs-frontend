@@ -176,11 +176,18 @@ export default async function handler(req: any, res: any) {
 
       const workspaceDocs = docRows.filter((doc: any) => allowedProjectIds.has(doc.project_id));
       if (workspaceDocs.length > 0) {
-        existingDoc =
-          workspaceDocs.find(
-            (doc: any) =>
-              doc.project_id === projectId && doc.project_version_id === projectVersionId
-          ) || workspaceDocs[0];
+        const sameProjectDocs = workspaceDocs.filter((doc: any) => doc.project_id === projectId);
+        const exactMatch = sameProjectDocs.find(
+          (doc: any) => doc.project_version_id === projectVersionId
+        );
+
+        if (exactMatch) {
+          existingDoc = exactMatch;
+        } else if (sameProjectDocs.length > 0) {
+          existingDoc = null;
+        } else {
+          existingDoc = workspaceDocs[0];
+        }
       }
     }
   }

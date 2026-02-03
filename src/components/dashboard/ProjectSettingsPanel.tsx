@@ -35,6 +35,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
@@ -105,6 +113,10 @@ export const ProjectSettingsPanel = ({
   const [isRepairing, setIsRepairing] = useState(false);
   const [isSyncingDrivePermissions, setIsSyncingDrivePermissions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [duplicateVersionOpen, setDuplicateVersionOpen] = useState(false);
+  const [versionName, setVersionName] = useState("");
+  const [versionSlug, setVersionSlug] = useState("");
+  const [isDuplicatingVersion, setIsDuplicatingVersion] = useState(false);
   
   // Members state
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -697,6 +709,209 @@ export const ProjectSettingsPanel = ({
     }
   };
 
+  const normalizeVersionSlug = (value: string) =>
+    value.toLowerCase().trim().replace(/\s+/g, "-");
+
+  const parseSemver = (value: string) => {
+    const match = value.match(/^v?(\d+)\.(\d+)(?:\.(\d+))?$/);
+    if (!match) return null;
+    return {
+      major: Number(match[1]),
+      minor: Number(match[2]),
+      patch: Number(match[3] ?? 0),
+    };
+  };
+
+  const getNextVersionSuggestion = async () => {
+    if (!projectId) return;
+    const { data: versions } = await supabase
+      .from("project_versions")
+      .select("id, slug, semver_major, semver_minor, semver_patch, is_default")
+      .eq("project_id", projectId);
+
+    const usedSlugs = new Set((versions || []).map((v) => v.slug));
+
+    let major = 1;
+    let minor = 0;
+    let patch = 0;
+
+    for (const v of versions || []) {
+      const semver =
+        v.semver_major !== null && v.semver_minor !== null && v.semver_patch !== null
+          ? { major: v.semver_major, minor: v.semver_minor, patch: v.semver_patch }
+          : parseSemver(v.slug || "");
+
+      if (!semver) continue;
+
+      if (
+        semver.major > major ||
+        (semver.major === major && semver.minor > minor) ||
+        (semver.major === major && semver.minor === minor && semver.patch > patch)
+      ) {
+        major = semver.major;
+        minor = semver.minor;
+        patch = semver.patch;
+      }
+    }
+
+    patch += 1;
+    let slug = `v${major}.${minor}.${patch}`;
+    while (usedSlugs.has(slug)) {
+      patch += 1;
+      slug = `v${major}.${minor}.${patch}`;
+    }
+
+    setVersionSlug(slug);
+    setVersionName(slug);
+  };
+
+  const handleDuplicateVersion = async () => {
+    if (!projectId || !versionSlug.trim() || !versionName.trim()) return;
+    if (!user?.id) return;
+    setIsDuplicatingVersion(true);
+
+    try {
+      const normalizedSlug = normalizeVersionSlug(versionSlug);
+      const semver = parseSemver(normalizedSlug);
+
+      const { data: versions } = await supabase
+        .from("project_versions")
+        .select("id, slug, is_default")
+        .eq("project_id", projectId);
+
+      if ((versions || []).some((v) => v.slug === normalizedSlug)) {
+        toast({
+          title: "Version already exists",
+          description: "Choose a different version slug.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const sourceVersion =
+        (versions || []).find((v) => v.is_default) ?? (versions || [])[0];
+      if (!sourceVersion?.id) {
+        toast({
+          title: "No source version",
+          description: "Create a base version before duplicating.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { data: newVersion, error: createError } = await supabase
+        .from("project_versions")
+        .insert({
+          project_id: projectId,
+          name: versionName.trim(),
+          slug: normalizedSlug,
+          is_default: false,
+          is_published: false,
+          semver_major: semver?.major ?? null,
+          semver_minor: semver?.minor ?? null,
+          semver_patch: semver?.patch ?? null,
+          created_by: user.id,
+        })
+        .select("id")
+        .single();
+
+      if (createError || !newVersion?.id) {
+        throw createError || new Error("Failed to create version.");
+      }
+
+      const { data: sourceTopics } = await supabase
+        .from("topics")
+        .select("id, name, slug, parent_id, display_order, drive_folder_id")
+        .eq("project_id", projectId)
+        .eq("project_version_id", sourceVersion.id);
+
+      const topicIdMap = new Map<string, string>();
+      let remaining = (sourceTopics || []).slice();
+      let guard = 0;
+      while (remaining.length > 0 && guard < (sourceTopics || []).length + 2) {
+        const next: typeof remaining = [];
+        for (const topic of remaining) {
+          if (topic.parent_id && !topicIdMap.has(topic.parent_id)) {
+            next.push(topic);
+            continue;
+          }
+          const { data: createdTopic, error: topicError } = await supabase
+            .from("topics")
+            .insert({
+              project_id: projectId,
+              project_version_id: newVersion.id,
+              name: topic.name,
+              slug: topic.slug,
+              parent_id: topic.parent_id ? topicIdMap.get(topic.parent_id) ?? null : null,
+              display_order: topic.display_order ?? null,
+              drive_folder_id: topic.drive_folder_id ?? null,
+            })
+            .select("id")
+            .single();
+
+          if (topicError) {
+            throw topicError;
+          }
+
+          if (createdTopic?.id) {
+            topicIdMap.set(topic.id, createdTopic.id);
+          }
+        }
+        remaining = next;
+        guard += 1;
+      }
+
+      const { data: sourceDocs } = await supabase
+        .from("documents")
+        .select(
+          "id, title, slug, google_doc_id, topic_id, visibility, content_html, published_content_html, display_order, owner_id, video_url, video_title"
+        )
+        .eq("project_id", projectId)
+        .eq("project_version_id", sourceVersion.id);
+
+      for (const doc of sourceDocs || []) {
+        const contentHtml = doc.content_html ?? doc.published_content_html ?? null;
+        await supabase.from("documents").insert({
+          project_id: projectId,
+          project_version_id: newVersion.id,
+          title: doc.title,
+          slug: doc.slug,
+          google_doc_id: doc.google_doc_id,
+          topic_id: doc.topic_id ? topicIdMap.get(doc.topic_id) ?? null : null,
+          visibility: doc.visibility,
+          is_published: false,
+          content_html: contentHtml,
+          published_content_html: null,
+          display_order: doc.display_order ?? null,
+          owner_id: doc.owner_id ?? user.id,
+          video_url: doc.video_url ?? null,
+          video_title: doc.video_title ?? null,
+        });
+      }
+
+      toast({
+        title: "Version created",
+        description: "Draft version created with a full copy of topics and pages.",
+      });
+      setDuplicateVersionOpen(false);
+      onUpdate?.();
+    } catch (error: any) {
+      toast({
+        title: "Couldn't duplicate version",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDuplicatingVersion(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!duplicateVersionOpen) return;
+    if (!projectId) return;
+    getNextVersionSuggestion();
+  }, [duplicateVersionOpen, projectId]);
+
   const handleRemoveMember = async (memberId: string) => {
     if (memberId.startsWith("org:")) {
       toast({
@@ -1042,6 +1257,32 @@ export const ProjectSettingsPanel = ({
             {isSaving ? "Saving..." : "Save Changes"}
           </Button>
 
+          {/* Versions */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">
+              Versions
+            </label>
+            <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Draft versions
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  The default version is the published one. New versions start as drafts.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setDuplicateVersionOpen(true)}
+                disabled={!projectId}
+              >
+                Duplicate to new version
+              </Button>
+            </div>
+          </div>
+
           {/* Sync Status */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
@@ -1290,6 +1531,69 @@ export const ProjectSettingsPanel = ({
             <SEOSettings projectId={projectId} />
           </TabsContent>
         </Tabs>
+
+        <Dialog
+          open={duplicateVersionOpen}
+          onOpenChange={(value) => {
+            setDuplicateVersionOpen(value);
+            if (!value) {
+              setVersionName("");
+              setVersionSlug("");
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold text-foreground">
+                Duplicate to new version
+              </DialogTitle>
+              <DialogDescription className="text-muted-foreground">
+                This creates a draft version and copies all topics and pages.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-foreground">
+                  Version Name
+                </label>
+                <Input
+                  value={versionName}
+                  onChange={(e) => setVersionName(e.target.value)}
+                  placeholder="e.g., v1.1.0"
+                  className="bg-secondary"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-foreground">
+                  Version Slug
+                </label>
+                <Input
+                  value={versionSlug}
+                  onChange={(e) => setVersionSlug(normalizeVersionSlug(e.target.value))}
+                  placeholder="e.g., v1.1.0"
+                  className="bg-secondary"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setDuplicateVersionOpen(false)}
+                  disabled={isDuplicatingVersion}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleDuplicateVersion}
+                  disabled={!versionName.trim() || !versionSlug.trim() || isDuplicatingVersion}
+                >
+                  {isDuplicatingVersion ? "Duplicating..." : "Create Version"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </SheetContent>
     </Sheet>
   );
