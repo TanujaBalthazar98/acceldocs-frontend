@@ -58,6 +58,13 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -73,6 +80,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { SmartSearch } from "@/components/SmartSearch";
@@ -155,8 +169,8 @@ interface Document {
   id: string;
   title: string;
   google_doc_id: string;
-  project_id: string;
-  project_version_id: string;
+  project_id: string | null;
+  project_version_id: string | null;
   topic_id: string | null;
   display_order: number | null;
   google_modified_at: string | null;
@@ -195,6 +209,11 @@ const Dashboard = () => {
     Document,
     "id" | "title" | "project_id" | "google_doc_id"
   > | null>(null);
+  const [assignProjectOpen, setAssignProjectOpen] = useState(false);
+  const [assignTargetDoc, setAssignTargetDoc] = useState<Document | null>(null);
+  const [assignProjectId, setAssignProjectId] = useState<string>("");
+  const [assignTopicId, setAssignTopicId] = useState<string>("");
+  const [isAssigningProject, setIsAssigningProject] = useState(false);
   const [topicSettingsOpen, setTopicSettingsOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -656,6 +675,57 @@ const Dashboard = () => {
     ? topics.filter(topic => topic.project_version_id === selectedVersion.id)
     : topics;
 
+  const getDescendantProjectIds = (projectId: string) => {
+    const ids = new Set<string>([projectId]);
+    const queue = [projectId];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      for (const project of projects) {
+        if (project.parent_id === current && !ids.has(project.id)) {
+          ids.add(project.id);
+          queue.push(project.id);
+        }
+      }
+    }
+    return ids;
+  };
+
+  const selectedProjectIds = selectedProject ? getDescendantProjectIds(selectedProject.id) : null;
+  const unassignedDocuments = documents.filter((doc) => !doc.project_id);
+
+  const buildProjectOptions = () => {
+    const byParent = new Map<string | null, Project[]>();
+    for (const project of projects) {
+      const key = project.parent_id ?? null;
+      const list = byParent.get(key) ?? [];
+      list.push(project);
+      byParent.set(key, list);
+    }
+
+    const options: Array<{ id: string; label: string }> = [];
+    const walk = (parentId: string | null, depth: number) => {
+      const children = byParent.get(parentId) ?? [];
+      children.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      for (const child of children) {
+        const prefix = depth > 0 ? new Array(depth + 1).join("-- ") : "";
+        options.push({ id: child.id, label: `${prefix}${child.name}` });
+        walk(child.id, depth + 1);
+      }
+    };
+
+    walk(null, 0);
+    return options;
+  };
+
+  const getAssignableTopics = (projectId: string | null, projectVersionId: string | null) => {
+    if (!projectId) return [];
+    return topics.filter((topic) => {
+      if (topic.project_id !== projectId) return false;
+      if (!projectVersionId) return true;
+      return topic.project_version_id === projectVersionId;
+    });
+  };
+
   // Filter documents based on selected project/topic and search query
   const filteredDocuments = scopedDocuments.filter(doc => {
     // Filter by search query first
@@ -671,7 +741,7 @@ const Dashboard = () => {
       return doc.topic_id === selectedTopic.id;
     }
     if (selectedProject) {
-      return doc.project_id === selectedProject.id;
+      return !!selectedProjectIds?.has(doc.project_id);
     }
     return true;
   });
@@ -688,6 +758,12 @@ const Dashboard = () => {
   const filteredTopics = scopedTopics.filter(t => 
     !searchQuery.trim() || t.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const assignProjectOptions = buildProjectOptions();
+  const assignProjectVersionId = assignProjectId
+    ? resolveDefaultVersion(assignProjectId)?.id ?? null
+    : null;
+  const assignableTopics = getAssignableTopics(assignProjectId || null, assignProjectVersionId);
 
   const selectedProjectVersions = selectedProject
     ? projectVersions
@@ -1495,6 +1571,69 @@ const Dashboard = () => {
     }
 
     return created?.id ?? null;
+  };
+
+  const handleAssignProject = async () => {
+    if (!assignTargetDoc || !assignProjectId) return;
+    setIsAssigningProject(true);
+
+    try {
+      const project = projects.find((p) => p.id === assignProjectId);
+      let versionId = resolveDefaultVersion(assignProjectId)?.id ?? null;
+      if (!versionId) {
+        versionId = await ensureDefaultVersionForProject(assignProjectId, project?.is_published ?? false);
+      }
+
+      const assignableTopics = getAssignableTopics(assignProjectId, versionId);
+      const finalTopicId =
+        assignTopicId && assignableTopics.some((t) => t.id === assignTopicId) ? assignTopicId : null;
+
+      const { data: updatedRows, error } = await supabase
+        .from("documents")
+        .update({
+          project_id: assignProjectId,
+          project_version_id: versionId,
+          topic_id: finalTopicId,
+        })
+        .eq("id", assignTargetDoc.id)
+        .select("id, project_id, project_version_id, topic_id");
+
+      if (error || !updatedRows || updatedRows.length === 0) {
+        toast({
+          title: "Couldn't assign project",
+          description: error?.message || "No changes were applied.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setDocuments((prev) =>
+        prev.map((doc) =>
+          doc.id === assignTargetDoc.id
+            ? {
+                ...doc,
+                project_id: assignProjectId,
+                project_version_id: versionId ?? doc.project_version_id,
+                topic_id: finalTopicId,
+              }
+            : doc
+        )
+      );
+
+      setAssignProjectOpen(false);
+      setAssignTargetDoc(null);
+      setAssignProjectId("");
+      setAssignTopicId("");
+      toast({ title: "Project assigned", description: "This page now belongs to the selected project." });
+    } catch (error: any) {
+      toast({
+        title: "Couldn't assign project",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAssigningProject(false);
+    }
   };
 
   // Sync projects from Google Drive
@@ -3161,6 +3300,47 @@ const Dashboard = () => {
             className="mb-4 sm:mb-6"
           />
 
+          {unassignedDocuments.length > 0 && (
+            <div className="mb-4 sm:mb-6 rounded-xl border border-amber-300/40 bg-amber-50/60 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-amber-900">Unassigned pages</h3>
+                  <p className="text-xs text-amber-800">
+                    These pages aren't linked to a project yet. Assign them so they appear in project navigation.
+                  </p>
+                </div>
+                <Badge variant="secondary" className="bg-amber-100 text-amber-900">
+                  {unassignedDocuments.length}
+                </Badge>
+              </div>
+              <div className="mt-3 space-y-2">
+                {unassignedDocuments.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white/70 px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-amber-700" />
+                      <span className="truncate">{doc.title || "Untitled"}</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setAssignTargetDoc(doc);
+                        setAssignProjectId("");
+                        setAssignTopicId("");
+                        setAssignProjectOpen(true);
+                      }}
+                    >
+                      Assign
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Topics */}
           <div className="mb-4 sm:mb-6">
             <div className="flex items-center justify-between mb-3 sm:mb-4">
@@ -3570,6 +3750,101 @@ const Dashboard = () => {
         projectName={selectedProject?.name || null}
         onUpdate={() => fetchData()}
       />
+
+      <Dialog
+        open={assignProjectOpen}
+        onOpenChange={(open) => {
+          setAssignProjectOpen(open);
+          if (!open) {
+            setAssignTargetDoc(null);
+            setAssignProjectId("");
+            setAssignTopicId("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-foreground">Assign project</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Choose a project (or sub-project) for this page.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Project</label>
+              <Select
+                value={assignProjectId}
+                onValueChange={(value) => {
+                  setAssignProjectId(value);
+                  setAssignTopicId("");
+                }}
+              >
+                <SelectTrigger className="bg-secondary">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {assignProjectOptions.length === 0 ? (
+                    <SelectItem value="__none__" disabled>
+                      No projects found
+                    </SelectItem>
+                  ) : (
+                    assignProjectOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.label}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {assignProjectId && assignableTopics.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Topic (optional)</label>
+                <Select
+                  value={assignTopicId || "root"}
+                  onValueChange={(value) => setAssignTopicId(value === "root" ? "" : value)}
+                >
+                  <SelectTrigger className="bg-secondary">
+                    <SelectValue placeholder="Project root" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="root">
+                      <span className="text-muted-foreground">Project root (no topic)</span>
+                    </SelectItem>
+                    {assignableTopics.map((topic) => (
+                      <SelectItem key={topic.id} value={topic.id}>
+                        {topic.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  This list is scoped to the project's default version.
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setAssignProjectOpen(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAssignProject}
+                disabled={!assignProjectId || isAssigningProject}
+                className="flex-1"
+              >
+                {isAssigningProject ? "Assigning..." : "Assign"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       
       <PageSettingsDialog
         open={pageSettingsOpen}
