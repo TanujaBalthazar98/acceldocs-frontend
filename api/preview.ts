@@ -94,6 +94,33 @@ export default async function handler(req: any, res: any) {
   }
 
   let projectVersionId = requestedVersionId;
+  if (projectVersionId) {
+    const { data: versionMatch } = await supabase
+      .from("project_versions")
+      .select("id")
+      .eq("id", projectVersionId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+
+    if (!versionMatch) {
+      projectVersionId = undefined;
+    }
+  }
+
+  let safeTopicId = topicId;
+  if (safeTopicId) {
+    const { data: topicMatch } = await supabase
+      .from("topics")
+      .select("id")
+      .eq("id", safeTopicId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+
+    if (!topicMatch) {
+      safeTopicId = undefined;
+    }
+  }
+
   if (!projectVersionId) {
     const { data: versionRow } = await supabase
       .from("project_versions")
@@ -138,7 +165,7 @@ export default async function handler(req: any, res: any) {
   const docPayload = {
     project_id: projectId,
     project_version_id: projectVersionId,
-    topic_id: topicId ?? null,
+    topic_id: safeTopicId ?? null,
     google_doc_id: sourceDocId || "",
     title,
     slug: slug ?? existingDoc?.slug ?? null,

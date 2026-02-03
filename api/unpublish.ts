@@ -69,6 +69,19 @@ export default async function handler(req: any, res: any) {
   }
 
   let projectVersionId = requestedVersionId;
+  if (projectVersionId) {
+    const { data: versionMatch } = await supabase
+      .from("project_versions")
+      .select("id")
+      .eq("id", projectVersionId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+
+    if (!versionMatch) {
+      projectVersionId = undefined;
+    }
+  }
+
   if (!projectVersionId) {
     const { data: versionRow } = await supabase
       .from("project_versions")

@@ -405,32 +405,36 @@ function refreshBootstrap(e) {
   return buildActionResponse_({ type: "success", text: "Projects refreshed." }, false, target);
 }
 
-function publishDoc() {
+function publishDoc(e) {
   try {
-    return submitDoc_("publish");
+    return submitDoc_("publish", e);
   } catch (err) {
     return buildErrorCard_("Publish failed: " + err.message);
   }
 }
 
-function previewDoc() {
+function previewDoc(e) {
   try {
-    return submitDoc_("preview");
+    return submitDoc_("preview", e);
   } catch (err) {
     return buildErrorCard_("Preview failed: " + err.message);
   }
 }
 
-function unpublishDoc() {
+function unpublishDoc(e) {
   try {
-    return submitDoc_("unpublish");
+    return submitDoc_("unpublish", e);
   } catch (err) {
     return buildErrorCard_("Unpublish failed: " + err.message);
   }
 }
 
-function submitDoc_(mode) {
+function submitDoc_(mode, e) {
   var props = PropertiesService.getUserProperties();
+  var form = (e && e.formInput) ? e.formInput : null;
+  if (form) {
+    applyFormInputToProps_(props, form);
+  }
   var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
   var token = props.getProperty("SAAS_TOKEN") || "";
   var projectId = props.getProperty("PROJECT_ID") || "";
@@ -489,6 +493,25 @@ function submitDoc_(mode) {
 
   storeLastAction_(props, mode);
   return buildActionResponse_(formatApiMessage_(mode, statusCode, bodyText, false), true, "home");
+}
+
+function applyFormInputToProps_(props, form) {
+  var currentProjectId = props.getProperty("PROJECT_ID") || "";
+  var incomingProjectId = form.PROJECT_ID !== undefined ? form.PROJECT_ID : currentProjectId;
+  var projectChanged = form.PROJECT_ID !== undefined && incomingProjectId !== currentProjectId;
+
+  if (form.PROJECT_ID !== undefined) {
+    props.setProperty("PROJECT_ID", incomingProjectId);
+  }
+  if (form.PROJECT_VERSION_ID !== undefined) {
+    props.setProperty("PROJECT_VERSION_ID", projectChanged ? "" : form.PROJECT_VERSION_ID);
+  }
+  if (form.TOPIC_ID !== undefined) {
+    props.setProperty("TOPIC_ID", projectChanged ? "" : form.TOPIC_ID);
+  }
+  if (form.DOC_SLUG !== undefined) {
+    props.setProperty("DOC_SLUG", form.DOC_SLUG);
+  }
 }
 
 function storeLastResultUrl_(props, mode, bodyText) {
