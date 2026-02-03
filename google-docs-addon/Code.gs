@@ -368,11 +368,15 @@ function buildSettingsCard_(message) {
 function saveSettings(e) {
   var props = PropertiesService.getUserProperties();
   var form = e.formInput || {};
+  var existingToken = props.getProperty("SAAS_TOKEN") || "";
+  var incomingToken = form.SAAS_TOKEN !== undefined ? form.SAAS_TOKEN : existingToken;
+  var tokenChanged = form.SAAS_TOKEN !== undefined && incomingToken !== existingToken;
+
   if (form.API_BASE_URL !== undefined) {
     props.setProperty("API_BASE_URL", form.API_BASE_URL);
   }
   if (form.SAAS_TOKEN !== undefined) {
-    props.setProperty("SAAS_TOKEN", form.SAAS_TOKEN);
+    props.setProperty("SAAS_TOKEN", incomingToken);
   }
   if (form.PROJECT_ID !== undefined) {
     props.setProperty("PROJECT_ID", form.PROJECT_ID);
@@ -385,6 +389,14 @@ function saveSettings(e) {
   }
   if (form.DOC_SLUG !== undefined) {
     props.setProperty("DOC_SLUG", form.DOC_SLUG);
+  }
+
+  if (tokenChanged) {
+    props.deleteProperty("BOOTSTRAP_JSON");
+    props.deleteProperty("BOOTSTRAP_AT");
+    props.deleteProperty("PROJECT_ID");
+    props.deleteProperty("PROJECT_VERSION_ID");
+    props.deleteProperty("TOPIC_ID");
   }
 
   var target = (e && e.parameters && e.parameters.target) ? e.parameters.target : "home";
@@ -630,8 +642,13 @@ function loadBootstrap_(apiBase, token, forceRefresh) {
   if (!forceRefresh) {
     var cached = props.getProperty("BOOTSTRAP_JSON");
     var cachedAt = Number(props.getProperty("BOOTSTRAP_AT") || "0");
+    var cachedToken = props.getProperty("BOOTSTRAP_TOKEN") || "";
     if (cached && cachedAt && Date.now() - cachedAt < 5 * 60 * 1000) {
+      if (cachedToken && cachedToken !== token) {
+        // Token changed, ignore cache.
+      } else {
       return { data: JSON.parse(cached), error: null };
+      }
     }
   }
 
@@ -651,6 +668,7 @@ function loadBootstrap_(apiBase, token, forceRefresh) {
       var data = JSON.parse(response.getContentText());
       props.setProperty("BOOTSTRAP_JSON", JSON.stringify(data));
       props.setProperty("BOOTSTRAP_AT", String(Date.now()));
+      props.setProperty("BOOTSTRAP_TOKEN", token || "");
       return { data: data, error: null };
     }
 

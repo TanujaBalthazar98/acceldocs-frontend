@@ -154,13 +154,36 @@ export default async function handler(req: any, res: any) {
     projectVersionId = createdVersion.id as string;
   }
 
-  const { data: existingDoc } = await supabase
-    .from("documents")
-    .select("id, slug")
-    .eq("project_id", projectId)
-    .eq("project_version_id", projectVersionId)
-    .eq("google_doc_id", sourceDocId || "")
-    .maybeSingle();
+  let existingDoc: { id: string; slug: string | null; project_id: string; project_version_id: string | null } | null = null;
+  if (sourceDocId) {
+    const { data: docRows } = await supabase
+      .from("documents")
+      .select("id, slug, project_id, project_version_id")
+      .eq("google_doc_id", sourceDocId);
+
+    if (docRows && docRows.length > 0) {
+      const projectIds = Array.from(new Set(docRows.map((doc: any) => doc.project_id)));
+      const { data: docProjects } = await supabase
+        .from("projects")
+        .select("id, organization_id")
+        .in("id", projectIds);
+
+      const allowedProjectIds = new Set(
+        (docProjects || [])
+          .filter((proj: any) => proj.organization_id === payload.workspaceId)
+          .map((proj: any) => proj.id)
+      );
+
+      const workspaceDocs = docRows.filter((doc: any) => allowedProjectIds.has(doc.project_id));
+      if (workspaceDocs.length > 0) {
+        existingDoc =
+          workspaceDocs.find(
+            (doc: any) =>
+              doc.project_id === projectId && doc.project_version_id === projectVersionId
+          ) || workspaceDocs[0];
+      }
+    }
+  }
 
   const docPayload = {
     project_id: projectId,
