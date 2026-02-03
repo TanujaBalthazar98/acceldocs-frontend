@@ -101,7 +101,7 @@ interface Topic {
   name: string;
   slug: string | null;
   project_id: string;
-  project_version_id: string;
+  project_version_id: string | null;
   parent_id: string | null;
   display_order: number | null;
 }
@@ -112,7 +112,7 @@ interface Document {
   slug: string | null;
   google_doc_id: string;
   project_id: string;
-  project_version_id: string;
+  project_version_id: string | null;
   topic_id: string | null;
   visibility: VisibilityLevel;
   is_published: boolean;
@@ -394,10 +394,24 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
   }, [selectedProject, versionSlug, projectVersions, isInternalView]);
 
+  const shouldUseVersion = useMemo(() => {
+    if (!selectedProject || !selectedVersion) return false;
+    if (versionSlug) return true;
+    const hasDocs = documents.some(
+      (doc) => doc.project_id === selectedProject.id && doc.project_version_id === selectedVersion.id
+    );
+    const hasTopics = topics.some(
+      (topic) => topic.project_id === selectedProject.id && topic.project_version_id === selectedVersion.id
+    );
+    return hasDocs || hasTopics;
+  }, [selectedProject, selectedVersion, versionSlug, documents, topics]);
+
+  const visibleVersion = shouldUseVersion ? selectedVersion : null;
+
   // Helper to get the first available document for a project (considering display order)
   const getFirstDocumentForProject = (projectId: string) => {
     const projectDocs = documents.filter(
-      d => d.project_id === projectId && (!selectedVersion || d.project_version_id === selectedVersion.id)
+      d => d.project_id === projectId && (!visibleVersion || d.project_version_id === visibleVersion.id)
     );
     if (projectDocs.length === 0) return null;
     
@@ -415,7 +429,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     if (!selectedProject) return;
 
     if (documents.length === 0) return;
-    if (!selectedVersion) return;
+    if (shouldUseVersion && !visibleVersion) return;
 
     if (pageSlug) {
       let doc: Document | undefined;
@@ -425,14 +439,14 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           t =>
             t.slug === topicSlug &&
             t.project_id === selectedProject.id &&
-            t.project_version_id === selectedVersion.id
+            (!visibleVersion || t.project_version_id === visibleVersion.id)
         );
         if (topic) {
           doc = documents.find(
             d =>
               d.slug === pageSlug &&
               d.topic_id === topic.id &&
-              d.project_version_id === selectedVersion.id
+              (!visibleVersion || d.project_version_id === visibleVersion.id)
           );
         }
       } else {
@@ -440,7 +454,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           d =>
             d.slug === pageSlug &&
             d.project_id === selectedProject.id &&
-            d.project_version_id === selectedVersion.id &&
+            (!visibleVersion || d.project_version_id === visibleVersion.id) &&
             !d.topic_id
         );
         
@@ -449,7 +463,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
             d =>
               d.slug === pageSlug &&
               d.project_id === selectedProject.id &&
-              d.project_version_id === selectedVersion.id
+              (!visibleVersion || d.project_version_id === visibleVersion.id)
           );
           if (doc?.topic_id && currentOrg) {
             navigate(buildDocUrl(doc, selectedProject, currentOrg), { replace: true });
@@ -475,8 +489,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   }, [pageSlug, topicSlug, selectedProject, documents, topics, currentOrg, selectedVersion]);
 
   useEffect(() => {
-    if (!selectedProject || !selectedVersion) return;
-    if (versionSlug === selectedVersion.slug) return;
+    if (!selectedProject || !visibleVersion) return;
+    if (versionSlug === visibleVersion.slug) return;
     if (!isCustomDomain && !currentOrg) return;
 
     if (selectedDocument && currentOrg) {
@@ -484,8 +498,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       return;
     }
 
-    navigate(buildProjectUrl(selectedProject, selectedVersion), { replace: true });
-  }, [selectedProject, selectedVersion, versionSlug, selectedDocument, currentOrg, isCustomDomain]);
+    navigate(buildProjectUrl(selectedProject, visibleVersion), { replace: true });
+  }, [selectedProject, visibleVersion, versionSlug, selectedDocument, currentOrg, isCustomDomain]);
 
   const fetchContent = async () => {
     setLoading(true);
@@ -646,8 +660,21 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       return;
     }
 
-    if (versionsData) {
+    if (versionsData && versionsData.length > 0) {
       setProjectVersions(versionsData as ProjectVersion[]);
+      return;
+    }
+
+    // Fallback: if no published versions exist, use all versions so docs remain visible.
+    if (!isInternalView) {
+      const { data: fallbackVersions } = await supabase
+        .from("project_versions")
+        .select("id, project_id, name, slug, is_default, is_published, semver_major, semver_minor, semver_patch")
+        .in("project_id", projectIds);
+
+      if (fallbackVersions) {
+        setProjectVersions(fallbackVersions as ProjectVersion[]);
+      }
     }
   };
 
@@ -794,13 +821,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   
   const projectTopics = selectedProject 
     ? topics.filter(
-        t => t.project_id === selectedProject.id && (!selectedVersion || t.project_version_id === selectedVersion.id)
+        t => t.project_id === selectedProject.id && (!visibleVersion || t.project_version_id === visibleVersion.id)
       )
     : [];
 
   const projectDocuments = selectedProject
     ? documents.filter(
-        d => d.project_id === selectedProject.id && (!selectedVersion || d.project_version_id === selectedVersion.id)
+        d => d.project_id === selectedProject.id && (!visibleVersion || d.project_version_id === visibleVersion.id)
       )
     : [];
   
@@ -1019,18 +1046,20 @@ const getTopicDocuments = (topicId: string) =>
   // Show landing page when no project or page is selected
   const showLandingPage = !selectedDocument && !selectedProject && currentOrg && !loading;
   const landingDocuments = useMemo(() => {
-    if (projectVersions.length === 0) return [];
+    if (documents.length === 0) return [];
     return documents.filter((doc) => {
       const version = resolveDefaultVersion(doc.project_id);
-      return version ? doc.project_version_id === version.id : false;
+      if (!version) return true;
+      return doc.project_version_id === version.id || !doc.project_version_id;
     });
   }, [documents, projectVersions, isInternalView]);
 
   const landingTopics = useMemo(() => {
-    if (projectVersions.length === 0) return [];
+    if (topics.length === 0) return [];
     return topics.filter((topic) => {
       const version = resolveDefaultVersion(topic.project_id);
-      return version ? topic.project_version_id === version.id : false;
+      if (!version) return true;
+      return topic.project_version_id === version.id || !topic.project_version_id;
     });
   }, [topics, projectVersions, isInternalView]);
 
