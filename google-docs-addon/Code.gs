@@ -325,13 +325,14 @@ function buildSettingsCard_(message) {
   var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
   var webBase = getWebBase_(apiBase);
   var token = props.getProperty("SAAS_TOKEN") || "";
-  var projectId = props.getProperty("PROJECT_ID") || "";
+  var docId = getActiveDocIdSafe_();
+  var projectId = getDocScopedProperty_(props, docId, "PROJECT_ID") || props.getProperty("PROJECT_ID") || "";
   var lastResultUrl = props.getProperty("LAST_RESULT_URL") || "";
   var lastResultLabel = props.getProperty("LAST_RESULT_LABEL") || "Open Result";
 
   var bootstrapError = null;
   if (token) {
-    var bootstrapResult = loadBootstrap_(apiBase, token);
+    var bootstrapResult = loadBootstrap_(apiBase, token, false, docId);
     bootstrapError = bootstrapResult.error;
   }
 
@@ -433,6 +434,7 @@ function saveSettings(e) {
   var incomingToken = form.SAAS_TOKEN !== undefined ? String(form.SAAS_TOKEN || "").trim() : "";
   var tokenChanged = incomingToken && incomingToken !== existingToken;
   var docId = getActiveDocIdSafe_();
+  var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
 
   if (form.API_BASE_URL !== undefined) {
     props.setProperty("API_BASE_URL", form.API_BASE_URL);
@@ -453,8 +455,9 @@ function saveSettings(e) {
     setDocScopedProperty_(props, docId, "TOPIC_ID", form.TOPIC_ID);
   }
   if (form.DOC_SLUG !== undefined) {
-    props.setProperty("DOC_SLUG", form.DOC_SLUG);
-    setDocScopedProperty_(props, docId, "DOC_SLUG", form.DOC_SLUG);
+    var slugValue = String(form.DOC_SLUG || "").trim().toLowerCase().replace(/\s+/g, "-");
+    props.setProperty("DOC_SLUG", slugValue);
+    setDocScopedProperty_(props, docId, "DOC_SLUG", slugValue);
   }
 
   if (tokenChanged) {
@@ -468,7 +471,25 @@ function saveSettings(e) {
     }
   }
 
+  var slugSyncError = "";
+  var tokenForSync = props.getProperty("SAAS_TOKEN") || "";
+  var projectForSync = getDocScopedProperty_(props, docId, "PROJECT_ID") || props.getProperty("PROJECT_ID") || "";
+  var versionForSync = getDocScopedProperty_(props, docId, "PROJECT_VERSION_ID") || props.getProperty("PROJECT_VERSION_ID") || "";
+  var slugForSync = getDocScopedProperty_(props, docId, "DOC_SLUG") || props.getProperty("DOC_SLUG") || "";
+  if (tokenForSync && projectForSync && docId && slugForSync) {
+    slugSyncError = syncDocSlug_(apiBase, tokenForSync, {
+      projectId: projectForSync,
+      projectVersionId: versionForSync,
+      sourceDocId: docId,
+      slug: slugForSync
+    });
+  }
+
   var target = (e && e.parameters && e.parameters.target) ? e.parameters.target : "home";
+  if (slugSyncError) {
+    props.setProperty("LAST_ERROR_DETAILS", slugSyncError);
+    return buildActionResponse_({ type: "error", text: "Saved locally, but slug did not update in Docspeare." }, true, target);
+  }
   return buildActionResponse_({ type: "success", text: "Settings saved." }, false, target);
 }
 
@@ -791,6 +812,29 @@ function loadBootstrap_(apiBase, token, forceRefresh, docId) {
     return { data: null, error: formatApiErrorText_(response.getResponseCode(), response.getContentText()) };
   } catch (err) {
     return { data: null, error: err.message };
+  }
+}
+
+function syncDocSlug_(apiBase, token, payload) {
+  try {
+    var url = apiBase.replace(/\/$/, "") + "/api/addon/update-doc";
+    var response = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/json",
+      headers: {
+        Authorization: "Bearer " + token
+      },
+      payload: JSON.stringify(payload || {}),
+      muteHttpExceptions: true
+    });
+
+    var statusCode = response.getResponseCode();
+    if (statusCode >= 200 && statusCode < 300) {
+      return "";
+    }
+    return "HTTP " + statusCode + ". " + response.getContentText();
+  } catch (err) {
+    return String(err && err.message ? err.message : err);
   }
 }
 
