@@ -3585,6 +3585,19 @@ const Dashboard = () => {
                                     <DropdownMenuItem
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        setAssignTargetDoc(doc);
+                                        setAssignProjectId("");
+                                        setAssignTopicId("");
+                                        setAssignProjectOpen(true);
+                                      }}
+                                    >
+                                      <Folder className="w-4 h-4 mr-2" />
+                                      {doc.project_id ? "Move to Project" : "Assign Project"}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         setPageSettingsTarget(doc);
                                         setPageSettingsOpen(true);
                                       }}
