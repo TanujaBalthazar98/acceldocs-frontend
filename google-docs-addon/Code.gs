@@ -512,10 +512,10 @@ function submitDoc_(mode, e) {
   var docId = getActiveDocIdSafe_();
   var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
   var token = props.getProperty("SAAS_TOKEN") || "";
-  var projectId = props.getProperty("PROJECT_ID") || "";
-  var projectVersionId = props.getProperty("PROJECT_VERSION_ID") || "";
-  var topicId = props.getProperty("TOPIC_ID") || "";
-  var docSlug = props.getProperty("DOC_SLUG") || "";
+  var projectId = getDocScopedProperty_(props, docId, "PROJECT_ID") || props.getProperty("PROJECT_ID") || "";
+  var projectVersionId = getDocScopedProperty_(props, docId, "PROJECT_VERSION_ID") || props.getProperty("PROJECT_VERSION_ID") || "";
+  var topicId = getDocScopedProperty_(props, docId, "TOPIC_ID") || props.getProperty("TOPIC_ID") || "";
+  var docSlug = getDocScopedProperty_(props, docId, "DOC_SLUG") || props.getProperty("DOC_SLUG") || "";
 
   if (!token || !projectId) {
     return buildHomeCard_({ type: "error", text: "Missing token or project. Save settings first." });
