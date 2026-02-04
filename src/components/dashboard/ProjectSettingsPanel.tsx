@@ -98,7 +98,7 @@ export const ProjectSettingsPanel = ({
   const { toast } = useToast();
   const { listFolder, checkFolderAccess, trashFile, createFolder } = useGoogleDrive();
   const { attemptRecovery } = useDriveRecovery();
-  const { user, googleAccessToken } = useAuth();
+  const { user, googleAccessToken, requestDriveAccess } = useAuth();
   
   const [name, setName] = useState(projectName || "");
   const [slug, setSlug] = useState("");
@@ -278,6 +278,16 @@ export const ProjectSettingsPanel = ({
 
     setIsConnectingDrive(true);
     try {
+      const rootAccess = await checkFolderAccess("root");
+      if (rootAccess.needsDriveAccess) {
+        await requestDriveAccess();
+        toast({
+          title: "Reconnect Google Drive",
+          description: "Finish reconnecting and try again.",
+        });
+        return;
+      }
+
       let resolvedOrgFolderId = orgDriveFolderId;
       if (!resolvedOrgFolderId) {
         const orgFolder = await createFolderWithRetry(
