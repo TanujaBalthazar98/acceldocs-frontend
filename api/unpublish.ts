@@ -50,7 +50,7 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const supabase = getSupabaseAdmin();
+  const supabase = getSupabaseAdmin() as any;
 
   const { data: project, error: projectError } = await supabase
     .from("projects")
