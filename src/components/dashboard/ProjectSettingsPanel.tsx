@@ -266,16 +266,26 @@ export const ProjectSettingsPanel = ({
       return;
     }
 
+    const createFolderWithRetry = async (folderName: string, parentId: string) => {
+      let folder = await createFolder(folderName, parentId);
+      if (folder?.id) return folder;
+      const recovery = await attemptRecovery("Drive access required");
+      if (recovery.recovered && recovery.shouldRetry) {
+        folder = await createFolder(folderName, parentId);
+      }
+      return folder;
+    };
+
     setIsConnectingDrive(true);
     try {
       let resolvedOrgFolderId = orgDriveFolderId;
       if (!resolvedOrgFolderId) {
-        const orgFolder = await createFolder(
+        const orgFolder = await createFolderWithRetry(
           orgName || "Docspeare Workspace",
           "root"
         );
         if (!orgFolder?.id) {
-          throw new Error("Failed to create workspace Drive folder.");
+          throw new Error("Failed to create workspace Drive folder. Reconnect Google Drive and try again.");
         }
         resolvedOrgFolderId = orgFolder.id;
         setOrgDriveFolderId(orgFolder.id);
@@ -285,12 +295,12 @@ export const ProjectSettingsPanel = ({
           .eq("id", organizationId);
       }
 
-      const projectFolder = await createFolder(
+      const projectFolder = await createFolderWithRetry(
         name || projectName || "Project",
         resolvedOrgFolderId
       );
       if (!projectFolder?.id) {
-        throw new Error("Failed to create project Drive folder.");
+        throw new Error("Failed to create project Drive folder. Reconnect Google Drive and try again.");
       }
 
       await supabase
