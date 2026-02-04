@@ -76,7 +76,9 @@ function buildHomeCard_(message) {
   }
 
   var statusSection = CardService.newCardSection()
-    .setHeader("Workspace");
+    .setHeader("Workspace")
+    .setCollapsible(true)
+    .setNumUncollapsibleWidgets(0);
 
   var statusText = "Not connected";
   var statusDetail = "Open Settings to connect your Docspeare token.";
@@ -107,7 +109,9 @@ function buildHomeCard_(message) {
   );
 
   var targetSection = CardService.newCardSection()
-    .setHeader("Publish target");
+    .setHeader("Publish target")
+    .setCollapsible(true)
+    .setNumUncollapsibleWidgets(0);
 
   if (token && !bootstrapError && projectOptions.length > 0) {
     appendLabeledSelect_(targetSection, "Project", "PROJECT_ID", projectOptions, autoProjectId, false);
@@ -129,6 +133,8 @@ function buildHomeCard_(message) {
 
   var actionSection = CardService.newCardSection()
     .setHeader("Actions")
+    .setCollapsible(true)
+    .setNumUncollapsibleWidgets(0)
     .addWidget(CardService.newTextParagraph().setText("Publish or preview the current document."))
     .addWidget(
       CardService.newDecoratedText()
@@ -157,6 +163,8 @@ function buildHomeCard_(message) {
 
   var assistSection = CardService.newCardSection()
     .setHeader("Writing assist")
+    .setCollapsible(true)
+    .setNumUncollapsibleWidgets(0)
     .addWidget(
       CardService.newTextParagraph().setText("Generate or improve text and insert it into your document.")
     );
@@ -215,55 +223,12 @@ function buildHomeCard_(message) {
     }
   }
 
-  var advancedSection = CardService.newCardSection()
-    .setHeader("Advanced")
-    .setCollapsible(true)
-    .setNumUncollapsibleWidgets(0)
-    .addWidget(buildTextInput_("DOC_SLUG", "Custom slug (optional)", docSlug, "leave blank to auto-generate"))
-    .addWidget(
-      CardService.newButtonSet().addButton(
-        CardService.newTextButton()
-          .setText("Save Advanced")
-          .setOnClickAction(CardService.newAction().setFunctionName("saveSettings"))
-          .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-      )
-    )
-    .addWidget(
-      CardService.newButtonSet()
-        .addButton(buildOpenLinkButton_("Open Dashboard", webBase + "/dashboard"))
-    );
-
-  if (projectId) {
-    advancedSection.addWidget(
-      CardService.newButtonSet()
-        .addButton(buildOpenLinkButton_("Open Integrations", webBase + "/dashboard?integrations=1&project=" + projectId))
-        .addButton(buildOpenLinkButton_("Import Markdown (Dashboard)", webBase + "/dashboard"))
-    );
-  }
-
-  advancedSection.addWidget(
-    CardService.newTextParagraph().setText(
-      "<b>Docs views:</b> " +
-        '<a href="' + webBase + '/internal">Internal</a> · ' +
-        '<a href="' + webBase + '/docs?view=external">External</a> · ' +
-        '<a href="' + webBase + '/docs">Public</a>'
-    )
-  );
-
-  if (lastResultUrl) {
-    advancedSection.addWidget(
-      CardService.newButtonSet()
-        .addButton(buildOpenLinkButton_(lastResultLabel, lastResultUrl))
-    );
-  }
-
   return CardService.newCardBuilder()
     .setHeader(CardService.newCardHeader().setTitle(BRAND_NAME))
     .addSection(statusSection)
     .addSection(targetSection)
     .addSection(actionSection)
     .addSection(assistSection)
-    .addSection(advancedSection)
     .build();
 }
 
@@ -349,6 +314,10 @@ function getWebBase_(apiBase) {
   return base;
 }
 
+function normalizeApiBase_(apiBase) {
+  return getWebBase_(apiBase);
+}
+
 function openSettings() {
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().pushCard(buildSettingsCard_(null)))
@@ -363,7 +332,7 @@ function goHome() {
 
 function buildSettingsCard_(message) {
   var props = PropertiesService.getUserProperties();
-  var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
+  var apiBase = normalizeApiBase_(props.getProperty("API_BASE_URL") || DEFAULT_API_BASE);
   var webBase = getWebBase_(apiBase);
   var token = props.getProperty("SAAS_TOKEN") || "";
   var docId = getActiveDocIdSafe_();
@@ -385,6 +354,7 @@ function buildSettingsCard_(message) {
         .setText(token ? "Token saved" : "No token yet")
         .setIcon(CardService.Icon.KEY)
     )
+    .addWidget(buildTextInput_("API_BASE_URL", "API Base URL", apiBase, "e.g., https://www.docspeare.com"))
     .addWidget(buildTextInput_("SAAS_TOKEN", "Docspeare Token", "", token ? "Saved. Paste a new token to replace." : "Paste the add-on token"))
     .addWidget(
       CardService.newButtonSet()
@@ -418,6 +388,12 @@ function buildSettingsCard_(message) {
   if (message) {
     settingsSection.addWidget(buildStatusWidgetFromMessage_(message));
   }
+
+  var advancedSection = CardService.newCardSection()
+    .setHeader("Advanced")
+    .setCollapsible(true)
+    .setNumUncollapsibleWidgets(0)
+    .addWidget(buildTextInput_("DOC_SLUG", "Custom slug (optional)", getDocScopedProperty_(props, docId, "DOC_SLUG") || props.getProperty("DOC_SLUG") || "", "leave blank to auto-generate"));
 
   var linksSection = CardService.newCardSection()
     .setHeader("Docs links")
@@ -463,6 +439,7 @@ function buildSettingsCard_(message) {
   return CardService.newCardBuilder()
     .setHeader(CardService.newCardHeader().setTitle(BRAND_NAME))
     .addSection(settingsSection)
+    .addSection(advancedSection)
     .addSection(linksSection)
     .addSection(navSection)
     .build();
@@ -886,7 +863,7 @@ function loadBootstrap_(apiBase, token, forceRefresh, docId) {
     }
   }
 
-  var url = apiBase.replace(/\/$/, "") + "/api/addon/bootstrap";
+  var url = normalizeApiBase_(apiBase).replace(/\/$/, "") + "/api/addon/bootstrap";
   try {
     var response = UrlFetchApp.fetch(url, {
       method: "post",
@@ -914,7 +891,7 @@ function loadBootstrap_(apiBase, token, forceRefresh, docId) {
 
 function syncDocSlug_(apiBase, token, payload) {
   try {
-    var url = apiBase.replace(/\/$/, "") + "/api/addon/update-doc";
+    var url = normalizeApiBase_(apiBase).replace(/\/$/, "") + "/api/addon/update-doc";
     var response = UrlFetchApp.fetch(url, {
       method: "post",
       contentType: "application/json",
@@ -1042,7 +1019,7 @@ function buildTopicOptions_(topics, projectId) {
 }
 
 function callWriteAssist_(apiBase, token, payload) {
-  var url = apiBase.replace(/\/$/, "") + "/api/addon/write-assist";
+  var url = normalizeApiBase_(apiBase).replace(/\/$/, "") + "/api/addon/write-assist";
   try {
     var response = UrlFetchApp.fetch(url, {
       method: "post",
