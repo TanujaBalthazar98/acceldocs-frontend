@@ -396,7 +396,34 @@ export const ProjectSettingsPanel = ({
 
     setIsRepairingDrive(true);
     try {
-      const rootAccess = await checkFolderAccess(driveFolderId, projectId);
+      let resolvedFolderId = driveFolderId;
+
+      if (driveFolderId === "root") {
+        const rootList = await listFolder("root");
+        const folders = (rootList.files || []).filter(
+          (item) => item.mimeType === "application/vnd.google-apps.folder"
+        );
+        const matchName = (name || projectName || "").trim().toLowerCase();
+        const matching = folders.filter(
+          (folder) => folder.name.trim().toLowerCase() === matchName
+        );
+
+        if (matching.length === 1) {
+          resolvedFolderId = matching[0].id;
+          await supabase
+            .from("projects")
+            .update({ drive_folder_id: resolvedFolderId })
+            .eq("id", projectId);
+          setDriveFolderId(resolvedFolderId);
+          setDriveFolderStatus("ok");
+        } else if (matching.length > 1) {
+          throw new Error("Multiple matching project folders found in Drive. Rename folders or relink manually.");
+        } else {
+          throw new Error("Project Drive folder is set to root. Please relink to the correct project folder.");
+        }
+      }
+
+      const rootAccess = await checkFolderAccess(resolvedFolderId, projectId);
       if (rootAccess.needsDriveAccess) {
         await requestDriveAccess();
         toast({
@@ -406,7 +433,7 @@ export const ProjectSettingsPanel = ({
         return;
       }
 
-      const created = await ensureDriveStructure(projectId, driveFolderId);
+      const created = await ensureDriveStructure(projectId, resolvedFolderId);
       toast({
         title: "Drive structure repaired",
         description: `Created ${created.projects} sub-project folder(s), ${created.topics} topic folder(s), moved ${created.docs} doc(s).`,
