@@ -194,6 +194,14 @@ function buildHomeCard_(message) {
     .setNumUncollapsibleWidgets(0)
     .addWidget(buildTextInput_("DOC_SLUG", "Custom slug (optional)", docSlug, "leave blank to auto-generate"))
     .addWidget(
+      CardService.newButtonSet().addButton(
+        CardService.newTextButton()
+          .setText("Save Advanced")
+          .setOnClickAction(CardService.newAction().setFunctionName("saveSettings"))
+          .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      )
+    )
+    .addWidget(
       CardService.newButtonSet()
         .addButton(buildOpenLinkButton_("Open Dashboard", webBase + "/dashboard"))
     );
