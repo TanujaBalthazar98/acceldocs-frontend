@@ -33,13 +33,18 @@ function buildHomeCard_(message) {
   var bootstrap = null;
   var bootstrapError = null;
   if (token) {
-    var bootstrapResult = loadBootstrap_(apiBase, token);
+    var bootstrapResult = loadBootstrap_(apiBase, token, false, docId);
     bootstrap = bootstrapResult.data;
     bootstrapError = bootstrapResult.error;
   }
 
   var projects = (bootstrap && bootstrap.projects) ? bootstrap.projects : [];
   var projectOptions = buildProjectOptions_(projects);
+  var docSelection = bootstrap && bootstrap.docSelection ? bootstrap.docSelection : null;
+  if (!projectId && docSelection && docSelection.projectId) {
+    projectId = docSelection.projectId;
+    setDocScopedProperty_(props, docId, "PROJECT_ID", projectId);
+  }
   var autoProjectId = projectId;
   if (!autoProjectId && projectOptions.length === 1) {
     autoProjectId = projectOptions[0].value;
@@ -49,6 +54,10 @@ function buildHomeCard_(message) {
 
   var projectVersions = (bootstrap && bootstrap.projectVersions) ? bootstrap.projectVersions : [];
   var versionOptions = buildVersionOptions_(projectVersions, autoProjectId);
+  if (!projectVersionId && docSelection && docSelection.projectVersionId) {
+    projectVersionId = docSelection.projectVersionId;
+    setDocScopedProperty_(props, docId, "PROJECT_VERSION_ID", projectVersionId);
+  }
   var autoVersionId = projectVersionId || pickDefaultVersionId_(versionOptions);
   if (!projectVersionId && autoVersionId) {
     props.setProperty("PROJECT_VERSION_ID", autoVersionId);
@@ -57,6 +66,14 @@ function buildHomeCard_(message) {
 
   var topics = (bootstrap && bootstrap.topics) ? bootstrap.topics : [];
   var topicOptions = buildTopicOptions_(topics, autoProjectId);
+  if (!topicId && docSelection && docSelection.topicId) {
+    topicId = docSelection.topicId;
+    setDocScopedProperty_(props, docId, "TOPIC_ID", topicId);
+  }
+  if (!docSlug && docSelection && docSelection.slug) {
+    docSlug = docSelection.slug;
+    setDocScopedProperty_(props, docId, "DOC_SLUG", docSlug);
+  }
 
   var statusSection = CardService.newCardSection()
     .setHeader("Workspace");
@@ -451,12 +468,13 @@ function refreshBootstrap(e) {
   var props = PropertiesService.getUserProperties();
   var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
   var token = props.getProperty("SAAS_TOKEN") || "";
+  var docId = getActiveDocIdSafe_();
 
   if (!token) {
     return buildActionResponse_({ type: "info", text: "Paste your Docspeare token first." }, false, "settings");
   }
 
-  loadBootstrap_(apiBase, token, true);
+  loadBootstrap_(apiBase, token, true, docId);
   var target = (e && e.parameters && e.parameters.target) ? e.parameters.target : "home";
   return buildActionResponse_({ type: "success", text: "Projects refreshed." }, false, target);
 }
@@ -727,7 +745,7 @@ function buildActionResponse_(message, showInlineError, target, openUrl) {
   return builder.build();
 }
 
-function loadBootstrap_(apiBase, token, forceRefresh) {
+function loadBootstrap_(apiBase, token, forceRefresh, docId) {
   var props = PropertiesService.getUserProperties();
   if (!forceRefresh) {
     var cached = props.getProperty("BOOTSTRAP_JSON");
@@ -750,7 +768,7 @@ function loadBootstrap_(apiBase, token, forceRefresh) {
       headers: {
         Authorization: "Bearer " + token
       },
-      payload: JSON.stringify({}),
+      payload: JSON.stringify({ googleDocId: docId || null }),
       muteHttpExceptions: true
     });
 

@@ -80,10 +80,38 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
+    let docSelection: {
+      projectId?: string | null;
+      projectVersionId?: string | null;
+      topicId?: string | null;
+      slug?: string | null;
+    } | null = null;
+
+    const googleDocId = req.body?.googleDocId as string | undefined;
+    if (googleDocId) {
+      const { data: docRow } = await supabase
+        .from("documents")
+        .select("id, project_id, project_version_id, topic_id, slug, updated_at")
+        .eq("google_doc_id", googleDocId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (docRow) {
+        docSelection = {
+          projectId: docRow.project_id ?? null,
+          projectVersionId: docRow.project_version_id ?? null,
+          topicId: docRow.topic_id ?? null,
+          slug: docRow.slug ?? null,
+        };
+      }
+    }
+
     send(res, 200, {
       projects: projects || [],
       projectVersions: projectVersions || [],
       topics: topics || [],
+      docSelection,
     });
   } catch (err: any) {
     console.error("addon/bootstrap error", err);
