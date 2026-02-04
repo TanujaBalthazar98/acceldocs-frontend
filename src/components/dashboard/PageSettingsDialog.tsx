@@ -281,7 +281,7 @@ export const PageSettingsDialog = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md bg-card border-border">
+        <DialogContent className="w-[95vw] max-w-[560px] max-h-[90vh] overflow-y-auto bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold text-foreground">
               Page Settings

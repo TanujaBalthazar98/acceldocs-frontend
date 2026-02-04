@@ -96,7 +96,7 @@ export const ProjectSettingsPanel = ({
   onUpdate,
 }: ProjectSettingsProps) => {
   const { toast } = useToast();
-  const { listFolder, checkFolderAccess, trashFile } = useGoogleDrive();
+  const { listFolder, checkFolderAccess, trashFile, createFolder } = useGoogleDrive();
   const { attemptRecovery } = useDriveRecovery();
   const { user, googleAccessToken } = useAuth();
   
@@ -128,6 +128,9 @@ export const ProjectSettingsPanel = ({
   const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [organizationDomain, setOrganizationDomain] = useState<string | null>(null);
+  const [orgDriveFolderId, setOrgDriveFolderId] = useState<string | null>(null);
+  const [orgName, setOrgName] = useState<string | null>(null);
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [driveFolderStatus, setDriveFolderStatus] = useState<"unknown" | "ok" | "missing" | "needs_access">("unknown");
 
   const normalizeEmail = (value: string) => value.trim().toLowerCase();
@@ -242,6 +245,76 @@ export const ProjectSettingsPanel = ({
       setIsPublished(data.is_published);
       setDriveFolderId(data.drive_folder_id);
       setOrganizationId(data.organization_id);
+      if (data.organization_id) {
+        const { data: orgData } = await supabase
+          .from("organizations")
+          .select("drive_folder_id, name")
+          .eq("id", data.organization_id)
+          .maybeSingle();
+        if (orgData) {
+          setOrgDriveFolderId(orgData.drive_folder_id);
+          setOrgName(orgData.name);
+        }
+      }
+    }
+  };
+
+  const handleConnectDriveFolder = async () => {
+    if (!projectId || !organizationId) return;
+    if (!googleAccessToken) {
+      await attemptRecovery("Google authentication required");
+      return;
+    }
+
+    setIsConnectingDrive(true);
+    try {
+      let resolvedOrgFolderId = orgDriveFolderId;
+      if (!resolvedOrgFolderId) {
+        const orgFolder = await createFolder(
+          orgName || "Docspeare Workspace",
+          "root"
+        );
+        if (!orgFolder?.id) {
+          throw new Error("Failed to create workspace Drive folder.");
+        }
+        resolvedOrgFolderId = orgFolder.id;
+        setOrgDriveFolderId(orgFolder.id);
+        await supabase
+          .from("organizations")
+          .update({ drive_folder_id: orgFolder.id })
+          .eq("id", organizationId);
+      }
+
+      const projectFolder = await createFolder(
+        name || projectName || "Project",
+        resolvedOrgFolderId
+      );
+      if (!projectFolder?.id) {
+        throw new Error("Failed to create project Drive folder.");
+      }
+
+      await supabase
+        .from("projects")
+        .update({ drive_folder_id: projectFolder.id })
+        .eq("id", projectId);
+
+      setDriveFolderId(projectFolder.id);
+      setDriveFolderStatus("ok");
+      toast({
+        title: "Drive connected",
+        description: "Project folder linked to Google Drive.",
+      });
+      fetchSyncStatus();
+      onUpdate?.();
+    } catch (error: any) {
+      console.error("Connect Drive folder error:", error);
+      toast({
+        title: "Failed to connect Drive",
+        description: error?.message || "Could not create the Drive folder.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConnectingDrive(false);
     }
   };
 
@@ -1344,12 +1417,23 @@ export const ProjectSettingsPanel = ({
               </div>
             )}
             {!driveFolderId && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-300/40 bg-amber-50/60 p-3 text-xs text-amber-800">
-                <AlertTriangle className="mt-0.5 h-3 w-3" />
-                <span>
-                  This project is not connected to a Drive folder. Drive-based sharing and permission sync
-                  won't work until a folder is linked.
-                </span>
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-300/40 bg-amber-50/60 p-3 text-xs text-amber-800">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-3 w-3" />
+                  <span>
+                    This project is not connected to a Drive folder. Drive-based sharing and permission sync
+                    won't work until a folder is linked.
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={handleConnectDriveFolder}
+                  disabled={isConnectingDrive}
+                >
+                  {isConnectingDrive ? "Connecting..." : "Connect Drive"}
+                </Button>
               </div>
             )}
           </div>

@@ -393,7 +393,20 @@ function buildSettingsCard_(message) {
     .setHeader("Advanced")
     .setCollapsible(true)
     .setNumUncollapsibleWidgets(0)
-    .addWidget(buildTextInput_("DOC_SLUG", "Custom slug (optional)", getDocScopedProperty_(props, docId, "DOC_SLUG") || props.getProperty("DOC_SLUG") || "", "leave blank to auto-generate"));
+    .addWidget(buildTextInput_("DOC_SLUG", "Custom slug (optional)", getDocScopedProperty_(props, docId, "DOC_SLUG") || props.getProperty("DOC_SLUG") || "", "leave blank to auto-generate"))
+    .addWidget(
+      CardService.newButtonSet()
+        .addButton(
+          CardService.newTextButton()
+            .setText("Save Advanced")
+            .setOnClickAction(
+              CardService.newAction()
+                .setFunctionName("saveSettings")
+                .setParameters({ target: "settings" })
+            )
+            .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+        )
+    );
 
   var linksSection = CardService.newCardSection()
     .setHeader("Docs links")
