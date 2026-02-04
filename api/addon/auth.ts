@@ -96,7 +96,7 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const ttlSeconds = 60 * 60;
+    const ttlSeconds = 60 * 60 * 24 * 7;
     const token = createAddonToken({ sub: userId, workspaceId, role }, ttlSeconds);
 
     send(res, 200, {

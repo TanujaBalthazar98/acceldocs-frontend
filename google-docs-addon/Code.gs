@@ -19,14 +19,16 @@ function buildHomeCard_(message) {
   var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
   var webBase = getWebBase_(apiBase);
   var token = props.getProperty("SAAS_TOKEN") || "";
-  var projectId = props.getProperty("PROJECT_ID") || "";
-  var projectVersionId = props.getProperty("PROJECT_VERSION_ID") || "";
-  var topicId = props.getProperty("TOPIC_ID") || "";
+  var docId = getActiveDocIdSafe_();
+  var projectId = getDocScopedProperty_(props, docId, "PROJECT_ID") || props.getProperty("PROJECT_ID") || "";
+  var projectVersionId = getDocScopedProperty_(props, docId, "PROJECT_VERSION_ID") || props.getProperty("PROJECT_VERSION_ID") || "";
+  var topicId = getDocScopedProperty_(props, docId, "TOPIC_ID") || props.getProperty("TOPIC_ID") || "";
   var lastResultUrl = props.getProperty("LAST_RESULT_URL") || "";
   var lastResultLabel = props.getProperty("LAST_RESULT_LABEL") || "Open Result";
   var lastActionLabel = props.getProperty("LAST_ACTION_LABEL") || "";
   var lastActionAt = props.getProperty("LAST_ACTION_AT") || "";
-  var docSlug = props.getProperty("DOC_SLUG") || "";
+  var docSlug = getDocScopedProperty_(props, docId, "DOC_SLUG") || props.getProperty("DOC_SLUG") || "";
+  var lastErrorDetails = props.getProperty("LAST_ERROR_DETAILS") || "";
 
   var bootstrap = null;
   var bootstrapError = null;
@@ -42,6 +44,7 @@ function buildHomeCard_(message) {
   if (!autoProjectId && projectOptions.length === 1) {
     autoProjectId = projectOptions[0].value;
     props.setProperty("PROJECT_ID", autoProjectId);
+    setDocScopedProperty_(props, docId, "PROJECT_ID", autoProjectId);
   }
 
   var projectVersions = (bootstrap && bootstrap.projectVersions) ? bootstrap.projectVersions : [];
@@ -49,6 +52,7 @@ function buildHomeCard_(message) {
   var autoVersionId = projectVersionId || pickDefaultVersionId_(versionOptions);
   if (!projectVersionId && autoVersionId) {
     props.setProperty("PROJECT_VERSION_ID", autoVersionId);
+    setDocScopedProperty_(props, docId, "PROJECT_VERSION_ID", autoVersionId);
   }
 
   var topics = (bootstrap && bootstrap.topics) ? bootstrap.topics : [];
@@ -156,6 +160,15 @@ function buildHomeCard_(message) {
 
   if (message && message.type === "error") {
     actionSection.addWidget(buildStatusWidgetFromMessage_(message));
+    if (lastErrorDetails) {
+      actionSection.addWidget(
+        CardService.newButtonSet().addButton(
+          CardService.newTextButton()
+            .setText("View error details")
+            .setOnClickAction(CardService.newAction().setFunctionName("showErrorDetails"))
+        )
+      );
+    }
   }
 
   var advancedSection = CardService.newCardSection()
@@ -198,6 +211,29 @@ function buildHomeCard_(message) {
     .addSection(targetSection)
     .addSection(actionSection)
     .addSection(advancedSection)
+    .build();
+}
+
+function showErrorDetails() {
+  var props = PropertiesService.getUserProperties();
+  var details = props.getProperty("LAST_ERROR_DETAILS") || "No additional details available.";
+  var card = CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle(BRAND_NAME))
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph().setText("<b>Error details</b><br/>" + escapeHtml_(details)))
+        .addWidget(
+          CardService.newButtonSet().addButton(
+            CardService.newTextButton()
+              .setText("Back")
+              .setOnClickAction(CardService.newAction().setFunctionName("goHome"))
+          )
+        )
+    )
+    .build();
+
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().pushCard(card))
     .build();
 }
 
@@ -371,6 +407,7 @@ function saveSettings(e) {
   var existingToken = props.getProperty("SAAS_TOKEN") || "";
   var incomingToken = form.SAAS_TOKEN !== undefined ? String(form.SAAS_TOKEN || "").trim() : "";
   var tokenChanged = incomingToken && incomingToken !== existingToken;
+  var docId = getActiveDocIdSafe_();
 
   if (form.API_BASE_URL !== undefined) {
     props.setProperty("API_BASE_URL", form.API_BASE_URL);
@@ -380,15 +417,19 @@ function saveSettings(e) {
   }
   if (form.PROJECT_ID !== undefined) {
     props.setProperty("PROJECT_ID", form.PROJECT_ID);
+    setDocScopedProperty_(props, docId, "PROJECT_ID", form.PROJECT_ID);
   }
   if (form.PROJECT_VERSION_ID !== undefined) {
     props.setProperty("PROJECT_VERSION_ID", form.PROJECT_VERSION_ID);
+    setDocScopedProperty_(props, docId, "PROJECT_VERSION_ID", form.PROJECT_VERSION_ID);
   }
   if (form.TOPIC_ID !== undefined) {
     props.setProperty("TOPIC_ID", form.TOPIC_ID);
+    setDocScopedProperty_(props, docId, "TOPIC_ID", form.TOPIC_ID);
   }
   if (form.DOC_SLUG !== undefined) {
     props.setProperty("DOC_SLUG", form.DOC_SLUG);
+    setDocScopedProperty_(props, docId, "DOC_SLUG", form.DOC_SLUG);
   }
 
   if (tokenChanged) {
@@ -397,6 +438,9 @@ function saveSettings(e) {
     props.deleteProperty("PROJECT_ID");
     props.deleteProperty("PROJECT_VERSION_ID");
     props.deleteProperty("TOPIC_ID");
+    if (docId) {
+      clearDocScopedSelection_(props, docId);
+    }
   }
 
   var target = (e && e.parameters && e.parameters.target) ? e.parameters.target : "home";
@@ -447,6 +491,7 @@ function submitDoc_(mode, e) {
   if (form) {
     applyFormInputToProps_(props, form);
   }
+  var docId = getActiveDocIdSafe_();
   var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
   var token = props.getProperty("SAAS_TOKEN") || "";
   var projectId = props.getProperty("PROJECT_ID") || "";
@@ -497,32 +542,77 @@ function submitDoc_(mode, e) {
   var bodyText = response.getContentText();
 
   if (statusCode >= 200 && statusCode < 300) {
+    props.deleteProperty("LAST_ERROR_DETAILS");
     storeLastResultUrl_(props, mode, bodyText);
     storeLastAction_(props, mode);
     var openUrl = getOpenUrlFromResponse_(props, mode, bodyText);
     return buildActionResponse_(formatApiMessage_(mode, statusCode, bodyText, true), false, "home", openUrl);
   }
 
+  props.setProperty("LAST_ERROR_DETAILS", "HTTP " + statusCode + ". " + bodyText);
   storeLastAction_(props, mode);
   return buildActionResponse_(formatApiMessage_(mode, statusCode, bodyText, false), true, "home");
+}
+
+function getActiveDocIdSafe_() {
+  try {
+    var doc = DocumentApp.getActiveDocument();
+    return doc ? doc.getId() : "";
+  } catch (err) {
+    return "";
+  }
+}
+
+function docScopedKey_(docId, key) {
+  if (!docId) return "";
+  return "DOC_" + docId + "_" + key;
+}
+
+function getDocScopedProperty_(props, docId, key) {
+  var scopedKey = docScopedKey_(docId, key);
+  if (!scopedKey) return "";
+  return props.getProperty(scopedKey) || "";
+}
+
+function setDocScopedProperty_(props, docId, key, value) {
+  var scopedKey = docScopedKey_(docId, key);
+  if (!scopedKey) return;
+  props.setProperty(scopedKey, value || "");
+}
+
+function clearDocScopedSelection_(props, docId) {
+  var keys = ["PROJECT_ID", "PROJECT_VERSION_ID", "TOPIC_ID", "DOC_SLUG"];
+  for (var i = 0; i < keys.length; i++) {
+    var scopedKey = docScopedKey_(docId, keys[i]);
+    if (scopedKey) {
+      props.deleteProperty(scopedKey);
+    }
+  }
 }
 
 function applyFormInputToProps_(props, form) {
   var currentProjectId = props.getProperty("PROJECT_ID") || "";
   var incomingProjectId = form.PROJECT_ID !== undefined ? form.PROJECT_ID : currentProjectId;
   var projectChanged = form.PROJECT_ID !== undefined && incomingProjectId !== currentProjectId;
+  var docId = getActiveDocIdSafe_();
 
   if (form.PROJECT_ID !== undefined) {
     props.setProperty("PROJECT_ID", incomingProjectId);
+    setDocScopedProperty_(props, docId, "PROJECT_ID", incomingProjectId);
   }
   if (form.PROJECT_VERSION_ID !== undefined) {
-    props.setProperty("PROJECT_VERSION_ID", projectChanged ? "" : form.PROJECT_VERSION_ID);
+    var versionValue = projectChanged ? "" : form.PROJECT_VERSION_ID;
+    props.setProperty("PROJECT_VERSION_ID", versionValue);
+    setDocScopedProperty_(props, docId, "PROJECT_VERSION_ID", versionValue);
   }
   if (form.TOPIC_ID !== undefined) {
-    props.setProperty("TOPIC_ID", projectChanged ? "" : form.TOPIC_ID);
+    var topicValue = projectChanged ? "" : form.TOPIC_ID;
+    props.setProperty("TOPIC_ID", topicValue);
+    setDocScopedProperty_(props, docId, "TOPIC_ID", topicValue);
   }
   if (form.DOC_SLUG !== undefined) {
     props.setProperty("DOC_SLUG", form.DOC_SLUG);
+    setDocScopedProperty_(props, docId, "DOC_SLUG", form.DOC_SLUG);
   }
 }
 
