@@ -181,6 +181,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   // Track custom domain state early for URL interpretation
   const [isCustomDomain, setIsCustomDomain] = useState(false);
   const [isImplicitOrgPath, setIsImplicitOrgPath] = useState(false);
+  const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   
   // On custom domains, URL structure shifts: org is implicit from domain
   // Standard: /docs/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug
@@ -207,7 +208,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const projectSlug = pathSegments[orgPathOffset];
   const remainingSegments = pathSegments.slice(orgPathOffset + 1);
 
-  const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
 
@@ -580,6 +580,25 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           .maybeSingle();
         if (domainOrg) {
           targetOrg = domainOrg as Organization;
+          setCurrentOrg(targetOrg);
+          setIsImplicitOrgPath(true);
+        }
+      }
+
+      if (!targetOrg && !isCustomDomain && projectSlug && !isInternalView) {
+        let projectLookup = supabase
+          .from("projects")
+          .select("organization_id, organization:organizations (id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url)")
+          .eq("slug", projectSlug)
+          .eq("is_published", true);
+
+        if (!currentUser) {
+          projectLookup = projectLookup.eq("visibility", "public");
+        }
+
+        const { data: projectMatches } = await projectLookup.limit(2);
+        if (projectMatches && projectMatches.length === 1 && projectMatches[0].organization) {
+          targetOrg = projectMatches[0].organization as Organization;
           setCurrentOrg(targetOrg);
           setIsImplicitOrgPath(true);
         }
