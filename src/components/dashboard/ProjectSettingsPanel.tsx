@@ -96,7 +96,7 @@ export const ProjectSettingsPanel = ({
   onUpdate,
 }: ProjectSettingsProps) => {
   const { toast } = useToast();
-  const { listFolder, checkFolderAccess, trashFile, createFolder } = useGoogleDrive();
+  const { listFolder, checkFolderAccess, trashFile, createFolder, moveFile } = useGoogleDrive();
   const { attemptRecovery } = useDriveRecovery();
   const { user, googleAccessToken, requestDriveAccess } = useAuth();
   
@@ -259,22 +259,139 @@ export const ProjectSettingsPanel = ({
     }
   };
 
+  const createFolderWithRetry = async (folderName: string, parentId: string) => {
+    let folder = await createFolder(folderName, parentId);
+    if (folder?.id) return folder;
+    const recovery = await attemptRecovery("Drive access required");
+    if (recovery.recovered && recovery.shouldRetry) {
+      folder = await createFolder(folderName, parentId);
+    }
+    return folder;
+  };
+
+  const ensureDriveStructure = async (rootProjectId: string, rootFolderId: string) => {
+    const created: { projects: number; topics: number; docs: number } = { projects: 0, topics: 0, docs: 0 };
+
+    const { data: rootProject } = await supabase
+      .from("projects")
+      .select("id, name, parent_id, drive_folder_id")
+      .eq("id", rootProjectId)
+      .maybeSingle();
+
+    if (!rootProject) return created;
+
+    const projectOrder: Array<{ id: string; name: string; parent_id: string | null; drive_folder_id: string | null }> = [rootProject];
+    let queue = [rootProjectId];
+
+    while (queue.length) {
+      const { data: children } = await supabase
+        .from("projects")
+        .select("id, name, parent_id, drive_folder_id")
+        .in("parent_id", queue);
+
+      if (!children || children.length === 0) break;
+      projectOrder.push(...children);
+      queue = children.map((child) => child.id);
+    }
+
+    const projectFolderById = new Map<string, string>();
+    projectFolderById.set(rootProjectId, rootFolderId);
+
+    for (const project of projectOrder) {
+      if (project.id === rootProjectId) continue;
+      const parentFolderId = project.parent_id ? projectFolderById.get(project.parent_id) : rootFolderId;
+      if (!parentFolderId) continue;
+
+      if (project.drive_folder_id) {
+        projectFolderById.set(project.id, project.drive_folder_id);
+        continue;
+      }
+
+      const folder = await createFolderWithRetry(project.name || "Sub-project", parentFolderId);
+      if (!folder?.id) continue;
+
+      await supabase
+        .from("projects")
+        .update({ drive_folder_id: folder.id })
+        .eq("id", project.id);
+
+      projectFolderById.set(project.id, folder.id);
+      created.projects += 1;
+    }
+
+    const projectIds = projectOrder.map((project) => project.id);
+    const { data: topics } = await supabase
+      .from("topics")
+      .select("id, name, parent_id, project_id, drive_folder_id")
+      .in("project_id", projectIds);
+
+    const topicFolderById = new Map<string, string>();
+    for (const topic of topics || []) {
+      if (topic.drive_folder_id) {
+        topicFolderById.set(topic.id, topic.drive_folder_id);
+      }
+    }
+
+    let pending = (topics || []).filter((topic) => !topic.drive_folder_id);
+    let progress = true;
+    while (pending.length > 0 && progress) {
+      progress = false;
+      const remaining: typeof pending = [];
+
+      for (const topic of pending) {
+        const parentFolderId = topic.parent_id
+          ? topicFolderById.get(topic.parent_id)
+          : projectFolderById.get(topic.project_id);
+        if (!parentFolderId) {
+          remaining.push(topic);
+          continue;
+        }
+
+        const folder = await createFolderWithRetry(topic.name, parentFolderId);
+        if (!folder?.id) {
+          remaining.push(topic);
+          continue;
+        }
+
+        await supabase
+          .from("topics")
+          .update({ drive_folder_id: folder.id })
+          .eq("id", topic.id);
+
+        topicFolderById.set(topic.id, folder.id);
+        created.topics += 1;
+        progress = true;
+      }
+
+      pending = remaining;
+    }
+
+    const { data: docs } = await supabase
+      .from("documents")
+      .select("id, google_doc_id, topic_id, project_id")
+      .in("project_id", projectIds);
+
+    for (const doc of docs || []) {
+      const targetFolderId = doc.topic_id
+        ? topicFolderById.get(doc.topic_id)
+        : projectFolderById.get(doc.project_id);
+      if (!doc.google_doc_id || !targetFolderId) continue;
+
+      const moved = await moveFile(doc.google_doc_id, targetFolderId, doc.project_id);
+      if (moved?.success && !moved?.alreadyInFolder) {
+        created.docs += 1;
+      }
+    }
+
+    return created;
+  };
+
   const handleConnectDriveFolder = async () => {
     if (!projectId || !organizationId) return;
     if (!googleAccessToken) {
       await attemptRecovery("Google authentication required");
       return;
     }
-
-    const createFolderWithRetry = async (folderName: string, parentId: string) => {
-      let folder = await createFolder(folderName, parentId);
-      if (folder?.id) return folder;
-      const recovery = await attemptRecovery("Drive access required");
-      if (recovery.recovered && recovery.shouldRetry) {
-        folder = await createFolder(folderName, parentId);
-      }
-      return folder;
-    };
 
     setIsConnectingDrive(true);
     try {
@@ -320,9 +437,10 @@ export const ProjectSettingsPanel = ({
 
       setDriveFolderId(projectFolder.id);
       setDriveFolderStatus("ok");
+      const created = await ensureDriveStructure(projectId, projectFolder.id);
       toast({
         title: "Drive connected",
-        description: "Project folder linked to Google Drive.",
+        description: `Project folder linked to Google Drive. Created ${created.projects} sub-project folder(s), ${created.topics} topic folder(s), moved ${created.docs} doc(s).`,
       });
       fetchSyncStatus();
       onUpdate?.();

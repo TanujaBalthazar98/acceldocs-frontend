@@ -45,7 +45,21 @@ interface TrashFileRequest {
   projectId?: string;
 }
 
-type RequestBody = CreateFolderRequest | CreateDocRequest | ListFolderRequest | GetDocContentRequest | SyncDocContentRequest | TrashFileRequest;
+interface MoveFileRequest {
+  action: "move_file";
+  fileId: string;
+  targetFolderId: string;
+  projectId?: string;
+}
+
+type RequestBody =
+  | CreateFolderRequest
+  | CreateDocRequest
+  | ListFolderRequest
+  | GetDocContentRequest
+  | SyncDocContentRequest
+  | TrashFileRequest
+  | MoveFileRequest;
 
 const isDriveNotFound = (errorText: string) =>
   errorText.includes("File not found") || errorText.includes("\"notFound\"");
@@ -118,6 +132,8 @@ function getOperationForAction(action: string): string {
     case 'sync_doc_content':
       return 'edit';
     case 'trash_file':
+      return 'edit';
+    case 'move_file':
       return 'edit';
     default:
       return 'view';
@@ -386,7 +402,9 @@ Deno.serve(async (req) => {
         ? body.folderId
         : body.action === "create_folder" || body.action === "create_doc"
           ? body.parentFolderId
-          : null;
+          : body.action === "move_file"
+            ? body.targetFolderId
+            : null;
 
     const orgOwnerId = fallbackFolderId
       ? await getDriveTokenOwnerIdForOrgFolder(supabase, fallbackFolderId)
@@ -811,6 +829,63 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, doc }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Move file to target folder
+    if (body.action === "move_file") {
+      console.log("Moving file:", body.fileId, "to folder:", body.targetFolderId);
+
+      const getResponse = await fetchWithRefresh(
+        `https://www.googleapis.com/drive/v3/files/${body.fileId}?fields=parents&supportsAllDrives=true`
+      );
+
+      if (!getResponse.ok) {
+        const errorText = await getResponse.text();
+        console.error("Google Drive API error:", errorText);
+        if (getResponse.status === 401 || getResponse.status === 403) {
+          return new Response(
+            JSON.stringify({ error: "Google authentication expired", needsReauth: true, details: errorText }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch file parents", details: errorText }),
+          { status: getResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const fileMeta = await getResponse.json();
+      const currentParents: string[] = fileMeta.parents || [];
+      if (currentParents.includes(body.targetFolderId)) {
+        return new Response(
+          JSON.stringify({ success: true, alreadyInFolder: true }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const removeParents = currentParents.join(",");
+      const updateUrl = `https://www.googleapis.com/drive/v3/files/${body.fileId}?addParents=${body.targetFolderId}&removeParents=${removeParents}&supportsAllDrives=true`;
+      const updateResponse = await fetchWithRefresh(updateUrl, { method: "PATCH" });
+
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        console.error("Google Drive API error:", errorText);
+        if (updateResponse.status === 401 || updateResponse.status === 403) {
+          return new Response(
+            JSON.stringify({ error: "Google authentication expired", needsReauth: true, details: errorText }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({ error: "Failed to move file", details: errorText }),
+          { status: updateResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

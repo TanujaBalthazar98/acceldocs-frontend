@@ -198,6 +198,31 @@ export const useGoogleDrive = () => {
     return result.data?.doc || null;
   };
 
+  const moveFile = async (
+    fileId: string,
+    targetFolderId: string,
+    projectId?: string,
+  ): Promise<{ success: boolean; alreadyInFolder?: boolean; error?: string }> => {
+    const result = await invokeDriveFunction<{ success: boolean; alreadyInFolder?: boolean; error?: string }>(
+      { action: "move_file", fileId, targetFolderId, ...(projectId ? { projectId } : {}) },
+      "Failed to move file"
+    );
+
+    if (result.needsDriveAccess) {
+      return { success: false, error: "Reconnect required" };
+    }
+
+    if (!result.data) {
+      return { success: false, error: "Move failed" };
+    }
+
+    if (result.data.error) {
+      return { success: false, error: result.data.error };
+    }
+
+    return result.data;
+  };
+
   const trashFile = async (
     fileId: string,
   ): Promise<{ success: boolean; alreadyDeleted?: boolean; error?: string; errorCode?: string }> => {
@@ -235,5 +260,5 @@ export const useGoogleDrive = () => {
     return { success: result.data.success || false };
   };
 
-  return { listFolder, checkFolderAccess, createFolder, createDoc, trashFile, getGoogleToken };
+  return { listFolder, checkFolderAccess, createFolder, createDoc, moveFile, trashFile, getGoogleToken };
 };
