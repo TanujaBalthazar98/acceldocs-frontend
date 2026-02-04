@@ -155,6 +155,33 @@ function buildHomeCard_(message) {
         )
     );
 
+  var assistSection = CardService.newCardSection()
+    .setHeader("Writing assist")
+    .addWidget(
+      CardService.newTextParagraph().setText("Generate or improve text and insert it into your document.")
+    );
+
+  assistSection.addWidget(
+    buildSelectInput_("ASSIST_ACTION", "Action", buildAssistActionOptions_(), "improve", false)
+  );
+  assistSection.addWidget(
+    buildTextInput_("ASSIST_INSTRUCTION", "Instruction (optional)", "", "e.g., make it more concise, translate to Spanish")
+  );
+  assistSection.addWidget(
+    CardService.newButtonSet()
+      .addButton(
+        CardService.newTextButton()
+          .setText("Insert at cursor")
+          .setOnClickAction(CardService.newAction().setFunctionName("assistInsert"))
+          .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      )
+      .addButton(
+        CardService.newTextButton()
+          .setText("Replace selection")
+          .setOnClickAction(CardService.newAction().setFunctionName("assistReplace"))
+      )
+  );
+
   if (docSlug) {
     actionSection.addWidget(
       CardService.newDecoratedText()
@@ -235,6 +262,7 @@ function buildHomeCard_(message) {
     .addSection(statusSection)
     .addSection(targetSection)
     .addSection(actionSection)
+    .addSection(assistSection)
     .addSection(advancedSection)
     .build();
 }
@@ -287,6 +315,19 @@ function buildSelectInput_(fieldName, title, options, selectedValue, allowEmpty,
   }
 
   return input;
+}
+
+function buildAssistActionOptions_() {
+  return [
+    { label: "Improve clarity", value: "improve" },
+    { label: "Rewrite", value: "rewrite" },
+    { label: "Summarize", value: "summarize" },
+    { label: "Expand", value: "expand" },
+    { label: "Bullet list", value: "bullet" },
+    { label: "Fix grammar", value: "grammar" },
+    { label: "Translate", value: "translate" },
+    { label: "Custom instruction", value: "custom" }
+  ];
 }
 
 function appendLabeledSelect_(section, label, fieldName, options, selectedValue, allowEmpty, emptyLabel) {
@@ -508,6 +549,14 @@ function refreshBootstrap(e) {
   return buildActionResponse_({ type: "success", text: "Projects refreshed." }, false, target);
 }
 
+function assistInsert(e) {
+  return runWriteAssist_("insert", e);
+}
+
+function assistReplace(e) {
+  return runWriteAssist_("replace", e);
+}
+
 function publishDoc(e) {
   try {
     return submitDoc_("publish", e);
@@ -599,6 +648,54 @@ function submitDoc_(mode, e) {
   props.setProperty("LAST_ERROR_DETAILS", "HTTP " + statusCode + ". " + bodyText);
   storeLastAction_(props, mode);
   return buildActionResponse_(formatApiMessage_(mode, statusCode, bodyText, false), true, "home");
+}
+
+function runWriteAssist_(mode, e) {
+  try {
+    var props = PropertiesService.getUserProperties();
+    var form = (e && e.formInput) ? e.formInput : {};
+    var apiBase = props.getProperty("API_BASE_URL") || DEFAULT_API_BASE;
+    var token = props.getProperty("SAAS_TOKEN") || "";
+    var doc = DocumentApp.getActiveDocument();
+    var docTitle = doc.getName();
+    var selectionInfo = getSelectionText_(doc);
+    var action = String(form.ASSIST_ACTION || "improve");
+    var instruction = String(form.ASSIST_INSTRUCTION || "");
+    var content = selectionInfo.text || doc.getBody().getText();
+
+    if (!token) {
+      return buildActionResponse_({ type: "error", text: "Missing token. Open Settings to connect." }, true, "home");
+    }
+
+    if (mode === "replace" && !selectionInfo.hasSelection) {
+      return buildActionResponse_({ type: "error", text: "Select text to replace first." }, true, "home");
+    }
+
+    if (!content || !content.trim()) {
+      return buildActionResponse_({ type: "error", text: "No content to assist with." }, true, "home");
+    }
+
+    var result = callWriteAssist_(apiBase, token, {
+      action: action,
+      instruction: instruction,
+      content: content,
+      title: docTitle
+    });
+
+    if (!result || !result.output) {
+      return buildActionResponse_({ type: "error", text: result && result.error ? result.error : "No output returned." }, true, "home");
+    }
+
+    if (mode === "replace" && selectionInfo.selection) {
+      replaceSelectionText_(selectionInfo.selection, result.output);
+    } else {
+      insertTextAtCursor_(doc, result.output);
+    }
+
+    return buildActionResponse_({ type: "success", text: "Writing assist applied." }, false, "home");
+  } catch (err) {
+    return buildActionResponse_({ type: "error", text: "Writing assist failed: " + err.message }, true, "home");
+  }
 }
 
 function getActiveDocIdSafe_() {
@@ -942,6 +1039,99 @@ function buildTopicOptions_(topics, projectId) {
 
   walk(roots, 0);
   return options;
+}
+
+function callWriteAssist_(apiBase, token, payload) {
+  var url = apiBase.replace(/\/$/, "") + "/api/addon/write-assist";
+  try {
+    var response = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/json",
+      headers: {
+        Authorization: "Bearer " + token
+      },
+      payload: JSON.stringify(payload || {}),
+      muteHttpExceptions: true
+    });
+
+    var statusCode = response.getResponseCode();
+    var bodyText = response.getContentText();
+    if (statusCode >= 200 && statusCode < 300) {
+      return JSON.parse(bodyText);
+    }
+    return { error: formatApiErrorText_(statusCode, bodyText) };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+function getSelectionText_(doc) {
+  var selection = doc.getSelection();
+  if (!selection) {
+    return { hasSelection: false, text: "", selection: null };
+  }
+
+  var text = "";
+  var elements = selection.getRangeElements();
+  for (var i = 0; i < elements.length; i++) {
+    var range = elements[i];
+    var element = range.getElement();
+    if (element.editAsText) {
+      var textElement = element.asText();
+      var start = range.getStartOffset();
+      var end = range.getEndOffsetInclusive();
+      if (start === -1) {
+        start = 0;
+        end = textElement.getText().length - 1;
+      }
+      if (end >= start) {
+        text += textElement.getText().substring(start, end + 1);
+      }
+    }
+  }
+
+  return { hasSelection: text.trim().length > 0, text: text, selection: selection };
+}
+
+function replaceSelectionText_(selection, newText) {
+  var elements = selection.getRangeElements();
+  var inserted = false;
+
+  for (var i = 0; i < elements.length; i++) {
+    var range = elements[i];
+    var element = range.getElement();
+    if (!element.editAsText) {
+      continue;
+    }
+    var textElement = element.asText();
+    var start = range.getStartOffset();
+    var end = range.getEndOffsetInclusive();
+    if (start === -1) {
+      start = 0;
+      end = textElement.getText().length - 1;
+    }
+    if (end >= start) {
+      textElement.deleteText(start, end);
+      if (!inserted) {
+        textElement.insertText(start, newText);
+        inserted = true;
+      }
+    }
+  }
+
+  if (!inserted) {
+    var doc = DocumentApp.getActiveDocument();
+    doc.getBody().appendParagraph(newText);
+  }
+}
+
+function insertTextAtCursor_(doc, newText) {
+  var cursor = doc.getCursor();
+  if (cursor) {
+    cursor.insertText(newText);
+    return;
+  }
+  doc.getBody().appendParagraph(newText);
 }
 
 function buildSimpleHtml_(body) {
