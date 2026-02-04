@@ -175,9 +175,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const { user, loading: authLoading } = useAuth();
   const isInternalView = mode === "internal";
   const docsBasePath = isInternalView ? "/internal" : "/docs";
+  const normalizeHostname = (value?: string | null) =>
+    (value || "").replace(/^www\./i, "").toLowerCase();
   
   // Track custom domain state early for URL interpretation
   const [isCustomDomain, setIsCustomDomain] = useState(false);
+  const [isImplicitOrgPath, setIsImplicitOrgPath] = useState(false);
   
   // On custom domains, URL structure shifts: org is implicit from domain
   // Standard: /docs/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug
@@ -192,10 +195,19 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     return normalized.split("/").filter(Boolean);
   }, [location.pathname, docsBasePath]);
 
-  const orgSlug = isCustomDomain ? undefined : pathSegments[0];
-  const projectSlug = isCustomDomain ? pathSegments[0] : pathSegments[1];
-  const remainingSegments = isCustomDomain ? pathSegments.slice(1) : pathSegments.slice(2);
+  const orgSegmentMatchesCurrent = !!(
+    !isCustomDomain &&
+    currentOrg &&
+    pathSegments[0] &&
+    (pathSegments[0] === currentOrg.slug ||
+      normalizeHostname(pathSegments[0]) === normalizeHostname(currentOrg.domain))
+  );
+  const orgPathOffset = isCustomDomain ? 0 : (isImplicitOrgPath && !orgSegmentMatchesCurrent ? 0 : 1);
+  const orgSlug = orgPathOffset === 1 ? pathSegments[0] : undefined;
+  const projectSlug = pathSegments[orgPathOffset];
+  const remainingSegments = pathSegments.slice(orgPathOffset + 1);
 
+  const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
 
@@ -233,7 +245,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     return resolveDocumentHtml(documentHtml, selectedDocument.title);
   }, [documentHtml, selectedDocument?.title]);
   const [isOrgUser, setIsOrgUser] = useState(false);
-  const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
   const [isFullWidth, setIsFullWidth] = useState(false);
@@ -341,24 +352,33 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     isInternalView,
   ]);
 
-  const buildDocUrl = (doc: Document, project: Project, org: Organization) => {
+  const getOrgPathPrefixForBase = (basePath: string, org?: Organization | null) => {
+    if (isCustomDomain || isImplicitOrgPath || !org) return basePath;
     const orgIdentifier = org.slug || org.domain;
+    return orgIdentifier ? `${basePath}/${orgIdentifier}` : basePath;
+  };
+
+  const getOrgPathPrefix = (org?: Organization | null) =>
+    getOrgPathPrefixForBase(docsBasePath, org);
+
+  const buildDocUrl = (doc: Document, project: Project, org: Organization) => {
+    const orgPrefix = getOrgPathPrefix(org);
     const topic = doc.topic_id ? topics.find(t => t.id === doc.topic_id) : null;
     const version = getVersionById(doc.project_version_id) || selectedVersion;
     const versionSegment = version?.slug ? `/${version.slug}` : "";
     
     // For custom domains, use simplified URLs without org prefix
-    if (isCustomDomain) {
+    if (isCustomDomain || isImplicitOrgPath) {
       if (topic?.slug) {
-        return `${docsBasePath}/${project.slug}${versionSegment}/${topic.slug}/${doc.slug}`;
+        return `${orgPrefix}/${project.slug}${versionSegment}/${topic.slug}/${doc.slug}`;
       }
-      return `${docsBasePath}/${project.slug}${versionSegment}/${doc.slug}`;
+      return `${orgPrefix}/${project.slug}${versionSegment}/${doc.slug}`;
     }
     
     if (topic?.slug) {
-      return `${docsBasePath}/${orgIdentifier}/${project.slug}${versionSegment}/${topic.slug}/${doc.slug}`;
+      return `${orgPrefix}/${project.slug}${versionSegment}/${topic.slug}/${doc.slug}`;
     }
-    return `${docsBasePath}/${orgIdentifier}/${project.slug}${versionSegment}/${doc.slug}`;
+    return `${orgPrefix}/${project.slug}${versionSegment}/${doc.slug}`;
   };
 
   // Handle URL-based project and document selection
@@ -530,6 +550,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         userProjectMemberships = memberships?.map(m => m.project_id) || [];
       }
       
+      const hostDomain = normalizeHostname(window.location.hostname);
+      
       // Determine the target organization - from URL slug, custom domain, or user's org
       let targetOrgId: string | null = null;
       let targetOrg: Organization | null = currentOrg;
@@ -544,6 +566,22 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         if (orgData) {
           targetOrg = orgData as Organization;
           setCurrentOrg(targetOrg);
+          setIsImplicitOrgPath(
+            !!hostDomain && normalizeHostname(orgData.domain) === hostDomain
+          );
+        }
+      }
+      
+      if (!targetOrg && !isCustomDomain && hostDomain) {
+        const { data: domainOrg } = await supabase
+          .from("organizations")
+          .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
+          .eq("domain", hostDomain)
+          .maybeSingle();
+        if (domainOrg) {
+          targetOrg = domainOrg as Organization;
+          setCurrentOrg(targetOrg);
+          setIsImplicitOrgPath(true);
         }
       }
       
@@ -718,9 +756,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
   const buildProjectUrl = (project: Project, version?: ProjectVersion | null) => {
     const versionSegment = version?.slug ? `/${version.slug}` : "";
-    if (isCustomDomain) return `${docsBasePath}/${project.slug}${versionSegment}`;
-    if (currentOrg) return `${docsBasePath}/${currentOrg.slug || currentOrg.domain}/${project.slug}${versionSegment}`;
-    return docsBasePath;
+    const base = getOrgPathPrefix(currentOrg);
+    return `${base}/${project.slug}${versionSegment}`;
   };
 
   const getChildProjects = (projectId: string) =>
@@ -772,9 +809,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   };
 
   const getDocsLandingPath = () => {
-    if (isCustomDomain) return docsBasePath;
-    if (currentOrg) return `${docsBasePath}/${currentOrg.slug || currentOrg.domain}`;
-    return docsBasePath;
+    return getOrgPathPrefix(currentOrg);
   };
 
   const goToDocsLanding = () => {
@@ -1079,11 +1114,7 @@ const getTopicDocuments = (topicId: string) =>
   // If showing landing page
   if (internalAccessDenied && isInternalView) {
     const orgDomain = currentOrg?.domain;
-    const publicDocsPath = isCustomDomain
-      ? "/docs"
-      : currentOrg
-        ? `/docs/${currentOrg.slug || currentOrg.domain}`
-        : "/docs";
+    const publicDocsPath = getOrgPathPrefixForBase("/docs", currentOrg);
 
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-6 docs-branded">
@@ -1117,7 +1148,7 @@ const getTopicDocuments = (topicId: string) =>
         <header className="border-b border-border bg-card">
           <div className="flex items-center justify-between px-4 lg:px-6 h-14">
             <Link
-              to={isCustomDomain ? docsBasePath : `${docsBasePath}/${currentOrg.slug || currentOrg.domain}`}
+              to={getOrgPathPrefix(currentOrg)}
               onClick={(e) => {
                 e.preventDefault();
                 goToDocsLanding();
@@ -1139,7 +1170,7 @@ const getTopicDocuments = (topicId: string) =>
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    navigate(isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`);
+                    navigate(getOrgPathPrefixForBase("/docs", currentOrg));
                   }}
                 >
                   Public Docs
@@ -1150,7 +1181,7 @@ const getTopicDocuments = (topicId: string) =>
                   size="sm"
                   onClick={() => {
                     if (currentOrg) {
-                      navigate(isCustomDomain ? "/internal" : `/internal/${currentOrg.slug || currentOrg.domain}`);
+                      navigate(getOrgPathPrefixForBase("/internal", currentOrg));
                     }
                   }}
                 >
@@ -1223,7 +1254,7 @@ const getTopicDocuments = (topicId: string) =>
           {/* Left: Organization Logo/Name + Root Project */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link
-              to={currentOrg ? (isCustomDomain ? docsBasePath : `${docsBasePath}/${currentOrg.slug || currentOrg.domain}`) : "/"}
+              to={currentOrg ? getOrgPathPrefix(currentOrg) : "/"}
               onClick={(e) => {
                 e.preventDefault();
                 goToDocsLanding();
@@ -1334,7 +1365,7 @@ const getTopicDocuments = (topicId: string) =>
                 size="sm"
                 className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
                 onClick={() => {
-                  navigate(isCustomDomain ? "/docs" : `/docs/${currentOrg.slug || currentOrg.domain}`);
+                  navigate(getOrgPathPrefixForBase("/docs", currentOrg));
                 }}
               >
                 <Globe className="h-4 w-4" />
@@ -1347,7 +1378,7 @@ const getTopicDocuments = (topicId: string) =>
                 className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
                 onClick={() => {
                   if (currentOrg) {
-                    navigate(isCustomDomain ? "/internal" : `/internal/${currentOrg.slug || currentOrg.domain}`);
+                    navigate(getOrgPathPrefixForBase("/internal", currentOrg));
                   }
                 }}
               >
