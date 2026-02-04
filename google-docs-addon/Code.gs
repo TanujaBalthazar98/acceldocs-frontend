@@ -282,7 +282,7 @@ function buildSettingsCard_(message) {
         .setText(token ? "Token saved" : "No token yet")
         .setIcon(CardService.Icon.KEY)
     )
-    .addWidget(buildTextInput_("SAAS_TOKEN", "Docspeare Token", token, "Paste the add-on token"))
+    .addWidget(buildTextInput_("SAAS_TOKEN", "Docspeare Token", "", token ? "Saved. Paste a new token to replace." : "Paste the add-on token"))
     .addWidget(
       CardService.newButtonSet()
         .addButton(
@@ -369,13 +369,13 @@ function saveSettings(e) {
   var props = PropertiesService.getUserProperties();
   var form = e.formInput || {};
   var existingToken = props.getProperty("SAAS_TOKEN") || "";
-  var incomingToken = form.SAAS_TOKEN !== undefined ? form.SAAS_TOKEN : existingToken;
-  var tokenChanged = form.SAAS_TOKEN !== undefined && incomingToken !== existingToken;
+  var incomingToken = form.SAAS_TOKEN !== undefined ? String(form.SAAS_TOKEN || "").trim() : "";
+  var tokenChanged = incomingToken && incomingToken !== existingToken;
 
   if (form.API_BASE_URL !== undefined) {
     props.setProperty("API_BASE_URL", form.API_BASE_URL);
   }
-  if (form.SAAS_TOKEN !== undefined) {
+  if (incomingToken) {
     props.setProperty("SAAS_TOKEN", incomingToken);
   }
   if (form.PROJECT_ID !== undefined) {
@@ -857,6 +857,16 @@ function formatApiSuccessText_(mode, json, bodyText) {
 }
 
 function formatApiErrorText_(statusCode, payload) {
+  var friendly = {
+    400: "Missing required data. Check your project and try again.",
+    401: "Authentication failed. Re-open Settings and paste a new token.",
+    402: "Billing is inactive for this workspace.",
+    403: "You do not have access to this project.",
+    404: "Project not found. Refresh projects and try again.",
+    409: "This document already exists elsewhere. Use a different project or version.",
+    422: "Invalid request. Check your selections and try again.",
+    500: "Server error. Please try again or contact support.",
+  };
   if (payload && typeof payload === "object") {
     if (payload.error) return payload.error;
     if (payload.message) return payload.message;
@@ -874,6 +884,7 @@ function formatApiErrorText_(statusCode, payload) {
     }
   }
   if (statusCode) {
+    if (friendly[statusCode]) return friendly[statusCode];
     return "HTTP " + statusCode + ". " + text;
   }
   return text;
