@@ -117,6 +117,7 @@ export const ProjectSettingsPanel = ({
   const [versionName, setVersionName] = useState("");
   const [versionSlug, setVersionSlug] = useState("");
   const [isDuplicatingVersion, setIsDuplicatingVersion] = useState(false);
+  const [isRepairingDrive, setIsRepairingDrive] = useState(false);
   
   // Members state
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -384,6 +385,44 @@ export const ProjectSettingsPanel = ({
     }
 
     return created;
+  };
+
+  const handleRepairDriveStructure = async () => {
+    if (!projectId || !driveFolderId) return;
+    if (!googleAccessToken) {
+      await attemptRecovery("Google authentication required");
+      return;
+    }
+
+    setIsRepairingDrive(true);
+    try {
+      const rootAccess = await checkFolderAccess(driveFolderId, projectId);
+      if (rootAccess.needsDriveAccess) {
+        await requestDriveAccess();
+        toast({
+          title: "Reconnect Google Drive",
+          description: "Finish reconnecting and try again.",
+        });
+        return;
+      }
+
+      const created = await ensureDriveStructure(projectId, driveFolderId);
+      toast({
+        title: "Drive structure repaired",
+        description: `Created ${created.projects} sub-project folder(s), ${created.topics} topic folder(s), moved ${created.docs} doc(s).`,
+      });
+      fetchSyncStatus();
+      onUpdate?.();
+    } catch (error: any) {
+      console.error("Repair Drive structure error:", error);
+      toast({
+        title: "Repair failed",
+        description: error?.message || "Unable to rebuild Drive structure.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRepairingDrive(false);
+    }
   };
 
   const handleConnectDriveFolder = async () => {
@@ -1533,6 +1572,17 @@ export const ProjectSettingsPanel = ({
                 >
                   <AlertTriangle className={`w-3 h-3 ${isRepairing ? "animate-pulse" : ""}`} />
                   {isRepairing ? "Repairing..." : "Repair"}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2"
+                  onClick={handleRepairDriveStructure}
+                  disabled={isRepairingDrive || !driveFolderId}
+                  title={!driveFolderId ? "No Drive folder connected" : "Rebuild Drive folder structure"}
+                >
+                  <RefreshCw className={`w-3 h-3 ${isRepairingDrive ? "animate-spin" : ""}`} />
+                  {isRepairingDrive ? "Repairing Drive..." : "Repair Drive"}
                 </Button>
                 <Button 
                   variant="outline" 
