@@ -1598,7 +1598,7 @@ export const ProjectSettingsPanel = ({
                   title="Fix duplicate topics/sub-projects"
                 >
                   <AlertTriangle className={`w-3 h-3 ${isRepairing ? "animate-pulse" : ""}`} />
-                  {isRepairing ? "Repairing..." : "Repair"}
+                  {isRepairing ? "Repairing..." : "Repair Topics"}
                 </Button>
                 <Button 
                   variant="outline" 
