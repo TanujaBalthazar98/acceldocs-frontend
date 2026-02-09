@@ -104,8 +104,12 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   const fetchContentFromCache = async () => {
     setIsLoadingContent(true);
     try {
+      const session = await ensureFreshSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) return;
       const { data, error } = await supabase.functions.invoke("document-cache", {
         body: { action: "get", documentId: document.id },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (error || !data?.success) return;
       if (data?.contentHtml) setContentHtml(data.contentHtml);
@@ -256,6 +260,19 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
         });
         return;
       }
+      const cacheSession = await ensureFreshSession();
+      const cacheToken = cacheSession?.access_token;
+      if (!cacheToken) {
+        throw new Error("Session expired");
+      }
+      await supabase.functions.invoke("document-cache", {
+        body: {
+          action: "set",
+          documentId: document.id,
+          contentHtml: editorHtml,
+        },
+        headers: { Authorization: `Bearer ${cacheToken}` },
+      });
 
       setContentHtml(editorHtml);
       setIsEditing(false);

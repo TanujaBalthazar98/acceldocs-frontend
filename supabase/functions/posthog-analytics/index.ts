@@ -8,6 +8,7 @@ const DOC_VIEW_EVENT = "docs_page_viewed";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 const uuidRegex = /^[0-9a-fA-F-]{36}$/;
