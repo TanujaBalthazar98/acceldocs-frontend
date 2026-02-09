@@ -120,6 +120,61 @@ interface DashboardSidebarProps {
   currentPath: string;
 }
 
+interface NavItemProps {
+  icon: any;
+  label: string;
+  active?: boolean;
+  collapsed: boolean;
+  onClick?: () => void;
+  badge?: string;
+  className?: string;
+}
+
+function NavItem({ icon: Icon, label, active, collapsed, onClick, badge, className }: NavItemProps) {
+  const content = (
+    <Button
+      variant={active ? "secondary" : "ghost"}
+      className={cn(
+        "w-full justify-start h-9 px-3 transition-all duration-200",
+        collapsed && "justify-center px-0",
+        active ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-muted-foreground hover:text-foreground",
+        className
+      )}
+      onClick={onClick}
+    >
+      <Icon className={cn("w-4 h-4 shrink-0", !collapsed && "mr-3")} />
+      {!collapsed && (
+        <div className="flex items-center justify-between flex-1 min-w-0">
+          <span className="truncate">{label}</span>
+          {badge && (
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-secondary rounded-full font-mono uppercase shrink-0">
+              {badge}
+            </span>
+          )}
+        </div>
+      )}
+    </Button>
+  );
+
+  if (collapsed) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {content}
+          </TooltipTrigger>
+          <TooltipContent side="right" className="flex items-center gap-2">
+            {label}
+            {badge && <span className="text-[10px] opacity-70">({badge})</span>}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return content;
+}
+
 export function DashboardSidebar({
   sidebarCollapsed,
   setSidebarCollapsed,
@@ -259,90 +314,96 @@ export function DashboardSidebar({
           <div className={cn("py-4 space-y-6", sidebarCollapsed ? "px-2" : "px-4")}>
             
             {/* Main Navigation Section */}
-            {!sidebarCollapsed && (
-              <div className="space-y-1">
-                <Button
-                  variant={currentPath === '/dashboard' ? 'secondary' : 'ghost'}
-                  className={cn(
-                    "w-full justify-start gap-3 h-9 px-3",
-                    currentPath === '/dashboard' ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => navigate('/dashboard')}
-                >
-                  <Home className="w-4 h-4" />
-                  <span>Dashboard</span>
-                </Button>
-                
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start gap-3 h-9 px-3 text-muted-foreground hover:text-foreground"
-                >
-                  <BookOpen className="w-4 h-4" />
-                  <span>Documentation</span>
-                </Button>
-                
-                {selectedProject && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-between h-9 px-3 text-muted-foreground hover:text-foreground"
-                    >
-                      <div className="flex items-center gap-3">
-                        <GitBranch className="w-4 h-4" />
-                        <span>Version</span>
-                      </div>
-                      <span className="text-[10px] px-2 py-0.5 bg-secondary rounded-full font-mono uppercase">
-                        {selectedVersion?.name || 'v1.0'}
-                      </span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start gap-3 h-9 px-3 text-muted-foreground hover:text-foreground"
-                      onClick={() => setProjectSettingsOpen(true)}
-                    >
-                      <Settings className="w-4 h-4" />
-                      <span>Project Settings</span>
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
+            <div className="space-y-1">
+              <NavItem
+                icon={Home}
+                label="Dashboard"
+                active={currentPath === '/dashboard'}
+                collapsed={sidebarCollapsed}
+                onClick={() => navigate('/dashboard')}
+              />
+              
+              <NavItem
+                icon={BookOpen}
+                label="Documentation"
+                collapsed={sidebarCollapsed}
+              />
+              
+              {selectedProject && (
+                <>
+                  <NavItem
+                    icon={GitBranch}
+                    label="Version"
+                    collapsed={sidebarCollapsed}
+                    badge={selectedVersion?.name || 'v1.0'}
+                  />
+                  <NavItem
+                    icon={Settings}
+                    label="Project Settings"
+                    collapsed={sidebarCollapsed}
+                    onClick={() => setProjectSettingsOpen(true)}
+                  />
+                </>
+              )}
+            </div>
 
             {/* Sub-Projects Section */}
-            {!sidebarCollapsed && selectedProject && (
+            {selectedProject && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between px-3">
-                  <button 
-                    className="flex items-center gap-2 group"
-                    onClick={() => setSubProjectsExpanded(!subProjectsExpanded)}
-                  >
-                    <span className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Sub-Projects</span>
-                    <ChevronDown className={cn(
-                      "w-3 h-3 text-muted-foreground/50 transition-transform group-hover:text-foreground",
-                      !subProjectsExpanded && "-rotate-90"
-                    )} />
-                  </button>
-                  <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground" onClick={() => setAddProjectOpen(true)}>
-                    <Plus className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-                {subProjectsExpanded && (
-                  <div className="space-y-1 pl-3">
-                    {subProjects.length > 0 ? (
-                      subProjects.map(p => (
-                        <Button 
-                          key={p.id}
-                          variant="ghost" 
-                          className="w-full justify-start h-8 px-3 text-sm text-muted-foreground hover:text-foreground"
-                          onClick={() => setSelectedProject(p)}
-                        >
-                          <Folder className="w-4 h-4 mr-2" />
-                          <span className="truncate">{p.name}</span>
-                        </Button>
-                      ))
-                    ) : (
-                      <p className="text-[11px] italic text-muted-foreground/60 px-3 py-1">No sub-projects yet</p>
+                {!sidebarCollapsed ? (
+                  <>
+                    <div className="flex items-center justify-between px-3">
+                      <button 
+                        className="flex items-center gap-2 group"
+                        onClick={() => setSubProjectsExpanded(!subProjectsExpanded)}
+                      >
+                        <span className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Sub-Projects</span>
+                        <ChevronDown className={cn(
+                          "w-3 h-3 text-muted-foreground/50 transition-transform group-hover:text-foreground",
+                          !subProjectsExpanded && "-rotate-90"
+                        )} />
+                      </button>
+                      <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground" onClick={() => setAddProjectOpen(true)}>
+                        <Plus className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                    {subProjectsExpanded && (
+                      <div className="space-y-1 pl-3">
+                        {subProjects.length > 0 ? (
+                          subProjects.map(p => (
+                            <Button 
+                              key={p.id}
+                              variant="ghost" 
+                              className="w-full justify-start h-8 px-3 text-sm text-muted-foreground hover:text-foreground"
+                              onClick={() => setSelectedProject(p)}
+                            >
+                              <Folder className="w-4 h-4 mr-2" />
+                              <span className="truncate">{p.name}</span>
+                            </Button>
+                          ))
+                        ) : (
+                          <p className="text-[11px] italic text-muted-foreground/60 px-3 py-1">No sub-projects yet</p>
+                        )}
+                      </div>
                     )}
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-1">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground"
+                            onClick={() => setSidebarCollapsed(false)}
+                          >
+                            <FolderTree className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">Sub-Projects ({subProjects.length})</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 )}
               </div>
@@ -351,14 +412,16 @@ export function DashboardSidebar({
             {/* Search Bar (Moved contextually) */}
             <div className="px-1">
               {sidebarCollapsed ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="w-full h-10" onClick={() => setSidebarCollapsed(false)}>
-                      <Search className="w-4 h-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">Search</TooltipContent>
-                </Tooltip>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="w-full h-10" onClick={() => setSidebarCollapsed(false)}>
+                        <Search className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Search</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               ) : (
                 <SmartSearch
                   placeholder="Search docs..."
@@ -422,132 +485,155 @@ export function DashboardSidebar({
             </div>
 
             {/* Content Section */}
-            {!sidebarCollapsed && selectedProject && (
+            {selectedProject && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between px-3">
-                  <button 
-                    className="flex items-center gap-2 group"
-                    onClick={() => setTopicsExpanded(!topicsExpanded)}
-                  >
-                    <span className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Content</span>
-                    <ChevronDown className={cn(
-                      "w-3 h-3 text-muted-foreground/50 transition-transform group-hover:text-foreground",
-                      !topicsExpanded && "-rotate-90"
-                    )} />
-                  </button>
-                  <div className="flex items-center gap-1">
-                    {driveIntegrationEnabled && (
+                {!sidebarCollapsed ? (
+                  <>
+                    <div className="flex items-center justify-between px-3">
+                      <button 
+                        className="flex items-center gap-2 group"
+                        onClick={() => setTopicsExpanded(!topicsExpanded)}
+                      >
+                        <span className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Content</span>
+                        <ChevronDown className={cn(
+                          "w-3 h-3 text-muted-foreground/50 transition-transform group-hover:text-foreground",
+                          !topicsExpanded && "-rotate-90"
+                        )} />
+                      </button>
+                      <div className="flex items-center gap-1">
+                        {driveIntegrationEnabled && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleSyncFromDrive}>
+                                  <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Sync</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                             <Button variant="ghost" size="icon" className="h-5 w-5">
+                              <Plus className="w-3.5 h-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => {
+                              setParentTopicForCreate(null);
+                              setAddTopicOpen(true);
+                            }}>
+                              <Folder className="w-4 h-4 mr-2" /> Add Topic
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedTopic(null);
+                              setAddPageOpen(true);
+                            }}>
+                              <FileText className="w-4 h-4 mr-2" /> Add Page
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+
+                    {topicsExpanded && (
+                      <div className="pl-1">
+                        <UnifiedContentTree
+                          topics={filteredTopics.filter(t => t.project_id === selectedProject.id)}
+                          documents={scopedDocuments.filter(d => d.project_id === selectedProject.id)}
+                          selectedTopicId={selectedTopic?.id || null}
+                          selectedDocumentId={selectedPage}
+                          autoCollapseDepth={3}
+                          onSelectTopic={(topic) => {
+                            setSelectedTopic(topic);
+                            setSelectedPage(null);
+                            setMobileSidebarOpen(false);
+                          }}
+                          onSelectDocument={(doc) => {
+                             const fullDoc = scopedDocuments.find(d => d.id === doc.id);
+                             if (fullDoc) setSelectedDocument(fullDoc);
+                             setSelectedPage(doc.id);
+                             const docTopic = scopedTopics.find(t => t.id === doc.topic_id);
+                             setSelectedTopic(docTopic || null);
+                             setMobileSidebarOpen(false);
+                          }}
+                          onAddPage={(topic) => {
+                            setSelectedTopic(topic);
+                            setAddPageOpen(true);
+                          }}
+                          onAddSubtopic={(topic) => {
+                            setParentTopicForCreate(topic);
+                            setAddTopicOpen(true);
+                          }}
+                          onOpenTopicSettings={(topic) => {
+                            setSettingsTopic(topic);
+                            setTopicSettingsOpen(true);
+                          }}
+                          onDeleteTopic={(topic) => {
+                            setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
+                            setDeleteDialogOpen(true);
+                          }}
+                          onOpenDocumentSettings={(doc) => {
+                            const fullDoc = scopedDocuments.find(d => d.id === doc.id);
+                            if (fullDoc) {
+                              setPageSettingsTarget(fullDoc);
+                              setPageSettingsOpen(true);
+                            }
+                          }}
+                          onDeleteDocument={(doc) => {
+                            setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
+                            setDeleteDialogOpen(true);
+                          }}
+                          onTopicsReordered={fetchData}
+                          onDocumentsReordered={fetchData}
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-1">
+                    <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleSyncFromDrive}>
-                            <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground"
+                            onClick={() => setSidebarCollapsed(false)}
+                          >
+                            <BookOpen className="w-4 h-4" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Sync</TooltipContent>
+                        <TooltipContent side="right">Content</TooltipContent>
                       </Tooltip>
-                    )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                         <Button variant="ghost" size="icon" className="h-5 w-5">
-                          <Plus className="w-3.5 h-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => {
-                          setParentTopicForCreate(null);
-                          setAddTopicOpen(true);
-                        }}>
-                          <Folder className="w-4 h-4 mr-2" /> Add Topic
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => {
-                          setSelectedTopic(null);
-                          setAddPageOpen(true);
-                        }}>
-                          <FileText className="w-4 h-4 mr-2" /> Add Page
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-
-                {topicsExpanded && (
-                  <div className="pl-1">
-                    <UnifiedContentTree
-                      topics={filteredTopics.filter(t => t.project_id === selectedProject.id)}
-                      documents={scopedDocuments.filter(d => d.project_id === selectedProject.id)}
-                      selectedTopicId={selectedTopic?.id || null}
-                      selectedDocumentId={selectedPage}
-                      autoCollapseDepth={3}
-                      onSelectTopic={(topic) => {
-                        setSelectedTopic(topic);
-                        setSelectedPage(null);
-                        setMobileSidebarOpen(false);
-                      }}
-                      onSelectDocument={(doc) => {
-                         const fullDoc = scopedDocuments.find(d => d.id === doc.id);
-                         if (fullDoc) setSelectedDocument(fullDoc);
-                         setSelectedPage(doc.id);
-                         const docTopic = scopedTopics.find(t => t.id === doc.topic_id);
-                         setSelectedTopic(docTopic || null);
-                         setMobileSidebarOpen(false);
-                      }}
-                      onAddPage={(topic) => {
-                        setSelectedTopic(topic);
-                        setAddPageOpen(true);
-                      }}
-                      onAddSubtopic={(topic) => {
-                        setParentTopicForCreate(topic);
-                        setAddTopicOpen(true);
-                      }}
-                      onOpenTopicSettings={(topic) => {
-                        setSettingsTopic(topic);
-                        setTopicSettingsOpen(true);
-                      }}
-                      onDeleteTopic={(topic) => {
-                        setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
-                        setDeleteDialogOpen(true);
-                      }}
-                      onOpenDocumentSettings={(doc) => {
-                        const fullDoc = scopedDocuments.find(d => d.id === doc.id);
-                        if (fullDoc) {
-                          setPageSettingsTarget(fullDoc);
-                          setPageSettingsOpen(true);
-                        }
-                      }}
-                      onDeleteDocument={(doc) => {
-                        setItemToDelete({ type: 'document', id: doc.id, name: doc.title });
-                        setDeleteDialogOpen(true);
-                      }}
-                      onTopicsReordered={fetchData}
-                      onDocumentsReordered={fetchData}
-                    />
+                    </TooltipProvider>
                   </div>
                 )}
               </div>
             )}
 
             {/* Developer Resources Section */}
-            {!sidebarCollapsed && (
-              <div className="space-y-2">
-                <div className="px-3">
-                  <span className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Developer Resources</span>
+            <div className="space-y-2">
+              {!sidebarCollapsed ? (
+                <>
+                  <div className="px-3">
+                    <span className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Developer Resources</span>
+                  </div>
+                  <div className="space-y-1">
+                    <NavItem icon={CodeIcon} label="API Reference" collapsed={sidebarCollapsed} onClick={() => setShowAPISettings(true)} />
+                    <NavItem icon={MessageSquare} label="MCP Protocol" collapsed={sidebarCollapsed} onClick={() => setShowMCPSettings(true)} />
+                    <NavItem icon={Plug2} label="Integrations" collapsed={sidebarCollapsed} onClick={() => setShowIntegrations(true)} />
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-1">
+                  <NavItem icon={CodeIcon} label="API Reference" collapsed={sidebarCollapsed} onClick={() => setShowAPISettings(true)} />
+                  <NavItem icon={MessageSquare} label="MCP Protocol" collapsed={sidebarCollapsed} onClick={() => setShowMCPSettings(true)} />
+                  <NavItem icon={Plug2} label="Integrations" collapsed={sidebarCollapsed} onClick={() => setShowIntegrations(true)} />
                 </div>
-                <div className="space-y-1">
-                  <Button variant="ghost" className="w-full justify-start gap-3 h-9 px-3 text-muted-foreground hover:text-foreground" onClick={() => setShowAPISettings(true)}>
-                    <CodeIcon className="w-4 h-4" />
-                    <span>API Reference</span>
-                  </Button>
-                  <Button variant="ghost" className="w-full justify-start gap-3 h-9 px-3 text-muted-foreground hover:text-foreground" onClick={() => setShowMCPSettings(true)}>
-                    <MessageSquare className="w-4 h-4" />
-                    <span>MCP Protocol</span>
-                  </Button>
-                  <Button variant="ghost" className="w-full justify-start gap-3 h-9 px-3 text-muted-foreground hover:text-foreground" onClick={() => setShowIntegrations(true)}>
-                    <Plug2 className="w-4 h-4" />
-                    <span>Integrations</span>
-                  </Button>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -591,24 +677,33 @@ export function DashboardSidebar({
             </div>
           ) : (
             <div className="p-2 flex flex-col items-center gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Avatar className="h-8 w-8 border border-border cursor-pointer">
-                    <AvatarImage src={user?.user_metadata?.avatar_url} />
-                    <AvatarFallback className="bg-primary/5 text-primary text-xs">
-                      {user?.email?.substring(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <div className="flex flex-col">
-                    <span className="font-medium">{user?.email}</span>
-                   </div>
-                </TooltipContent>
-              </Tooltip>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setShowGeneralSettings(true)}>
-                <Settings className="w-4 h-4" />
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Avatar className="h-8 w-8 border border-border cursor-pointer">
+                      <AvatarImage src={user?.user_metadata?.avatar_url} />
+                      <AvatarFallback className="bg-primary/5 text-primary text-xs">
+                        {user?.email?.substring(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <div className="flex flex-col">
+                      <span className="font-medium">{user?.email}</span>
+                     </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setShowGeneralSettings(true)}>
+                      <Settings className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Settings</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           )}
         </div>
