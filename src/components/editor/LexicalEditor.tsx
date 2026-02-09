@@ -25,6 +25,7 @@ import { TRANSFORMERS } from "@lexical/markdown";
 import { LexicalToolbar } from "@/components/editor/LexicalToolbar";
 import { ImagePlugin } from "@/components/editor/plugins/ImagePlugin";
 import { ImageNode } from "@/components/editor/nodes/ImageNode";
+import { ClickFocusPlugin } from "@/components/editor/plugins/ClickFocusPlugin";
 
 interface LexicalEditorProps {
   initialHtml?: string | null;
@@ -48,6 +49,7 @@ export const LexicalEditor = ({ initialHtml, onChangeHtml }: LexicalEditorProps)
 
   const initialConfig = useMemo(() => ({
     namespace: "docspeare-editor",
+    editable: true,
     theme: {
       paragraph: "editor-paragraph",
       heading: {
@@ -104,7 +106,12 @@ export const LexicalEditor = ({ initialHtml, onChangeHtml }: LexicalEditorProps)
         <LexicalToolbar />
         <RichTextPlugin
           contentEditable={
-            <ContentEditable className="min-h-[360px] outline-none px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 prose prose-sm sm:prose-base max-w-none" />
+            <ContentEditable
+              className="min-h-[360px] cursor-text outline-none px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 prose prose-sm sm:prose-base max-w-none"
+              spellCheck={true}
+              autoCorrect="on"
+              autoComplete="on"
+            />
           }
           placeholder={
             <div className="pointer-events-none text-muted-foreground px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
@@ -114,6 +121,7 @@ export const LexicalEditor = ({ initialHtml, onChangeHtml }: LexicalEditorProps)
           ErrorBoundary={LexicalErrorBoundary}
         />
         <AutoFocusPlugin />
+        <ClickFocusPlugin />
         <HistoryPlugin />
         <LinkPlugin />
         <ListPlugin />
