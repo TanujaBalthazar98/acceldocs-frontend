@@ -23,7 +23,7 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
   }
 
   const { requestDriveAccess, user } = useAuth();
-  const { resetRecoveryState } = useDriveRecovery();
+  const { resetRecoveryState, attemptRecovery } = useDriveRecovery();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isOrgOwner, setIsOrgOwner] = useState(false);
@@ -83,8 +83,15 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       });
 
       if (response.error || response.data?.needsReauth) {
-        setConnectionStatus(hasRefreshToken ? 'connected' : 'needs_reauth');
-        onStatusChange?.(hasRefreshToken);
+        // Attempt silent recovery first
+        const { recovered } = await attemptRecovery("Drive check failed", true);
+        if (recovered) {
+          setConnectionStatus('connected');
+          onStatusChange?.(true);
+        } else {
+          setConnectionStatus(hasRefreshToken ? 'connected' : 'needs_reauth');
+          onStatusChange?.(hasRefreshToken);
+        }
       } else {
         // Connection successful - reset any recovery state
         resetRecoveryState();

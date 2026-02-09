@@ -77,7 +77,7 @@ export const useDriveRecovery = () => {
   };
 
   // Main recovery function - handles all Drive auth failures
-  const attemptRecovery = useCallback(async (errorContext?: string): Promise<{
+  const attemptRecovery = useCallback(async (errorContext?: string, silent: boolean = false): Promise<{
     recovered: boolean;
     shouldRetry: boolean;
     isOwner: boolean;
@@ -122,6 +122,12 @@ export const useDriveRecovery = () => {
             return { recovered: true, shouldRetry: true, isOwner: isOrgOwnerRef.current ?? false };
           }
         }
+      }
+
+      // If silent, we stop here before showing any UI
+      if (silent) {
+        isRecoveringRef.current = false;
+        return { recovered: false, shouldRetry: false, isOwner: await checkIsOrgOwner() };
       }
 
       // Step 2: Silent refresh didn't work - check if user is owner
