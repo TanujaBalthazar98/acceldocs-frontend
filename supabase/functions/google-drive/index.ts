@@ -762,8 +762,21 @@ Deno.serve(async (req) => {
       const htmlContent = await response.text();
       console.log("Document exported as HTML, length:", htmlContent.length);
 
+      // Insert into document_contents (Storage Optimization)
+      const { data: contentRow, error: contentError } = await supabase
+        .from("document_contents")
+        .insert({ content: htmlContent })
+        .select("id")
+        .single();
+
+      if (contentError) {
+        console.error("document_contents insert error:", contentError);
+        // Fallback or handle error
+      }
+
       const updateData: Record<string, unknown> = {
-        content_html: htmlContent,
+        content_html: htmlContent, // Backward compatibility
+        content_id: contentRow?.id,
         last_synced_at: new Date().toISOString(),
         is_published: false
       };
@@ -927,10 +940,22 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Insert into document_contents (Storage Optimization)
+      const { data: contentRow, error: contentError } = await supabase
+        .from("document_contents")
+        .insert({ content: body.html })
+        .select("id")
+        .single();
+
+      if (contentError) {
+        console.error("document_contents insert error:", contentError);
+      }
+
       await supabase
         .from("documents")
         .update({
-          content_html: body.html,
+          content_html: body.html, // Backward compatibility
+          content_id: contentRow?.id,
           last_synced_at: new Date().toISOString(),
         })
         .eq("id", body.documentId);

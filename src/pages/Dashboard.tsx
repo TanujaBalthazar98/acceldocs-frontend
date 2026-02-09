@@ -362,10 +362,10 @@ const Dashboard = () => {
         if (projectsData) {
           setProjects(projectsData as Project[]);
 
-          const projectIds = projectsData.map((p) => p.id);
+          const projectIds = (projectsData as any[]).map((p) => p.id);
           const docsSelect = `
               id, title, google_doc_id, project_id, project_version_id, topic_id, display_order, google_modified_at, created_at, updated_at, video_url, video_title,
-              visibility, is_published, owner_id,
+              visibility, is_published, owner_id, content_id, published_content_id,
               owner:profiles!documents_owner_id_fkey(full_name, email)
             `;
 
@@ -424,10 +424,25 @@ const Dashboard = () => {
             if (unpublishedIds.length > 0) {
               const { data: contentRows } = await supabase
                 .from("documents")
-                .select("id, content_html, published_content_html")
+                .select(`
+                  id, 
+                  content_html, 
+                  published_content_html,
+                  content_id,
+                  published_content_id,
+                  draft:document_contents!content_id(content),
+                  published:document_contents!published_content_id(content)
+                `)
                 .in("id", unpublishedIds);
 
-              const contentById = new Map((contentRows || []).map((r: any) => [r.id, r]));
+              const contentById = new Map((contentRows || []).map((r: any) => [
+                r.id, 
+                {
+                  ...r,
+                  content_html: r.draft?.content || r.content_html,
+                  published_content_html: r.published?.content || r.published_content_html
+                }
+              ]));
 
               const merged = baseDocs.map((d: any) => ({
                 ...d,
@@ -1056,9 +1071,14 @@ const Dashboard = () => {
     
     const updateData: Record<string, any> = { is_published: newState };
     
-    // If publishing, copy current content to published content
-    if (newState && doc?.content_html) {
-      updateData.published_content_html = doc.content_html;
+    // If publishing, copy current content to published content (Copy-on-Write)
+    if (newState) {
+      if (doc?.content_id) {
+        updateData.published_content_id = doc.content_id;
+      }
+      if (doc?.content_html) {
+        updateData.published_content_html = doc.content_html; // Backward compatibility
+      }
     }
     
     const { error } = await supabase
@@ -1081,6 +1101,7 @@ const Dashboard = () => {
       setDocuments(prev => prev.map(d => d.id === docId ? { 
         ...d, 
         is_published: newState,
+        published_content_id: newState ? d.content_id : d.published_content_id,
         published_content_html: newState ? d.content_html : d.published_content_html 
       } : d));
     }
@@ -1111,7 +1132,8 @@ const Dashboard = () => {
       .from("documents")
       .update({ 
         is_published: true,
-        published_content_html: doc.content_html 
+        published_content_id: doc.content_id,
+        published_content_html: doc.content_html // Backward compatibility
       })
       .eq("id", docId);
 
@@ -1126,6 +1148,7 @@ const Dashboard = () => {
       setDocuments(prev => prev.map(d => d.id === docId ? { 
         ...d, 
         is_published: true,
+        published_content_id: d.content_id,
         published_content_html: d.content_html 
       } : d));
     }
@@ -1873,6 +1896,8 @@ const Dashboard = () => {
         setSelectedPage={setSelectedPage}
         setSelectedDocument={setSelectedDocument}
         selectedVersion={selectedVersion}
+        setSelectedVersion={setSelectedVersion}
+        projectVersions={projectVersions}
         topicsExpanded={topicsExpanded}
         setTopicsExpanded={setTopicsExpanded}
         driveIntegrationEnabled={DRIVE_INTEGRATION_ENABLED}

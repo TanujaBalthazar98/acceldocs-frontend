@@ -56,6 +56,8 @@ export interface Document {
     owner_name?: string;
     content_html: string | null;
     published_content_html: string | null;
+    content_id: string | null;
+    published_content_id: string | null;
     video_url?: string | null;
     video_title?: string | null;
 }

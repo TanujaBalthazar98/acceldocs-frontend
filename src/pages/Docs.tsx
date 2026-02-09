@@ -118,6 +118,8 @@ interface Document {
   is_published: boolean;
   content_html: string | null;
   published_content_html: string | null;
+  content_id: string | null;
+  published_content_id: string | null;
   video_url?: string | null;
   video_title?: string | null;
   created_at: string;
@@ -751,13 +753,18 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
     let docsQuery = supabase
       .from("documents")
-      .select(
-        "id, title, slug, google_doc_id, project_id, project_version_id, topic_id, visibility, is_published, content_html, published_content_html, video_url, video_title, created_at, updated_at, owner_id, display_order"
-      )
+      .select(`
+        id, title, slug, google_doc_id, project_id, project_version_id, topic_id, visibility, is_published, 
+        content_html, published_content_html, 
+        content_id, published_content_id,
+        draft:document_contents!content_id(content),
+        published:document_contents!published_content_id(content),
+        video_url, video_title, created_at, updated_at, owner_id, display_order
+      `)
       .in("project_id", projectIds);
 
     if (!isInternalView) {
-      docsQuery = docsQuery.not("published_content_html", "is", null);
+      docsQuery = docsQuery.or("published_content_id.not.is.null,published_content_html.not.is.null");
     }
 
     const { data: docsData, error: docsError } = await docsQuery
@@ -767,9 +774,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     if (docsError) {
       console.error("Error fetching documents:", docsError);
     } else if (docsData) {
-      // Documents inherit visibility from their parent project
-      // No additional filtering needed here since projects are already filtered
-      setDocuments(docsData);
+      const mappedDocs = (docsData as any[]).map((d) => ({
+        ...d,
+        content_html: d.draft?.content || d.content_html,
+        published_content_html: d.published?.content || d.published_content_html
+      }));
+      setDocuments(mappedDocs as Document[]);
     }
   };
 

@@ -51,6 +51,8 @@ interface DocumentData {
   owner_name?: string;
   content_html: string | null;
   published_content_html: string | null;
+  content_id: string | null;
+  published_content_id: string | null;
   video_url?: string | null;
   video_title?: string | null;
 }
@@ -119,12 +121,21 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
     try {
       const { data } = await supabase
         .from("documents")
-        .select("content_html, published_content_html, video_url, video_title")
+        .select(`
+          content_html, 
+          published_content_html, 
+          content_id,
+          published_content_id,
+          draft:document_contents!content_id(content),
+          published:document_contents!published_content_id(content),
+          video_url, 
+          video_title
+        `)
         .eq("id", document.id)
         .single();
       
       if (data) {
-        const content = data.content_html || data.published_content_html;
+        const content = (data as any).draft?.content || data.content_html || (data as any).published?.content || data.published_content_html;
         if (content) {
           setContentHtml(content);
         }

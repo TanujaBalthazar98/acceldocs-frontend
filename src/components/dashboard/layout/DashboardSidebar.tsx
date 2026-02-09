@@ -37,6 +37,7 @@ import {
   TooltipProvider
 } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { SmartSearch } from "@/components/SmartSearch";
 import { ProjectSwitcher } from "@/components/dashboard/ProjectSwitcher";
 import { UnifiedContentTree } from "@/components/dashboard/UnifiedContentTree";
@@ -71,6 +72,8 @@ interface DashboardSidebarProps {
   setSelectedPage: (pageId: string | null) => void;
   setSelectedDocument: (doc: Document | null) => void;
   selectedVersion: ProjectVersion | null;
+  setSelectedVersion: (version: ProjectVersion | null) => void;
+  projectVersions: ProjectVersion[];
   
   topicsExpanded: boolean;
   setTopicsExpanded: (expanded: boolean) => void;
@@ -199,6 +202,8 @@ export function DashboardSidebar({
   setSelectedPage,
   setSelectedDocument,
   selectedVersion,
+  setSelectedVersion,
+  projectVersions,
   topicsExpanded,
   setTopicsExpanded,
   driveIntegrationEnabled,
@@ -331,12 +336,57 @@ export function DashboardSidebar({
               
               {selectedProject && (
                 <>
-                  <NavItem
-                    icon={GitBranch}
-                    label="Version"
-                    collapsed={sidebarCollapsed}
-                    badge={selectedVersion?.name || 'v1.0'}
-                  />
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="w-full text-left outline-none">
+                              <NavItem
+                                icon={GitBranch}
+                                label="Version"
+                                collapsed={sidebarCollapsed}
+                                badge={selectedVersion?.name || 'v1.0'}
+                                active={false}
+                                className="cursor-pointer"
+                              />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-[200px]">
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                              Project Versions
+                            </div>
+                            {projectVersions
+                              .filter(v => v.project_id === selectedProject.id)
+                              .map((v) => (
+                                <DropdownMenuItem
+                                  key={v.id}
+                                  onClick={() => setSelectedVersion(v)}
+                                  className={cn(
+                                    "flex items-center justify-between gap-2",
+                                    selectedVersion?.id === v.id && "bg-secondary font-medium"
+                                  )}
+                                >
+                                  <span className="truncate">{v.name}</span>
+                                  {v.is_default && (
+                                    <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 h-4">Default</Badge>
+                                  )}
+                                  {!v.is_published && (
+                                    <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 h-4 bg-amber-50 text-amber-600 border-amber-200">Draft</Badge>
+                                  )}
+                                </DropdownMenuItem>
+                              ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TooltipTrigger>
+                      {sidebarCollapsed && (
+                        <TooltipContent side="right">
+                          Version: {selectedVersion?.name || 'v1.0'}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+
                   <NavItem
                     icon={Settings}
                     label="Project Settings"

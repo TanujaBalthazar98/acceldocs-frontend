@@ -20,6 +20,7 @@ import {
   Send,
   CheckCircle,
   Search,
+  Plus,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -51,6 +52,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { buildDriveFolderTree } from "@/lib/driveFolderTree";
 import { formatDistanceToNow } from "date-fns";
 import { SEOSettings } from "./SEOSettings";
+import { ProjectVersion } from "@/types/dashboard";
 
 type VisibilityLevel = "internal" | "external" | "public";
 type ProjectRole = "admin" | "editor" | "reviewer" | "viewer";
@@ -121,6 +123,8 @@ export const ProjectSettingsPanel = ({
   const [isCheckingOrphans, setIsCheckingOrphans] = useState(false);
   const [orphanedFiles, setOrphanedFiles] = useState<any[]>([]);
   const [isImportingOrphans, setIsImportingOrphans] = useState(false);
+  const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
+  const [isPromoting, setIsPromoting] = useState(false);
   
   // Members state
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -272,7 +276,7 @@ export const ProjectSettingsPanel = ({
           .from("documents")
           .insert({
             project_id: projectId,
-            version_id: versionId,
+            project_version_id: versionId,
             google_doc_id: file.id,
             title: file.name,
             last_synced_at: new Date().toISOString(),
@@ -305,6 +309,7 @@ export const ProjectSettingsPanel = ({
       fetchProjectData();
       fetchMembers();
       fetchSyncStatus();
+      fetchVersions();
     }
   }, [open, projectId]);
 
@@ -376,6 +381,48 @@ export const ProjectSettingsPanel = ({
           setOrgName(orgData.name);
         }
       }
+    }
+  };
+
+  const fetchVersions = async () => {
+    if (!projectId) return;
+    const { data } = await supabase
+      .from("project_versions")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false });
+    
+    if (data) {
+      setProjectVersions(data as ProjectVersion[]);
+    }
+  };
+
+  const handlePromoteVersion = async (versionId: string) => {
+    if (!projectId) return;
+    setIsPromoting(true);
+    try {
+      const { error } = await supabase.rpc("promote_version_to_default", {
+        target_version_id: versionId,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Version Promoted",
+        description: "The selected version is now the default.",
+      });
+      
+      await fetchVersions();
+      onUpdate?.();
+    } catch (error: any) {
+      console.error("Promotion error:", error);
+      toast({
+        title: "Promotion Failed",
+        description: error.message || "Could not promote version.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPromoting(false);
     }
   };
 
@@ -1195,95 +1242,14 @@ export const ProjectSettingsPanel = ({
         return;
       }
 
-      const { data: newVersion, error: createError } = await supabase
-        .from("project_versions")
-        .insert({
-          project_id: projectId,
-          name: versionName.trim(),
-          slug: normalizedSlug,
-          is_default: false,
-          is_published: false,
-          semver_major: semver?.major ?? null,
-          semver_minor: semver?.minor ?? null,
-          semver_patch: semver?.patch ?? null,
-          created_by: user.id,
-        })
-        .select("id")
-        .single();
+      const { data: newVersionId, error: rpcError } = await supabase.rpc("duplicate_project_version", {
+        source_version_id: sourceVersion.id,
+        new_name: versionName.trim(),
+        new_slug: normalizedSlug,
+        created_by_id: user.id,
+      });
 
-      if (createError || !newVersion?.id) {
-        throw createError || new Error("Failed to create version.");
-      }
-
-      const { data: sourceTopics } = await supabase
-        .from("topics")
-        .select("id, name, slug, parent_id, display_order, drive_folder_id")
-        .eq("project_id", projectId)
-        .eq("project_version_id", sourceVersion.id);
-
-      const topicIdMap = new Map<string, string>();
-      let remaining = (sourceTopics || []).slice();
-      let guard = 0;
-      while (remaining.length > 0 && guard < (sourceTopics || []).length + 2) {
-        const next: typeof remaining = [];
-        for (const topic of remaining) {
-          if (topic.parent_id && !topicIdMap.has(topic.parent_id)) {
-            next.push(topic);
-            continue;
-          }
-          const { data: createdTopic, error: topicError } = await supabase
-            .from("topics")
-            .insert({
-              project_id: projectId,
-              project_version_id: newVersion.id,
-              name: topic.name,
-              slug: topic.slug,
-              parent_id: topic.parent_id ? topicIdMap.get(topic.parent_id) ?? null : null,
-              display_order: topic.display_order ?? null,
-              drive_folder_id: topic.drive_folder_id ?? null,
-            })
-            .select("id")
-            .single();
-
-          if (topicError) {
-            throw topicError;
-          }
-
-          if (createdTopic?.id) {
-            topicIdMap.set(topic.id, createdTopic.id);
-          }
-        }
-        remaining = next;
-        guard += 1;
-      }
-
-      const { data: sourceDocs } = await supabase
-        .from("documents")
-        .select(
-          "id, title, slug, google_doc_id, topic_id, visibility, content_html, published_content_html, display_order, owner_id, video_url, video_title"
-        )
-        .eq("project_id", projectId)
-        .eq("project_version_id", sourceVersion.id);
-
-      for (const doc of sourceDocs || []) {
-        const contentHtml = doc.content_html ?? doc.published_content_html ?? null;
-        await supabase.from("documents").insert({
-          project_id: projectId,
-          project_version_id: newVersion.id,
-          title: doc.title,
-          slug: doc.slug,
-          google_doc_id: doc.google_doc_id,
-          topic_id: doc.topic_id ? topicIdMap.get(doc.topic_id) ?? null : null,
-          visibility: doc.visibility,
-          is_published: false,
-          content_html: contentHtml,
-          published_content_html: null,
-          display_order: doc.display_order ?? null,
-          owner_id: doc.owner_id ?? user.id,
-          video_url: doc.video_url ?? null,
-          video_title: doc.video_title ?? null,
-        });
-      }
+      if (rpcError) throw rpcError;
 
       toast({
         title: "Version created",
@@ -1651,28 +1617,66 @@ export const ProjectSettingsPanel = ({
           </Button>
 
           {/* Versions */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground">
-              Versions
-            </label>
-            <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  Draft versions
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  The default version is the published one. New versions start as drafts.
-                </p>
-              </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-foreground">
+                Versions
+              </label>
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2"
+                className="h-8 gap-2"
                 onClick={() => setDuplicateVersionOpen(true)}
                 disabled={!projectId}
               >
-                Duplicate to new version
+                <Plus className="w-3 h-3" />
+                New Version
               </Button>
+            </div>
+            
+            <div className="space-y-2">
+              {projectVersions.length === 0 ? (
+                <div className="p-4 rounded-lg bg-secondary/50 border border-border text-center">
+                  <p className="text-xs text-muted-foreground">No versions found.</p>
+                </div>
+              ) : (
+                projectVersions.map((v) => (
+                  <div key={v.id} className="group flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50 hover:bg-secondary/50 transition-colors">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">
+                          {v.name}
+                        </span>
+                        {v.is_default && (
+                          <Badge variant="default" className="text-[10px] h-4 px-1 bg-primary/10 text-primary border-primary/20">
+                            Default
+                          </Badge>
+                        )}
+                        {!v.is_default && v.is_published && (
+                          <Badge variant="outline" className="text-[10px] h-4 px-1 text-green-600 border-green-200 bg-green-50">
+                            Published
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        /{v.slug}
+                      </span>
+                    </div>
+                    
+                    {!v.is_default && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handlePromoteVersion(v.id)}
+                        disabled={isPromoting}
+                      >
+                        {isPromoting ? "Promoting..." : "Make Default"}
+                      </Button>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
