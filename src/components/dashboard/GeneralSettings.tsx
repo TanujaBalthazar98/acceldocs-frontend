@@ -29,6 +29,8 @@ import {
   UserPlus,
   RefreshCw,
   ChevronDown,
+  Eye,
+  Plus,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,6 +46,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import docspeareIcon from "@/assets/docspeare-icon.png";
+import { DocumentationPreview } from "./DocumentationPreview";
 
 interface GeneralSettingsProps {
   onBack: () => void;
@@ -69,6 +72,7 @@ interface BrandingData {
   hero_description: string | null;
   show_search_on_landing: boolean;
   show_featured_projects: boolean;
+  custom_links?: Array<{ label: string; url: string }> | null;
 }
 
 const fontOptions = [
@@ -127,6 +131,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
     hero_description: null,
     show_search_on_landing: true,
     show_featured_projects: true,
+    custom_links: [],
   });
 
   useEffect(() => {
@@ -167,7 +172,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         const { data: org, error: orgError } = await supabase
           .from("organizations")
           .select(
-            "name, domain, slug, subdomain, drive_folder_id, drive_permissions_last_synced_at, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects"
+            "name, domain, slug, subdomain, drive_folder_id, drive_permissions_last_synced_at, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, custom_links"
           )
           .eq("id", orgId)
           .maybeSingle();
@@ -213,6 +218,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           hero_description: org.hero_description,
           show_search_on_landing: org.show_search_on_landing ?? true,
           show_featured_projects: org.show_featured_projects ?? true,
+          custom_links: (org as any).custom_links || [],
         });
 
         // Get team members - use user_roles as source of truth for org membership
@@ -466,6 +472,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         hero_description: branding.hero_description,
         show_search_on_landing: branding.show_search_on_landing,
         show_featured_projects: branding.show_featured_projects,
+        custom_links: branding.custom_links,
       })
       .eq("id", organizationId);
 
@@ -575,11 +582,10 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         </div>
 
         <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="domains">Domains</TabsTrigger>
             <TabsTrigger value="branding">Branding</TabsTrigger>
-            <TabsTrigger value="appearance">Appearance</TabsTrigger>
           </TabsList>
 
           {/* General Tab */}
@@ -614,6 +620,54 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                   <p className="text-xs text-muted-foreground">
                     Users with this email domain automatically join your organization.
                   </p>
+                </div>
+              </div>
+            </section>
+
+            {/* Appearance Section (merged) */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Monitor className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-semibold text-foreground">Theme</h2>
+              </div>
+
+              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Choose your preferred appearance for the dashboard.
+                </p>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setTheme("light")}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      theme === "light" 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-muted-foreground/50"
+                    }`}
+                  >
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                        <Sun className="w-6 h-6 text-amber-600" />
+                      </div>
+                      <span className="text-sm font-medium text-foreground">Light</span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setTheme("dark")}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      theme === "dark" 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-muted-foreground/50"
+                    }`}
+                  >
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center">
+                        <Moon className="w-6 h-6 text-slate-300" />
+                      </div>
+                      <span className="text-sm font-medium text-foreground">Dark</span>
+                    </div>
+                  </button>
                 </div>
               </div>
             </section>
@@ -858,11 +912,34 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
           {/* Branding Tab */}
           <TabsContent value="branding" className="space-y-10">
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">Branding & Identity</h2>
               <Button onClick={handleSaveBranding} disabled={savingBranding}>
                 {savingBranding ? "Saving..." : "Save Branding"}
               </Button>
             </div>
+
+            {/* Preview Section */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Eye className="w-5 h-5 text-primary" />
+                <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Live Preview</h2>
+              </div>
+              <DocumentationPreview 
+                primaryColor={branding.primary_color}
+                secondaryColor={branding.secondary_color}
+                accentColor={branding.accent_color}
+                fontHeading={branding.font_heading}
+                fontBody={branding.font_body}
+                logoUrl={branding.logo_url}
+                tagline={branding.tagline}
+                heroTitle={branding.hero_title}
+                heroDescription={branding.hero_description}
+              />
+              <p className="text-xs text-muted-foreground text-center">
+                This is a preview of how your documentation site will look.
+              </p>
+            </section>
 
             {/* Extract from Website */}
             <section className="space-y-4">
@@ -1166,6 +1243,76 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
               </div>
             </section>
 
+            {/* Custom Links */}
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ExternalLink className="w-5 h-5 text-primary" />
+                  <h2 className="text-lg font-semibold text-foreground">Custom Links</h2>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    const newLinks = [...(branding.custom_links || []), { label: "", url: "" }];
+                    updateBranding("custom_links", newLinks);
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Link
+                </Button>
+              </div>
+
+              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Add links to your header or footer (e.g., Company Website, Support, Status).
+                </p>
+                
+                {(branding.custom_links || []).length === 0 ? (
+                  <div className="text-center py-6 border border-dashed border-border rounded-lg bg-secondary/20">
+                    <p className="text-xs text-muted-foreground">No custom links added yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(branding.custom_links || []).map((link, index) => (
+                      <div key={index} className="flex gap-3 items-start">
+                        <div className="grid grid-cols-2 gap-3 flex-1">
+                          <Input
+                            placeholder="Label (e.g. Website)"
+                            value={link.label}
+                            onChange={(e) => {
+                              const newLinks = [...(branding.custom_links || [])];
+                              newLinks[index].label = e.target.value;
+                              updateBranding("custom_links", newLinks);
+                            }}
+                          />
+                          <Input
+                            placeholder="URL (https://...)"
+                            value={link.url}
+                            onChange={(e) => {
+                              const newLinks = [...(branding.custom_links || [])];
+                              newLinks[index].url = e.target.value;
+                              updateBranding("custom_links", newLinks);
+                            }}
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const newLinks = (branding.custom_links || []).filter((_, i) => i !== index);
+                            updateBranding("custom_links", newLinks);
+                          }}
+                        >
+                          <X className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
             {/* Custom CSS */}
             <section className="space-y-4">
               <div className="flex items-center gap-2">
@@ -1184,57 +1331,6 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                   rows={8}
                   className="font-mono text-sm"
                 />
-              </div>
-            </section>
-          </TabsContent>
-
-
-          {/* Appearance Tab */}
-          <TabsContent value="appearance" className="space-y-10">
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Monitor className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Theme</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Choose your preferred appearance for the dashboard.
-                </p>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => setTheme("light")}
-                    className={`p-4 rounded-xl border-2 transition-all ${
-                      theme === "light" 
-                        ? "border-primary bg-primary/5" 
-                        : "border-border hover:border-muted-foreground/50"
-                    }`}
-                  >
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-                        <Sun className="w-6 h-6 text-amber-600" />
-                      </div>
-                      <span className="text-sm font-medium text-foreground">Light</span>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => setTheme("dark")}
-                    className={`p-4 rounded-xl border-2 transition-all ${
-                      theme === "dark" 
-                        ? "border-primary bg-primary/5" 
-                        : "border-border hover:border-muted-foreground/50"
-                    }`}
-                  >
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center">
-                        <Moon className="w-6 h-6 text-slate-300" />
-                      </div>
-                      <span className="text-sm font-medium text-foreground">Dark</span>
-                    </div>
-                  </button>
-                </div>
               </div>
             </section>
           </TabsContent>

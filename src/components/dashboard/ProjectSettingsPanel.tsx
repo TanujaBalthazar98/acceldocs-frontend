@@ -118,6 +118,9 @@ export const ProjectSettingsPanel = ({
   const [versionSlug, setVersionSlug] = useState("");
   const [isDuplicatingVersion, setIsDuplicatingVersion] = useState(false);
   const [isRepairingDrive, setIsRepairingDrive] = useState(false);
+  const [isCheckingOrphans, setIsCheckingOrphans] = useState(false);
+  const [orphanedFiles, setOrphanedFiles] = useState<any[]>([]);
+  const [isImportingOrphans, setIsImportingOrphans] = useState(false);
   
   // Members state
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -177,6 +180,122 @@ export const ProjectSettingsPanel = ({
       });
     } finally {
       setIsRepairing(false);
+    }
+  };
+
+  // Check for orphaned files in Drive
+  const handleCheckOrphanedFiles = async () => {
+    if (!projectId || !driveFolderId) return;
+    if (!googleAccessToken) {
+      await attemptRecovery("Google authentication required");
+      return;
+    }
+
+    setIsCheckingOrphans(true);
+    setOrphanedFiles([]);
+    
+    try {
+      // 1. Get all files from Drive folder (recursive)
+      const { folders, files } = await buildDriveFolderTree(listFolder, {
+        rootFolderId: driveFolderId,
+        rootName: projectName ?? "Project",
+        maxDepth: 8,
+      });
+
+      // 2. Get all documents from DB for this project
+      const { data: dbDocs } = await supabase
+        .from("documents")
+        .select("google_doc_id")
+        .eq("project_id", projectId);
+
+      const dbDocIds = new Set((dbDocs || []).map(d => d.google_doc_id));
+      
+      // 3. Find files that are in Drive but NOT in DB
+      const googleDocMimeTypes = [
+        "application/vnd.google-apps.document",
+        "application/vnd.google-apps.spreadsheet",
+        "application/vnd.google-apps.presentation"
+      ];
+
+      const orphans = files.filter(file => 
+        googleDocMimeTypes.includes(file.mimeType) && 
+        !dbDocIds.has(file.id)
+      );
+
+      setOrphanedFiles(orphans);
+      
+      if (orphans.length === 0) {
+        toast({
+          title: "All clean!",
+          description: "No orphaned files found in the project Drive folder.",
+        });
+      } else {
+        toast({
+          title: "Orphaned Files Found",
+          description: `Found ${orphans.length} files that are not tracked in Docspeare.`,
+        });
+      }
+    } catch (error: any) {
+      console.error("Check orphans error:", error);
+      toast({
+        title: "Check Failed",
+        description: error.message || "Could not check for orphaned files.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCheckingOrphans(false);
+    }
+  };
+
+  // Import selected orphaned files
+  const handleImportOrphans = async () => {
+    if (!projectId || orphanedFiles.length === 0) return;
+    setIsImportingOrphans(true);
+
+    try {
+      // Get default version
+      const { data: defaultVersion } = await supabase
+        .from("project_versions")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("is_default", true)
+        .maybeSingle();
+      
+      const versionId = defaultVersion?.id;
+      if (!versionId) throw new Error("Could not find default project version for import.");
+
+      // For simplicity, we'll import them into the project root (no topic)
+      // and they'll show up as unassigned
+      let importedCount = 0;
+      for (const file of orphanedFiles) {
+        const { error } = await supabase
+          .from("documents")
+          .insert({
+            project_id: projectId,
+            version_id: versionId,
+            google_doc_id: file.id,
+            title: file.name,
+            last_synced_at: new Date().toISOString(),
+          });
+        
+        if (!error) importedCount++;
+      }
+
+      toast({
+        title: "Import Complete",
+        description: `Successfully imported ${importedCount} out of ${orphanedFiles.length} files.`,
+      });
+      setOrphanedFiles([]);
+      onUpdate?.();
+    } catch (error: any) {
+      console.error("Import error:", error);
+      toast({
+        title: "Import Failed",
+        description: error.message || "Could not import some files.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImportingOrphans(false);
     }
   };
 
@@ -1618,8 +1737,48 @@ export const ProjectSettingsPanel = ({
                   <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
                   {isSyncing ? "Syncing..." : "Sync Now"}
                 </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2"
+                  onClick={handleCheckOrphanedFiles}
+                  disabled={isCheckingOrphans || !driveFolderId}
+                  title="Check for files in Drive not yet in Docspeare"
+                >
+                  <Search className={`w-3 h-3 ${isCheckingOrphans ? "animate-pulse" : ""}`} />
+                  {isCheckingOrphans ? "Checking..." : "Check Orphans"}
+                </Button>
               </div>
             </div>
+
+            {orphanedFiles.length > 0 && (
+              <div className="p-4 rounded-lg border border-primary/30 bg-primary/5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium text-foreground">
+                      {orphanedFiles.length} Orphaned File{orphanedFiles.length !== 1 ? "s" : ""} Found
+                    </span>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    onClick={handleImportOrphans}
+                    disabled={isImportingOrphans}
+                  >
+                    {isImportingOrphans ? "Importing..." : "Import All"}
+                  </Button>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1 pr-2">
+                  {orphanedFiles.map(file => (
+                    <div key={file.id} className="text-xs text-muted-foreground flex items-center justify-between py-1 border-b border-border/50 last:border-0">
+                      <span className="truncate max-w-[200px]">{file.name}</span>
+                      <span className="text-[10px] opacity-70">Google Doc</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {driveFolderStatus === "missing" && (
               <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
                 <AlertTriangle className="mt-0.5 h-3 w-3" />

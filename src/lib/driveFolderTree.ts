@@ -18,6 +18,7 @@ export interface DriveFolderNode {
 export interface DriveTraversalResult {
   root: DriveFolderNode;
   folders: DriveFolderNode[];
+  files: DriveFileItem[];
 }
 
 export interface DriveTraversalOptions {
@@ -48,6 +49,7 @@ export async function buildDriveFolderTree(
   const rootName = options.rootName ?? "Root";
   const root = buildNode(options.rootFolderId, rootName, null, rootName, 0);
   const folders: DriveFolderNode[] = [root];
+  const files: DriveFileItem[] = [];
 
   const queue: DriveFolderNode[] = [root];
   while (queue.length > 0) {
@@ -58,12 +60,17 @@ export async function buildDriveFolderTree(
       continue;
     }
 
-    const { files, needsDriveAccess } = await listFolder(current.id);
+    const { files: folderFiles, needsDriveAccess } = await listFolder(current.id);
     if (needsDriveAccess) {
       throw new Error("Drive access required");
     }
 
-    const folderItems = (files || []).filter((item) => item.mimeType === DRIVE_FOLDER_MIME);
+    const items = folderFiles || [];
+    const folderItems = items.filter((item) => item.mimeType === DRIVE_FOLDER_MIME);
+    const nonFolderItems = items.filter((item) => item.mimeType !== DRIVE_FOLDER_MIME);
+
+    files.push(...nonFolderItems);
+
     for (const item of folderItems) {
       const childPath = `${current.path}/${item.name}`;
       const child = buildNode(item.id, item.name, current.id, childPath, current.depth + 1);
@@ -73,5 +80,5 @@ export async function buildDriveFolderTree(
     }
   }
 
-  return { root, folders };
+  return { root, folders, files };
 }
