@@ -1577,7 +1577,7 @@ export const ProjectSettingsPanel = ({
                 </Badge>
               )}
             </div>
-            <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
+            <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/50 border border-border sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium text-foreground">
                   {lastSyncedAt 
@@ -1588,7 +1588,7 @@ export const ProjectSettingsPanel = ({
                   {syncedDocsCount} document{syncedDocsCount !== 1 ? "s" : ""} synced
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 sm:justify-end">
                 <Button 
                   variant="outline" 
                   size="sm" 

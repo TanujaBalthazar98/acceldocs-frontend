@@ -39,6 +39,14 @@ interface SyncDocContentRequest {
   projectId?: string;
 }
 
+interface UpdateDocContentRequest {
+  action: "update_doc_content";
+  documentId: string;
+  googleDocId: string;
+  html: string;
+  projectId?: string;
+}
+
 interface TrashFileRequest {
   action: "trash_file";
   fileId: string;
@@ -58,6 +66,7 @@ type RequestBody =
   | ListFolderRequest
   | GetDocContentRequest
   | SyncDocContentRequest
+  | UpdateDocContentRequest
   | TrashFileRequest
   | MoveFileRequest;
 
@@ -131,6 +140,8 @@ function getOperationForAction(action: string): string {
       return 'view';
     case 'sync_doc_content':
       return 'edit';
+    case 'update_doc_content':
+      return 'edit';
     case 'trash_file':
       return 'edit';
     case 'move_file':
@@ -198,6 +209,15 @@ async function resolveProjectIdFromBody(
     case "get_doc_content":
       return resolveProjectIdFromFileId(supabase, body.docId);
     case "sync_doc_content": {
+      const { data: dbDoc } = await supabase
+        .from("documents")
+        .select("project_id")
+        .eq("id", body.documentId)
+        .maybeSingle();
+      return (dbDoc?.project_id as string | undefined) ??
+        (body.googleDocId ? await resolveProjectIdFromFileId(supabase, body.googleDocId) : undefined);
+    }
+    case "update_doc_content": {
       const { data: dbDoc } = await supabase
         .from("documents")
         .select("project_id")
@@ -321,6 +341,35 @@ async function encryptOrgText(
     return null;
   }
   return data as string;
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
+function htmlToPlainText(html: string): string {
+  const stripped = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|li|tr|blockquote)>/gi, "\n")
+    .replace(/<[^>]+>/g, "");
+
+  const decoded = decodeHtmlEntities(stripped);
+  const normalized = decoded
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return normalized ? `${normalized}\n` : "\n";
 }
 
 async function refreshUserAccessToken(supabase: any, userId: string): Promise<string | null> {
@@ -748,6 +797,137 @@ Deno.serve(async (req) => {
       console.log("Content synced successfully with modifiedTime:", googleModifiedAt);
       return new Response(
         JSON.stringify({ success: true, html: htmlContent, modifiedAt: googleModifiedAt }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Update document content
+    if (body.action === "update_doc_content") {
+      console.log("Updating doc content:", body.googleDocId, "from document:", body.documentId);
+
+      const docResponse = await fetchWithRefresh(
+        `https://docs.googleapis.com/v1/documents/${body.googleDocId}`
+      );
+
+      if (!docResponse.ok) {
+        const errorText = await docResponse.text();
+        console.error("Google Docs API error:", errorText);
+        if (docResponse.status === 401 || docResponse.status === 403) {
+          return new Response(
+            JSON.stringify({
+              error: "Google authentication expired",
+              needsReauth: true,
+              details: errorText,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({ error: "Failed to read document", details: errorText }),
+          { status: docResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const docJson = await docResponse.json();
+      const contentBlocks = docJson?.body?.content || [];
+      let maxEndIndex = 1;
+      for (const block of contentBlocks) {
+        const endIndex = Number(block?.endIndex || 0);
+        if (endIndex > maxEndIndex) maxEndIndex = endIndex;
+      }
+
+      const plainText = htmlToPlainText(body.html);
+      const requests: Array<Record<string, unknown>> = [];
+
+      if (maxEndIndex > 1) {
+        requests.push({
+          deleteContentRange: {
+            range: { startIndex: 1, endIndex: maxEndIndex - 1 },
+          },
+        });
+      }
+
+      requests.push({
+        insertText: {
+          location: { index: 1 },
+          text: plainText,
+        },
+      });
+
+      const updateResponse = await fetchWithRefresh(
+        `https://docs.googleapis.com/v1/documents/${body.googleDocId}:batchUpdate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requests }),
+        }
+      );
+
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        console.error("Google Docs update error:", errorText);
+        if (updateResponse.status === 401 || updateResponse.status === 403) {
+          return new Response(
+            JSON.stringify({
+              error: "Google authentication expired",
+              needsReauth: true,
+              details: errorText,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({ error: "Failed to update document", details: errorText }),
+          { status: updateResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      await supabase
+        .from("documents")
+        .update({
+          content_html: body.html,
+          last_synced_at: new Date().toISOString(),
+        })
+        .eq("id", body.documentId);
+
+      if (projectId) {
+        const { data: projectRow } = await supabase
+          .from("projects")
+          .select("organization_id")
+          .eq("id", projectId)
+          .maybeSingle();
+
+        const orgId = projectRow?.organization_id as string | undefined;
+        if (orgId) {
+          const encryptedHtml = await encryptOrgText(supabase, orgId, body.html);
+          if (encryptedHtml) {
+            await supabase
+              .from("document_cache")
+              .upsert(
+                {
+                  document_id: body.documentId,
+                  organization_id: orgId,
+                  content_html_encrypted: encryptedHtml,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "document_id" }
+              );
+          }
+        }
+      }
+
+      await supabase.from("audit_logs").insert({
+        user_id: user.id,
+        action: "update_doc_content",
+        entity_type: "document",
+        entity_id: body.documentId,
+        project_id: projectId,
+        metadata: { googleDocId: body.googleDocId },
+        success: true,
+      });
+
+      return new Response(
+        JSON.stringify({ success: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

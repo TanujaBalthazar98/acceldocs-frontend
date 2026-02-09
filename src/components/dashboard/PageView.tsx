@@ -34,6 +34,7 @@ import { ensureFreshSession } from "@/lib/authSession";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
 import { VideoEmbed } from "@/components/docs/VideoEmbed";
+import { LexicalEditor } from "@/components/editor/LexicalEditor";
 
 type VisibilityLevel = "internal" | "external" | "public";
 const GOOGLE_TOKEN_KEY = "google_access_token";
@@ -72,12 +73,15 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   const [shareOpen, setShareOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(document.video_url ?? null);
   const [videoTitle, setVideoTitle] = useState<string | null>(document.video_title ?? null);
   // Use content_html or fall back to published_content_html
   const [contentHtml, setContentHtml] = useState<string | null>(
     document.content_html || document.published_content_html
   );
+  const [editorHtml, setEditorHtml] = useState<string>("");
   const { toast } = useToast();
   const { googleAccessToken } = useAuth();
   const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
@@ -91,9 +95,35 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
       // Content not loaded - fetch it from the database
       fetchContentFromDB();
     }
+    fetchContentFromCache();
     setVideoUrl(document.video_url ?? null);
     setVideoTitle(document.video_title ?? null);
   }, [document.id, document.content_html, document.published_content_html, document.video_url, document.video_title]);
+
+  const fetchContentFromCache = async () => {
+    setIsLoadingContent(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        return;
+      }
+      const response = await fetch(`/api/document-cache?documentId=${document.id}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) {
+        return;
+      }
+      const cacheData = await response.json();
+      if (cacheData?.contentHtml) {
+        setContentHtml(cacheData.contentHtml);
+      }
+    } catch (error) {
+      console.error("Error fetching cached content:", error);
+    } finally {
+      setIsLoadingContent(false);
+    }
+  };
 
   const fetchContentFromDB = async () => {
     setIsLoadingContent(true);
@@ -156,6 +186,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
 
       if (data?.html) {
         setContentHtml(data.html);
+        setEditorHtml(data.html);
         toast({
           title: "Content synced",
           description: "Document content has been updated.",
@@ -170,6 +201,106 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
       });
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const extractContentText = (html: string) => {
+    if (!html) return "";
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    return (container.textContent || "").replace(/\s+/g, " ").trim();
+  };
+
+  const extractHeadings = (html: string) => {
+    if (!html) return [];
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const headings = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+    return headings.map((heading) => ({
+      level: Number(heading.tagName.replace("H", "")),
+      text: heading.textContent || "",
+    }));
+  };
+
+  const saveCache = async (html: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) throw new Error("Session expired");
+    const response = await fetch("/api/document-cache", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        documentId: document.id,
+        contentHtml: html,
+        contentText: extractContentText(html),
+        headings: extractHeadings(html),
+      }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "Failed to save cache");
+    }
+  };
+
+  const handleStartEdit = () => {
+    setEditorHtml(contentHtml || "");
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditorHtml(contentHtml || "");
+    setIsEditing(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editorHtml.trim()) {
+      toast({
+        title: "Nothing to save",
+        description: "Please add content before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const token = getGoogleToken();
+      const { data, error } = await supabase.functions.invoke("google-drive", {
+        body: {
+          action: "update_doc_content",
+          googleDocId: document.google_doc_id,
+          documentId: document.id,
+          html: editorHtml,
+        },
+        ...(token ? { headers: { "x-google-token": token } } : {}),
+      });
+
+      if (error) throw error;
+      if (data?.needsReauth) {
+        toast({
+          title: "Drive access required",
+          description: "Please reconnect Google Drive.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await saveCache(editorHtml);
+      setContentHtml(editorHtml);
+      setIsEditing(false);
+      toast({ title: "Saved", description: "Changes saved to Drive and cache." });
+      onDocumentUpdate?.();
+    } catch (error: any) {
+      toast({
+        title: "Save failed",
+        description: error?.message || "Could not save changes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -211,6 +342,47 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end flex-wrap">
+            {isEditing ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
+                  onClick={handleCancelEdit}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
+                  onClick={handleSaveEdit}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      Save
+                    </>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
+                onClick={handleStartEdit}
+              >
+                <Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Edit</span>
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -314,25 +486,29 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
                   <VideoEmbed url={videoUrl} title={videoTitle || document.title} />
                 </div>
               )}
-              <div className="rounded-xl border border-border bg-card/50 p-4 sm:p-6 lg:p-8 overflow-x-auto">
+              <div className="rounded-xl border border-border bg-card/50 overflow-x-auto">
                 {isLoadingContent ? (
                   <div className="text-center py-12">
                     <Loader2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
                     <p className="text-muted-foreground">Loading content...</p>
                   </div>
+                ) : isEditing ? (
+                  <LexicalEditor initialHtml={editorHtml} onChangeHtml={setEditorHtml} />
                 ) : contentHtml ? (
-                  <div
-                    className="google-doc-content"
-                    dangerouslySetInnerHTML={{
-                      __html: isLikelyMarkdown(contentHtml)
-                        ? normalizeHtml(
-                            renderMarkdownToHtml(
-                              stripFirstMarkdownHeading(contentHtml, document.title)
+                  <div className="p-4 sm:p-6 lg:p-8">
+                    <div
+                      className="google-doc-content"
+                      dangerouslySetInnerHTML={{
+                        __html: isLikelyMarkdown(contentHtml)
+                          ? normalizeHtml(
+                              renderMarkdownToHtml(
+                                stripFirstMarkdownHeading(contentHtml, document.title)
+                              )
                             )
-                          )
-                        : normalizeHtml(contentHtml),
-                    }}
-                  />
+                          : normalizeHtml(contentHtml),
+                      }}
+                    />
+                  </div>
                 ) : (
                   <div className="text-center py-12">
                     <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
