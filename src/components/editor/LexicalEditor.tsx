@@ -17,7 +17,7 @@ import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListItemNode, ListNode } from "@lexical/list";
 import { CodeNode } from "@lexical/code";
-import { LinkNode } from "@lexical/link";
+import { AutoLinkNode, LinkNode } from "@lexical/link";
 import { TableCellNode, TableNode, TableRowNode } from "@lexical/table";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { $getRoot } from "lexical";
@@ -77,6 +77,7 @@ export const LexicalEditor = ({ initialHtml, onChangeHtml }: LexicalEditorProps)
       ListItemNode,
       CodeNode,
       LinkNode,
+      AutoLinkNode,
       TableNode,
       TableRowNode,
       TableCellNode,
