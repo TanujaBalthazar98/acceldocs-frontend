@@ -9,7 +9,7 @@ import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { CheckListPlugin } from "@lexical/react/LexicalCheckListPlugin";
 import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin";
-import { AutoLinkPlugin } from "@lexical/react/LexicalAutoLinkPlugin";
+import { AutoLinkPlugin, createLinkMatcherWithRegExp } from "@lexical/react/LexicalAutoLinkPlugin";
 import { TablePlugin } from "@lexical/react/LexicalTablePlugin";
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
@@ -26,6 +26,7 @@ import { LexicalToolbar } from "@/components/editor/LexicalToolbar";
 import { ImagePlugin } from "@/components/editor/plugins/ImagePlugin";
 import { ImageNode } from "@/components/editor/nodes/ImageNode";
 import { ClickFocusPlugin } from "@/components/editor/plugins/ClickFocusPlugin";
+import { EnsureEditablePlugin } from "@/components/editor/plugins/EnsureEditablePlugin";
 
 interface LexicalEditorProps {
   initialHtml?: string | null;
@@ -34,11 +35,7 @@ interface LexicalEditorProps {
 
 const placeholder = "Start writing...";
 
-const URL_MATCHER = {
-  type: "url",
-  regex: /(https?:\/\/[^\s]+)/g,
-  transform: (text: string) => text,
-};
+const URL_MATCHER = createLinkMatcherWithRegExp(/https?:\/\/[^\s]+/);
 
 export const LexicalEditor = ({ initialHtml, onChangeHtml }: LexicalEditorProps) => {
   const initialConfig = useMemo(() => ({
@@ -105,6 +102,7 @@ export const LexicalEditor = ({ initialHtml, onChangeHtml }: LexicalEditorProps)
               spellCheck={true}
               autoCorrect="on"
               autoComplete="on"
+              tabIndex={0}
             />
           }
           placeholder={
@@ -116,6 +114,7 @@ export const LexicalEditor = ({ initialHtml, onChangeHtml }: LexicalEditorProps)
         />
         <AutoFocusPlugin />
         <ClickFocusPlugin />
+        <EnsureEditablePlugin />
         <HistoryPlugin />
         <LinkPlugin />
         <ListPlugin />

@@ -72,8 +72,8 @@ export const LexicalToolbar = () => {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
 
-  const updateToolbar = useCallback(() => {
-    editor.getEditorState().read(() => {
+  const updateToolbar = useCallback((editorState) => {
+    editorState.read(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
 
@@ -100,13 +100,11 @@ export const LexicalToolbar = () => {
       setIsLink(parent?.getType() === "link" || node.getType() === "link");
       setIsInTable(!!$getNearestNodeOfType(node, TableNode));
     });
-  }, [editor]);
+  }, []);
 
-  useEffect(() => {
-    return editor.registerUpdateListener(({ editorState }) => {
-      editorState.read(updateToolbar);
-    });
-  }, [editor, updateToolbar]);
+  useEffect(() => editor.registerUpdateListener(({ editorState }) => {
+    updateToolbar(editorState);
+  }), [editor, updateToolbar]);
 
   useEffect(() => {
     const unregisterCanUndo = editor.registerCommand(
