@@ -1,12 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
 import { 
   ArrowLeft, 
   Building2, 
@@ -33,8 +32,6 @@ import { ConfigureConnectorDialog } from './ConfigureConnectorDialog';
 import { ConnectorActionsLog } from './ConnectorActionsLog';
 import { MCPActionsPanel } from './MCPActionsPanel';
 import { toast } from 'sonner';
-import { ensureFreshSession } from '@/lib/authSession';
-import { supabase } from '@/integrations/supabase/client';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -98,40 +95,6 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
   const [viewActionsConnector, setViewActionsConnector] = useState<Connector | null>(null);
   const [deleteConfirmConnector, setDeleteConfirmConnector] = useState<Connector | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [addonToken, setAddonToken] = useState<string | null>(null);
-  const [addonTokenLoading, setAddonTokenLoading] = useState(false);
-  const [addonTokenError, setAddonTokenError] = useState<string | null>(null);
-  const [defaultVersionId, setDefaultVersionId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!projectId) {
-      setDefaultVersionId(null);
-      return;
-    }
-
-    let isMounted = true;
-    const loadDefaultVersion = async () => {
-      const { data, error } = await supabase
-        .from('project_versions')
-        .select('id,is_default')
-        .eq('project_id', projectId)
-        .order('is_default', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!isMounted) return;
-      if (error) {
-        setDefaultVersionId(null);
-        return;
-      }
-      setDefaultVersionId(data?.id ?? null);
-    };
-
-    loadDefaultVersion();
-    return () => {
-      isMounted = false;
-    };
-  }, [projectId]);
 
   const installedTypes = connectors.map(c => c.connector_type);
   const availableConnectors = CONNECTOR_DEFINITIONS.filter(
@@ -163,82 +126,6 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
     } else {
       toast.error(`Connection test failed: ${result.error}`);
     }
-  };
-
-  const handleGenerateAddonToken = async () => {
-    setAddonTokenLoading(true);
-    setAddonTokenError(null);
-    try {
-      if (!projectId) {
-        setAddonTokenError('Select a project before generating a token.');
-        return;
-      }
-
-      const session = await ensureFreshSession();
-      const accessToken = session?.access_token;
-      if (!accessToken) {
-        setAddonTokenError('Please sign in to generate a token.');
-        return;
-      }
-
-      const response = await fetch('/api/addon/auth', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({})
-      });
-
-      const responseText = await response.text();
-      let payload: { token?: string; error?: string } | null = null;
-      try {
-        payload = responseText ? JSON.parse(responseText) : null;
-      } catch (parseError) {
-        payload = null;
-      }
-
-      if (!response.ok) {
-        const trimmed = (responseText || '').trim();
-        const looksLikeHtml = trimmed.startsWith('<');
-        const isInvocationFailed = trimmed.includes('FUNCTION_INVOCATION_FAILED');
-        const fallbackMessage = responseText || 'Failed to generate token.';
-        if (looksLikeHtml || isInvocationFailed) {
-          setAddonTokenError(
-            payload?.error ||
-              'Server error. Check Vercel logs and ensure ADDON_JWT_SECRET, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_URL are set.'
-          );
-        } else {
-          setAddonTokenError(payload?.error || fallbackMessage);
-        }
-        return;
-      }
-
-      if (!payload?.token) {
-        setAddonTokenError('Unexpected response from server. Please try again.');
-        return;
-      }
-
-      setAddonToken(payload.token);
-      toast.success('Add-on token generated');
-    } catch (error: any) {
-      setAddonTokenError(error?.message || 'Failed to generate token.');
-    } finally {
-      setAddonTokenLoading(false);
-    }
-  };
-
-  const handleCopyAddonToken = async () => {
-    if (!addonToken) return;
-    await navigator.clipboard.writeText(addonToken);
-    toast.success('Token copied');
-  };
-
-  const handleCopyValue = async (value?: string | null) => {
-    if (!value) return;
-    await navigator.clipboard.writeText(value);
-    toast.success('Copied');
   };
 
   const handleDelete = async () => {
@@ -277,89 +164,6 @@ export function IntegrationsPanel({ projectId, onBack }: IntegrationsPanelProps)
 
         <TabsContent value="connectors" className="flex-1 mt-0">
           <ScrollArea className="flex-1 p-4">
-        <div className="space-y-4 mb-8">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-            Docs Add-on
-          </h3>
-          <Card className="bg-card/50">
-            <CardContent className="p-4 space-y-4">
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Quick setup</p>
-                <ol className="list-decimal list-inside space-y-1">
-                  <li>Install the Docs add-on from the private Marketplace listing.</li>
-                  <li>Generate a short-lived token below.</li>
-                  <li>Paste the token in the add-on to load projects and publish.</li>
-                </ol>
-                <p className="text-xs text-muted-foreground">
-                  If you don’t see the add-on, ask your Workspace admin to allow internal apps.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleGenerateAddonToken}
-                  disabled={addonTokenLoading || !projectId}
-                >
-                  {addonTokenLoading ? 'Generating...' : 'Generate Add-on Token'}
-                </Button>
-                {addonToken && (
-                  <Button variant="outline" size="sm" onClick={handleCopyAddonToken}>
-                    Copy Token
-                  </Button>
-                )}
-              </div>
-
-              {addonToken && (
-                <Textarea
-                  readOnly
-                  value={addonToken}
-                  className="min-h-[96px] font-mono text-xs"
-                />
-              )}
-
-              {!projectId && (
-                <p className="text-sm text-muted-foreground">
-                  Select a project first to generate a token.
-                </p>
-              )}
-              {addonTokenError && (
-                <p className="text-sm text-destructive">{addonTokenError}</p>
-              )}
-
-              <Separator />
-
-              <div className="text-sm text-muted-foreground space-y-2">
-                <div className="flex items-center gap-2">
-                  <span>Project ID:</span>
-                  <span className="font-mono text-xs text-foreground">{projectId || 'Select a project'}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCopyValue(projectId)}
-                    disabled={!projectId}
-                  >
-                    Copy
-                  </Button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>Default Version ID:</span>
-                  <span className="font-mono text-xs text-foreground">{defaultVersionId || 'No default version'}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCopyValue(defaultVersionId)}
-                    disabled={!defaultVersionId}
-                  >
-                    Copy
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
         {/* Installed Connectors */}
         <div className="space-y-4 mb-8">
           <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">

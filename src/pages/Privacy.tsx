@@ -52,7 +52,7 @@ const Privacy = () => {
               <ul className="list-disc list-inside text-muted-foreground space-y-2 mb-4">
                 <li>Account information (name, email address) obtained through Google Sign-In</li>
                 <li>Organization and workspace details</li>
-                <li>Documentation content you create, import, or sync from Google Drive</li>
+                <li>Documentation content you create or sync from Google Drive</li>
                 <li>Communications with our support team</li>
               </ul>
               
@@ -63,7 +63,7 @@ const Privacy = () => {
               <ul className="list-disc list-inside text-muted-foreground space-y-2 mb-4">
                 <li>Your Google account profile information (name, email, profile picture)</li>
                 <li>Google Drive files and folders that you explicitly select for documentation</li>
-                <li>Google Docs content for importing and syncing documentation</li>
+                <li>Google Docs content for syncing documentation</li>
                 <li>File metadata (names, modification dates, folder structure)</li>
               </ul>
 
@@ -81,7 +81,7 @@ const Privacy = () => {
               <p className="text-muted-foreground leading-relaxed mb-4">We use the information we collect to:</p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2">
                 <li>Authenticate you using your Google Workspace account</li>
-                <li>Import and sync documentation from your authorized Google Drive folders</li>
+                <li>Sync documentation from your authorized Google Drive folders</li>
                 <li>Manage permissions and access control for documentation</li>
                 <li>Provide, maintain, and improve our services</li>
                 <li>Process transactions and send related information</li>

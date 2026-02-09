@@ -18,9 +18,6 @@ verify_jwt = false
 [functions.google-drive]
 verify_jwt = false
 
-[functions.import-markdown]
-verify_jwt = false
-
 [functions.mcp-connector]
 verify_jwt = false
 
@@ -40,9 +37,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.serve-robots-txt]
-verify_jwt = false
-
-[functions.stop-import-job]
 verify_jwt = false
 
 [functions.store-refresh-token]

@@ -1271,22 +1271,19 @@ export const ProjectSettingsPanel = ({
       // 3. Delete drive permission sync
       await supabase.from("drive_permission_sync").delete().eq("project_id", projectId);
       
-      // 4. Delete import jobs
-      await supabase.from("import_jobs").delete().eq("project_id", projectId);
-      
-      // 5. Delete project invitations
+      // 4. Delete project invitations
       await supabase.from("project_invitations").delete().eq("project_id", projectId);
       
-      // 6. Delete project members
+      // 5. Delete project members
       await supabase.from("project_members").delete().eq("project_id", projectId);
       
-      // 7. Delete audit logs
+      // 6. Delete audit logs
       await supabase.from("audit_logs").delete().eq("project_id", projectId);
       
-      // 8. Delete domains
+      // 7. Delete domains
       await supabase.from("domains").delete().eq("project_id", projectId);
       
-      // 9. Delete connector credentials and connectors
+      // 8. Delete connector credentials and connectors
       const { data: connectors } = await supabase.from("connectors").select("id").eq("project_id", projectId);
       if (connectors && connectors.length > 0) {
         const connectorIds = connectors.map(c => c.id);

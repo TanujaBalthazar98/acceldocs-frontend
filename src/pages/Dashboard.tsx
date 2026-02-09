@@ -114,7 +114,6 @@ import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { DriveStatusIndicator } from "@/components/dashboard/DriveStatusIndicator";
 import { DRIVE_INTEGRATION_ENABLED } from "@/lib/featureFlags";
 import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
-import { GlobalImportProgress } from "@/components/dashboard/GlobalImportProgress";
 import { supabase } from "@/integrations/supabase/client";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
@@ -219,9 +218,6 @@ const Dashboard = () => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<ProjectVersion | null>(null);
-  const [addonToken, setAddonToken] = useState<string | null>(null);
-  const [addonTokenLoading, setAddonTokenLoading] = useState(false);
-  const [addonTokenError, setAddonTokenError] = useState<string | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [parentTopicForCreate, setParentTopicForCreate] = useState<Topic | null>(null);
   const [settingsTopic, setSettingsTopic] = useState<Topic | null>(null);
@@ -279,11 +275,6 @@ const Dashboard = () => {
   const showGettingStarted =
     !!organizationId && !projectStepDone;
 
-  useEffect(() => {
-    setAddonToken(null);
-    setAddonTokenError(null);
-  }, [selectedProject?.id]);
-
   // Helper: Check if user can publish for a specific project (used when no project is selected)
   const canPublishForProject = async (projectId: string): Promise<boolean> => {
     if (!user) return false;
@@ -340,75 +331,6 @@ const Dashboard = () => {
     setDeepLinkHandled(true);
   }, [deepLinkHandled, location.search, navigate, projects]);
 
-  const handleGenerateAddonToken = async () => {
-    setAddonTokenLoading(true);
-    setAddonTokenError(null);
-    try {
-      if (!selectedProject?.id) {
-        setAddonTokenError("Select a project before generating a token.");
-        return;
-      }
-
-      const session = await ensureFreshSession();
-      const accessToken = session?.access_token;
-      if (!accessToken) {
-        setAddonTokenError("Please sign in to generate a token.");
-        return;
-      }
-
-      const response = await fetch("/api/addon/auth", {
-        method: "POST",
-        cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
-      });
-
-      const responseText = await response.text();
-      let payload: { token?: string; error?: string } | null = null;
-      try {
-        payload = responseText ? JSON.parse(responseText) : null;
-      } catch (parseError) {
-        payload = null;
-      }
-
-      if (!response.ok) {
-        const trimmed = (responseText || "").trim();
-        const looksLikeHtml = trimmed.startsWith("<");
-        const isInvocationFailed = trimmed.includes("FUNCTION_INVOCATION_FAILED");
-        const fallbackMessage = responseText || "Failed to generate token.";
-        if (looksLikeHtml || isInvocationFailed) {
-          setAddonTokenError(
-            payload?.error ||
-              "Server error. Check Vercel logs and ensure ADDON_JWT_SECRET, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_URL are set."
-          );
-        } else {
-          setAddonTokenError(payload?.error || fallbackMessage);
-        }
-        return;
-      }
-
-      if (!payload?.token) {
-        setAddonTokenError("Unexpected response from server. Please try again.");
-        return;
-      }
-
-      setAddonToken(payload.token);
-      toast({ title: "Add-on token generated" });
-    } catch (error: any) {
-      setAddonTokenError(error?.message || "Failed to generate token.");
-    } finally {
-      setAddonTokenLoading(false);
-    }
-  };
-
-  const handleCopyAddonToken = async () => {
-    if (!addonToken) return;
-    await navigator.clipboard.writeText(addonToken);
-    toast({ title: "Token copied" });
-  };
   
   // Fetch organization's root folder ID and projects
   const fetchData = async () => {
@@ -882,14 +804,6 @@ const Dashboard = () => {
         .delete()
         .eq("project_id", projectId);
       if (error) return fail("Error", `Failed to delete Drive permission sync rows: ${error.message}`);
-    }
-
-    {
-      const { error } = await supabase
-        .from("import_jobs")
-        .delete()
-        .eq("project_id", projectId);
-      if (error) return fail("Error", `Failed to delete import jobs: ${error.message}`);
     }
 
     {
@@ -3111,7 +3025,7 @@ const Dashboard = () => {
                 <div>
                   <h2 className="text-base sm:text-lg font-semibold">Getting started</h2>
                   <p className="text-sm text-muted-foreground">
-                    Complete these steps to publish from Google Docs.
+                    Complete these steps to publish from Google Drive.
                   </p>
                 </div>
                 <Badge variant="secondary" className="w-fit">Setup</Badge>
@@ -3151,85 +3065,25 @@ const Dashboard = () => {
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <Circle className="w-5 h-5 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">Install the Docs add-on (private listing)</p>
-                      <p className="text-xs text-muted-foreground">
-                        If you don’t see it, ask your Workspace admin to install the internal app.
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => window.open("https://workspace.google.com/marketplace", "_blank")}
-                  >
-                    Open Marketplace
-                  </Button>
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Circle className="w-5 h-5 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">Generate an add-on token</p>
-                      <p className="text-xs text-muted-foreground">
-                        Generate a short-lived token and paste it into the add-on.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col sm:items-end gap-2">
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        onClick={handleGenerateAddonToken}
-                        disabled={addonTokenLoading || !selectedProject?.id}
-                        title={!selectedProject?.id ? "Select a project first" : "Generate token"}
-                      >
-                        {addonTokenLoading ? (
-                          <span className="flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Generating
-                          </span>
-                        ) : (
-                          "Generate Token"
-                        )}
-                      </Button>
-                      {addonToken && (
-                        <Button size="sm" variant="outline" onClick={handleCopyAddonToken}>
-                          Copy Token
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setShowGeneralSettings(false);
-                          setShowAPISettings(false);
-                          setShowMCPSettings(false);
-                          setShowIntegrations(true);
-                        }}
-                      >
-                        Advanced
-                      </Button>
-                    </div>
-                    {addonTokenError && (
-                      <p className="text-xs text-destructive text-right max-w-[320px]">
-                        {addonTokenError}
-                      </p>
+                    {needsDriveAccess ? (
+                      <Circle className="w-5 h-5 text-muted-foreground" />
+                    ) : (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
                     )}
-                    {addonToken && (
-                      <div className="w-full sm:w-[320px] space-y-2">
-                        <Textarea readOnly value={addonToken} rows={3} />
-                        <div className="text-xs text-muted-foreground">
-                          Project ID: {selectedProject?.id || "Select a project"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Default Version ID: {selectedVersion?.id || "No default version"}
-                        </div>
-                      </div>
-                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Connect Google Drive</p>
+                      <p className="text-xs text-muted-foreground">
+                        Authorize Drive access so Docspeare can sync and publish your docs.
+                      </p>
+                    </div>
                   </div>
+                  {needsDriveAccess ? (
+                    <Button size="sm" onClick={handleConnectDrive} disabled={isConnectingDrive}>
+                      {isConnectingDrive ? "Connecting..." : "Connect Drive"}
+                    </Button>
+                  ) : (
+                    <Badge variant="secondary" className="w-fit">Ready</Badge>
+                  )}
                 </div>
             </div>
           )}
@@ -3984,13 +3838,6 @@ const Dashboard = () => {
         />
       )}
       
-      {/* Global Import Progress Indicator */}
-      {organizationId && (
-        <GlobalImportProgress 
-          organizationId={organizationId} 
-          onComplete={() => fetchData()} 
-        />
-      )}
     </div>
     </TooltipProvider>
   );

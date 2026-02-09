@@ -78,7 +78,7 @@ const Terms = () => {
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2">
                 <li>Access Google Drive files and folders you explicitly select</li>
-                <li>Read and import content from Google Docs</li>
+                <li>Read content from Google Docs linked to your documentation</li>
                 <li>Create folders and documents in your Google Drive</li>
                 <li>Manage file permissions for collaborative access</li>
               </ul>

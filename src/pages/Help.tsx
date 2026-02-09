@@ -17,7 +17,6 @@ import {
   Layers,
   Share2,
   Link2,
-  Upload,
   RefreshCw,
   Eye,
   Bot,
@@ -96,8 +95,8 @@ const Help = () => {
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">2</div>
                 <div>
-                  <span className="font-medium">Create or join a workspace</span>
-                  <p className="text-sm text-muted-foreground">Personal emails create a private workspace; business domains can request access</p>
+                  <span className="font-medium">Create your workspace</span>
+                  <p className="text-sm text-muted-foreground">Create a workspace for your team and invite collaborators</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
@@ -110,8 +109,8 @@ const Help = () => {
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">4</div>
                 <div>
-                  <span className="font-medium">Create or import your first project</span>
-                  <p className="text-sm text-muted-foreground">Import folders or start empty and add pages</p>
+                  <span className="font-medium">Create your first project</span>
+                  <p className="text-sm text-muted-foreground">Start with an empty project and add topics and pages</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
@@ -132,8 +131,7 @@ const Help = () => {
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
               <li>Sign in with your Google account (required for Drive integration)</li>
               <li>Grant Drive permissions when prompted</li>
-              <li>If you use a personal email, a private workspace is created for you</li>
-              <li>If you use a business domain, request access or get invited to the workspace</li>
+              <li>Create your workspace and invite your teammates</li>
             </ol>
             <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
               <p className="text-sm text-muted-foreground">
@@ -195,7 +193,7 @@ const Help = () => {
                 <h4 className="font-medium text-primary">Admin</h4>
                 <p className="text-sm text-muted-foreground">
                   Can manage projects, invite/remove members, configure branding and settings, 
-                  and approve join requests. Cannot delete the organization or transfer ownership.
+                  and manage workspace settings. Cannot delete the organization or transfer ownership.
                 </p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4 border">
@@ -228,19 +226,6 @@ const Help = () => {
             <p className="text-sm text-muted-foreground mt-3">
               Invitations expire after 7 days. You can resend or revoke invitations from the Team settings page.
             </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Join Requests</h3>
-            <p className="text-muted-foreground mb-3">
-              Users with email addresses matching your organization's domain can request to join:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Users see a "Request to Join" option when their email domain matches</li>
-              <li>Admins and owners receive notifications of pending requests</li>
-              <li>Review requests in Settings → Join Requests</li>
-              <li>Approve to add the user, or reject with an optional reason</li>
-            </ul>
           </div>
 
           <div>
@@ -469,34 +454,6 @@ const Help = () => {
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Importing Content</h3>
-            <p className="text-muted-foreground mb-3">
-              You can import existing content into Docspeare:
-            </p>
-            <div className="space-y-3">
-              <div className="bg-muted/50 rounded-lg p-4 border">
-                <div className="flex items-center gap-2 mb-1">
-                  <Upload className="h-4 w-4 text-primary" />
-                  <h4 className="font-medium">Import Markdown</h4>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Upload Markdown files (.md) to create new pages. The content is converted to 
-                  a Google Doc and linked to the page. Supports frontmatter for title extraction.
-                </p>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-4 border">
-                <div className="flex items-center gap-2 mb-1">
-                  <FolderOpen className="h-4 w-4 text-primary" />
-                  <h4 className="font-medium">Import from Drive</h4>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Link existing Google Docs from your Drive to create pages without uploading files.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div>
             <h3 className="font-semibold text-lg mb-3">Editing Content</h3>
             <p className="text-muted-foreground mb-3">
               Docspeare uses Google Docs as the editor:
@@ -564,7 +521,7 @@ const Help = () => {
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
               <li>Configure your project's visibility (Internal, External, or Public)</li>
               <li>Add topics and pages with content in Docspeare</li>
-              <li>Publish individual pages when they're ready (from the dashboard or the Google Docs add‑on)</li>
+              <li>Publish individual pages when they're ready (from the dashboard)</li>
               <li>Your documentation is available at your organization's URL</li>
             </ol>
             <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
@@ -577,13 +534,8 @@ const Help = () => {
 
           <div>
             <h3 className="font-semibold text-lg mb-3">Publishing a Page</h3>
-            <p className="text-muted-foreground mb-3">
-              You can publish from the dashboard or directly inside Google Docs.
-            </p>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Open the Google Doc for the page</li>
-              <li>Open the Docspeare add‑on</li>
-              <li>Select the target project, version, and optional topic</li>
+              <li>Open the page in Docspeare</li>
               <li>Click <strong>Preview</strong> to verify, then <strong>Publish</strong></li>
               <li>The page becomes visible based on project visibility settings</li>
             </ol>
@@ -594,19 +546,6 @@ const Help = () => {
                 remains visible even if you later unpublish a page (showing the last published version).
               </p>
             </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Google Docs Add‑on (Token)</h3>
-            <p className="text-muted-foreground mb-3">
-              The add‑on uses a short‑lived token so it can load your projects and publish securely.
-            </p>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>In Docspeare, go to <strong>Integrations → Docs Add‑on</strong></li>
-              <li>Generate a short‑lived token</li>
-              <li>Paste the token into the add‑on in Google Docs</li>
-              <li>Click <strong>Refresh</strong> to load projects and topics</li>
-            </ol>
           </div>
 
           <div>
@@ -872,7 +811,7 @@ const Help = () => {
             <ul className="list-disc list-inside space-y-2 text-muted-foreground">
               <li>View who made changes and when</li>
               <li>Track page publishes and unpublishes</li>
-              <li>Monitor member invitations and join requests</li>
+              <li>Monitor member invitations</li>
               <li>Review project and topic modifications</li>
             </ul>
             <p className="text-sm text-muted-foreground mt-3">
@@ -886,7 +825,6 @@ const Help = () => {
               Stay informed about activity in your organization:
             </p>
             <ul className="list-disc list-inside space-y-2 text-muted-foreground mt-3">
-              <li>New join requests from users</li>
               <li>Invitation acceptances</li>
               <li>Page feedback submissions</li>
             </ul>

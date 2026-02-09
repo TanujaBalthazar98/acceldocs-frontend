@@ -17,11 +17,8 @@ import MCPDocs from "./pages/MCPDocs";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import Help from "./pages/Help";
-import AddonSetup from "./pages/AddonSetup";
-import AdminConfig from "./pages/AdminConfig";
 import Support from "./pages/Support";
 import ReportIssue from "./pages/ReportIssue";
-import PostInstall from "./pages/PostInstall";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,9 +40,6 @@ const App = () => (
                 <Route path="/help" element={<Help />} />
                 <Route path="/support" element={<Support />} />
                 <Route path="/support/report-issue" element={<ReportIssue />} />
-                <Route path="/post-install" element={<PostInstall />} />
-                <Route path="/docs/addon-setup" element={<AddonSetup />} />
-                <Route path="/docs/admin-config" element={<AdminConfig />} />
                 <Route
                   path="/dashboard"
                   element={

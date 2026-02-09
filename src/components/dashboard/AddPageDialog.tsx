@@ -38,7 +38,7 @@ export const AddPageDialog = ({
             Add Page
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Pages are created and published from Google Docs using the Docspeare add-on.
+            Pages are created in Google Docs and synced from your Drive folder.
           </DialogDescription>
         </DialogHeader>
 
@@ -48,8 +48,8 @@ export const AddPageDialog = ({
           </p>
           <ol className="list-decimal pl-4 space-y-1">
             <li>Create or open a Google Doc.</li>
-            <li>Open the Docspeare add-on in Google Docs.</li>
-            <li>Select the project/topic and click Publish or Preview.</li>
+            <li>Move it into the project’s Drive folder (and topic subfolder if applicable).</li>
+            <li>Click “Sync from Drive” in Docspeare to pull the latest changes.</li>
           </ol>
         </div>
 
