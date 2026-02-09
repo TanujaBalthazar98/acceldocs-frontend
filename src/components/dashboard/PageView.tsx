@@ -10,7 +10,6 @@ import {
   ExternalLink,
   CheckCircle2,
   AlertTriangle,
-  Edit3,
   Trash2,
   Archive,
   RefreshCw,
@@ -269,10 +268,6 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
                 <DropdownMenuItem className="gap-2">
                   <CheckCircle2 className="w-4 h-4" />
                   Mark as Verified
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2">
-                  <Edit3 className="w-4 h-4" />
-                  Change State
                 </DropdownMenuItem>
                 <DropdownMenuItem className="gap-2">
                   <User className="w-4 h-4" />
