@@ -372,6 +372,20 @@ function htmlToPlainText(html: string): string {
   return normalized ? `${normalized}\n` : "\n";
 }
 
+function extractHeadingsFromHtml(html: string): Array<{ level: number; text: string }> {
+  if (!html) return [];
+  const headings: Array<{ level: number; text: string }> = [];
+  const matches = html.matchAll(/<h([1-6])[^>]*>(.*?)<\/h\1>/gi);
+  for (const match of matches) {
+    const level = Number(match[1]);
+    const inner = match[2] || "";
+    const stripped = inner.replace(/<[^>]+>/g, "");
+    const text = decodeHtmlEntities(stripped).trim();
+    if (text) headings.push({ level, text });
+  }
+  return headings;
+}
+
 async function refreshUserAccessToken(supabase: any, userId: string): Promise<string | null> {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
@@ -767,6 +781,10 @@ Deno.serve(async (req) => {
         const orgId = projectRow?.organization_id as string | undefined;
         if (orgId) {
           const encryptedHtml = await encryptOrgText(supabase, orgId, htmlContent);
+          const contentText = htmlToPlainText(htmlContent);
+          const headings = extractHeadingsFromHtml(htmlContent);
+          const encryptedText = await encryptOrgText(supabase, orgId, contentText);
+          const encryptedHeadings = await encryptOrgText(supabase, orgId, JSON.stringify(headings));
           if (encryptedHtml) {
             await supabase
               .from("document_cache")
@@ -775,6 +793,8 @@ Deno.serve(async (req) => {
                   document_id: body.documentId,
                   organization_id: orgId,
                   content_html_encrypted: encryptedHtml,
+                  content_text_encrypted: encryptedText,
+                  headings_encrypted: encryptedHeadings,
                   updated_at: new Date().toISOString(),
                 },
                 { onConflict: "document_id" }
@@ -912,6 +932,10 @@ Deno.serve(async (req) => {
         const orgId = projectRow?.organization_id as string | undefined;
         if (orgId) {
           const encryptedHtml = await encryptOrgText(supabase, orgId, body.html);
+          const contentText = htmlToPlainText(body.html);
+          const headings = extractHeadingsFromHtml(body.html);
+          const encryptedText = await encryptOrgText(supabase, orgId, contentText);
+          const encryptedHeadings = await encryptOrgText(supabase, orgId, JSON.stringify(headings));
           if (encryptedHtml) {
             await supabase
               .from("document_cache")
@@ -920,6 +944,8 @@ Deno.serve(async (req) => {
                   document_id: body.documentId,
                   organization_id: orgId,
                   content_html_encrypted: encryptedHtml,
+                  content_text_encrypted: encryptedText,
+                  headings_encrypted: encryptedHeadings,
                   updated_at: new Date().toISOString(),
                 },
                 { onConflict: "document_id" }

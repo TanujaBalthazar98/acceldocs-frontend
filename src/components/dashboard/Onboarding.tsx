@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, ArrowRight, ArrowLeft, Loader2, Building2, Clock, UserPlus, Puzzle, ExternalLink } from "lucide-react";
+import { CheckCircle2, ArrowRight, ArrowLeft, Loader2, Building2, Clock, UserPlus, Puzzle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -64,10 +64,11 @@ const formatPersonalWorkspaceName = (email?: string | null, fullName?: string | 
 };
 
 export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
-  const { user, profileLoading } = useAuth();
+  const { user, profileLoading, requestDriveAccess } = useAuth();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<OnboardingMode | null>(null);
   const [isCheckingOrg, setIsCheckingOrg] = useState(true);
   const [existingOrgId, setExistingOrgId] = useState<string | null>(null);
@@ -295,6 +296,24 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     }
   };
 
+  const handleConnectDrive = async () => {
+    setIsConnectingDrive(true);
+    try {
+      const { error } = await requestDriveAccess();
+      if (error) {
+        throw error;
+      }
+    } catch (error: any) {
+      console.error("Error connecting Drive:", error);
+      toast({
+        title: "Drive connection failed",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+      setIsConnectingDrive(false);
+    }
+  };
+
   // Show loading while checking org status
   if (isCheckingOrg) {
     return (
@@ -409,7 +428,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         <div className="flex justify-center gap-6 mb-8 text-xs text-muted-foreground">
           <span className={step >= 1 ? "text-primary" : ""}>Welcome</span>
           <span className={step >= 2 ? "text-primary" : ""}>Create Workspace</span>
-          <span className={step >= 3 ? "text-primary" : ""}>Install Add-on</span>
+          <span className={step >= 3 ? "text-primary" : ""}>Connect Drive</span>
         </div>
 
         {/* Step Content */}
@@ -421,7 +440,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               </div>
               <h2 className="text-2xl font-bold mb-3">Welcome to {APP_NAME}!</h2>
               <p className="text-muted-foreground mb-6">
-                You're the first member of {workspaceName}! Let's create your workspace and connect the Docs add-on so publishing works right away.
+                You're the first member of {workspaceName}! Create your workspace, then connect Google Drive so Docspeare can sync and publish your docs.
               </p>
               <Button 
                 variant="hero" 
@@ -492,37 +511,39 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <Puzzle className="w-8 h-8 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold mb-3">Install the Docs Add-on</h2>
+              <h2 className="text-2xl font-bold mb-3">Connect Google Drive</h2>
               <p className="text-muted-foreground mb-6">
-                The add-on is where publishing happens. It’s a private Google Workspace app, so your admin may need to install it.
+                Docspeare stores source documents in Google Drive. Connect Drive once to enable syncing,
+                publishing, and team access controls.
               </p>
               <div className="space-y-3">
                 <Button
                   variant="hero"
+                  size="lg"
+                  onClick={handleConnectDrive}
+                  className="w-full gap-2"
+                  disabled={isConnectingDrive}
+                >
+                  {isConnectingDrive ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      Connect Google Drive
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
                   size="lg"
                   onClick={onComplete}
                   className="w-full gap-2"
                 >
                   Continue to Docspeare
                   <ArrowRight className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => window.open("https://workspace.google.com/marketplace", "_blank")}
-                  className="w-full gap-2"
-                >
-                  Open Marketplace (Private Listing)
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => window.open("https://admin.google.com/ac/apps/gwhmarketplace/", "_blank")}
-                  className="w-full gap-2"
-                >
-                  Open Admin Console
-                  <ExternalLink className="w-4 h-4" />
                 </Button>
                 <Button
                   variant="outline"
@@ -539,7 +560,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Docs are edited in Google Docs. {APP_NAME} stores published versions and access controls.
+          Docs are stored in Google Drive. {APP_NAME} keeps an encrypted cache for fast reads and publishing.
         </p>
       </div>
     </div>

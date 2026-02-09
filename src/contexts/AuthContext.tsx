@@ -24,6 +24,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const GOOGLE_TOKEN_KEY = "google_access_token";
 const GOOGLE_DRIVE_ACCESS_REQUESTED_KEY = "google_drive_access_requested";
+const GOOGLE_DRIVE_REFRESH_PRESENT_KEY = "google_drive_refresh_token_present";
 const AUTH_REDIRECT_BASE = import.meta.env.VITE_AUTH_REDIRECT_BASE as string | undefined;
 
 const getRedirectBase = () => {
@@ -74,6 +75,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         console.error("Failed to store refresh token:", error);
       } else {
         console.log("Store refresh token result:", data);
+        if (data?.success) {
+          localStorage.setItem(GOOGLE_DRIVE_REFRESH_PRESENT_KEY, "1");
+        }
       }
     } catch (err) {
       console.error("Error storing refresh token:", err);
@@ -119,6 +123,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (event === "SIGNED_OUT") {
         localStorage.removeItem(GOOGLE_TOKEN_KEY);
         localStorage.removeItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY);
+        localStorage.removeItem(GOOGLE_DRIVE_REFRESH_PRESENT_KEY);
         setGoogleAccessToken(null);
         hasAttemptedStoreTokenRef.current = false;
       }
@@ -181,12 +186,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setProfileLoading(true);
       const { data } = await supabase
         .from("profiles")
-        .select("organization_id")
+        .select("organization_id, google_refresh_token_present")
         .eq("id", user.id)
         .maybeSingle();
 
       if (!active) return;
       let organizationId = data?.organization_id ?? null;
+      if (data?.google_refresh_token_present) {
+        localStorage.setItem(GOOGLE_DRIVE_REFRESH_PRESENT_KEY, "1");
+      }
 
       if (!data && user.email) {
         const accountTypeRaw = user.user_metadata?.account_type;
@@ -321,17 +329,22 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Mark that we're about to request offline/Drive scopes so we can store the refresh token after redirect
     localStorage.setItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY, "1");
 
+    const hasRefreshToken = localStorage.getItem(GOOGLE_DRIVE_REFRESH_PRESENT_KEY) === "1";
+    const queryParams: Record<string, string> = {
+      access_type: "offline",
+    };
+    if (!hasRefreshToken) {
+      queryParams.prompt = "consent select_account";
+    }
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: redirectUrl,
         skipBrowserRedirect: true,
         scopes:
-          "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file",
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent select_account",
-        },
+          "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents",
+        queryParams,
       },
     });
 

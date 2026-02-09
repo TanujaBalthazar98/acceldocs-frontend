@@ -104,21 +104,11 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   const fetchContentFromCache = async () => {
     setIsLoadingContent(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
-      if (!accessToken) {
-        return;
-      }
-      const response = await fetch(`/api/document-cache?documentId=${document.id}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+      const { data, error } = await supabase.functions.invoke("document-cache", {
+        body: { action: "get", documentId: document.id },
       });
-      if (!response.ok) {
-        return;
-      }
-      const cacheData = await response.json();
-      if (cacheData?.contentHtml) {
-        setContentHtml(cacheData.contentHtml);
-      }
+      if (error || !data?.success) return;
+      if (data?.contentHtml) setContentHtml(data.contentHtml);
     } catch (error) {
       console.error("Error fetching cached content:", error);
     } finally {
@@ -205,47 +195,6 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
     }
   };
 
-  const extractContentText = (html: string) => {
-    if (!html) return "";
-    const container = document.createElement("div");
-    container.innerHTML = html;
-    return (container.textContent || "").replace(/\s+/g, " ").trim();
-  };
-
-  const extractHeadings = (html: string) => {
-    if (!html) return [];
-    const container = document.createElement("div");
-    container.innerHTML = html;
-    const headings = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6"));
-    return headings.map((heading) => ({
-      level: Number(heading.tagName.replace("H", "")),
-      text: heading.textContent || "",
-    }));
-  };
-
-  const saveCache = async (html: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const accessToken = session?.access_token;
-    if (!accessToken) throw new Error("Session expired");
-    const response = await fetch("/api/document-cache", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        documentId: document.id,
-        contentHtml: html,
-        contentText: extractContentText(html),
-        headings: extractHeadings(html),
-      }),
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || "Failed to save cache");
-    }
-  };
-
   const handleStartEdit = () => {
     setEditorHtml(contentHtml || "");
     setEditorKey((prev) => prev + 1);
@@ -308,7 +257,6 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
         return;
       }
 
-      await saveCache(editorHtml);
       setContentHtml(editorHtml);
       setIsEditing(false);
       toast({ title: "Saved", description: "Changes saved to Drive and cache." });
