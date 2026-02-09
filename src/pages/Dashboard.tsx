@@ -2930,15 +2930,17 @@ const Dashboard = () => {
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
               <DriveStatusIndicator onStatusChange={(connected) => setNeedsDriveAccess(!connected)} />
               {organizationId && <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => fetchData()} />}
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 h-8 px-2 sm:px-3"
-                onClick={() => setInviteMemberOpen(true)}
-              >
-                <UserPlus className="w-4 h-4" />
-                <span className="hidden sm:inline">Invite</span>
-              </Button>
+              {(isOrgOwner || appRole === 'admin') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-8 px-2 sm:px-3"
+                  onClick={() => setInviteMemberOpen(true)}
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span className="hidden sm:inline">Invite</span>
+                </Button>
+              )}
               <Button 
                 variant={showAIAssistant ? "secondary" : "outline"}
                 size="sm" 
