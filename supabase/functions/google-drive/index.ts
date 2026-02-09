@@ -812,6 +812,12 @@ Deno.serve(async (req) => {
       if (!docResponse.ok) {
         const errorText = await docResponse.text();
         console.error("Google Docs API error:", errorText);
+        if (isScopeInsufficient(errorText)) {
+          return new Response(
+            JSON.stringify({ error: "Insufficient scopes", needsDriveAccess: true, details: errorText }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
         if (docResponse.status === 401 || docResponse.status === 403) {
           return new Response(
             JSON.stringify({
@@ -866,6 +872,12 @@ Deno.serve(async (req) => {
       if (!updateResponse.ok) {
         const errorText = await updateResponse.text();
         console.error("Google Docs update error:", errorText);
+        if (isScopeInsufficient(errorText)) {
+          return new Response(
+            JSON.stringify({ error: "Insufficient scopes", needsDriveAccess: true, details: errorText }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
         if (updateResponse.status === 401 || updateResponse.status === 403) {
           return new Response(
             JSON.stringify({

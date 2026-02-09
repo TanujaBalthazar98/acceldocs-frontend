@@ -267,6 +267,16 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
 
     setIsSaving(true);
     try {
+      const session = await ensureFreshSession();
+      if (!session) {
+        toast({
+          title: "Session expired",
+          description: "Please sign in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const token = getGoogleToken();
       const { data, error } = await supabase.functions.invoke("google-drive", {
         body: {
@@ -283,6 +293,14 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
         toast({
           title: "Drive access required",
           description: "Please reconnect Google Drive.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (data?.needsDriveAccess) {
+        toast({
+          title: "Drive access required",
+          description: "Please grant Drive access and try again.",
           variant: "destructive",
         });
         return;
