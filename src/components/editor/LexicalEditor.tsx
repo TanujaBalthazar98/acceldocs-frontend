@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
@@ -41,12 +41,6 @@ const URL_MATCHER = {
 };
 
 export const LexicalEditor = ({ initialHtml, onChangeHtml }: LexicalEditorProps) => {
-  const [editorKey, setEditorKey] = useState(0);
-
-  useEffect(() => {
-    setEditorKey((prev) => prev + 1);
-  }, [initialHtml]);
-
   const initialConfig = useMemo(() => ({
     namespace: "docspeare-editor",
     editable: true,
@@ -101,7 +95,7 @@ export const LexicalEditor = ({ initialHtml, onChangeHtml }: LexicalEditorProps)
   }), [initialHtml]);
 
   return (
-    <LexicalComposer key={editorKey} initialConfig={initialConfig}>
+    <LexicalComposer initialConfig={initialConfig}>
       <div className="rounded-xl border border-border bg-card/50">
         <LexicalToolbar />
         <RichTextPlugin

@@ -75,6 +75,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [editorKey, setEditorKey] = useState(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(document.video_url ?? null);
   const [videoTitle, setVideoTitle] = useState<string | null>(document.video_title ?? null);
   // Use content_html or fall back to published_content_html
@@ -247,6 +248,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
 
   const handleStartEdit = () => {
     setEditorHtml(contentHtml || "");
+    setEditorKey((prev) => prev + 1);
     setIsEditing(true);
   };
 
@@ -511,7 +513,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
                     <p className="text-muted-foreground">Loading content...</p>
                   </div>
                 ) : isEditing ? (
-                  <LexicalEditor initialHtml={editorHtml} onChangeHtml={setEditorHtml} />
+                  <LexicalEditor key={editorKey} initialHtml={contentHtml} onChangeHtml={setEditorHtml} />
                 ) : contentHtml ? (
                   <div className="p-4 sm:p-6 lg:p-8">
                     <div
