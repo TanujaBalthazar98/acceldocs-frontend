@@ -207,12 +207,13 @@ export const ProjectSettingsPanel = ({
       });
 
       // 2. Get all documents from DB for this project
-      const { data: dbDocs } = await supabase
+      const { data: dbDocs, error: dbDocsError } = await supabase
         .from("documents")
         .select("google_doc_id")
         .eq("project_id", projectId);
 
-      const dbDocIds = new Set((dbDocs || []).map(d => d.google_doc_id));
+      if (dbDocsError) throw dbDocsError;
+      const dbDocIds = new Set((dbDocs || []).map(d => (d as any).google_doc_id));
       
       // 3. Find files that are in Drive but NOT in DB
       const googleDocMimeTypes = [
@@ -258,13 +259,14 @@ export const ProjectSettingsPanel = ({
 
     try {
       // Get default version
-      const { data: defaultVersion } = await supabase
+      const { data: defaultVersion, error: defaultVersionError } = await supabase
         .from("project_versions")
         .select("id")
         .eq("project_id", projectId)
         .eq("is_default", true)
         .maybeSingle();
       
+      if (defaultVersionError) throw defaultVersionError;
       const versionId = defaultVersion?.id;
       if (!versionId) throw new Error("Could not find default project version for import.");
 
@@ -356,29 +358,36 @@ export const ProjectSettingsPanel = ({
   const fetchProjectData = async () => {
     if (!projectId) return;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("projects")
       .select("name, slug, description, visibility, is_published, drive_folder_id, organization_id")
       .eq("id", projectId)
       .single();
 
+    if (error) {
+      console.error("Fetch project error:", error);
+      return;
+    }
+
     if (data) {
-      setName(data.name);
-      setSlug(data.slug || "");
-      setDescription(data.description || "");
-      setVisibility(data.visibility as VisibilityLevel);
-      setIsPublished(data.is_published);
-      setDriveFolderId(data.drive_folder_id);
-      setOrganizationId(data.organization_id);
+      setName((data as any).name);
+      setSlug((data as any).slug || "");
+      setDescription((data as any).description || "");
+      setVisibility((data as any).visibility as VisibilityLevel);
+      setIsPublished((data as any).is_published);
+      setDriveFolderId((data as any).drive_folder_id);
+      setOrganizationId((data as any).organization_id);
       if (data.organization_id) {
-        const { data: orgData } = await supabase
+        const { data: orgData, error: orgError } = await supabase
           .from("organizations")
           .select("drive_folder_id, name")
-          .eq("id", data.organization_id)
+          .eq("id", (data as any).organization_id)
           .maybeSingle();
-        if (orgData) {
-          setOrgDriveFolderId(orgData.drive_folder_id);
-          setOrgName(orgData.name);
+        if (orgError) {
+          console.error("Fetch org error:", orgError);
+        } else if (orgData) {
+          setOrgDriveFolderId((orgData as any).drive_folder_id);
+          setOrgName((orgData as any).name);
         }
       }
     }
@@ -386,15 +395,17 @@ export const ProjectSettingsPanel = ({
 
   const fetchVersions = async () => {
     if (!projectId) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("project_versions")
       .select("*")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
     
-    if (data) {
-      setProjectVersions(data as ProjectVersion[]);
+    if (error) {
+      console.error("Fetch versions error:", error);
+      return;
     }
+    setProjectVersions((data || []) as ProjectVersion[]);
   };
 
   const handlePromoteVersion = async (versionId: string) => {
@@ -427,11 +438,11 @@ export const ProjectSettingsPanel = ({
   };
 
   const createFolderWithRetry = async (folderName: string, parentId: string) => {
-    let folder = await createFolder(folderName, parentId);
+    let folder = await (createFolder as any)(folderName, parentId);
     if (folder?.id) return folder;
-    const recovery = await attemptRecovery("Drive access required");
+    const recovery = await (attemptRecovery as any)("Drive access required");
     if (recovery.recovered && recovery.shouldRetry) {
-      folder = await createFolder(folderName, parentId);
+      folder = await (createFolder as any)(folderName, parentId);
     }
     return folder;
   };
@@ -439,23 +450,25 @@ export const ProjectSettingsPanel = ({
   const ensureDriveStructure = async (rootProjectId: string, rootFolderId: string) => {
     const created: { projects: number; topics: number; docs: number } = { projects: 0, topics: 0, docs: 0 };
 
-    const { data: rootProject } = await supabase
+    const { data: rootProject, error: rootProjectError } = await supabase
       .from("projects")
       .select("id, name, parent_id, drive_folder_id")
-      .eq("id", rootProjectId)
+      .eq("id", rootProjectId as any)
       .maybeSingle();
 
+    if (rootProjectError) throw rootProjectError;
     if (!rootProject) return created;
 
-    const projectOrder: Array<{ id: string; name: string; parent_id: string | null; drive_folder_id: string | null }> = [rootProject];
+    const projectOrder: Array<{ id: string; name: string; parent_id: string | null; drive_folder_id: string | null }> = [rootProject as any];
     let queue = [rootProjectId];
 
     while (queue.length) {
-      const { data: children } = await supabase
+      const { data: children, error: childrenError } = await supabase
         .from("projects")
         .select("id, name, parent_id, drive_folder_id")
         .in("parent_id", queue);
 
+      if (childrenError) throw childrenError;
       if (!children || children.length === 0) break;
       projectOrder.push(...children);
       queue = children.map((child) => child.id);
@@ -465,67 +478,76 @@ export const ProjectSettingsPanel = ({
     projectFolderById.set(rootProjectId, rootFolderId);
 
     for (const project of projectOrder) {
-      if (project.id === rootProjectId) continue;
-      const parentFolderId = project.parent_id ? projectFolderById.get(project.parent_id) : rootFolderId;
+      const p = project as any;
+      if (p.id === rootProjectId) continue;
+      const parentFolderId = p.parent_id ? projectFolderById.get(p.parent_id) : rootFolderId;
       if (!parentFolderId) continue;
 
-      if (project.drive_folder_id) {
-        projectFolderById.set(project.id, project.drive_folder_id);
+      if (p.drive_folder_id) {
+        projectFolderById.set(p.id, p.drive_folder_id);
         continue;
       }
 
-      const folder = await createFolderWithRetry(project.name || "Sub-project", parentFolderId);
+      const folder = await createFolderWithRetry(p.name || "Sub-project", parentFolderId);
       if (!folder?.id) continue;
 
-      await supabase
+      const { error: updateError } = await supabase
         .from("projects")
-        .update({ drive_folder_id: folder.id })
-        .eq("id", project.id);
+        .update({ drive_folder_id: (folder as any).id } as any)
+        .eq("id", p.id);
+      
+      if (updateError) throw updateError;
 
-      projectFolderById.set(project.id, folder.id);
+      projectFolderById.set(p.id, (folder as any).id);
       created.projects += 1;
     }
 
     const projectIds = projectOrder.map((project) => project.id);
-    const { data: topics } = await supabase
+    const { data: topics, error: topicsError } = await supabase
       .from("topics")
       .select("id, name, parent_id, project_id, drive_folder_id")
       .in("project_id", projectIds);
 
+    if (topicsError) throw topicsError;
+
     const topicFolderById = new Map<string, string>();
     for (const topic of topics || []) {
-      if (topic.drive_folder_id) {
-        topicFolderById.set(topic.id, topic.drive_folder_id);
+      const t = topic as any;
+      if (t.drive_folder_id) {
+        topicFolderById.set(t.id, t.drive_folder_id);
       }
     }
 
-    let pending = (topics || []).filter((topic) => !topic.drive_folder_id);
+    let pending = (topics || []).filter((topic) => !(topic as any).drive_folder_id);
     let progress = true;
     while (pending.length > 0 && progress) {
       progress = false;
       const remaining: typeof pending = [];
 
       for (const topic of pending) {
-        const parentFolderId = topic.parent_id
-          ? topicFolderById.get(topic.parent_id)
-          : projectFolderById.get(topic.project_id);
+        const t = topic as any;
+        const parentFolderId = t.parent_id
+          ? topicFolderById.get(t.parent_id)
+          : projectFolderById.get(t.project_id);
         if (!parentFolderId) {
           remaining.push(topic);
           continue;
         }
 
-        const folder = await createFolderWithRetry(topic.name, parentFolderId);
+        const folder = await createFolderWithRetry(t.name, parentFolderId);
         if (!folder?.id) {
           remaining.push(topic);
           continue;
         }
 
-        await supabase
+        const { error: updateError } = await supabase
           .from("topics")
-          .update({ drive_folder_id: folder.id })
-          .eq("id", topic.id);
+          .update({ drive_folder_id: (folder as any).id } as any)
+          .eq("id", t.id);
+        
+        if (updateError) throw updateError;
 
-        topicFolderById.set(topic.id, folder.id);
+        topicFolderById.set(t.id, (folder as any).id);
         created.topics += 1;
         progress = true;
       }
@@ -533,18 +555,21 @@ export const ProjectSettingsPanel = ({
       pending = remaining;
     }
 
-    const { data: docs } = await supabase
+    const { data: docs, error: docsError } = await supabase
       .from("documents")
       .select("id, google_doc_id, topic_id, project_id")
       .in("project_id", projectIds);
 
-    for (const doc of docs || []) {
-      const targetFolderId = doc.topic_id
-        ? topicFolderById.get(doc.topic_id)
-        : projectFolderById.get(doc.project_id);
-      if (!doc.google_doc_id || !targetFolderId) continue;
+    if (docsError) throw docsError;
 
-      const moved = await moveFile(doc.google_doc_id, targetFolderId, doc.project_id);
+    for (const doc of docs || []) {
+      const d = doc as any;
+      const targetFolderId = d.topic_id
+        ? topicFolderById.get(d.topic_id)
+        : projectFolderById.get(d.project_id);
+      if (!d.google_doc_id || !targetFolderId) continue;
+
+      const moved = await (moveFile as any)(d.google_doc_id, targetFolderId, d.project_id);
       if (moved?.success && !moved?.alreadyInFolder) {
         created.docs += 1;
       }
@@ -576,10 +601,12 @@ export const ProjectSettingsPanel = ({
 
         if (matching.length === 1) {
           resolvedFolderId = matching[0].id;
-          await supabase
+          const { error: updateError } = await supabase
             .from("projects")
-            .update({ drive_folder_id: resolvedFolderId })
-            .eq("id", projectId);
+            .update({ drive_folder_id: resolvedFolderId } as any)
+            .eq("id", projectId as any);
+          
+          if (updateError) throw updateError;
           setDriveFolderId(resolvedFolderId);
           setDriveFolderStatus("ok");
         } else if (matching.length > 1) {
@@ -589,7 +616,7 @@ export const ProjectSettingsPanel = ({
         }
       }
 
-      const rootAccess = await checkFolderAccess(resolvedFolderId, projectId);
+      const rootAccess = await (checkFolderAccess as any)(resolvedFolderId, projectId);
       if (rootAccess.needsDriveAccess) {
         await requestDriveAccess();
         toast({
@@ -627,7 +654,7 @@ export const ProjectSettingsPanel = ({
 
     setIsConnectingDrive(true);
     try {
-      const rootAccess = await checkFolderAccess("root");
+      const rootAccess = await (checkFolderAccess as any)("root");
       if (rootAccess.needsDriveAccess) {
         await requestDriveAccess();
         toast({
@@ -648,10 +675,12 @@ export const ProjectSettingsPanel = ({
         }
         resolvedOrgFolderId = orgFolder.id;
         setOrgDriveFolderId(orgFolder.id);
-        await supabase
+        const { error: updateError } = await supabase
           .from("organizations")
-          .update({ drive_folder_id: orgFolder.id })
-          .eq("id", organizationId);
+          .update({ drive_folder_id: orgFolder.id } as any)
+          .eq("id", organizationId as any);
+        
+        if (updateError) throw updateError;
       }
 
       const projectFolder = await createFolderWithRetry(
@@ -662,10 +691,12 @@ export const ProjectSettingsPanel = ({
         throw new Error("Failed to create project Drive folder. Reconnect Google Drive and try again.");
       }
 
-      await supabase
+      const { error: updateError } = await supabase
         .from("projects")
-        .update({ drive_folder_id: projectFolder.id })
-        .eq("id", projectId);
+        .update({ drive_folder_id: projectFolder.id } as any)
+        .eq("id", projectId as any);
+
+      if (updateError) throw updateError;
 
       setDriveFolderId(projectFolder.id);
       setDriveFolderStatus("ok");
@@ -710,19 +741,21 @@ export const ProjectSettingsPanel = ({
       // Resolve org id for this project (needed to show org-level admins/editors/viewers)
       let orgId = organizationId;
       if (!orgId) {
-        const { data: proj } = await supabase
+        const { data: proj, error: projError } = await supabase
           .from("projects")
           .select("organization_id")
-          .eq("id", projectId)
+          .eq("id", projectId as any)
           .maybeSingle();
-        orgId = proj?.organization_id ?? null;
+        
+        if (projError) throw projError;
+        orgId = (proj as any)?.organization_id ?? null;
       }
 
       // 1) Explicit project members
       const { data: membersData, error } = await supabase
         .from("project_members")
         .select("id, user_id, role")
-        .eq("project_id", projectId);
+        .eq("project_id", projectId as any);
 
       if (error) throw error;
 
@@ -741,13 +774,16 @@ export const ProjectSettingsPanel = ({
           supabase
             .from("user_roles")
             .select("user_id, role")
-            .eq("organization_id", orgId),
-          supabase.from("organizations").select("owner_id, domain").eq("id", orgId).maybeSingle(),
+            .eq("organization_id", orgId as any),
+          supabase.from("organizations")
+            .select("owner_id, domain")
+            .eq("id", orgId as any)
+            .maybeSingle(),
         ]);
 
         // Ensure org owner is listed even if not present in user_roles
-        const ownerId = org?.owner_id ?? null;
-        setOrganizationDomain(org?.domain ?? null);
+        const ownerId = (org as any)?.owner_id ?? null;
+        setOrganizationDomain((org as any)?.domain ?? null);
         if (ownerId) {
           const ownerIndex = merged.findIndex((entry) => entry.user_id === ownerId);
           if (ownerIndex >= 0) {
@@ -774,17 +810,19 @@ export const ProjectSettingsPanel = ({
       // Fetch profile info for display
       if (merged.length > 0) {
         const userIds = merged.map((m) => m.user_id);
-        const { data: profiles } = await supabase
+        const { data: profiles, error: profileError } = await supabase
           .from("profiles")
           .select("id, full_name, email, avatar_url")
-          .in("id", userIds);
+          .in("id", userIds as any);
+        
+        if (profileError) throw profileError;
 
         const membersWithProfiles = merged.map((member) => ({
           ...member,
-          profile: profiles?.find((p) => p.id === member.user_id) || undefined,
+          profile: (profiles as any[])?.find((p) => p.id === member.user_id),
         }));
 
-        setMembers(membersWithProfiles);
+        setMembers(membersWithProfiles as any[]);
       } else {
         setMembers([]);
       }
@@ -799,12 +837,17 @@ export const ProjectSettingsPanel = ({
     if (!projectId) return;
 
     // Get latest synced document for this project
-    const { data, count } = await supabase
+    const { data, count, error } = await supabase
       .from("documents")
       .select("last_synced_at", { count: "exact" })
-      .eq("project_id", projectId)
+      .eq("project_id", projectId as any)
       .order("last_synced_at", { ascending: false, nullsFirst: false })
       .limit(1);
+
+    if (error) {
+      console.error("Fetch sync status error:", error);
+      return;
+    }
 
     if (data && data.length > 0 && data[0].last_synced_at) {
       setLastSyncedAt(data[0].last_synced_at);
@@ -834,13 +877,18 @@ export const ProjectSettingsPanel = ({
   const checkSlugAvailability = async (slugValue: string): Promise<boolean> => {
     if (!slugValue || !organizationId) return true;
     
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("projects")
       .select("id")
-      .eq("organization_id", organizationId)
-      .eq("slug", slugValue)
-      .neq("id", projectId)
+      .eq("organization_id", organizationId as any)
+      .eq("slug", slugValue as any)
+      .neq("id", projectId as any)
       .maybeSingle();
+    
+    if (error) {
+      console.error("Check slug availability error:", error);
+      return true; // Assume available if error? Or false? better true to avoid blocking
+    }
     
     if (data) {
       setSlugError("This URL slug is already in use");
@@ -873,8 +921,8 @@ export const ProjectSettingsPanel = ({
 
     const { error } = await supabase
       .from("projects")
-      .update(updateData)
-      .eq("id", projectId);
+      .update(updateData as any)
+      .eq("id", projectId as any);
 
     setIsSaving(false);
 
@@ -894,8 +942,8 @@ export const ProjectSettingsPanel = ({
 
     const { error } = await supabase
       .from("projects")
-      .update({ is_published: newPublishedState })
-      .eq("id", projectId);
+      .update({ is_published: newPublishedState } as any)
+      .eq("id", projectId as any);
 
     setIsPublishing(false);
 
@@ -932,27 +980,32 @@ export const ProjectSettingsPanel = ({
 
     try {
       const nowIso = new Date().toISOString();
-      const { data: defaultVersion } = await supabase
+      const { data: defaultVersion, error: versionError } = await supabase
         .from("project_versions")
         .select("id")
-        .eq("project_id", projectId)
-        .eq("is_default", true)
+        .eq("project_id", projectId as any)
+        .eq("is_default", true as any)
         .maybeSingle();
-      const defaultVersionId = defaultVersion?.id ?? null;
+      
+      if (versionError) throw versionError;
+      const defaultVersionId = (defaultVersion as any)?.id ?? null;
 
-      const { data: existingTopics } = await supabase
+      const { data: existingTopics, error: topicsError } = await supabase
         .from("topics")
         .select("id, drive_folder_id")
-        .eq("project_id", projectId);
+        .eq("project_id", projectId as any);
+      
+      if (topicsError) throw topicsError;
 
       const topicIdByFolderId = new Map<string, string>();
       for (const topic of existingTopics || []) {
-        if (topic.drive_folder_id) {
-          topicIdByFolderId.set(topic.drive_folder_id, topic.id);
+        const t = topic as any;
+        if (t.drive_folder_id) {
+          topicIdByFolderId.set(t.drive_folder_id, t.id);
         }
       }
 
-      const { root, folders } = await buildDriveFolderTree(listFolder, {
+      const { root, folders } = await (buildDriveFolderTree as any)(listFolder, {
         rootFolderId: driveFolderId,
         rootName: projectName ?? "Project",
         maxDepth: 8,
@@ -979,14 +1032,16 @@ export const ProjectSettingsPanel = ({
           payload.project_version_id = defaultVersionId;
         }
 
-        const { data: inserted } = await supabase
+        const { data: inserted, error: insertError } = await supabase
           .from("topics")
-          .insert(payload)
+          .insert(payload as any)
           .select("id")
           .single();
 
-        if (inserted?.id) {
-          topicIdByFolderId.set(folder.id, inserted.id);
+        if (insertError) throw insertError;
+
+        if ((inserted as any)?.id) {
+          topicIdByFolderId.set(folder.id, (inserted as any).id);
           topicsCreated += 1;
         }
       }
@@ -1006,15 +1061,17 @@ export const ProjectSettingsPanel = ({
         const topicId = folder.depth === 0 ? null : topicIdByFolderId.get(folder.id) ?? null;
 
         for (const doc of googleDocs) {
-          const { data: existing } = await supabase
+          const { data: existing, error: existError } = await supabase
             .from("documents")
             .select("id")
-            .eq("google_doc_id", doc.id)
-            .eq("project_id", projectId)
+            .eq("google_doc_id", doc.id as any)
+            .eq("project_id", projectId as any)
             .maybeSingle();
 
-          if (existing?.id) {
-            await supabase
+          if (existError) throw existError;
+
+          if ((existing as any)?.id) {
+            const { error: updateError } = await supabase
               .from("documents")
               .update({
                 title: doc.name,
@@ -1022,10 +1079,12 @@ export const ProjectSettingsPanel = ({
                 google_modified_at: doc.modifiedTime || null,
                 topic_id: topicId,
                 ...(defaultVersionId ? { project_version_id: defaultVersionId } : {}),
-              })
-              .eq("id", existing.id);
+              } as any)
+              .eq("id", (existing as any).id as any);
+            
+            if (updateError) throw updateError;
           } else {
-            await supabase.from("documents").insert({
+            const { error: insertError } = await supabase.from("documents").insert({
               google_doc_id: doc.id,
               project_id: projectId,
               title: doc.name,
@@ -1034,7 +1093,9 @@ export const ProjectSettingsPanel = ({
               google_modified_at: doc.modifiedTime || null,
               topic_id: topicId,
               ...(defaultVersionId ? { project_version_id: defaultVersionId } : {}),
-            });
+            } as any);
+            
+            if (insertError) throw insertError;
           }
           docsSynced += 1;
         }
@@ -1167,10 +1228,15 @@ export const ProjectSettingsPanel = ({
 
   const getNextVersionSuggestion = async () => {
     if (!projectId) return;
-    const { data: versions } = await supabase
+    const { data: versions, error } = await supabase
       .from("project_versions")
       .select("id, slug, semver_major, semver_minor, semver_patch, is_default")
-      .eq("project_id", projectId);
+      .eq("project_id", projectId as any);
+    
+    if (error) {
+      console.error("Get next version suggestion error:", error);
+      return;
+    }
 
     const usedSlugs = new Set((versions || []).map((v) => v.slug));
 
@@ -1344,57 +1410,62 @@ export const ProjectSettingsPanel = ({
 
       // Clean up related records in order to avoid FK constraint errors
       // 1. Delete connector actions
-      await supabase.from("connector_actions").delete().eq("project_id", projectId);
+      await supabase.from("connector_actions").delete().eq("project_id", projectId as any);
       
       // 2. Delete page feedback for documents in this project
-      const { data: docs } = await supabase.from("documents").select("id").eq("project_id", projectId);
+      const { data: docs, error: docsError } = await supabase.from("documents").select("id").eq("project_id", projectId as any);
+      if (docsError) throw docsError;
       if (docs && docs.length > 0) {
         const docIds = docs.map(d => d.id);
-        await supabase.from("page_feedback").delete().in("document_id", docIds);
+        await supabase.from("page_feedback").delete().in("document_id", docIds as any);
       }
       
       // 3. Delete drive permission sync
-      await supabase.from("drive_permission_sync").delete().eq("project_id", projectId);
+      await supabase.from("drive_permission_sync").delete().eq("project_id", projectId as any);
       
       // 4. Delete project invitations
-      await supabase.from("project_invitations").delete().eq("project_id", projectId);
+      await supabase.from("project_invitations").delete().eq("project_id", projectId as any);
       
       // 5. Delete project members
-      await supabase.from("project_members").delete().eq("project_id", projectId);
+      await supabase.from("project_members").delete().eq("project_id", projectId as any);
       
       // 6. Delete audit logs
-      await supabase.from("audit_logs").delete().eq("project_id", projectId);
+      await supabase.from("audit_logs").delete().eq("project_id", projectId as any);
       
       // 7. Delete domains
-      await supabase.from("domains").delete().eq("project_id", projectId);
+      await supabase.from("domains").delete().eq("project_id", projectId as any);
       
       // 8. Delete connector credentials and connectors
-      const { data: connectors } = await supabase.from("connectors").select("id").eq("project_id", projectId);
+      const { data: connectors, error: connError } = await supabase.from("connectors").select("id").eq("project_id", projectId as any);
+      if (connError) throw connError;
       if (connectors && connectors.length > 0) {
         const connectorIds = connectors.map(c => c.id);
-        await supabase.from("connector_permissions").delete().in("connector_id", connectorIds);
-        await supabase.from("connector_credentials").delete().in("connector_id", connectorIds);
-        await supabase.from("connectors").delete().eq("project_id", projectId);
+        await supabase.from("connector_permissions").delete().in("connector_id", connectorIds as any);
+        await supabase.from("connector_credentials").delete().in("connector_id", connectorIds as any);
+        await supabase.from("connectors").delete().eq("project_id", projectId as any);
       }
       
       // 10. Delete documents
-      await supabase.from("documents").delete().eq("project_id", projectId);
+      await supabase.from("documents").delete().eq("project_id", projectId as any);
       
       // 11. Delete topics
-      await supabase.from("topics").delete().eq("project_id", projectId);
+      await supabase.from("topics").delete().eq("project_id", projectId as any);
       
       // 12. Delete slug history
-      await supabase.from("slug_history").delete().eq("entity_id", projectId).eq("entity_type", "project");
+      await supabase.from("slug_history").delete().eq("entity_id", projectId as any).eq("entity_type", "project" as any);
       
       // 13. Delete child projects first
-      const { data: childProjects } = await supabase
+      const { data: childProjects, error: childrenError } = await supabase
         .from("projects")
         .select("id, drive_folder_id")
-        .eq("parent_id", projectId);
+        .eq("parent_id", projectId as any);
+      
+      if (childrenError) throw childrenError;
       if (childProjects && childProjects.length > 0) {
         for (const child of childProjects) {
-          if (child.drive_folder_id) {
-            const childTrashResult = await trashFile(child.drive_folder_id);
+          const c = child as any;
+          if (c.drive_folder_id) {
+            const childTrashResult = await (trashFile as any)(c.drive_folder_id);
             if (!childTrashResult.success) {
               const errorTitle =
                 childTrashResult.errorCode === "NOT_FOUND"
@@ -1422,15 +1493,15 @@ export const ProjectSettingsPanel = ({
             }
           }
           // Recursively clean up child project's related data
-          await supabase.from("project_members").delete().eq("project_id", child.id);
-          await supabase.from("documents").delete().eq("project_id", child.id);
-          await supabase.from("topics").delete().eq("project_id", child.id);
-          await supabase.from("projects").delete().eq("id", child.id);
+          await supabase.from("project_members").delete().eq("project_id", c.id as any);
+          await supabase.from("documents").delete().eq("project_id", c.id as any);
+          await supabase.from("topics").delete().eq("project_id", c.id as any);
+          await supabase.from("projects").delete().eq("id", c.id as any);
         }
       }
       
       // 14. Finally delete the project
-      const { error } = await supabase.from("projects").delete().eq("id", projectId);
+      const { error } = await supabase.from("projects").delete().eq("id", projectId as any);
 
       if (error) throw error;
 

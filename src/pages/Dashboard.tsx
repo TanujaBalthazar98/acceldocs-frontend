@@ -231,16 +231,16 @@ const Dashboard = () => {
     if (selectedProject?.id === projectId && permissions.canPublish) return true;
     
     // Otherwise, call the database function directly
-    const { data: canEdit, error } = await supabase.rpc("can_edit_project", {
-      _project_id: projectId,
-      _user_id: user.id,
+    const { data: canEdit, error } = await supabase.rpc("can_edit_project" as any, {
+      _project_id: projectId as any,
+      _user_id: user.id as any,
     });
     
     if (error) {
       console.error("Error checking publish permission:", error);
       return false;
     }
-    return canEdit === true;
+    return (canEdit as any) === true;
   };
   
   // Join request notifications for workspace switching
@@ -299,29 +299,33 @@ const Dashboard = () => {
     try {
       // Get user's profile and organization
       // First try profile.organization_id, then fall back to user_roles as source of truth
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("organization_id")
-        .eq("id", user.id)
+        .eq("id", user.id as any)
         .maybeSingle();
+      
+      if (profileError) throw profileError;
 
-      let effectiveOrgId = profile?.organization_id || null;
+      let effectiveOrgId = (profile as any)?.organization_id || null;
 
       // If no org in profile, check user_roles as the authoritative source
       if (!effectiveOrgId) {
-        const { data: userRole } = await supabase
+        const { data: userRole, error: roleError } = await supabase
           .from("user_roles")
           .select("organization_id, role")
-          .eq("user_id", user.id)
+          .eq("user_id", user.id as any)
           .maybeSingle();
+        
+        if (roleError) throw roleError;
 
-        if (userRole?.organization_id) {
-          effectiveOrgId = userRole.organization_id;
+        if ((userRole as any)?.organization_id) {
+          effectiveOrgId = (userRole as any).organization_id;
           // Sync the profile's organization_id for consistency
           await supabase
             .from("profiles")
-            .update({ organization_id: userRole.organization_id })
-            .eq("id", user.id);
+            .update({ organization_id: (userRole as any).organization_id } as any)
+            .eq("id", user.id as any);
         }
       }
 
@@ -329,35 +333,39 @@ const Dashboard = () => {
         setOrganizationId(effectiveOrgId);
 
         // Get organization details
-        const { data: org } = await supabase
+        const { data: org, error: orgError } = await supabase
           .from("organizations")
           .select(
             "id, drive_folder_id, name, slug, domain, mcp_enabled, openapi_spec_json, openapi_spec_url, owner_id",
           )
-          .eq("id", effectiveOrgId)
+          .eq("id", effectiveOrgId as any)
           .single();
+        
+        if (orgError) throw orgError;
 
-        if (org?.drive_folder_id) {
-          setRootFolderId(org.drive_folder_id);
+        if ((org as any)?.drive_folder_id) {
+          setRootFolderId((org as any).drive_folder_id);
         }
-        if (org?.slug || org?.domain) {
-          setOrganizationSlug(org.slug || org.domain);
+        if ((org as any)?.slug || (org as any)?.domain) {
+          setOrganizationSlug((org as any).slug || (org as any).domain);
         }
 
         // Set org-level API/MCP settings
         setOrgMcpEnabled((org as any)?.mcp_enabled ?? false);
         setOrgHasApiSpec(!!((org as any)?.openapi_spec_json || (org as any)?.openapi_spec_url));
-        setOrganizationName(org?.name || "");
+        setOrganizationName((org as any)?.name || "");
 
         // Onboarding is complete if the organization has a name set (not just the default domain)
         setNeedsOnboarding(false);
 
         // Get projects - only from user's own organization (not public projects from other orgs)
-        const { data: projectsData } = await supabase
+        const { data: projectsData, error: projError } = await supabase
           .from("projects")
           .select("id, name, slug, drive_folder_id, visibility, is_published, parent_id, organization_id")
-          .eq("organization_id", effectiveOrgId)
+          .eq("organization_id", effectiveOrgId as any)
           .order("name");
+        
+        if (projError) throw projError;
 
         if (projectsData) {
           setProjects(projectsData as Project[]);
@@ -372,30 +380,36 @@ const Dashboard = () => {
           let docsData: any[] = [];
 
           if (projectIds.length > 0) {
-            const { data: versionsData } = await supabase
+            const { data: versionsData, error: versionsError } = await supabase
               .from("project_versions")
               .select("id, project_id, name, slug, is_default, is_published, semver_major, semver_minor, semver_patch")
               .in("project_id", projectIds);
+
+            if (versionsError) throw versionsError;
 
             if (versionsData) {
               setProjectVersions(versionsData as ProjectVersion[]);
             }
 
-            const { data: topicsData } = await supabase
+            const { data: topicsData, error: topicsError } = await supabase
               .from("topics")
               .select("id, name, drive_folder_id, project_id, project_version_id, parent_id, display_order")
               .in("project_id", projectIds)
               .order("display_order");
+            
+            if (topicsError) throw topicsError;
 
             if (topicsData) {
               setTopics(topicsData as Topic[]);
             }
 
-            const { data: projectDocs } = await supabase
+            const { data: projectDocs, error: pDocsError } = await supabase
               .from("documents")
               .select(docsSelect)
               .in("project_id", projectIds)
               .order("display_order", { ascending: true, nullsFirst: false });
+            
+            if (pDocsError) throw pDocsError;
 
             docsData = projectDocs || [];
           } else {
@@ -422,7 +436,7 @@ const Dashboard = () => {
             const unpublishedIds = baseDocs.filter((d: any) => !d.is_published).map((d: any) => d.id);
 
             if (unpublishedIds.length > 0) {
-              const { data: contentRows } = await supabase
+              const { data: contentRows, error: contentError } = await supabase
                 .from("documents")
                 .select(`
                   id, 
@@ -434,6 +448,8 @@ const Dashboard = () => {
                   published:document_contents!published_content_id(content)
                 `)
                 .in("id", unpublishedIds);
+              
+              if (contentError) throw contentError;
 
               const contentById = new Map((contentRows || []).map((r: any) => [
                 r.id, 
@@ -463,14 +479,16 @@ const Dashboard = () => {
           setDocuments([]);
         }
 
-        const { data: orgRoleData } = await supabase
+        const { data: orgRoleData, error: roleError } = await supabase
           .from("user_roles")
           .select("role")
-          .eq("organization_id", effectiveOrgId)
-          .eq("user_id", user.id)
+          .eq("organization_id", effectiveOrgId as any)
+          .eq("user_id", user.id as any)
           .maybeSingle();
+        
+        if (roleError) throw roleError;
 
-        const resolvedRole = org?.owner_id === user.id ? "owner" : orgRoleData?.role ?? null;
+        const resolvedRole = (org as any)?.owner_id === user.id ? "owner" : (orgRoleData as any)?.role ?? null;
         setAppRole(resolvedRole ?? "viewer");
       } else {
         // No organization - individual user needs onboarding to create one
@@ -756,7 +774,7 @@ const Dashboard = () => {
         const { error } = await supabase
           .from("page_feedback")
           .delete()
-          .in("document_id", docIds);
+          .in("document_id", docIds as any);
         if (error) return fail("Error", `Failed to delete page feedback: ${error.message}`);
       }
     }
@@ -799,7 +817,7 @@ const Dashboard = () => {
       const { error } = await supabase
         .from("domains")
         .update({ project_id: null })
-        .eq("project_id", projectId);
+        .eq("project_id", projectId as any);
       if (error) return fail("Error", `Failed to detach domains: ${error.message}`);
     }
 
@@ -818,19 +836,19 @@ const Dashboard = () => {
         const { error: permsError } = await supabase
           .from("connector_permissions")
           .delete()
-          .in("connector_id", connectorIds);
+          .in("connector_id", connectorIds as any);
         if (permsError) return fail("Error", `Failed to delete connector permissions: ${permsError.message}`);
 
         const { error: credsError } = await supabase
           .from("connector_credentials")
           .delete()
-          .in("connector_id", connectorIds);
+          .in("connector_id", connectorIds as any);
         if (credsError) return fail("Error", `Failed to delete connector credentials: ${credsError.message}`);
 
         const { error: connectorsError } = await supabase
           .from("connectors")
           .delete()
-          .in("id", connectorIds);
+          .in("id", connectorIds as any);
         if (connectorsError) return fail("Error", `Failed to delete connectors: ${connectorsError.message}`);
       }
     }
@@ -857,14 +875,14 @@ const Dashboard = () => {
       const { error } = await supabase
         .from("slug_history")
         .delete()
-        .eq("entity_type", "project")
-        .eq("entity_id", projectId);
+        .eq("entity_type", "project" as any)
+        .eq("entity_id", projectId as any);
       if (error) console.warn("Failed to delete slug history:", error.message);
     }
 
     // 7) Delete the project
     {
-      const { error } = await supabase.from("projects").delete().eq("id", projectId);
+      const { error } = await supabase.from("projects").delete().eq("id", projectId as any);
       if (error) return fail("Error", `Failed to delete project: ${error.message}`);
     }
 
@@ -929,17 +947,17 @@ const Dashboard = () => {
     }
     
     // Delete all documents in the topic first
-    await supabase.from("documents").delete().eq("topic_id", topicId);
+    await supabase.from("documents").delete().eq("topic_id" as any, topicId as any);
     // Delete the topic
-    const { error } = await supabase.from("topics").delete().eq("id", topicId);
+    const { error } = await supabase.from("topics").delete().eq("id", topicId as any);
     
     if (error) {
       toast({ title: "Error", description: "Failed to delete topic.", variant: "destructive" });
       return false;
     } else {
-      await logAction('delete_topic', 'topic', topicId, selectedProject?.id || '', { topicName: topic?.name, forceDelete });
+      await logAction('delete_topic', 'topic', topicId, (selectedProject as any)?.id || '', { topicName: topic?.name, forceDelete });
       toast({ title: "Deleted", description: forceDelete ? "Topic deleted from app (Drive files remain)." : "Topic moved to Drive trash and deleted from app." });
-      if (selectedTopic?.id === topicId) {
+      if ((selectedTopic as any)?.id === topicId) {
         setSelectedTopic(null);
       }
       fetchData();
@@ -989,7 +1007,7 @@ const Dashboard = () => {
       }
     }
     
-    const { error } = await supabase.from("documents").delete().eq("id", docId);
+    const { error } = await supabase.from("documents").delete().eq("id", docId as any);
     
     if (error) {
       toast({ title: "Error", description: "Failed to delete page.", variant: "destructive" });
@@ -1430,14 +1448,14 @@ const Dashboard = () => {
     const { data: existing, error: existingError } = await supabase
       .from("project_versions")
       .select("id")
-      .eq("project_id", projectId)
-      .eq("is_default", true)
+      .eq("project_id", projectId as any)
+      .eq("is_default", true as any)
       .maybeSingle();
 
     if (existingError) {
       console.error("Error checking default version:", existingError);
     }
-    if (existing?.id) return existing.id as string;
+    if ((existing as any)?.id) return (existing as any).id as string;
 
     const { data: created, error: createError } = await supabase
       .from("project_versions")
@@ -1451,7 +1469,7 @@ const Dashboard = () => {
         semver_minor: 0,
         semver_patch: 0,
         created_by: user?.id ?? null,
-      })
+      } as any)
       .select("id")
       .single();
 
@@ -1460,7 +1478,7 @@ const Dashboard = () => {
       return null;
     }
 
-    return created?.id ?? null;
+    return (created as any)?.id ?? null;
   };
 
   const handleAssignProject = async () => {
@@ -1484,8 +1502,8 @@ const Dashboard = () => {
           project_id: assignProjectId,
           project_version_id: versionId,
           topic_id: finalTopicId,
-        })
-        .eq("id", assignTargetDoc.id)
+        } as any)
+        .eq("id", assignTargetDoc.id as any)
         .select("id, project_id, project_version_id, topic_id");
 
       if (error || !updatedRows || updatedRows.length === 0) {
