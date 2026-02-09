@@ -27,23 +27,7 @@ import {
 
 // ============ Types ============
 
-interface Topic {
-  id: string;
-  name: string;
-  drive_folder_id: string;
-  project_id: string;
-  parent_id: string | null;
-  display_order: number;
-}
-
-interface Document {
-  id: string;
-  title: string;
-  google_doc_id: string;
-  project_id: string;
-  topic_id: string | null;
-  display_order?: number | null;
-}
+import { Topic, Document } from "@/types/dashboard";
 
 interface UnifiedContentTreeProps {
   topics: Topic[];

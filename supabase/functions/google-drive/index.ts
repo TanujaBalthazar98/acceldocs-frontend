@@ -60,6 +60,14 @@ interface MoveFileRequest {
   projectId?: string;
 }
 
+interface RegisterWebhookRequest {
+  action: "register_webhook";
+  fileId: string; // The file or folder ID to watch
+  projectId?: string;
+  address: string; // The URL of the webhook function
+  token: string; // The secret token (GOOGLE_WEBHOOK_SECRET)
+}
+
 type RequestBody =
   | CreateFolderRequest
   | CreateDocRequest
@@ -68,7 +76,8 @@ type RequestBody =
   | SyncDocContentRequest
   | UpdateDocContentRequest
   | TrashFileRequest
-  | MoveFileRequest;
+  | MoveFileRequest
+  | RegisterWebhookRequest;
 
 const isDriveNotFound = (errorText: string) =>
   errorText.includes("File not found") || errorText.includes("\"notFound\"");
@@ -145,6 +154,8 @@ function getOperationForAction(action: string): string {
     case 'trash_file':
       return 'edit';
     case 'move_file':
+      return 'edit';
+    case 'register_webhook':
       return 'edit';
     default:
       return 'view';
@@ -227,6 +238,8 @@ async function resolveProjectIdFromBody(
         (body.googleDocId ? await resolveProjectIdFromFileId(supabase, body.googleDocId) : undefined);
     }
     case "trash_file":
+      return resolveProjectIdFromFileId(supabase, body.fileId);
+    case "register_webhook":
       return resolveProjectIdFromFileId(supabase, body.fileId);
     default:
       return undefined;
@@ -468,14 +481,14 @@ Deno.serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    
+
     if (userError || !user) {
       console.log("User session not valid, returning soft error:", userError?.message);
       return new Response(
-        JSON.stringify({ 
-          error: "Session expired", 
+        JSON.stringify({
+          error: "Session expired",
           needsReauth: true,
-          message: "Please sign in again to continue" 
+          message: "Please sign in again to continue"
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -584,10 +597,10 @@ Deno.serve(async (req) => {
     // List folder contents
     if (body.action === "list_folder") {
       console.log("Listing folder:", body.folderId);
-      
+
       const query = encodeURIComponent(`'${body.folderId}' in parents and trashed = false`);
       const fields = encodeURIComponent("files(id,name,mimeType,modifiedTime,createdTime)");
-      
+
       const response = await fetchWithRefresh(
         `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=name&supportsAllDrives=true&includeItemsFromAllDrives=true`
       );
@@ -613,18 +626,18 @@ Deno.serve(async (req) => {
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         if (response.status === 401 || response.status === 403) {
           return new Response(
-            JSON.stringify({ 
-              error: "Google authentication expired", 
+            JSON.stringify({
+              error: "Google authentication expired",
               needsReauth: true,
-              details: errorText 
+              details: errorText
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         return new Response(
           JSON.stringify({ error: "Failed to list folder", details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -643,7 +656,7 @@ Deno.serve(async (req) => {
     // Get document content
     if (body.action === "get_doc_content") {
       console.log("Getting doc content via Drive export:", body.docId);
-      
+
       const response = await fetchWithRefresh(
         `https://www.googleapis.com/drive/v3/files/${body.docId}/export?mimeType=text/html&supportsAllDrives=true`
       );
@@ -651,31 +664,31 @@ Deno.serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Google Drive export error:", errorText);
-        
+
         // Handle file too large error
         if (errorText.includes("exportSizeLimitExceeded") || errorText.includes("too large to be exported")) {
           return new Response(
-            JSON.stringify({ 
-              error: "Document too large", 
+            JSON.stringify({
+              error: "Document too large",
               fileTooLarge: true,
               message: "This document is too large to export. Please split it into smaller documents or edit directly in Google Docs."
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         // Handle auth errors
         if (response.status === 401 || (response.status === 403 && !errorText.includes("exportSizeLimitExceeded"))) {
           return new Response(
-            JSON.stringify({ 
-              error: "Google authentication expired", 
+            JSON.stringify({
+              error: "Google authentication expired",
               needsReauth: true,
-              details: errorText 
+              details: errorText
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         return new Response(
           JSON.stringify({ error: "Failed to get document", details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -694,7 +707,7 @@ Deno.serve(async (req) => {
     // Sync document content
     if (body.action === "sync_doc_content") {
       console.log("Syncing doc content:", body.googleDocId, "to document:", body.documentId);
-      
+
       const metadataResponse = await fetchWithRefresh(
         `https://www.googleapis.com/drive/v3/files/${body.googleDocId}?fields=modifiedTime,name&supportsAllDrives=true`
       );
@@ -707,7 +720,7 @@ Deno.serve(async (req) => {
       } else {
         console.warn("Failed to fetch file metadata, continuing without modifiedTime");
       }
-      
+
       const response = await fetchWithRefresh(
         `https://www.googleapis.com/drive/v3/files/${body.googleDocId}/export?mimeType=text/html&supportsAllDrives=true`
       );
@@ -715,31 +728,31 @@ Deno.serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Google Drive export error:", errorText);
-        
+
         // Handle file too large error
         if (errorText.includes("exportSizeLimitExceeded") || errorText.includes("too large to be exported")) {
           return new Response(
-            JSON.stringify({ 
-              error: "Document too large", 
+            JSON.stringify({
+              error: "Document too large",
               fileTooLarge: true,
               message: "This document is too large to sync. Please split it into smaller documents."
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         // Handle auth errors
         if (response.status === 401 || (response.status === 403 && !errorText.includes("exportSizeLimitExceeded"))) {
           return new Response(
-            JSON.stringify({ 
-              error: "Google authentication expired", 
+            JSON.stringify({
+              error: "Google authentication expired",
               needsReauth: true,
-              details: errorText 
+              details: errorText
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         return new Response(
           JSON.stringify({ error: "Failed to get document", details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -973,7 +986,7 @@ Deno.serve(async (req) => {
     // Create folder
     if (body.action === "create_folder") {
       console.log("Creating folder:", body.name, "in parent:", body.parentFolderId);
-      
+
       const folderMetadata = {
         name: body.name,
         mimeType: "application/vnd.google-apps.folder",
@@ -1012,15 +1025,15 @@ Deno.serve(async (req) => {
 
         if (response.status === 401 || response.status === 403) {
           return new Response(
-            JSON.stringify({ 
-              error: "Google authentication expired", 
+            JSON.stringify({
+              error: "Google authentication expired",
               needsReauth: true,
-              details: errorText 
+              details: errorText
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         return new Response(
           JSON.stringify({ error: "Failed to create folder", details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -1050,7 +1063,7 @@ Deno.serve(async (req) => {
     // Create doc
     if (body.action === "create_doc") {
       console.log("Creating doc:", body.title, "in parent:", body.parentFolderId);
-      
+
       const docMetadata = {
         name: body.title,
         mimeType: "application/vnd.google-apps.document",
@@ -1089,15 +1102,15 @@ Deno.serve(async (req) => {
 
         if (response.status === 401 || response.status === 403) {
           return new Response(
-            JSON.stringify({ 
-              error: "Google authentication expired", 
+            JSON.stringify({
+              error: "Google authentication expired",
               needsReauth: true,
-              details: errorText 
+              details: errorText
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         return new Response(
           JSON.stringify({ error: "Failed to create document", details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -1184,7 +1197,7 @@ Deno.serve(async (req) => {
     // Trash file
     if (body.action === "trash_file") {
       console.log("Trashing file/folder:", body.fileId);
-      
+
       const response = await fetchWithRefresh(`https://www.googleapis.com/drive/v3/files/${body.fileId}?supportsAllDrives=true`, {
         method: "PATCH",
         headers: {
@@ -1196,7 +1209,7 @@ Deno.serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Google Drive API error:", errorText);
-        
+
         // Parse the error to extract the reason
         let errorReason = "";
         try {
@@ -1205,31 +1218,31 @@ Deno.serve(async (req) => {
         } catch {
           // Ignore parse errors
         }
-        
+
         if (response.status === 401 || response.status === 403) {
           // Check specifically for appNotAuthorizedToChild error
           if (errorReason === "appNotAuthorizedToChild") {
             return new Response(
-              JSON.stringify({ 
-                error: "Cannot delete: folder contains files not created by this app. Delete these files manually in Google Drive first, or use 'Force Delete' to remove only from the app.", 
+              JSON.stringify({
+                error: "Cannot delete: folder contains files not created by this app. Delete these files manually in Google Drive first, or use 'Force Delete' to remove only from the app.",
                 errorReason: "appNotAuthorizedToChild",
-                needsReauth: false 
+                needsReauth: false
               }),
               { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
-          
+
           return new Response(
-            JSON.stringify({ 
-              error: "Google authentication expired", 
+            JSON.stringify({
+              error: "Google authentication expired",
               needsReauth: true,
               errorReason,
-              details: errorText 
+              details: errorText
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         if (response.status === 404) {
           console.log("File not found, treating as already deleted");
           return new Response(
@@ -1237,7 +1250,7 @@ Deno.serve(async (req) => {
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
+
         return new Response(
           JSON.stringify({ error: "Failed to trash file", errorReason, details: errorText }),
           { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -1260,6 +1273,93 @@ Deno.serve(async (req) => {
         JSON.stringify({ success: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Sync document (placeholder for future implementation)
+    if (body.action === "sync_document") {
+      console.log("Syncing document:", body.documentId);
+      // Placeholder
+      return new Response(JSON.stringify({ success: true, message: "Not implemented yet" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // Register Webhook
+    if (body.action === "register_webhook") {
+      console.log("Registering webhook for file:", body.fileId);
+
+      // Verify projectId is available (resolved earlier)
+      if (!projectId) {
+        return new Response(JSON.stringify({ error: "Project ID not found for file" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      const channelId = crypto.randomUUID();
+      const expiration = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
+
+      const payload = {
+        id: channelId,
+        type: "web_hook",
+        address: body.address,
+        token: body.token,
+        expiration: expiration
+      };
+
+      console.log("Watch payload:", JSON.stringify(payload));
+
+      const watchResponse = await fetchWithRefresh(
+        `https://www.googleapis.com/drive/v3/files/${body.fileId}/watch?supportsAllDrives=true`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }
+      );
+
+      if (!watchResponse.ok) {
+        const errorText = await watchResponse.text();
+        console.error("Failed to register webhook:", errorText);
+        return new Response(JSON.stringify({ error: "Failed to register webhook", details: errorText }), {
+          status: watchResponse.status, // Return actual status from Google
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      const watchData = await watchResponse.json();
+      console.log("Webhook registered successfully:", watchData);
+
+      // Save to database
+      const { error: dbError } = await supabase
+        .from("webhook_channels")
+        .insert({
+          channel_id: channelId,
+          resource_id: watchData.resourceId,
+          resource_type: "folder",
+          project_id: projectId,
+          expiration: expiration,
+          channel_token: body.token,
+          created_by: user.id
+        });
+
+      if (dbError) {
+        console.error("Failed to save webhook channel to DB:", dbError);
+        return new Response(JSON.stringify({
+          success: true,
+          warning: "Webhook registered but failed to save to database.",
+          data: watchData
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true, data: watchData }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
     }
 
     return new Response(

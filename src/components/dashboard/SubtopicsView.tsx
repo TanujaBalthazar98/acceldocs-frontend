@@ -1,14 +1,7 @@
 import { Folder, FileText, FolderPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface Topic {
-  id: string;
-  name: string;
-  drive_folder_id: string;
-  project_id: string;
-  parent_id: string | null;
-  display_order: number;
-}
+import { Topic } from "@/types/dashboard";
 
 interface SubtopicsViewProps {
   topics: Topic[];
