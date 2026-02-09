@@ -1853,15 +1853,17 @@ const Dashboard = () => {
         mobileSidebarOpen={mobileSidebarOpen}
         setMobileSidebarOpen={setMobileSidebarOpen}
         user={user}
-        appRole={appRole}
         organizationSlug={organizationSlug}
         organizationName={organizationName}
+        appRole={appRole}
         isOrgOwner={isOrgOwner}
         projects={projects}
         filteredProjects={filteredProjects}
         selectedProject={selectedProject}
         setSelectedProject={setSelectedProject}
         setExpandedProjects={setExpandedProjects}
+        subProjectsExpanded={subProjectsExpanded}
+        setSubProjectsExpanded={setSubProjectsExpanded}
         filteredTopics={filteredTopics}
         scopedDocuments={scopedDocuments}
         scopedTopics={scopedTopics}
@@ -1870,6 +1872,7 @@ const Dashboard = () => {
         selectedPage={selectedPage}
         setSelectedPage={setSelectedPage}
         setSelectedDocument={setSelectedDocument}
+        selectedVersion={selectedVersion}
         topicsExpanded={topicsExpanded}
         setTopicsExpanded={setTopicsExpanded}
         driveIntegrationEnabled={DRIVE_INTEGRATION_ENABLED}
@@ -1879,7 +1882,6 @@ const Dashboard = () => {
         isSyncing={isSyncing}
         handleConnectDrive={handleConnectDrive}
         handleSyncFromDrive={handleSyncFromDrive}
-        getGoogleToken={getGoogleToken}
         setAddProjectOpen={setAddProjectOpen}
         setAddTopicOpen={setAddTopicOpen}
         setParentTopicForCreate={setParentTopicForCreate}
@@ -1899,12 +1901,18 @@ const Dashboard = () => {
         setAuditLogOpen={setAuditLogOpen}
         setDeleteDialogOpen={setDeleteDialogOpen}
         setItemToDelete={setItemToDelete}
-        setForceDeleteAvailable={setForceDeleteAvailable}
         setSearchQuery={setSearchQuery}
         signOut={signOut}
-        permissions={permissions}
+        permissions={{
+          canCreateProject: canCreateProject,
+          canDeleteProject: permissions.canDeleteProject,
+          canManageTeam: permissions.canInviteMembers || permissions.canManageMembers || false,
+          canViewAuditLogs: permissions.canViewAuditLogs,
+          canEditProject: permissions.canEditProjectSettings || permissions.canEdit || false
+        }}
         navigate={navigate}
         fetchData={fetchData}
+        currentPath={location.pathname}
       />
 
       {/* Main Content */}
