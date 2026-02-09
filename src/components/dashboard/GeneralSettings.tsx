@@ -935,6 +935,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                 tagline={branding.tagline}
                 heroTitle={branding.hero_title}
                 heroDescription={branding.hero_description}
+                customLinks={branding.custom_links}
               />
               <p className="text-xs text-muted-foreground text-center">
                 This is a preview of how your documentation site will look.

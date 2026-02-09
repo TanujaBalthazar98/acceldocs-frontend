@@ -11,6 +11,7 @@ interface DocumentationPreviewProps {
   tagline?: string | null;
   heroTitle?: string | null;
   heroDescription?: string | null;
+  customLinks?: { label: string; url: string; target: string }[];
 }
 
 export const DocumentationPreview = ({
@@ -23,6 +24,7 @@ export const DocumentationPreview = ({
   tagline,
   heroTitle,
   heroDescription,
+  customLinks = [],
 }: DocumentationPreviewProps) => {
   return (
     <div 
@@ -153,10 +155,20 @@ export const DocumentationPreview = ({
               </div>
 
               {/* Footer */}
-              <footer className="pt-8 border-t border-border flex justify-between items-center text-[10px] text-muted-foreground">
-                <div className="flex gap-4">
-                  <span>Privacy Policy</span>
-                  <span>Terms of Service</span>
+              <footer className="pt-8 border-t border-border flex flex-wrap justify-between items-center text-[10px] text-muted-foreground gap-4">
+                <div className="flex flex-wrap gap-4">
+                  {customLinks.length > 0 ? (
+                    customLinks.map((link, idx) => (
+                      <span key={idx} className="hover:text-foreground transition-colors cursor-pointer">
+                        {link.label}
+                      </span>
+                    ))
+                  ) : (
+                    <>
+                      <span>Privacy Policy</span>
+                      <span>Terms of Service</span>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   <span>Powered by Docspeare</span>
