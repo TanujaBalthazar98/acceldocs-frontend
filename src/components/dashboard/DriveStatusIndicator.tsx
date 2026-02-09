@@ -122,11 +122,6 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
     }
   };
 
-  // Don't show anything for non-owners
-  if (connectionStatus === 'not_owner') {
-    return null;
-  }
-
   if (connectionStatus === 'checking' || connectionStatus === null) {
     return (
       <Tooltip>
@@ -151,6 +146,20 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
           </div>
         </TooltipTrigger>
         <TooltipContent>Google Drive is connected and working</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  if (connectionStatus === 'not_owner') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50">
+            <Cloud className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground hidden sm:inline">Drive Managed</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Drive access is managed by the workspace owner</TooltipContent>
       </Tooltip>
     );
   }
