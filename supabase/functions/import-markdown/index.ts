@@ -25,6 +25,23 @@ interface TokenManager {
   userId: string;
 }
 
+async function decryptOrgText(
+  supabase: any,
+  organizationId: string,
+  ciphertext: string | null
+): Promise<string | null> {
+  if (!ciphertext) return null;
+  const { data, error } = await supabase.rpc("decrypt_org_text", {
+    org_id: organizationId,
+    ciphertext,
+  });
+  if (error || !data) {
+    console.error("Failed to decrypt org token:", error?.message);
+    return null;
+  }
+  return data as string;
+}
+
 async function createTokenManager(
   supabase: any,
   initialToken: string,
@@ -43,11 +60,17 @@ async function createTokenManager(
           // Get refresh token from profiles
           const { data: profile } = await supabase
             .from("profiles")
-            .select("google_refresh_token")
+            .select("organization_id, google_refresh_token, google_refresh_token_encrypted")
             .eq("id", userId)
             .single();
 
-          if (profile?.google_refresh_token) {
+          const organizationId = profile?.organization_id as string | undefined;
+          const decrypted = organizationId
+            ? await decryptOrgText(supabase, organizationId, profile?.google_refresh_token_encrypted ?? null)
+            : null;
+          const refreshToken = decrypted || profile?.google_refresh_token;
+
+          if (refreshToken) {
             const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
             const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
 
@@ -58,7 +81,7 @@ async function createTokenManager(
                 body: new URLSearchParams({
                   client_id: clientId,
                   client_secret: clientSecret,
-                  refresh_token: profile.google_refresh_token,
+                  refresh_token: refreshToken,
                   grant_type: "refresh_token",
                 }),
               });
@@ -787,11 +810,16 @@ Deno.serve(async (req) => {
     // Get owner's refresh token
     const { data: ownerProfile, error: ownerError } = await supabase
       .from("profiles")
-      .select("google_refresh_token")
+      .select("google_refresh_token, google_refresh_token_encrypted")
       .eq("id", org.owner_id)
       .single();
 
-    if (ownerError || !ownerProfile?.google_refresh_token) {
+    const ownerRefreshToken = ownerProfile
+      ? await decryptOrgText(supabase, organizationId, ownerProfile.google_refresh_token_encrypted ?? null)
+      : null;
+    const resolvedOwnerToken = ownerRefreshToken || ownerProfile?.google_refresh_token;
+
+    if (ownerError || !resolvedOwnerToken) {
       if (canUseRequestToken) {
         console.warn("Owner refresh token missing. Using request Google token.");
       } else {
@@ -820,14 +848,14 @@ Deno.serve(async (req) => {
     let googleToken: string | null = null;
     let tokenOwnerId = org.owner_id;
 
-    if (clientId && clientSecret && ownerProfile?.google_refresh_token) {
+    if (clientId && clientSecret && resolvedOwnerToken) {
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           client_id: clientId,
           client_secret: clientSecret,
-          refresh_token: ownerProfile.google_refresh_token,
+          refresh_token: resolvedOwnerToken,
           grant_type: "refresh_token",
         }),
       });

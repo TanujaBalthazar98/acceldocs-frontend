@@ -141,8 +141,11 @@ export type Database = {
           encrypted_credentials: Json
           id: string
           oauth_access_token: string | null
+          oauth_access_token_encrypted: string | null
           oauth_expires_at: string | null
           oauth_refresh_token: string | null
+          oauth_refresh_token_encrypted: string | null
+          oauth_tokens_present: boolean
           updated_at: string
         }
         Insert: {
@@ -151,8 +154,11 @@ export type Database = {
           encrypted_credentials?: Json
           id?: string
           oauth_access_token?: string | null
+          oauth_access_token_encrypted?: string | null
           oauth_expires_at?: string | null
           oauth_refresh_token?: string | null
+          oauth_refresh_token_encrypted?: string | null
+          oauth_tokens_present?: boolean
           updated_at?: string
         }
         Update: {
@@ -161,8 +167,11 @@ export type Database = {
           encrypted_credentials?: Json
           id?: string
           oauth_access_token?: string | null
+          oauth_access_token_encrypted?: string | null
           oauth_expires_at?: string | null
           oauth_refresh_token?: string | null
+          oauth_refresh_token_encrypted?: string | null
+          oauth_tokens_present?: boolean
           updated_at?: string
         }
         Relationships: [
@@ -379,6 +388,57 @@ export type Database = {
             columns: ["topic_id"]
             isOneToOne: false
             referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_cache: {
+        Row: {
+          content_html_encrypted: string | null
+          content_text_encrypted: string | null
+          created_at: string
+          document_id: string
+          headings_encrypted: string | null
+          id: string
+          organization_id: string
+          published_content_html_encrypted: string | null
+          updated_at: string
+        }
+        Insert: {
+          content_html_encrypted?: string | null
+          content_text_encrypted?: string | null
+          created_at?: string
+          document_id: string
+          headings_encrypted?: string | null
+          id?: string
+          organization_id: string
+          published_content_html_encrypted?: string | null
+          updated_at?: string
+        }
+        Update: {
+          content_html_encrypted?: string | null
+          content_text_encrypted?: string | null
+          created_at?: string
+          document_id?: string
+          headings_encrypted?: string | null
+          id?: string
+          organization_id?: string
+          published_content_html_encrypted?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_cache_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: true
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -795,6 +855,8 @@ export type Database = {
           email: string
           full_name: string | null
           google_refresh_token: string | null
+          google_refresh_token_encrypted: string | null
+          google_refresh_token_present: boolean
           google_token_refreshed_at: string | null
           id: string
           organization_id: string | null
@@ -808,6 +870,8 @@ export type Database = {
           email: string
           full_name?: string | null
           google_refresh_token?: string | null
+          google_refresh_token_encrypted?: string | null
+          google_refresh_token_present?: boolean
           google_token_refreshed_at?: string | null
           id: string
           organization_id?: string | null
@@ -821,6 +885,8 @@ export type Database = {
           email?: string
           full_name?: string | null
           google_refresh_token?: string | null
+          google_refresh_token_encrypted?: string | null
+          google_refresh_token_present?: boolean
           google_token_refreshed_at?: string | null
           id?: string
           organization_id?: string | null

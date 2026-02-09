@@ -289,16 +289,63 @@ async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: 
   }
 }
 
+async function decryptOrgText(
+  supabase: any,
+  organizationId: string,
+  ciphertext: string | null
+): Promise<string | null> {
+  if (!ciphertext) return null;
+  const { data, error } = await supabase.rpc("decrypt_org_text", {
+    org_id: organizationId,
+    ciphertext,
+  });
+  if (error || !data) {
+    console.error("Failed to decrypt org token:", error?.message);
+    return null;
+  }
+  return data as string;
+}
+
+async function encryptOrgText(
+  supabase: any,
+  organizationId: string,
+  plaintext: string | null
+): Promise<string | null> {
+  if (!plaintext) return null;
+  const { data, error } = await supabase.rpc("encrypt_org_text", {
+    org_id: organizationId,
+    plaintext,
+  });
+  if (error || !data) {
+    console.error("Failed to encrypt org content:", error?.message);
+    return null;
+  }
+  return data as string;
+}
+
 async function refreshUserAccessToken(supabase: any, userId: string): Promise<string | null> {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("google_refresh_token")
+    .select("organization_id, google_refresh_token_encrypted, google_refresh_token")
     .eq("id", userId)
     .single();
 
-  const refreshToken = (profile as { google_refresh_token: string | null } | null)?.google_refresh_token ?? null;
+  const orgId = (profile as { organization_id: string | null } | null)?.organization_id ?? null;
+  const encryptedToken = (profile as { google_refresh_token_encrypted: string | null } | null)
+    ?.google_refresh_token_encrypted ?? null;
+  const legacyToken = (profile as { google_refresh_token: string | null } | null)
+    ?.google_refresh_token ?? null;
 
-  if (profileError || !refreshToken) {
+  if (profileError || !orgId) {
+    console.log("No organization available for user");
+    return null;
+  }
+
+  const refreshToken = encryptedToken
+    ? await decryptOrgText(supabase, orgId, encryptedToken)
+    : legacyToken;
+
+  if (!refreshToken) {
     console.log("No refresh token available for user");
     return null;
   }
@@ -659,6 +706,32 @@ Deno.serve(async (req) => {
           JSON.stringify({ error: "Failed to save content", details: updateError.message }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      }
+
+      if (projectId) {
+        const { data: projectRow } = await supabase
+          .from("projects")
+          .select("organization_id")
+          .eq("id", projectId)
+          .maybeSingle();
+
+        const orgId = projectRow?.organization_id as string | undefined;
+        if (orgId) {
+          const encryptedHtml = await encryptOrgText(supabase, orgId, htmlContent);
+          if (encryptedHtml) {
+            await supabase
+              .from("document_cache")
+              .upsert(
+                {
+                  document_id: body.documentId,
+                  organization_id: orgId,
+                  content_html_encrypted: encryptedHtml,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "document_id" }
+              );
+          }
+        }
       }
 
       // Log successful sync

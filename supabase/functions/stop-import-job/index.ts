@@ -23,6 +23,23 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function decryptOrgText(
+  supabase: any,
+  organizationId: string,
+  ciphertext: string | null
+): Promise<string | null> {
+  if (!ciphertext) return null;
+  const { data, error } = await supabase.rpc("decrypt_org_text", {
+    org_id: organizationId,
+    ciphertext,
+  });
+  if (error || !data) {
+    console.error("Failed to decrypt org token:", error?.message);
+    return null;
+  }
+  return data as string;
+}
+
 async function getOwnerDriveAccessToken(supabase: any, projectId: string) {
   const { data: project, error: projectError } = await supabase
     .from("projects")
@@ -48,11 +65,18 @@ async function getOwnerDriveAccessToken(supabase: any, projectId: string) {
 
   const { data: ownerProfile, error: ownerError } = await supabase
     .from("profiles")
-    .select("google_refresh_token")
+    .select("google_refresh_token, google_refresh_token_encrypted")
     .eq("id", org.owner_id)
     .single();
 
-  if (ownerError || !ownerProfile?.google_refresh_token) {
+  const decrypted = await decryptOrgText(
+    supabase,
+    project.organization_id,
+    ownerProfile?.google_refresh_token_encrypted ?? null
+  );
+  const refreshToken = decrypted || ownerProfile?.google_refresh_token;
+
+  if (ownerError || !refreshToken) {
     console.warn("Owner refresh token missing, skipping Drive cleanup.");
     return { token: null, reason: "missing_refresh_token" };
   }
@@ -70,7 +94,7 @@ async function getOwnerDriveAccessToken(supabase: any, projectId: string) {
     body: new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
-      refresh_token: ownerProfile.google_refresh_token,
+      refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
   });

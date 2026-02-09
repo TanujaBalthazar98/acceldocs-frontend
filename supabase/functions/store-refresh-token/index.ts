@@ -53,13 +53,53 @@ Deno.serve(async (req) => {
 
     console.log("Processing refresh token for user:", user.id);
 
+    const { data: profileRow, error: profileError } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError || !profileRow?.organization_id) {
+      console.error("Missing organization for user:", profileError?.message);
+      return new Response(
+        JSON.stringify({ error: "Organization not found for user" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const organizationId = profileRow.organization_id as string;
+
+    const encryptToken = async (token: string) => {
+      const { data, error } = await supabase.rpc("encrypt_org_text", {
+        org_id: organizationId,
+        plaintext: token,
+      });
+      if (error || !data) {
+        console.error("Failed to encrypt refresh token:", error?.message);
+        throw new Error("Failed to encrypt refresh token");
+      }
+      return data as string;
+    };
+
     if (refreshToken) {
       // Store the provided refresh token directly
       console.log("Storing provided refresh token...");
+      let encryptedToken: string;
+      try {
+        encryptedToken = await encryptToken(refreshToken);
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ error: (error as Error).message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const { error: updateError } = await supabase
         .from("profiles")
         .update({ 
-          google_refresh_token: refreshToken,
+          google_refresh_token: null,
+          google_refresh_token_encrypted: encryptedToken,
+          google_refresh_token_present: true,
           google_token_refreshed_at: new Date().toISOString()
         } as Record<string, unknown>)
         .eq("id", user.id);
@@ -121,10 +161,22 @@ Deno.serve(async (req) => {
     }
 
     // Store the refresh token
+    let encryptedToken: string;
+    try {
+      encryptedToken = await encryptToken(identityRefreshToken);
+    } catch (error) {
+      return new Response(
+        JSON.stringify({ error: (error as Error).message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { error: updateError } = await supabase
       .from("profiles")
       .update({ 
-        google_refresh_token: identityRefreshToken,
+        google_refresh_token: null,
+        google_refresh_token_encrypted: encryptedToken,
+        google_refresh_token_present: true,
         google_token_refreshed_at: new Date().toISOString()
       } as Record<string, unknown>)
       .eq("id", user.id);

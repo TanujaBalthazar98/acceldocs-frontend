@@ -90,6 +90,23 @@ async function refreshGoogleToken(refreshToken: string): Promise<string | null> 
   }
 }
 
+async function decryptOrgText(
+  supabase: any,
+  organizationId: string,
+  ciphertext: string | null
+): Promise<string | null> {
+  if (!ciphertext) return null;
+  const { data, error } = await supabase.rpc("decrypt_org_text", {
+    org_id: organizationId,
+    ciphertext,
+  });
+  if (error || !data) {
+    console.error("Failed to decrypt org token:", error?.message);
+    return null;
+  }
+  return data as string;
+}
+
 // Get access token for an org owner to manage Drive permissions
 async function getOrgOwnerToken(supabase: any, projectId: string): Promise<string | null> {
   // Get the org owner for this project
@@ -108,20 +125,28 @@ async function getOrgOwnerToken(supabase: any, projectId: string): Promise<strin
   }
 
   const ownerId = project.organizations.owner_id;
+  const organizationId = project.organization_id as string;
 
   // Get the owner's refresh token
   const { data: profile } = await supabase
     .from('profiles')
-    .select('google_refresh_token')
+    .select('google_refresh_token, google_refresh_token_encrypted')
     .eq('id', ownerId)
     .single();
 
-  if (!profile?.google_refresh_token) {
+  const decrypted = await decryptOrgText(
+    supabase,
+    organizationId,
+    profile?.google_refresh_token_encrypted ?? null
+  );
+  const refreshToken = decrypted || profile?.google_refresh_token;
+
+  if (!refreshToken) {
     console.error("Org owner has no refresh token");
     return null;
   }
 
-  return await refreshGoogleToken(profile.google_refresh_token);
+  return await refreshGoogleToken(refreshToken);
 }
 
 async function listDrivePermissions(accessToken: string, fileId: string): Promise<any[]> {

@@ -38,7 +38,7 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       // First check if the current user is the org owner
       const { data: profile } = await supabase
         .from('profiles')
-        .select('organization_id, google_refresh_token')
+        .select('organization_id, google_refresh_token_present')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -69,7 +69,7 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       // For the owner, check Drive connection
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.provider_token;
-      const hasRefreshToken = !!profile?.google_refresh_token;
+      const hasRefreshToken = !!profile?.google_refresh_token_present;
       
       if (!token && !hasRefreshToken) {
         setConnectionStatus('needs_reauth');
