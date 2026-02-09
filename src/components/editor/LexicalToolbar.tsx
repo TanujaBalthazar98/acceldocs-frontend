@@ -20,7 +20,6 @@ import {
   Minus,
   Table,
   Image,
-  Code2,
 } from "lucide-react";
 import {
   $getSelection,
@@ -40,7 +39,6 @@ import {
   REMOVE_LIST_COMMAND,
   ListNode,
 } from "@lexical/list";
-import { INSERT_CODE_BLOCK_COMMAND } from "@lexical/code";
 import { TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 import { INSERT_TABLE_COMMAND } from "@lexical/table";
@@ -49,7 +47,7 @@ import { $createParagraphNode } from "lexical";
 import { $getNearestNodeOfType } from "@lexical/utils";
 import { INSERT_IMAGE_COMMAND } from "@/components/editor/plugins/ImagePlugin";
 
-type BlockType = "paragraph" | "h1" | "h2" | "h3" | "quote" | "code";
+type BlockType = "paragraph" | "h1" | "h2" | "h3" | "quote";
 
 const blockOptions: { value: BlockType; label: string; icon: JSX.Element }[] = [
   { value: "paragraph", label: "Paragraph", icon: <Pilcrow className="h-4 w-4" /> },
@@ -57,7 +55,6 @@ const blockOptions: { value: BlockType; label: string; icon: JSX.Element }[] = [
   { value: "h2", label: "Heading 2", icon: <Heading2 className="h-4 w-4" /> },
   { value: "h3", label: "Heading 3", icon: <Heading3 className="h-4 w-4" /> },
   { value: "quote", label: "Quote", icon: <Quote className="h-4 w-4" /> },
-  { value: "code", label: "Code Block", icon: <Code2 className="h-4 w-4" /> },
 ];
 
 export const LexicalToolbar = () => {
@@ -86,8 +83,6 @@ export const LexicalToolbar = () => {
         setBlockType(tag as BlockType);
       } else if (elementType === "quote") {
         setBlockType("quote");
-      } else if (elementType === "code") {
-        setBlockType("code");
       } else {
         setBlockType("paragraph");
       }
@@ -147,9 +142,6 @@ export const LexicalToolbar = () => {
           break;
         case "quote":
           $setBlocksType(selection, () => $createQuoteNode());
-          break;
-        case "code":
-          editor.dispatchCommand(INSERT_CODE_BLOCK_COMMAND, undefined);
           break;
         default:
           break;
