@@ -433,6 +433,7 @@ const Dashboard = () => {
               owner_name: doc.owner?.full_name || doc.owner?.email?.split("@")[0] || null,
             }));
 
+
             const unpublishedIds = baseDocs.filter((d: any) => !d.is_published).map((d: any) => d.id);
 
             if (unpublishedIds.length > 0) {
@@ -443,9 +444,7 @@ const Dashboard = () => {
                   content_html, 
                   published_content_html,
                   content_id,
-                  published_content_id,
-                  draft:document_contents!content_id(content),
-                  published:document_contents!published_content_id(content)
+                  published_content_id
                 `)
                 .in("id", unpublishedIds);
               
@@ -455,8 +454,8 @@ const Dashboard = () => {
                 r.id, 
                 {
                   ...r,
-                  content_html: r.draft?.content || r.content_html,
-                  published_content_html: r.published?.content || r.published_content_html
+                  content_html: r.content_html,
+                  published_content_html: r.published_content_html
                 }
               ]));
 
