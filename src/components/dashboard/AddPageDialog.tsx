@@ -38,7 +38,7 @@ export const AddPageDialog = ({
   onCreated,
 }: AddPageDialogProps) => {
   const { toast } = useToast();
-  const { createDoc } = useGoogleDrive();
+  const { createDoc, checkFolderAccess } = useGoogleDrive();
   const { user } = useAuth();
   const [title, setTitle] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -54,6 +54,17 @@ export const AddPageDialog = ({
 
     setIsCreating(true);
     try {
+      // Pre-check folder access
+      const access = await checkFolderAccess(parentFolderId);
+      if (!access.exists) {
+        toast({
+          title: "Folder access error",
+          description: access.error || "Cannot access the project folder in Google Drive. Please reconnect Drive.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const doc = await createDoc(title.trim(), parentFolderId);
       if (!doc) {
         return;
