@@ -500,56 +500,67 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
             </div>
 
             {/* Document Content */}
-            <article className="prose prose-sm sm:prose-base prose-neutral dark:prose-invert prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-foreground/90 max-w-none overflow-x-hidden">
-              {videoUrl && (
-                <div className="mb-6 not-prose">
-                  <VideoEmbed url={videoUrl} title={videoTitle || document.title} />
-                </div>
-              )}
-              <div className="rounded-xl border border-border bg-card/50 overflow-x-auto">
-                {isLoadingContent ? (
-                  <div className="text-center py-12">
-                    <Loader2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
-                    <p className="text-muted-foreground">Loading content...</p>
-                  </div>
-                ) : isEditing ? (
-                  <LexicalEditor key={editorKey} initialHtml={contentHtml} onChangeHtml={setEditorHtml} />
-                ) : contentHtml ? (
-                  <div className="p-4 sm:p-6 lg:p-8">
-                    <div
-                      className="google-doc-content"
-                      dangerouslySetInnerHTML={{
-                        __html: isLikelyMarkdown(contentHtml)
-                          ? normalizeHtml(
-                              renderMarkdownToHtml(
-                                stripFirstMarkdownHeading(contentHtml, document.title)
-                              )
-                            )
-                          : normalizeHtml(contentHtml),
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                    <p className="text-muted-foreground mb-4">No content synced yet.</p>
-                    <Button onClick={handleSyncContent} disabled={isSyncing}>
-                      {isSyncing ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Syncing...
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="w-4 h-4 mr-2" />
-                          Sync from Google Drive
-                        </>
-                      )}
-                    </Button>
+            {isEditing ? (
+              <div className="max-w-none overflow-x-hidden">
+                {videoUrl && (
+                  <div className="mb-6">
+                    <VideoEmbed url={videoUrl} title={videoTitle || document.title} />
                   </div>
                 )}
+                <div className="rounded-xl border border-border bg-card/50 overflow-x-auto">
+                  <LexicalEditor key={editorKey} initialHtml={contentHtml} onChangeHtml={setEditorHtml} />
+                </div>
               </div>
-            </article>
+            ) : (
+              <article className="prose prose-sm sm:prose-base prose-neutral dark:prose-invert prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-foreground/90 max-w-none overflow-x-hidden">
+                {videoUrl && (
+                  <div className="mb-6 not-prose">
+                    <VideoEmbed url={videoUrl} title={videoTitle || document.title} />
+                  </div>
+                )}
+                <div className="rounded-xl border border-border bg-card/50 overflow-x-auto">
+                  {isLoadingContent ? (
+                    <div className="text-center py-12">
+                      <Loader2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
+                      <p className="text-muted-foreground">Loading content...</p>
+                    </div>
+                  ) : contentHtml ? (
+                    <div className="p-4 sm:p-6 lg:p-8">
+                      <div
+                        className="google-doc-content"
+                        dangerouslySetInnerHTML={{
+                          __html: isLikelyMarkdown(contentHtml)
+                            ? normalizeHtml(
+                                renderMarkdownToHtml(
+                                  stripFirstMarkdownHeading(contentHtml, document.title)
+                                )
+                              )
+                            : normalizeHtml(contentHtml),
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                      <p className="text-muted-foreground mb-4">No content synced yet.</p>
+                      <Button onClick={handleSyncContent} disabled={isSyncing}>
+                        {isSyncing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Syncing...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            Sync from Google Drive
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </article>
+            )}
           </div>
         </div>
       </div>
