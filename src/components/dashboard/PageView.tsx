@@ -34,7 +34,6 @@ import { ensureFreshSession } from "@/lib/authSession";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
 import { VideoEmbed } from "@/components/docs/VideoEmbed";
-import { LexicalEditor } from "@/components/editor/LexicalEditor";
 
 type VisibilityLevel = "internal" | "external" | "public";
 const GOOGLE_TOKEN_KEY = "google_access_token";
@@ -73,16 +72,12 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   const [shareOpen, setShareOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [editorKey, setEditorKey] = useState(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(document.video_url ?? null);
   const [videoTitle, setVideoTitle] = useState<string | null>(document.video_title ?? null);
   // Use content_html or fall back to published_content_html
   const [contentHtml, setContentHtml] = useState<string | null>(
     document.content_html || document.published_content_html
   );
-  const [editorHtml, setEditorHtml] = useState<string>("");
   const { toast } = useToast();
   const { googleAccessToken } = useAuth();
   const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
@@ -181,7 +176,6 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
 
       if (data?.html) {
         setContentHtml(data.html);
-        setEditorHtml(data.html);
         toast({
           title: "Content synced",
           description: "Document content has been updated.",
@@ -196,96 +190,6 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
       });
     } finally {
       setIsSyncing(false);
-    }
-  };
-
-  const handleStartEdit = () => {
-    setEditorHtml(contentHtml || "");
-    setEditorKey((prev) => prev + 1);
-    setIsEditing(true);
-  };
-
-  const handleCancelEdit = () => {
-    setEditorHtml(contentHtml || "");
-    setIsEditing(false);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editorHtml.trim()) {
-      toast({
-        title: "Nothing to save",
-        description: "Please add content before saving.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const session = await ensureFreshSession();
-      if (!session) {
-        toast({
-          title: "Session expired",
-          description: "Please sign in again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const token = getGoogleToken();
-      const { data, error } = await supabase.functions.invoke("google-drive", {
-        body: {
-          action: "update_doc_content",
-          googleDocId: document.google_doc_id,
-          documentId: document.id,
-          html: editorHtml,
-        },
-        ...(token ? { headers: { "x-google-token": token } } : {}),
-      });
-
-      if (error) throw error;
-      if (data?.needsReauth) {
-        toast({
-          title: "Drive access required",
-          description: "Please reconnect Google Drive.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (data?.needsDriveAccess) {
-        toast({
-          title: "Drive access required",
-          description: "Please grant Drive access and try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-      const cacheSession = await ensureFreshSession();
-      const cacheToken = cacheSession?.access_token;
-      if (!cacheToken) {
-        throw new Error("Session expired");
-      }
-      await supabase.functions.invoke("document-cache", {
-        body: {
-          action: "set",
-          documentId: document.id,
-          contentHtml: editorHtml,
-        },
-        headers: { Authorization: `Bearer ${cacheToken}` },
-      });
-
-      setContentHtml(editorHtml);
-      setIsEditing(false);
-      toast({ title: "Saved", description: "Changes saved to Drive and cache." });
-      onDocumentUpdate?.();
-    } catch (error: any) {
-      toast({
-        title: "Save failed",
-        description: error?.message || "Could not save changes.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -327,47 +231,6 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end flex-wrap">
-            {isEditing ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
-                  onClick={handleCancelEdit}
-                  disabled={isSaving}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
-                  onClick={handleSaveEdit}
-                  disabled={isSaving}
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      Save
-                    </>
-                  )}
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
-                onClick={handleStartEdit}
-              >
-                <Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">Edit</span>
-              </Button>
-            )}
             <Button
               variant="outline"
               size="sm"
@@ -465,67 +328,54 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
             </div>
 
             {/* Document Content */}
-            {isEditing ? (
-              <div className="max-w-none overflow-x-hidden">
-                {videoUrl && (
-                  <div className="mb-6">
-                    <VideoEmbed url={videoUrl} title={videoTitle || document.title} />
-                  </div>
-                )}
-                <div className="rounded-xl border border-border bg-card/50 overflow-x-auto">
-                  <LexicalEditor key={editorKey} initialHtml={contentHtml} onChangeHtml={setEditorHtml} />
+            <article className="prose prose-sm sm:prose-base prose-neutral dark:prose-invert prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-foreground/90 max-w-none overflow-x-hidden">
+              {videoUrl && (
+                <div className="mb-6 not-prose">
+                  <VideoEmbed url={videoUrl} title={videoTitle || document.title} />
                 </div>
-              </div>
-            ) : (
-              <article className="prose prose-sm sm:prose-base prose-neutral dark:prose-invert prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-code:text-primary prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-a:text-primary prose-blockquote:border-primary prose-blockquote:text-muted-foreground prose-th:text-foreground prose-td:text-foreground/90 max-w-none overflow-x-hidden">
-                {videoUrl && (
-                  <div className="mb-6 not-prose">
-                    <VideoEmbed url={videoUrl} title={videoTitle || document.title} />
+              )}
+              <div className="rounded-xl border border-border bg-card/50 overflow-x-auto">
+                {isLoadingContent ? (
+                  <div className="text-center py-12">
+                    <Loader2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
+                    <p className="text-muted-foreground">Loading content...</p>
                   </div>
-                )}
-                <div className="rounded-xl border border-border bg-card/50 overflow-x-auto">
-                  {isLoadingContent ? (
-                    <div className="text-center py-12">
-                      <Loader2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
-                      <p className="text-muted-foreground">Loading content...</p>
-                    </div>
-                  ) : contentHtml ? (
-                    <div className="p-4 sm:p-6 lg:p-8">
-                      <div
-                        className="google-doc-content"
-                        dangerouslySetInnerHTML={{
-                          __html: isLikelyMarkdown(contentHtml)
-                            ? normalizeHtml(
-                                renderMarkdownToHtml(
-                                  stripFirstMarkdownHeading(contentHtml, document.title)
-                                )
+                ) : contentHtml ? (
+                  <div className="p-4 sm:p-6 lg:p-8">
+                    <div
+                      className="google-doc-content"
+                      dangerouslySetInnerHTML={{
+                        __html: isLikelyMarkdown(contentHtml)
+                          ? normalizeHtml(
+                              renderMarkdownToHtml(
+                                stripFirstMarkdownHeading(contentHtml, document.title)
                               )
-                            : normalizeHtml(contentHtml),
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                      <p className="text-muted-foreground mb-4">No content synced yet.</p>
-                      <Button onClick={handleSyncContent} disabled={isSyncing}>
-                        {isSyncing ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Syncing...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-2" />
-                            Sync from Google Drive
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </article>
-            )}
+                            )
+                          : normalizeHtml(contentHtml),
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                    <p className="text-muted-foreground mb-4">No content synced yet.</p>
+                    <Button onClick={handleSyncContent} disabled={isSyncing}>
+                      {isSyncing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Syncing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Sync from Google Drive
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </article>
           </div>
         </div>
       </div>
