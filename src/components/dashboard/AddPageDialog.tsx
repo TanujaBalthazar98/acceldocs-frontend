@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,6 +7,11 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { useGoogleDrive } from "@/hooks/useGoogleDrive";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AddPageDialogProps {
   open: boolean;
@@ -23,12 +29,76 @@ interface AddPageDialogProps {
 export const AddPageDialog = ({
   open,
   onOpenChange,
+  projectId,
   projectName,
+  projectVersionId,
+  topicId,
   topicName,
+  parentFolderId,
+  onCreated,
 }: AddPageDialogProps) => {
+  const { toast } = useToast();
+  const { createDoc } = useGoogleDrive();
+  const { user } = useAuth();
+  const [title, setTitle] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
   const locationText = topicName
     ? `${projectName} / ${topicName}`
     : projectName || "current project";
+
+  const handleCreate = async () => {
+    if (!title.trim() || !projectId || !parentFolderId) {
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const doc = await createDoc(title.trim(), parentFolderId);
+      if (!doc) {
+        return;
+      }
+
+      const { data: inserted, error } = await supabase
+        .from("documents")
+        .insert({
+          google_doc_id: doc.id,
+          project_id: projectId,
+          project_version_id: projectVersionId || undefined,
+          topic_id: topicId || null,
+          title: doc.name,
+          owner_id: user?.id || null,
+          last_synced_at: new Date().toISOString(),
+          google_modified_at: new Date().toISOString(),
+        })
+        .select("id, title, google_doc_id")
+        .single();
+
+      if (error || !inserted) {
+        console.error("Error saving document:", error);
+        toast({
+          title: "Save failed",
+          description: "We created the Google Doc but could not save it in Docspeare.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Page created",
+        description: `Created "${inserted.title}" in ${locationText}.`,
+      });
+      setTitle("");
+      onOpenChange(false);
+      onCreated?.({
+        id: inserted.id,
+        name: inserted.title,
+        google_doc_id: inserted.google_doc_id,
+      });
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -42,20 +112,34 @@ export const AddPageDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 text-sm text-muted-foreground">
-          <p>
-            To add a page in <span className="font-medium text-foreground">{locationText}</span>:
+        {!parentFolderId && (
+          <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+            Connect Drive and select a project folder before creating pages.
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Page title</label>
+          <Input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="e.g., Getting Started"
+            disabled={!projectId || !parentFolderId}
+          />
+          <p className="text-xs text-muted-foreground">
+            A new Google Doc will be created in the Drive folder for {locationText}.
           </p>
-          <ol className="list-decimal pl-4 space-y-1">
-            <li>Open the project’s Drive folder (and topic subfolder if applicable).</li>
-            <li>Create a new Google Doc there or move an existing one.</li>
-            <li>Click “Sync from Drive” in Docspeare to pull the latest changes.</li>
-          </ol>
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-border">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
+          </Button>
+          <Button
+            onClick={handleCreate}
+            disabled={!title.trim() || !projectId || !parentFolderId || isCreating}
+          >
+            {isCreating ? "Creating..." : "Create Page"}
           </Button>
         </div>
       </DialogContent>
