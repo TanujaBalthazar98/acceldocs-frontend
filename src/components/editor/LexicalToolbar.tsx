@@ -20,6 +20,7 @@ import {
   Minus,
   Table,
   Image,
+  Trash2,
 } from "lucide-react";
 import {
   $getSelection,
@@ -46,6 +47,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { $createParagraphNode } from "lexical";
 import { $getNearestNodeOfType } from "@lexical/utils";
 import { INSERT_IMAGE_COMMAND } from "@/components/editor/plugins/ImagePlugin";
+import { TableNode } from "@lexical/table";
 
 type BlockType = "paragraph" | "h1" | "h2" | "h3" | "quote";
 
@@ -66,6 +68,7 @@ export const LexicalToolbar = () => {
   const [isStrike, setIsStrike] = useState(false);
   const [isCode, setIsCode] = useState(false);
   const [isLink, setIsLink] = useState(false);
+  const [isInTable, setIsInTable] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
 
@@ -95,6 +98,7 @@ export const LexicalToolbar = () => {
       const node = selection.anchor.getNode();
       const parent = node.getParent();
       setIsLink(parent?.getType() === "link" || node.getType() === "link");
+      setIsInTable(!!$getNearestNodeOfType(node, TableNode));
     });
   }, [editor]);
 
@@ -128,6 +132,7 @@ export const LexicalToolbar = () => {
   }, [editor]);
 
   const setBlock = (value: BlockType) => {
+    editor.focus();
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
@@ -150,6 +155,7 @@ export const LexicalToolbar = () => {
   };
 
   const toggleList = (type: "bullet" | "number" | "check") => {
+    editor.focus();
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
@@ -166,6 +172,7 @@ export const LexicalToolbar = () => {
   };
 
   const insertLink = () => {
+    editor.focus();
     if (isLink) {
       editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
       return;
@@ -176,10 +183,26 @@ export const LexicalToolbar = () => {
   };
 
   const insertImage = () => {
+    editor.focus();
     const src = window.prompt("Image URL");
     if (!src) return;
     const altText = window.prompt("Alt text (optional)") || "";
     editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText });
+  };
+
+  const removeTable = () => {
+    editor.focus();
+    editor.update(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return;
+      const node = selection.anchor.getNode();
+      const tableNode = $getNearestNodeOfType(node, TableNode);
+      tableNode?.remove();
+    });
+  };
+
+  const handleMouseDown = (event: React.MouseEvent) => {
+    event.preventDefault();
   };
 
   const blockValue = useMemo(() => blockOptions.find((opt) => opt.value === blockType), [blockType]);
@@ -191,6 +214,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className="toolbar-btn"
+          onMouseDown={handleMouseDown}
           onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
           disabled={!canUndo}
         >
@@ -200,6 +224,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className="toolbar-btn"
+          onMouseDown={handleMouseDown}
           onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}
           disabled={!canRedo}
         >
@@ -231,6 +256,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className={isBold ? "toolbar-btn toolbar-btn-active" : "toolbar-btn"}
+          onMouseDown={handleMouseDown}
           onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}
         >
           <Bold className="h-4 w-4" />
@@ -239,6 +265,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className={isItalic ? "toolbar-btn toolbar-btn-active" : "toolbar-btn"}
+          onMouseDown={handleMouseDown}
           onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}
         >
           <Italic className="h-4 w-4" />
@@ -247,6 +274,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className={isUnderline ? "toolbar-btn toolbar-btn-active" : "toolbar-btn"}
+          onMouseDown={handleMouseDown}
           onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}
         >
           <Underline className="h-4 w-4" />
@@ -255,6 +283,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className={isStrike ? "toolbar-btn toolbar-btn-active" : "toolbar-btn"}
+          onMouseDown={handleMouseDown}
           onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")}
         >
           <Strikethrough className="h-4 w-4" />
@@ -263,6 +292,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className={isCode ? "toolbar-btn toolbar-btn-active" : "toolbar-btn"}
+          onMouseDown={handleMouseDown}
           onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code")}
         >
           <Code className="h-4 w-4" />
@@ -276,6 +306,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className="toolbar-btn"
+          onMouseDown={handleMouseDown}
           onClick={() => toggleList("bullet")}
         >
           <List className="h-4 w-4" />
@@ -284,6 +315,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className="toolbar-btn"
+          onMouseDown={handleMouseDown}
           onClick={() => toggleList("number")}
         >
           <ListOrdered className="h-4 w-4" />
@@ -292,6 +324,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className="toolbar-btn"
+          onMouseDown={handleMouseDown}
           onClick={() => toggleList("check")}
         >
           <ListChecks className="h-4 w-4" />
@@ -305,6 +338,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className={isLink ? "toolbar-btn toolbar-btn-active" : "toolbar-btn"}
+          onMouseDown={handleMouseDown}
           onClick={insertLink}
         >
           <LinkIcon className="h-4 w-4" />
@@ -313,6 +347,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className="toolbar-btn"
+          onMouseDown={handleMouseDown}
           onClick={() => setBlock("quote")}
         >
           <Quote className="h-4 w-4" />
@@ -321,6 +356,7 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className="toolbar-btn"
+          onMouseDown={handleMouseDown}
           onClick={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}
         >
           <Minus className="h-4 w-4" />
@@ -329,14 +365,28 @@ export const LexicalToolbar = () => {
           variant="ghost"
           size="icon"
           className="toolbar-btn"
+          onMouseDown={handleMouseDown}
           onClick={() => editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: 3, rows: 3 })}
         >
           <Table className="h-4 w-4" />
         </Button>
+        {isInTable && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="toolbar-btn toolbar-btn-active"
+            onMouseDown={handleMouseDown}
+            onClick={removeTable}
+            title="Remove table"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
           className="toolbar-btn"
+          onMouseDown={handleMouseDown}
           onClick={insertImage}
         >
           <Image className="h-4 w-4" />
