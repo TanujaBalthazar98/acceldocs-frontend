@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, ArrowRight, ArrowLeft, Loader2, Building2, Clock, UserPlus, Puzzle } from "lucide-react";
+import { CheckCircle2, ArrowRight, ArrowLeft, Loader2, Building2, Clock, Puzzle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -10,51 +10,9 @@ interface OnboardingProps {
   organizationId: string | null;
 }
 
-type OnboardingMode = "first_user" | "join_existing" | "pending_request";
+type OnboardingMode = "first_user" | "pending_request";
 
 const APP_NAME = "Docspeare";
-
-const getEmailDomain = (email?: string | null) => {
-  return email?.split("@")[1]?.toLowerCase().trim() || null;
-};
-
-const PERSONAL_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "msn.com",
-  "yahoo.com",
-  "yahoo.co.uk",
-  "ymail.com",
-  "aol.com",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "protonmail.com",
-  "proton.me",
-  "tutanota.com",
-  "zoho.com",
-  "mail.com",
-  "gmx.com",
-  "gmx.net",
-]);
-
-const isPersonalEmailDomain = (domain?: string | null) => {
-  if (!domain) return false;
-  return PERSONAL_EMAIL_DOMAINS.has(domain);
-};
-
-const formatWorkspaceName = (domain?: string | null) => {
-  if (!domain) return "Workspace";
-  const base = domain.split(".")[0] || domain;
-  return base
-    .split(/[-_]/g)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-};
 
 const formatPersonalWorkspaceName = (email?: string | null, fullName?: string | null) => {
   const base = fullName?.trim() || email?.split("@")[0] || "Personal";
@@ -71,30 +29,10 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<OnboardingMode | null>(null);
   const [isCheckingOrg, setIsCheckingOrg] = useState(true);
-  const [existingOrgId, setExistingOrgId] = useState<string | null>(null);
   const [existingOrgName, setExistingOrgName] = useState<string | null>(null);
-  const emailDomain = getEmailDomain(user?.email);
-  const isPersonalDomain = isPersonalEmailDomain(emailDomain);
-  const workspaceDomain = isPersonalDomain ? user?.email?.toLowerCase().trim() || null : emailDomain;
+  const workspaceDomain = user?.email?.toLowerCase().trim() || null;
   const workspaceName =
-    existingOrgName?.trim() ||
-    (isPersonalDomain
-      ? formatPersonalWorkspaceName(user?.email || null, user?.user_metadata?.full_name || null)
-      : formatWorkspaceName(emailDomain));
-
-  const pendingRequestStorageKey = user?.id ? `pending_join_request:${user.id}` : null;
-  const getPendingRequestOrgId = () => {
-    if (!pendingRequestStorageKey || typeof sessionStorage === "undefined") return null;
-    return sessionStorage.getItem(pendingRequestStorageKey);
-  };
-  const setPendingRequestOrgId = (orgId: string) => {
-    if (!pendingRequestStorageKey || typeof sessionStorage === "undefined") return;
-    sessionStorage.setItem(pendingRequestStorageKey, orgId);
-  };
-  const clearPendingRequestOrgId = () => {
-    if (!pendingRequestStorageKey || typeof sessionStorage === "undefined") return;
-    sessionStorage.removeItem(pendingRequestStorageKey);
-  };
+    existingOrgName?.trim() || formatPersonalWorkspaceName(user?.email || null, user?.user_metadata?.full_name || null);
 
   // Determine onboarding mode based on whether the user's org exists
   useEffect(() => {
@@ -106,7 +44,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       }
 
       try {
-        if (!emailDomain && !user?.email) {
+        if (!workspaceDomain) {
           console.error("Missing email domain for onboarding");
           setOnboardingMode("first_user");
           setIsCheckingOrg(false);
@@ -123,13 +61,10 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         if (existingRole) {
           // User is already a member - complete onboarding immediately
           console.log("User already has org role, completing onboarding");
-          clearPendingRequestOrgId();
           setIsCheckingOrg(false);
           onComplete();
           return;
         }
-
-        const storedPendingOrgId = getPendingRequestOrgId();
 
         // Check if user already has a pending join request (they can see their own requests)
         const { data: pendingRequest } = await supabase
@@ -140,51 +75,14 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           .maybeSingle();
 
         if (pendingRequest) {
-          setExistingOrgId(pendingRequest.organization_id);
-          setPendingRequestOrgId(pendingRequest.organization_id);
           setOnboardingMode("pending_request");
           setIsCheckingOrg(false);
           return;
         }
-
-        if (storedPendingOrgId && !isPersonalDomain) {
-          setExistingOrgId(storedPendingOrgId);
-          setOnboardingMode("pending_request");
-          setIsCheckingOrg(false);
-          return;
-        }
-
-        if (isPersonalDomain) {
-          setOnboardingMode("first_user");
-          setIsCheckingOrg(false);
-          return;
-        }
-
-        // Try to check if org exists using RLS-visible query
-        // This query works because of "Users can view organizations by domain" policy
-        const { data: existingOrg, error } = await supabase
-          .from("organizations")
-          .select("id, name, drive_folder_id")
-          .eq("domain", emailDomain)
-          .maybeSingle();
-
-        if (error && error.code !== "PGRST116") {
-          console.error("Error checking org:", error);
-        }
-
-        if (existingOrg) {
-          setExistingOrgId(existingOrg.id);
-          setExistingOrgName(existingOrg.name ?? null);
-          setOnboardingMode("join_existing");
-        } else {
-          clearPendingRequestOrgId();
-          // No org found via RLS - this user will be the first/owner
-          setOnboardingMode("first_user");
-        }
+        setOnboardingMode("first_user");
       } catch (err) {
         console.error("Error during org check:", err);
-        // Default to join_existing to avoid duplicate creation errors
-        setOnboardingMode("join_existing");
+        setOnboardingMode("first_user");
       } finally {
         setIsCheckingOrg(false);
       }
@@ -259,42 +157,6 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     }
   };
 
-  const handleRequestAccess = async () => {
-    if (!user || !existingOrgId) return;
-
-    setIsCreating(true);
-    try {
-      // Create a join request
-      const { error } = await supabase
-        .from("join_requests")
-        .insert({
-          user_id: user.id,
-          organization_id: existingOrgId,
-          user_email: user.email || "",
-          user_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "",
-          status: "pending",
-        });
-
-      if (error) throw error;
-
-      toast({
-        title: "Access requested",
-        description: "Your request has been sent to workspace admins for approval.",
-      });
-
-      setPendingRequestOrgId(existingOrgId);
-      setOnboardingMode("pending_request");
-    } catch (error: any) {
-      console.error("Error requesting access:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to request access. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreating(false);
-    }
-  };
 
   const handleConnectDrive = async () => {
     setIsConnectingDrive(true);
@@ -349,54 +211,6 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               You'll be notified once your request is approved.
             </p>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Join existing workspace screen (request access)
-  if (onboardingMode === "join_existing") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="w-full max-w-md text-center">
-          <h1 className="text-3xl font-bold mb-8 text-foreground">{APP_NAME}</h1>
-          <div className="glass rounded-2xl p-8">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
-              <UserPlus className="w-8 h-8 text-primary" />
-            </div>
-            <h2 className="text-2xl font-bold mb-3">Request Workspace Access</h2>
-            <p className="text-muted-foreground mb-6">
-              The {workspaceName} workspace already exists. Request access to join your team's documentation.
-            </p>
-            <div className="p-4 rounded-lg bg-secondary/50 mb-6">
-              <span className="font-semibold text-lg">{workspaceName}</span>
-              <p className="text-xs text-muted-foreground mt-1">
-                Documentation workspace
-              </p>
-            </div>
-            <Button 
-              variant="hero" 
-              size="lg" 
-              onClick={handleRequestAccess}
-              disabled={isCreating}
-              className="w-full gap-2"
-            >
-              {isCreating ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Requesting...
-                </>
-              ) : (
-                <>
-                  <UserPlus className="w-4 h-4" />
-                  Request Access
-                </>
-              )}
-            </Button>
-          </div>
-          <p className="text-center text-xs text-muted-foreground mt-6">
-            A workspace admin will review and approve your request.
-          </p>
         </div>
       </div>
     );
