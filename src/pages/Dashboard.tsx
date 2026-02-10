@@ -144,7 +144,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { listFolder, trashFile, getGoogleToken } = useGoogleDrive();
+  const { listFolder, trashFile, getGoogleToken, uploadFile } = useGoogleDrive();
   const { attemptRecovery } = useDriveRecovery();
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -210,6 +210,7 @@ const Dashboard = () => {
   const [isBulkUnpublishing, setIsBulkUnpublishing] = useState(false);
   const [subProjectsExpanded, setSubProjectsExpanded] = useState(true);
   const [topicsExpanded, setTopicsExpanded] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
   
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading, isOrgOwner } = usePermissions(selectedProject?.id || null);
@@ -682,6 +683,66 @@ const Dashboard = () => {
           return b.semver_patch - a.semver_patch;
         })
     : [];
+
+  const handleUploadFile = async (parentTopic: Topic) => {
+    if (!parentTopic.drive_folder_id) {
+        toast({
+            title: "Error",
+            description: "Topic does not have a Drive folder ID.",
+            variant: "destructive",
+        });
+        return;
+    }
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "*/*";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      setIsUploading(true);
+      toast({
+        title: "Uploading...",
+        description: `Uploading ${file.name} to ${parentTopic.name}...`,
+      });
+
+      try {
+        // Determine if conversion to Google Doc is needed
+        let targetMimeType: string | undefined = undefined;
+        const fileName = file.name.toLowerCase();
+        
+        if (fileName.endsWith(".docx") || fileName.endsWith(".doc")) {
+          targetMimeType = "application/vnd.google-apps.document";
+        } else if (fileName.endsWith(".md") || fileName.endsWith(".markdown")) {
+          // Drive API handles Markdown to Google Doc conversion well
+          targetMimeType = "application/vnd.google-apps.document";
+        } else if (fileName.endsWith(".html") || fileName.endsWith(".htm")) {
+          targetMimeType = "application/vnd.google-apps.document";
+        }
+
+        const result = await uploadFile(file, parentTopic.drive_folder_id, parentTopic.project_id, targetMimeType);
+        
+        if (result) {
+            toast({
+                title: "Success",
+                description: "File uploaded successfully. Refreshing...",
+            });
+            await fetchData();
+        }
+      } catch (error) {
+          console.error("Upload error:", error);
+          toast({
+              title: "Error",
+              description: "An unexpected error occurred during upload.",
+              variant: "destructive",
+          });
+      } finally {
+        setIsUploading(false);
+      }
+    };
+    input.click();
+  };
   
   // Delete handlers with RBAC enforcement
   const handleDeleteProject = async (projectId: string, forceDelete = false): Promise<boolean> => {
@@ -807,7 +868,7 @@ const Dashboard = () => {
     {
       const { error } = await supabase
         .from("audit_logs")
-        .update({ project_id: null })
+        .update({ project_id: null } as any)
         .eq("project_id", projectId);
       if (error) return fail("Error", `Failed to detach audit logs: ${error.message}`);
     }
@@ -815,7 +876,7 @@ const Dashboard = () => {
     {
       const { error } = await supabase
         .from("domains")
-        .update({ project_id: null })
+        .update({ project_id: null } as any)
         .eq("project_id", projectId as any);
       if (error) return fail("Error", `Failed to detach domains: ${error.message}`);
     }
@@ -1151,7 +1212,7 @@ const Dashboard = () => {
         is_published: true,
         published_content_id: doc.content_id,
         published_content_html: doc.content_html // Backward compatibility
-      })
+      } as any)
       .eq("id", docId);
 
     if (error) {
@@ -1209,7 +1270,7 @@ const Dashboard = () => {
         .update({ 
           is_published: true,
           published_content_html: doc.content_html 
-        })
+        } as any)
         .eq("id", doc.id);
       
       if (!error) {
@@ -1617,7 +1678,7 @@ const Dashboard = () => {
               created_by: user.id,
               is_connected: true,
               parent_id: null,
-            })
+            } as any)
             .select("id, is_published")
             .single();
 
@@ -1668,7 +1729,7 @@ const Dashboard = () => {
             project_id: projectId,
             project_version_id: defaultVersionId,
             parent_id: parentTopicId,
-          })
+          } as any)
           .select("id")
           .single();
 
@@ -1732,7 +1793,7 @@ const Dashboard = () => {
               .update(updatePayload)
               .eq("id", existingDoc.id);
           } else {
-            const { error: docError } = await supabase
+            const { data: newDoc, error: docError } = await supabase
               .from("documents")
               .insert({
                 title: doc.name,
@@ -1742,7 +1803,9 @@ const Dashboard = () => {
                 topic_id: topicId,
                 google_modified_at: doc.modifiedTime,
                 owner_id: user.id,
-              });
+              } as any)
+              .select("id")
+              .single();
 
             if (!docError) {
               syncedDocs++;
@@ -1846,7 +1909,7 @@ const Dashboard = () => {
           visibility, is_published, owner_id, content_html, published_content_html,
           owner:profiles!documents_owner_id_fkey(full_name, email)
         `)
-        .eq("id", selectedDocument.id)
+        .eq("id", selectedDocument.id as any)
         .single();
 
       if (freshDoc) {
@@ -1928,6 +1991,7 @@ const Dashboard = () => {
         setAddTopicOpen={setAddTopicOpen}
         setParentTopicForCreate={setParentTopicForCreate}
         setAddPageOpen={setAddPageOpen}
+        onUploadFile={handleUploadFile}
         setShowAPISettings={setShowAPISettings}
         setShowMCPSettings={setShowMCPSettings}
         setShowIntegrations={setShowIntegrations}

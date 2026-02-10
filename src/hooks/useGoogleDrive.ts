@@ -27,7 +27,7 @@ export const useGoogleDrive = () => {
 
   // Centralized Drive call wrapper with automatic recovery
   const invokeDriveFunction = async <T>(
-    body: Record<string, unknown>,
+    body: Record<string, unknown> | FormData,
     errorMessage: string
   ): Promise<{ data: T | null; needsDriveAccess?: boolean }> => {
     if (!IS_SUPABASE_CONFIGURED) {
@@ -51,7 +51,7 @@ export const useGoogleDrive = () => {
 
     // Handle invoke-level errors
     if (error) {
-      const action = body.action as string | undefined;
+      const action = body instanceof FormData ? body.get("action") : (body as any).action;
       const errorStatus = (error as { context?: { status?: number } })?.context?.status;
       const errorBody = (error as { context?: { body?: string } })?.context?.body;
       const isNotFound =
@@ -63,7 +63,7 @@ export const useGoogleDrive = () => {
       }
 
       console.error(`${errorMessage}:`, error);
-      
+
       // Try recovery if not in cooldown
       if (!isInCooldown()) {
         const recovery = await attemptRecovery(errorMessage);
@@ -103,8 +103,8 @@ export const useGoogleDrive = () => {
     // Handle API-level errors from Drive
     if (data?.error) {
       // Check for auth-related errors that need recovery
-      const isAuthError = 
-        data.error.includes("401") || 
+      const isAuthError =
+        data.error.includes("401") ||
         data.error.includes("403") ||
         data.error.includes("invalid_grant") ||
         data.error.includes("Token has been expired");
@@ -138,11 +138,11 @@ export const useGoogleDrive = () => {
       { action: "list_folder", folderId },
       "Failed to list folder"
     );
-    
+
     if (result.needsDriveAccess) {
       return { files: null, needsDriveAccess: true };
     }
-    
+
     return { files: result.data?.files || [] };
   };
 
@@ -185,7 +185,7 @@ export const useGoogleDrive = () => {
       { action: "create_folder", name, parentFolderId },
       "Failed to create folder"
     );
-    
+
     return result.data?.folder || null;
   };
 
@@ -194,8 +194,29 @@ export const useGoogleDrive = () => {
       { action: "create_doc", title, parentFolderId },
       "Failed to create document"
     );
-    
+
     return result.data?.doc || null;
+  };
+
+  const uploadFile = async (
+    file: File,
+    parentFolderId: string,
+    projectId?: string,
+    mimeType?: string // Optional target mimeType for conversion
+  ): Promise<{ id: string; name: string; mimeType: string } | null> => {
+    const formData = new FormData();
+    formData.append("action", "upload_file");
+    formData.append("file", file);
+    formData.append("parentFolderId", parentFolderId);
+    if (projectId) formData.append("projectId", projectId);
+    if (mimeType) formData.append("mimeType", mimeType);
+
+    const result = await invokeDriveFunction<{ file: { id: string; name: string; mimeType: string } }>(
+      formData,
+      "Failed to upload file"
+    );
+
+    return result.data?.file || null;
   };
 
   const moveFile = async (
@@ -230,11 +251,11 @@ export const useGoogleDrive = () => {
       { action: "trash_file", fileId },
       "Failed to trash file"
     );
-    
+
     if (result.needsDriveAccess) {
       return { success: false, error: "Reconnect required", errorCode: "NEEDS_REAUTH" };
     }
-    
+
     if (!result.data) {
       return { success: false, error: "Operation failed", errorCode: "UNKNOWN" };
     }
@@ -260,5 +281,6 @@ export const useGoogleDrive = () => {
     return { success: result.data.success || false };
   };
 
-  return { listFolder, checkFolderAccess, createFolder, createDoc, moveFile, trashFile, getGoogleToken };
+  return { listFolder, checkFolderAccess, createFolder, createDoc, uploadFile, moveFile, trashFile, getGoogleToken };
 };
+

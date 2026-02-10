@@ -41,6 +41,7 @@ import { CopyLinkButton } from "@/components/docs/CopyLinkButton";
 import { PageFeedback } from "@/components/docs/PageFeedback";
 import { VideoEmbed } from "@/components/docs/VideoEmbed";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
+import { VersionSwitcher } from "@/components/docs/VersionSwitcher";
 import { SmartSearch } from "@/components/SmartSearch";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
@@ -59,6 +60,7 @@ interface Project {
   mcp_enabled?: boolean | null;
   openapi_spec_json?: any;
   openapi_spec_url?: string | null;
+  show_version_switcher?: boolean;
 }
 
 interface ProjectVersion {
@@ -655,7 +657,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       // Build project query scoped to the target organization
       let projectsQuery = supabase
         .from("projects")
-        .select("id, name, slug, visibility, is_published, organization_id, parent_id, mcp_enabled, openapi_spec_json, openapi_spec_url")
+        .select("id, name, slug, visibility, is_published, organization_id, parent_id, mcp_enabled, openapi_spec_json, openapi_spec_url, show_version_switcher")
         .eq("organization_id", targetOrgId);
 
       if (!isInternalView) {
@@ -1019,9 +1021,24 @@ const getTopicDocuments = (topicId: string) =>
     <div className="flex flex-col h-full">
       {/* Sidebar Header with collapse button */}
       <div className="p-3 border-b border-border flex items-center justify-between">
-        <span className="text-sm font-medium text-muted-foreground">
-          {selectedProject?.name || "Documentation"}
-        </span>
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="text-sm font-medium text-muted-foreground truncate">
+            {selectedProject?.name || "Documentation"}
+          </span>
+          {selectedProject?.show_version_switcher && (
+            <VersionSwitcher 
+              currentVersion={visibleVersion}
+              versions={projectVersions.filter(v => v.project_id === selectedProject!.id)}
+              onVersionSelect={(v) => {
+                if (currentOrg) {
+                  navigate(buildProjectUrl(selectedProject!, v));
+                  setMobileMenuOpen(false);
+                }
+              }}
+              className="justify-start -ml-2"
+            />
+          )}
+        </div>
         <Button 
           variant="ghost" 
           size="icon" 
@@ -1317,6 +1334,21 @@ const getTopicDocuments = (topicId: string) =>
               return null;
             })()}
           </div>
+
+          {/* Version Switcher (Desktop) */}
+          {selectedProject?.show_version_switcher && (
+            <div className="hidden md:flex items-center px-1">
+              <VersionSwitcher 
+                currentVersion={visibleVersion}
+                versions={projectVersions.filter(v => v.project_id === selectedProject.id)}
+                onVersionSelect={(v) => {
+                  if (currentOrg) {
+                    navigate(buildProjectUrl(selectedProject, v));
+                  }
+                }}
+              />
+            </div>
+          )}
 
           {/* Center: Search + Ask AI */}
           <div className="hidden sm:flex items-center gap-2 flex-1 max-w-xs md:max-w-md mx-2 md:mx-4">

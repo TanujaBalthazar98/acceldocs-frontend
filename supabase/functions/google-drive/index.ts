@@ -68,6 +68,14 @@ interface RegisterWebhookRequest {
   token: string; // The secret token (GOOGLE_WEBHOOK_SECRET)
 }
 
+interface UploadFileRequest {
+  action: "upload_file";
+  file: File;
+  parentFolderId: string;
+  projectId?: string;
+  mimeType?: string; // Optional target mimeType for conversion
+}
+
 type RequestBody =
   | CreateFolderRequest
   | CreateDocRequest
@@ -77,7 +85,8 @@ type RequestBody =
   | UpdateDocContentRequest
   | TrashFileRequest
   | MoveFileRequest
-  | RegisterWebhookRequest;
+  | RegisterWebhookRequest
+  | UploadFileRequest;
 
 const isDriveNotFound = (errorText: string) =>
   errorText.includes("File not found") || errorText.includes("\"notFound\"");
@@ -216,6 +225,7 @@ async function resolveProjectIdFromBody(
       return resolveProjectIdFromFolderId(supabase, body.folderId);
     case "create_folder":
     case "create_doc":
+    case "upload_file":
       return resolveProjectIdFromFolderId(supabase, body.parentFolderId);
     case "get_doc_content":
       return resolveProjectIdFromFileId(supabase, body.docId);
@@ -494,8 +504,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    const body: RequestBody = await req.json();
-    console.log("Request body:", JSON.stringify(body));
+    let body: RequestBody;
+    const contentType = req.headers.get("content-type") || "";
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      const action = formData.get("action") as any;
+
+      // Construct body based on action
+      if (action === "upload_file") {
+        body = {
+          action: "upload_file",
+          file: formData.get("file") as File,
+          parentFolderId: formData.get("parentFolderId") as string,
+          projectId: formData.get("projectId") as string | undefined,
+          mimeType: formData.get("mimeType") as string | undefined,
+        };
+      } else {
+        // Fallback for other actions if sent as form-data (unlikely but safe)
+        body = Object.fromEntries(formData) as any;
+      }
+    } else {
+      body = await req.json();
+    }
+
+    // Log body but exclude file content/object to keep logs clean
+    const logBody = { ...body };
+    if (logBody.action === "upload_file") {
+      (logBody as any).file = `File: ${(body as UploadFileRequest).file?.name} (${(body as UploadFileRequest).file?.size} bytes)`;
+    }
+    console.log("Request body:", JSON.stringify(logBody));
 
     // RBAC Permission Check
     const operation = getOperationForAction(body.action);
@@ -1385,6 +1423,97 @@ Deno.serve(async (req) => {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
+    }
+
+    // Upload file
+    if (body.action === "upload_file") {
+      const uploadRequest = body as UploadFileRequest;
+      console.log("Uploading file:", uploadRequest.file.name, "to parent:", uploadRequest.parentFolderId);
+
+      // 1. Prepare Metadata
+      const metadata: Record<string, any> = {
+        name: uploadRequest.file.name,
+        parents: [uploadRequest.parentFolderId],
+      };
+
+      if (uploadRequest.mimeType) {
+        metadata.mimeType = uploadRequest.mimeType; // Target mimeType for conversion
+      }
+
+      // 2. Prepare Multipart Body
+      const form = new FormData();
+      form.append(
+        "metadata",
+        new Blob([JSON.stringify(metadata)], { type: "application/json" })
+      );
+      form.append("file", uploadRequest.file);
+
+      // 3. Send Request to Google Drive API
+      const response = await fetchWithRefresh(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true",
+        {
+          method: "POST",
+          body: form, // fetch automatically sets Content-Type to multipart/form-data with boundary
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Google Drive API error:", errorText);
+
+        if (response.status === 404 && isDriveNotFound(errorText)) {
+          return new Response(
+            JSON.stringify({
+              error: driveFolderAccessHint,
+              errorCode: "FOLDER_NOT_ACCESSIBLE",
+              details: errorText,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (isScopeInsufficient(errorText)) {
+          return new Response(
+            JSON.stringify({ error: "Insufficient scopes", needsDriveAccess: true, details: errorText }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (response.status === 401 || response.status === 403) {
+          return new Response(
+            JSON.stringify({
+              error: "Google authentication expired",
+              needsReauth: true,
+              details: errorText
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ error: "Failed to upload file", details: errorText }),
+          { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const fileData = await response.json();
+      console.log("File uploaded successfully:", fileData.id);
+
+      // Log successful upload
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        action: 'upload_file',
+        entity_type: 'drive_file',
+        entity_id: fileData.id,
+        project_id: projectId,
+        metadata: { fileName: uploadRequest.file.name, mimeType: fileData.mimeType },
+        success: true,
+      });
+
+      return new Response(
+        JSON.stringify({ success: true, file: fileData }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     return new Response(

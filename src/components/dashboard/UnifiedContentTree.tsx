@@ -1,3 +1,4 @@
+```
 import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   ChevronRight,
@@ -12,6 +13,7 @@ import {
   GripVertical,
   FileText,
   ExternalLink,
+  UploadCloud
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,6 +42,7 @@ interface UnifiedContentTreeProps {
   onSelectDocument: (document: Document) => void;
   onAddPage: (topic: Topic) => void;
   onAddSubtopic: (parentTopic: Topic) => void;
+  onUploadFile?: (parentTopic: Topic) => void;
   onOpenTopicSettings: (topic: Topic) => void;
   onDeleteTopic: (topic: Topic) => void;
   onOpenDocumentSettings?: (document: Document) => void;
@@ -99,6 +102,7 @@ export function UnifiedContentTree({
   onSelectDocument,
   onAddPage,
   onAddSubtopic,
+  onUploadFile,
   onOpenTopicSettings,
   onDeleteTopic,
   onOpenDocumentSettings,
@@ -830,6 +834,14 @@ export function UnifiedContentTree({
                     <Plus className="w-3 h-3 mr-2" />
                     Add Page
                   </DropdownMenuItem>
+                  {onUploadFile && (
+                    <DropdownMenuItem
+                      onClick={() => onUploadFile(node.data as Topic)}
+                    >
+                      <UploadCloud className="w-3 h-3 mr-2" />
+                      Upload File
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     onClick={() => onAddSubtopic(node.data as Topic)}
                   >

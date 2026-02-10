@@ -53,6 +53,8 @@ import { buildDriveFolderTree } from "@/lib/driveFolderTree";
 import { formatDistanceToNow } from "date-fns";
 import { SEOSettings } from "./SEOSettings";
 import { ProjectVersion } from "@/types/dashboard";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 type VisibilityLevel = "internal" | "external" | "public";
 type ProjectRole = "admin" | "editor" | "reviewer" | "viewer";
@@ -125,6 +127,7 @@ export const ProjectSettingsPanel = ({
   const [isImportingOrphans, setIsImportingOrphans] = useState(false);
   const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
   const [isPromoting, setIsPromoting] = useState(false);
+  const [showVersionSwitcher, setShowVersionSwitcher] = useState(false);
   
   // Members state
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -360,7 +363,7 @@ export const ProjectSettingsPanel = ({
 
     const { data, error } = await supabase
       .from("projects")
-      .select("name, slug, description, visibility, is_published, drive_folder_id, organization_id")
+      .select("name, slug, description, visibility, is_published, drive_folder_id, organization_id, show_version_switcher")
       .eq("id", projectId)
       .single();
 
@@ -376,6 +379,7 @@ export const ProjectSettingsPanel = ({
       setVisibility((data as any).visibility as VisibilityLevel);
       setIsPublished((data as any).is_published);
       setDriveFolderId((data as any).drive_folder_id);
+      setShowVersionSwitcher((data as any).show_version_switcher || false);
       setOrganizationId((data as any).organization_id);
       if (data.organization_id) {
         const { data: orgData, error: orgError } = await supabase
@@ -912,6 +916,7 @@ export const ProjectSettingsPanel = ({
       name,
       description: description || null,
       visibility,
+      show_version_switcher: showVersionSwitcher,
     };
     
     // Only update slug if explicitly set (otherwise let trigger handle it)
@@ -1675,6 +1680,23 @@ export const ProjectSettingsPanel = ({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add a description for this project..."
               className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+            />
+          </div>
+
+          {/* Version Switcher Feature Flag */}
+          <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
+            <div className="space-y-0.5">
+              <Label htmlFor="version-switcher" className="text-sm font-medium text-foreground">
+                Public Version Switcher
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Allow visitors to switch between published versions
+              </p>
+            </div>
+            <Switch
+              id="version-switcher"
+              checked={showVersionSwitcher}
+              onCheckedChange={setShowVersionSwitcher}
             />
           </div>
 

@@ -90,6 +90,7 @@ interface DashboardSidebarProps {
   setAddTopicOpen: (open: boolean) => void;
   setParentTopicForCreate: (topic: Topic | null) => void;
   setAddPageOpen: (open: boolean) => void;
+  onUploadFile: (parentTopic: Topic) => void;
   
   setShowAPISettings: (open: boolean) => void;
   setShowMCPSettings: (open: boolean) => void;
@@ -615,6 +616,11 @@ export function DashboardSidebar({
                           onAddSubtopic={(topic) => {
                             setParentTopicForCreate(topic);
                             setAddTopicOpen(true);
+                          }}
+                          onUploadFile={(topic) => {
+                            if (onUploadFile) {
+                              onUploadFile(topic);
+                            }
                           }}
                           onOpenTopicSettings={(topic) => {
                             setSettingsTopic(topic);

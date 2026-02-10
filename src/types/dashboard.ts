@@ -15,6 +15,7 @@ export interface Project {
     mcp_enabled?: boolean | null;
     openapi_spec_json?: any;
     openapi_spec_url?: string | null;
+    show_version_switcher?: boolean;
 }
 
 export interface ProjectVersion {
