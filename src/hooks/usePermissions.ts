@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  ProjectRole, 
-  ProjectPermissions, 
+import {
+  ProjectRole,
+  ProjectPermissions,
   getPermissionsForRole,
   getRoleDefinition,
   ROLE_DEFINITIONS,
@@ -65,7 +65,7 @@ export function usePermissions(projectId: string | null) {
     // Proactively refresh session to ensure auth context is fresh (rate-limited)
     await ensureFreshSession();
     setLoading(true);
-    
+
     try {
       // Check if user is org owner first
       const { data: project } = await supabase
@@ -88,7 +88,7 @@ export function usePermissions(projectId: string | null) {
       const orgId = project.organization_id;
       const orgOwner = (project.organizations as any)?.owner_id === user.id;
       setIsOrgOwner(orgOwner);
-      
+
       if (orgOwner) {
         // Org owner gets full admin permissions
         setRole('admin');
@@ -109,7 +109,7 @@ export function usePermissions(projectId: string | null) {
         // Map org-level app_role to project_role
         const appRole = orgRole.role as string;
         let mappedRole: ProjectRole = null;
-        
+
         if (appRole === 'owner' || appRole === 'admin') {
           mappedRole = 'admin';
         } else if (appRole === 'editor') {
@@ -161,7 +161,7 @@ export function usePermissions(projectId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [user, projectId]);
+  }, [user?.id, projectId]);
 
   useEffect(() => {
     fetchRole();
@@ -182,7 +182,7 @@ export function usePermissions(projectId: string | null) {
   // Sync Drive permissions when role changes
   const syncDrivePermissions = useCallback(async () => {
     if (!projectId) return;
-    
+
     try {
       await supabase.functions.invoke('sync-drive-permissions', {
         body: { projectId }

@@ -506,7 +506,7 @@ const Dashboard = () => {
   
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [user?.id]);
 
   const getHighestSemverVersion = (versions: ProjectVersion[]) =>
     versions
