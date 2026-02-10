@@ -362,7 +362,7 @@ const Dashboard = () => {
         // Get projects - only from user's own organization (not public projects from other orgs)
         const { data: projectsData, error: projError } = await supabase
           .from("projects")
-          .select("id, name, slug, drive_folder_id, visibility, is_published, parent_id, organization_id")
+          .select("id, name, slug, drive_folder_id, visibility, is_published, parent_id, organization_id, show_version_switcher")
           .eq("organization_id", effectiveOrgId as any)
           .order("name");
         
@@ -2559,7 +2559,7 @@ const Dashboard = () => {
                               <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
                               <div className="flex-1 min-w-0">
                                 <span className="text-xs sm:text-sm font-medium text-foreground line-clamp-1">
-                                  {doc.title}
+                                  {doc.title || "Untitled Page"}
                                 </span>
                               </div>
                               <div className="flex items-center gap-1 shrink-0">

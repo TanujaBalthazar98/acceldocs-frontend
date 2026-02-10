@@ -140,7 +140,7 @@ export function UnifiedContentTree({
       const docNode: TreeNode = {
         type: "document",
         id: doc.id,
-        name: doc.title,
+        name: doc.title || "Untitled Page",
         parentId: doc.topic_id,
         displayOrder: normalizeDisplayOrder(doc.display_order),
         data: doc,
@@ -170,7 +170,7 @@ export function UnifiedContentTree({
         rootNodes.push({
           type: "document",
           id: doc.id,
-          name: doc.title,
+          name: doc.title || "Untitled Page",
           parentId: null,
           displayOrder: normalizeDisplayOrder(doc.display_order),
           data: doc,
@@ -215,7 +215,7 @@ export function UnifiedContentTree({
         combined.push({
           id: doc.id,
           type: "document",
-          name: doc.title,
+          name: doc.title || "Untitled Page",
           parentId: doc.topic_id,
           displayOrder: normalizeDisplayOrder(doc.display_order),
           data: doc,
@@ -614,7 +614,7 @@ export function UnifiedContentTree({
           const movedNode: CombinedNode = {
             id: draggedDoc.id,
             type: "document",
-            name: draggedDoc.title,
+            name: draggedDoc.title || "Untitled Page",
             parentId: destinationTopicId,
             displayOrder: normalizeDisplayOrder(draggedDoc.display_order),
             data: draggedDoc,
@@ -676,7 +676,7 @@ export function UnifiedContentTree({
 
           toast({
             title: "Page moved",
-            description: `"${draggedDoc.title}" has been moved.`,
+            description: `"${draggedDoc.title || "Untitled Page"}" has been moved.`,
           });
 
           onDocumentsReordered?.();
@@ -786,7 +786,7 @@ export function UnifiedContentTree({
           )}
 
           {/* Name */}
-          <span className="flex-1 text-left truncate">{node.name}</span>
+          <span className="flex-1 text-left truncate">{node.name || "Untitled"}</span>
 
           {/* Quick actions */}
           {isTopic && (

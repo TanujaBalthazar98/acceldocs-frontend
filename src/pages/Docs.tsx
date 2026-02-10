@@ -1623,7 +1623,7 @@ const getTopicDocuments = (topicId: string) =>
                 {/* Title */}
                 <div className="flex items-start gap-3 mb-4">
                   <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground brand-heading break-words">
-                    {selectedDocument.title}
+                    {selectedDocument.title || "Untitled Page"}
                   </h1>
                 </div>
 
