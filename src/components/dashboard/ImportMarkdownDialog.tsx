@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { FileText, Folder, Upload, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
@@ -142,15 +142,16 @@ export const ImportMarkdownDialog = ({
                 slug: item.name.toLowerCase().replace(/\s+/g, "-"),
                 parent_id: parentTopicId,
                 drive_folder_id: driveFolderId,
-              })
+              } as any)
               .select()
               .single();
 
             if (topicError) throw topicError;
+            if (!topic) throw new Error("Failed to create topic");
 
             // Process children
             if (item.children) {
-              await processItems(item.children, topic.id, token);
+              await processItems(item.children, (topic as any).id, token);
             }
           } else if (item.type === "file" && item.content) {
             // Convert Markdown to Google Doc
@@ -177,7 +178,7 @@ export const ImportMarkdownDialog = ({
               google_doc_id: documentId,
               is_published: false,
               visibility: "internal",
-            });
+            } as any);
 
             if (docError) throw docError;
 

@@ -100,6 +100,7 @@ import { AddTopicDialog } from "@/components/dashboard/AddTopicDialog";
 import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
 import { PageSettingsDialog } from "@/components/dashboard/PageSettingsDialog";
 import { ImportMarkdownDialog } from "@/components/dashboard/ImportMarkdownDialog";
+import { DriveDiscoveryDialog, DiscoveryResult } from "@/components/dashboard/DriveDiscoveryDialog";
 import { DashboardSidebar } from "@/components/dashboard/layout/DashboardSidebar";
 import { TopicSettingsDialog } from "@/components/dashboard/TopicSettingsDialog";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
@@ -152,6 +153,12 @@ const Dashboard = () => {
   const [shareOpen, setShareOpen] = useState(false);
   const [addPageOpen, setAddPageOpen] = useState(false);
   const [importMarkdownOpen, setImportMarkdownOpen] = useState(false);
+  // Auto-Discovery State
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
+  const [discoveryProjectId, setDiscoveryProjectId] = useState<string | null>(null);
+  const [discoveryVersionId, setDiscoveryVersionId] = useState<string | null>(null);
+  
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addTopicOpen, setAddTopicOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
@@ -2767,11 +2774,30 @@ const Dashboard = () => {
         organizationId={organizationId || undefined}
         parentProjectId={parentProjectForCreate?.id}
         parentProjectName={parentProjectForCreate?.name}
-        onCreated={(folder) => {
+        onCreated={(result) => {
           fetchData();
           setParentProjectForCreate(null);
+          
+          if (result && 'discoveryResult' in result && result.discoveryResult) {
+            setDiscoveryResult(result.discoveryResult);
+            setDiscoveryProjectId(result.id);
+            setDiscoveryVersionId(result.versionId || null);
+            setDiscoveryOpen(true);
+          }
         }}
       />
+      
+      {discoveryResult && discoveryProjectId && (
+        <DriveDiscoveryDialog
+          open={discoveryOpen}
+          onOpenChange={setDiscoveryOpen}
+          projectId={discoveryProjectId}
+          projectVersionId={discoveryVersionId}
+          discoveryResult={discoveryResult}
+          onImportComplete={() => fetchData()}
+          onCancel={() => setDiscoveryOpen(false)}
+        />
+      )}
       
       <AddTopicDialog
         open={addTopicOpen}
