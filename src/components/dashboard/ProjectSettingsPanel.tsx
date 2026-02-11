@@ -128,6 +128,7 @@ export const ProjectSettingsPanel = ({
   const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
   const [isPromoting, setIsPromoting] = useState(false);
   const [showVersionSwitcher, setShowVersionSwitcher] = useState(false);
+  const [parentId, setParentId] = useState<string | null>(null);
   
   // Members state
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -380,6 +381,7 @@ export const ProjectSettingsPanel = ({
       setIsPublished((data as any).is_published);
       setDriveFolderId((data as any).drive_folder_id);
       setShowVersionSwitcher((data as any).show_version_switcher || false);
+      setParentId((data as any).parent_id || null);
       setOrganizationId((data as any).organization_id);
       if (data.organization_id) {
         const { data: orgData, error: orgError } = await supabase
@@ -1754,84 +1756,86 @@ export const ProjectSettingsPanel = ({
             {isSaving ? "Saving..." : "Save Changes"}
           </Button>
 
-          {/* Versions */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-foreground">
-                Versions
-              </label>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-2"
-                onClick={() => setDuplicateVersionOpen(true)}
-                disabled={!projectId}
-              >
-                <Plus className="w-3 h-3" />
-                New Version
-              </Button>
-            </div>
-            
-            <div className="space-y-2">
-              {projectVersions.length === 0 ? (
-                <div className="p-4 rounded-lg bg-secondary/50 border border-border text-center">
-                  <p className="text-xs text-muted-foreground">No versions found.</p>
-                </div>
-              ) : (
-                projectVersions.map((v) => (
-                  <div key={v.id} className="group flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50 hover:bg-secondary/50 transition-colors">
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground truncate">
-                          {v.name}
+          {/* Versions - Only for Root Projects */}
+          {!parentId && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-foreground">
+                  Versions
+                </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-2"
+                  onClick={() => setDuplicateVersionOpen(true)}
+                  disabled={!projectId}
+                >
+                  <Plus className="w-3 h-3" />
+                  New Version
+                </Button>
+              </div>
+              
+              <div className="space-y-2">
+                {projectVersions.length === 0 ? (
+                  <div className="p-4 rounded-lg bg-secondary/50 border border-border text-center">
+                    <p className="text-xs text-muted-foreground">No versions found.</p>
+                  </div>
+                ) : (
+                  projectVersions.map((v) => (
+                    <div key={v.id} className="group flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50 hover:bg-secondary/50 transition-colors">
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground truncate">
+                            {v.name}
+                          </span>
+                          {v.is_default && (
+                            <Badge variant="default" className="text-[10px] h-4 px-1 bg-primary/10 text-primary border-primary/20">
+                              Default
+                            </Badge>
+                          )}
+                          {v.is_published ? (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 text-green-600 border-green-200 bg-green-50">
+                              Published
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 text-amber-600 border-amber-200 bg-amber-50">
+                              Draft
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-mono truncate">
+                          /{v.slug}
                         </span>
-                        {v.is_default && (
-                          <Badge variant="default" className="text-[10px] h-4 px-1 bg-primary/10 text-primary border-primary/20">
-                            Default
-                          </Badge>
-                        )}
-                        {v.is_published ? (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1 text-green-600 border-green-200 bg-green-50">
-                            Published
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1 text-amber-600 border-amber-200 bg-amber-50">
-                            Draft
-                          </Badge>
-                        )}
                       </div>
-                      <span className="text-[10px] text-muted-foreground font-mono truncate">
-                        /{v.slug}
-                      </span>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
-                        onClick={() => handleToggleVersionPublish(v.id, v.is_published)}
-                      >
-                        {v.is_published ? "Unpublish" : "Publish"}
-                      </Button>
                       
-                      {!v.is_default && (
+                      <div className="flex items-center gap-2">
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
-                          onClick={() => handlePromoteVersion(v.id)}
-                          disabled={isPromoting}
+                          onClick={() => handleToggleVersionPublish(v.id, v.is_published)}
                         >
-                          {isPromoting ? "..." : "Make Default"}
+                          {v.is_published ? "Unpublish" : "Publish"}
                         </Button>
-                      )}
+                        
+                        {!v.is_default && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
+                            onClick={() => handlePromoteVersion(v.id)}
+                            disabled={isPromoting}
+                          >
+                            {isPromoting ? "..." : "Make Default"}
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Sync Status */}
           <div className="space-y-3">
