@@ -78,6 +78,7 @@ export const DriveDiscoveryDialog = ({
     setIsImporting(true);
     setProgress(0);
     let processedCount = 0;
+    const importedDocIds = new Set<string>();
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -133,7 +134,7 @@ export const DriveDiscoveryDialog = ({
                   // Find and import documents for this topic
                   const topicDocs = discoveryResult.documents.filter(d => d.folderId === topic.id);
                   for (const doc of topicDocs) {
-                      if (!selectedDocs.has(doc.id)) continue;
+                      if (!selectedDocs.has(doc.id) || importedDocIds.has(doc.id)) continue;
                       
                       const { error: docError } = await supabase
                         .from("documents")
@@ -149,6 +150,8 @@ export const DriveDiscoveryDialog = ({
                         } as any);
 
                       if (docError) console.error("Error importing doc in topic", docError);
+                      else importedDocIds.add(doc.id);
+                      
                       processedCount++;
                       setProgress((processedCount / totalItemsToImport) * 100);
                   }
@@ -161,6 +164,30 @@ export const DriveDiscoveryDialog = ({
              }
         };
         
+        // Import direct documents of the sub-project
+        const subProjectDocs = discoveryResult.documents.filter(d => d.folderId === sub.id);
+        for (const doc of subProjectDocs) {
+            if (!selectedDocs.has(doc.id) || importedDocIds.has(doc.id)) continue;
+
+            const { error: docError } = await supabase
+                .from("documents")
+                .insert({
+                    project_id: (newProject as any).id,
+                    project_version_id: projectVersionId,
+                    title: doc.name,
+                    slug: doc.name.toLowerCase().replace(/\s+/g, "-"),
+                    google_doc_id: doc.id,
+                    is_published: false,
+                    owner_id: user.id
+                } as any);
+
+            if (docError) console.error("Error importing doc in sub-project root", docError);
+            else importedDocIds.add(doc.id);
+
+            processedCount++;
+            setProgress((processedCount / totalItemsToImport) * 100);
+        }
+        
         await importTopics(subProjectTopics, null, (newProject as any).id);
 
         processedCount++;
@@ -172,7 +199,7 @@ export const DriveDiscoveryDialog = ({
       // Creating document records manually is faster.
       
       for (const doc of discoveryResult.documents) {
-        if (!selectedDocs.has(doc.id)) continue;
+        if (!selectedDocs.has(doc.id) || importedDocIds.has(doc.id)) continue;
 
         const { error: docError } = await supabase
           .from("documents")
