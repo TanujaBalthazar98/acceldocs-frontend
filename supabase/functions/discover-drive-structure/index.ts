@@ -105,8 +105,8 @@ serve(async (req) => {
                         docCount,
                     });
 
-                    // Identify Nested Topics within this sub-project
-                    processTopics(item, item.id, result.topics);
+                    // Identify Nested Topics within this sub-project AND collect documents
+                    processTopics(item, item.id, result.topics, result.documents);
                 }
             } else if (item.mimeType === "application/vnd.google-apps.document") {
                 // Root level documents
@@ -146,29 +146,31 @@ function countDocs(folder: DiscoveredItem): number {
     }, 0);
 }
 
-// Helper to extract topics (nested folders)
-function processTopics(parentFolder: DiscoveredItem, rootSubProjectId: string, topicsList: any[]) {
+// Helper to extract topics (nested folders) and documents
+function processTopics(parentFolder: DiscoveredItem, rootSubProjectId: string, topicsList: any[], documentsList: any[]) {
     if (!parentFolder.children) return;
 
     for (const child of parentFolder.children) {
         if (child.mimeType === "application/vnd.google-apps.folder") {
             const docCount = countDocs(child);
-            if (docCount > 0) {
-                topicsList.push({
-                    id: child.id,
-                    name: child.name,
-                    parentId: parentFolder.id === rootSubProjectId ? null : parentFolder.id, // Only set parent if not directly under subproject? 
-                    // Actually AccelDocs topics are flat or hierarchical? They are hierarchical.
-                    // But here we need to map them. 
-                    // For simplicity, we'll just list them and let the UI/Frontend reconstruct hierarchy or flatten it.
-                    // Wait, 'parentId' here refers to the Drive folder ID of the parent folder? 
-                    // No, needs to be mapped to Topic IDs later.
-                    // Let's just return the flat list of folders that should be topics, with their Drive Parent ID.
-                    driveParentId: child.parents && child.parents[0],
-                    docCount
-                });
-                processTopics(child, rootSubProjectId, topicsList);
-            }
+            // We want to capture the folder as a topic if it has content OR if it's a structural folder
+            // For now, let's keep the condition simple: if it has docs or children
+
+            topicsList.push({
+                id: child.id,
+                name: child.name,
+                parentId: parentFolder.id === rootSubProjectId ? null : parentFolder.id,
+                driveParentId: child.parents && child.parents[0],
+                docCount
+            });
+            processTopics(child, rootSubProjectId, topicsList, documentsList);
+
+        } else if (child.mimeType === "application/vnd.google-apps.document") {
+            documentsList.push({
+                id: child.id,
+                name: child.name,
+                folderId: parentFolder.id
+            });
         }
     }
 }

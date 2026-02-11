@@ -109,28 +109,55 @@ export const DriveDiscoveryDialog = ({
         // Import topics for this sub-project (nested folders)
         const subProjectTopics = discoveryResult.topics.filter(t => t.driveParentId === sub.id || t.parentId === sub.id);
         
-        // Helper to import topics recursively
+        // Helper to import topics AND documents recursively
         const importTopics = async (topics: typeof discoveryResult.topics, parentTopicId: string | null, targetProjectId: string) => {
-             // For simplicity in this deeper level, we might need a more robust recursive approach matching the Edge Function output.
-             // The Edge Function returns a flat list of topics with parentId.
-             // We can just iterate and create them.
-             
-             // Actually, the current Edge Function structure might be a bit flat.
-             // Let's assume for now we just create the immediate topics found in the sub-project.
-             for (const topic of subProjectTopics) {
+             for (const topic of topics) {
                  const { data: newTopic, error: topicError } = await supabase
                   .from("topics")
                   .insert({
                       project_id: targetProjectId,
-                      project_version_id: projectVersionId, // Should sub-projects have the same version? Usually yes for structure.
+                      project_version_id: projectVersionId,
                       name: topic.name,
                       slug: topic.name.toLowerCase().replace(/\s+/g, "-"),
                       drive_folder_id: topic.id,
+                      parent_id: parentTopicId
                   } as any)
                   .select()
                   .single();
                  
-                  if (topicError) console.error("Error creating topic", topicError);
+                  if (topicError) {
+                      console.error("Error creating topic", topicError);
+                      continue;
+                  }
+
+                  // Find and import documents for this topic
+                  const topicDocs = discoveryResult.documents.filter(d => d.folderId === topic.id);
+                  for (const doc of topicDocs) {
+                      if (!selectedDocs.has(doc.id)) continue;
+                      
+                      const { error: docError } = await supabase
+                        .from("documents")
+                        .insert({
+                            project_id: targetProjectId,
+                            project_version_id: projectVersionId,
+                            topic_id: (newTopic as any).id,
+                            title: doc.name,
+                            slug: doc.name.toLowerCase().replace(/\s+/g, "-"),
+                            google_doc_id: doc.id,
+                            is_published: false,
+                            owner_id: user.id
+                        } as any);
+
+                      if (docError) console.error("Error importing doc in topic", docError);
+                      processedCount++;
+                      setProgress((processedCount / totalItemsToImport) * 100);
+                  }
+
+                  // Recurse for child topics
+                  const childTopics = discoveryResult.topics.filter(t => t.driveParentId === topic.id);
+                  if (childTopics.length > 0) {
+                      await importTopics(childTopics, (newTopic as any).id, targetProjectId);
+                  }
              }
         };
         
