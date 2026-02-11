@@ -18,7 +18,7 @@ import { Progress } from "@/components/ui/progress";
 export interface DiscoveryResult {
   subprojects: { id: string; name: string; docCount: number }[];
   documents: { id: string; name: string; folderId: string }[];
-  topics: { id: string; name: string; parentId: string; docCount: number; driveParentId?: string }[];
+  topics: { id: string; name: string; parentId: string | null; docCount: number; driveParentId: string }[];
 }
 
 interface DriveDiscoveryDialogProps {
@@ -79,6 +79,7 @@ export const DriveDiscoveryDialog = ({
     setProgress(0);
     let processedCount = 0;
     const importedDocIds = new Set<string>();
+    const errors: Array<{ type: string; name: string; error: string }> = [];
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -104,12 +105,20 @@ export const DriveDiscoveryDialog = ({
           .select()
           .single();
 
-        if (projError) throw projError;
-        if (!newProject) continue;
+        if (projError) {
+          console.error("Error creating sub-project", projError);
+          errors.push({ type: 'sub-project', name: sub.name, error: projError.message });
+          continue;
+        }
+        if (!newProject) {
+          errors.push({ type: 'sub-project', name: sub.name, error: 'Failed to create project record' });
+          continue;
+        }
 
         // Import topics for this sub-project (nested folders)
-        const subProjectTopics = discoveryResult.topics.filter(t => t.driveParentId === sub.id || t.parentId === sub.id);
-        
+        // Filter topics where the Drive parent folder ID matches this sub-project's Drive folder ID
+        const subProjectTopics = discoveryResult.topics.filter(t => t.driveParentId === sub.id);
+
         // Helper to import topics AND documents recursively
         const importTopics = async (topics: typeof discoveryResult.topics, parentTopicId: string | null, targetProjectId: string) => {
              for (const topic of topics) {
@@ -125,7 +134,7 @@ export const DriveDiscoveryDialog = ({
                   } as any)
                   .select()
                   .single();
-                 
+
                   if (topicError) {
                       console.error("Error creating topic", topicError);
                       continue;
@@ -135,7 +144,7 @@ export const DriveDiscoveryDialog = ({
                   const topicDocs = discoveryResult.documents.filter(d => d.folderId === topic.id);
                   for (const doc of topicDocs) {
                       if (!selectedDocs.has(doc.id) || importedDocIds.has(doc.id)) continue;
-                      
+
                       const { error: docError } = await supabase
                         .from("documents")
                         .insert({
@@ -151,7 +160,7 @@ export const DriveDiscoveryDialog = ({
 
                       if (docError) console.error("Error importing doc in topic", docError);
                       else importedDocIds.add(doc.id);
-                      
+
                       processedCount++;
                       setProgress((processedCount / totalItemsToImport) * 100);
                   }
@@ -163,10 +172,34 @@ export const DriveDiscoveryDialog = ({
                   }
              }
         };
-        
-        // Import direct documents of the sub-project
-        const subProjectDocs = discoveryResult.documents.filter(d => d.folderId === sub.id);
-        for (const doc of subProjectDocs) {
+
+        // First import all topics and their documents
+        await importTopics(subProjectTopics, null, (newProject as any).id);
+
+        // Then import ONLY direct documents of the sub-project (not in any topic)
+        // Get all topic IDs under this sub-project to exclude their documents
+        const getAllTopicIds = (topics: typeof discoveryResult.topics, rootId: string): Set<string> => {
+          const ids = new Set<string>();
+          const topicsToProcess = topics.filter(t => t.driveParentId === rootId);
+
+          for (const topic of topicsToProcess) {
+            ids.add(topic.id);
+            // Recursively add child topic IDs
+            const childIds = getAllTopicIds(topics, topic.id);
+            childIds.forEach(id => ids.add(id));
+          }
+
+          return ids;
+        };
+
+        const topicFolderIds = getAllTopicIds(discoveryResult.topics, sub.id);
+
+        // Only import documents whose folderId is the sub-project root (not in any topic)
+        const subProjectRootDocs = discoveryResult.documents.filter(d =>
+          d.folderId === sub.id && !topicFolderIds.has(d.folderId)
+        );
+
+        for (const doc of subProjectRootDocs) {
             if (!selectedDocs.has(doc.id) || importedDocIds.has(doc.id)) continue;
 
             const { error: docError } = await supabase
@@ -187,8 +220,6 @@ export const DriveDiscoveryDialog = ({
             processedCount++;
             setProgress((processedCount / totalItemsToImport) * 100);
         }
-        
-        await importTopics(subProjectTopics, null, (newProject as any).id);
 
         processedCount++;
         setProgress((processedCount / totalItemsToImport) * 100);
@@ -232,10 +263,23 @@ export const DriveDiscoveryDialog = ({
       // The content sync logic (fetching doc content) usually happens via "Sync" button.
       // So ensuring the records exist with `drive_folder_id` and `google_doc_id` is the key.
       
-      toast({
-        title: "Import Complete",
-        description: `Successfully imported items.`,
-      });
+      const successCount = processedCount - errors.length;
+
+      if (errors.length === 0) {
+        toast({
+          title: "Import Complete",
+          description: `Successfully imported ${successCount} item(s).`,
+        });
+      } else if (successCount > 0) {
+        toast({
+          title: "Import Partially Complete",
+          description: `Imported ${successCount} item(s). ${errors.length} item(s) failed. Check console for details.`,
+          variant: "default",
+        });
+        console.error("Import errors:", errors);
+      } else {
+        throw new Error("All imports failed. Check console for details.");
+      }
 
       onImportComplete();
       onOpenChange(false);

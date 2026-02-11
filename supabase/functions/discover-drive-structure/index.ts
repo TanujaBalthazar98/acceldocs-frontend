@@ -22,7 +22,7 @@ interface DiscoveredItem {
 interface DiscoveryResult {
     subprojects: { id: string; name: string; docCount: number }[];
     documents: { id: string; name: string; folderId: string }[];
-    topics: { id: string; name: string; parentId: string; docCount: number }[];
+    topics: { id: string; name: string; parentId: string | null; docCount: number; driveParentId: string }[];
 }
 
 serve(async (req) => {
@@ -156,11 +156,14 @@ function processTopics(parentFolder: DiscoveredItem, rootSubProjectId: string, t
             // We want to capture the folder as a topic if it has content OR if it's a structural folder
             // For now, let's keep the condition simple: if it has docs or children
 
+            // driveParentId should always be set from Drive API parents
+            const driveParentId = (child.parents && child.parents[0]) || parentFolder.id;
+
             topicsList.push({
                 id: child.id,
                 name: child.name,
                 parentId: parentFolder.id === rootSubProjectId ? null : parentFolder.id,
-                driveParentId: child.parents && child.parents[0],
+                driveParentId: driveParentId,
                 docCount
             });
             processTopics(child, rootSubProjectId, topicsList, documentsList);

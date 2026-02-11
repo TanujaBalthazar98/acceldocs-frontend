@@ -2760,6 +2760,8 @@ const Dashboard = () => {
         projectId={selectedProject?.id || ""}
         projectVersionId={selectedVersion?.id || ""}
         driveFolderId={selectedProject?.drive_folder_id || ""}
+        organizationId={organizationId || ""}
+        rootFolderId={rootFolderId || ""}
         onImportComplete={() => fetchData()}
       />
 
