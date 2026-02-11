@@ -220,8 +220,17 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     const project = projects.find(p => p.slug === projectSlug);
     if (!project) return undefined;
     const candidate = remainingSegments[0];
-    const versions = projectVersions.filter(v => v.project_id === project.id);
-    return versions.some(v => v.slug === candidate) ? candidate : undefined;
+    
+    // Check project and its ancestors for versions that match the slug
+    let currentId: string | null = project.id;
+    while (currentId) {
+      const versions = projectVersions.filter(v => v.project_id === currentId);
+      if (versions.some(v => v.slug === candidate)) return candidate;
+      const p = projects.find(proj => proj.id === currentId);
+      currentId = p?.parent_id || null;
+    }
+    
+    return undefined;
   }, [projectSlug, remainingSegments, projects, projectVersions]);
 
   const contentSegments = useMemo(
@@ -256,7 +265,20 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [internalAccessReason, setInternalAccessReason] = useState<"signed_out" | "not_member" | null>(null);
 
   const getProjectVersions = (projectId: string) => {
-    const versions = projectVersions.filter(v => v.project_id === projectId);
+    let currentId: string | null = projectId;
+    let versions: ProjectVersion[] = [];
+    
+    // Find closest project in hierarchy that HAS versions
+    while (currentId) {
+      const v = projectVersions.filter(pv => pv.project_id === currentId);
+      if (v.length > 0) {
+        versions = v;
+        break;
+      }
+      const p = projects.find(proj => proj.id === currentId);
+      currentId = p?.parent_id || null;
+    }
+
     return isInternalView ? versions : versions.filter(v => v.is_published);
   };
 
@@ -421,14 +443,35 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const shouldUseVersion = useMemo(() => {
     if (!selectedProject || !selectedVersion) return false;
     if (versionSlug) return true;
-    const hasDocs = documents.some(
-      (doc) => doc.project_id === selectedProject.id && doc.project_version_id === selectedVersion.id
-    );
-    const hasTopics = topics.some(
-      (topic) => topic.project_id === selectedProject.id && topic.project_version_id === selectedVersion.id
-    );
-    return hasDocs || hasTopics;
-  }, [selectedProject, selectedVersion, versionSlug, documents, topics]);
+    
+    // Check project and its ancestors for documents and topics in this version
+    let currentId: string | null = selectedProject.id;
+    while (currentId) {
+      const hasDocs = documents.some(
+        (doc) => doc.project_id === currentId && doc.project_version_id === selectedVersion.id
+      );
+      const hasTopics = topics.some(
+        (topic) => topic.project_id === currentId && topic.project_version_id === selectedVersion.id
+      );
+      if (hasDocs || hasTopics) return true;
+      
+      const p = projects.find(proj => proj.id === currentId);
+      currentId = p?.parent_id || null;
+    }
+    
+    return false;
+  }, [selectedProject, selectedVersion, versionSlug, documents, topics, projects]);
+
+  const showVersionSwitcher = useMemo(() => {
+    if (!selectedProject) return false;
+    let currentId: string | null = selectedProject.id;
+    while (currentId) {
+      const p = projects.find(proj => proj.id === currentId);
+      if (p?.show_version_switcher) return true;
+      currentId = p?.parent_id || null;
+    }
+    return false;
+  }, [selectedProject, projects]);
 
   const visibleVersion = shouldUseVersion ? selectedVersion : null;
 
@@ -1025,10 +1068,10 @@ const getTopicDocuments = (topicId: string) =>
           <span className="text-sm font-medium text-muted-foreground truncate">
             {selectedProject?.name || "Documentation"}
           </span>
-          {selectedProject?.show_version_switcher && (
+          {showVersionSwitcher && (
             <VersionSwitcher 
               currentVersion={visibleVersion}
-              versions={projectVersions.filter(v => v.project_id === selectedProject!.id)}
+              versions={getProjectVersions(selectedProject!.id)}
               onVersionSelect={(v) => {
                 if (currentOrg) {
                   navigate(buildProjectUrl(selectedProject!, v));
@@ -1336,11 +1379,11 @@ const getTopicDocuments = (topicId: string) =>
           </div>
 
           {/* Version Switcher (Desktop) */}
-          {selectedProject?.show_version_switcher && (
+          {showVersionSwitcher && (
             <div className="hidden md:flex items-center px-1">
               <VersionSwitcher 
                 currentVersion={visibleVersion}
-                versions={projectVersions.filter(v => v.project_id === selectedProject.id)}
+                versions={getProjectVersions(selectedProject!.id)}
                 onVersionSelect={(v) => {
                   if (currentOrg) {
                     navigate(buildProjectUrl(selectedProject, v));
