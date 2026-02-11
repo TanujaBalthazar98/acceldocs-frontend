@@ -32,6 +32,7 @@ import {
   FileJson,
   Code,
   Plug2,
+  Upload,
   History,
   Bot,
   MessageSquare,
@@ -98,6 +99,7 @@ import { AddProjectDialog } from "@/components/dashboard/AddProjectDialog";
 import { AddTopicDialog } from "@/components/dashboard/AddTopicDialog";
 import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
 import { PageSettingsDialog } from "@/components/dashboard/PageSettingsDialog";
+import { ImportMarkdownDialog } from "@/components/dashboard/ImportMarkdownDialog";
 import { DashboardSidebar } from "@/components/dashboard/layout/DashboardSidebar";
 import { TopicSettingsDialog } from "@/components/dashboard/TopicSettingsDialog";
 import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
@@ -149,6 +151,7 @@ const Dashboard = () => {
   const [selectedPage, setSelectedPage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [addPageOpen, setAddPageOpen] = useState(false);
+  const [importMarkdownOpen, setImportMarkdownOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addTopicOpen, setAddTopicOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
@@ -2125,6 +2128,17 @@ const Dashboard = () => {
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">Add Page</span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-1.5 h-8 px-2 sm:px-3" 
+                onClick={() => setImportMarkdownOpen(true)}
+                disabled={!selectedProject}
+                title={!selectedProject ? "Select a project first" : "Import Markdown files"}
+              >
+                <Upload className="w-4 h-4" />
+                <span className="hidden sm:inline">Import</span>
+              </Button>
             </div>
           </header>
 
@@ -2733,6 +2747,15 @@ const Dashboard = () => {
         onCreated={() => fetchData()}
       />
       
+      <ImportMarkdownDialog
+        open={importMarkdownOpen}
+        onOpenChange={setImportMarkdownOpen}
+        projectId={selectedProject?.id || ""}
+        projectVersionId={selectedVersion?.id || ""}
+        driveFolderId={selectedProject?.drive_folder_id || ""}
+        onImportComplete={() => fetchData()}
+      />
+
       <AddProjectDialog
         open={addProjectOpen}
         onOpenChange={(open) => {
