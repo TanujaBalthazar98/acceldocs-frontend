@@ -441,6 +441,35 @@ export const ProjectSettingsPanel = ({
     }
   };
 
+  const handleToggleVersionPublish = async (versionId: string, currentPublishedState: boolean) => {
+    if (!projectId) return;
+    try {
+      const { error } = await supabase
+        .from("project_versions")
+        .update({ is_published: !currentPublishedState } as any)
+        .eq("id", versionId);
+
+      if (error) throw error;
+
+      toast({
+        title: !currentPublishedState ? "Version Published" : "Version Unpublished",
+        description: !currentPublishedState 
+          ? "This version is now visible in the public switcher."
+          : "This version is no longer visible in the public switcher.",
+      });
+      
+      await fetchVersions();
+      onUpdate?.();
+    } catch (error: any) {
+      console.error("Toggle version publish error:", error);
+      toast({
+        title: "Update Failed",
+        description: "Failed to update version status.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const createFolderWithRetry = async (folderName: string, parentId: string) => {
     let folder = await (createFolder as any)(folderName, parentId);
     if (folder?.id) return folder;
@@ -945,24 +974,40 @@ export const ProjectSettingsPanel = ({
 
     const newPublishedState = !isPublished;
 
-    const { error } = await supabase
-      .from("projects")
-      .update({ is_published: newPublishedState } as any)
-      .eq("id", projectId as any);
+    try {
+      const { error } = await supabase
+        .from("projects")
+        .update({ is_published: newPublishedState } as any)
+        .eq("id", projectId as any);
 
-    setIsPublishing(false);
+      if (error) throw error;
 
-    if (error) {
-      toast({ title: "Error", description: "Failed to update publish state.", variant: "destructive" });
-    } else {
+      // If project is being published, also ensure the default version is published
+      if (newPublishedState) {
+        const defaultVersion = projectVersions.find(v => v.is_default);
+        if (defaultVersion && !defaultVersion.is_published) {
+          await supabase
+            .from("project_versions")
+            .update({ is_published: true } as any)
+            .eq("id", defaultVersion.id);
+          
+          await fetchVersions();
+        }
+      }
+
       setIsPublished(newPublishedState);
       toast({
         title: newPublishedState ? "Published" : "Unpublished",
         description: newPublishedState
-          ? "Project is now live based on visibility settings."
+          ? "Project and default version are now live."
           : "Project is no longer publicly accessible.",
       });
       onUpdate?.();
+    } catch (error: any) {
+      console.error("Publish error:", error);
+      toast({ title: "Error", description: "Failed to update publish state.", variant: "destructive" });
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -1735,9 +1780,9 @@ export const ProjectSettingsPanel = ({
               ) : (
                 projectVersions.map((v) => (
                   <div key={v.id} className="group flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50 hover:bg-secondary/50 transition-colors">
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-0.5 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">
+                        <span className="text-sm font-medium text-foreground truncate">
                           {v.name}
                         </span>
                         {v.is_default && (
@@ -1745,28 +1790,43 @@ export const ProjectSettingsPanel = ({
                             Default
                           </Badge>
                         )}
-                        {!v.is_default && v.is_published && (
+                        {v.is_published ? (
                           <Badge variant="outline" className="text-[10px] h-4 px-1 text-green-600 border-green-200 bg-green-50">
                             Published
                           </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] h-4 px-1 text-amber-600 border-amber-200 bg-amber-50">
+                            Draft
+                          </Badge>
                         )}
                       </div>
-                      <span className="text-[10px] text-muted-foreground font-mono">
+                      <span className="text-[10px] text-muted-foreground font-mono truncate">
                         /{v.slug}
                       </span>
                     </div>
                     
-                    {!v.is_default && (
+                    <div className="flex items-center gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handlePromoteVersion(v.id)}
-                        disabled={isPromoting}
+                        className="h-7 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
+                        onClick={() => handleToggleVersionPublish(v.id, v.is_published)}
                       >
-                        {isPromoting ? "Promoting..." : "Make Default"}
+                        {v.is_published ? "Unpublish" : "Publish"}
                       </Button>
-                    )}
+                      
+                      {!v.is_default && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
+                          onClick={() => handlePromoteVersion(v.id)}
+                          disabled={isPromoting}
+                        >
+                          {isPromoting ? "..." : "Make Default"}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))
               )}
