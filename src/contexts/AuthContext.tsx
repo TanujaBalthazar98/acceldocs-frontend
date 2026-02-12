@@ -151,6 +151,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Sync googleAccessToken state with localStorage changes
+  // This catches token updates from manual session refreshes
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      const storedToken = localStorage.getItem(GOOGLE_TOKEN_KEY);
+      if (storedToken !== googleAccessToken) {
+        console.log("Syncing Google access token from localStorage");
+        setGoogleAccessToken(storedToken);
+      }
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(syncInterval);
+  }, [googleAccessToken]);
+
   // Schedule a single refresh per session, shortly before expiry.
   const scheduleSessionRefresh = (currentSession: Session | null) => {
     if (refreshTimeoutRef.current) {

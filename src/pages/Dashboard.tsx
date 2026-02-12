@@ -2072,7 +2072,7 @@ const Dashboard = () => {
                   <span className="text-muted-foreground text-sm truncate">{selectedProject?.name}</span>
                 </>
               )}
-              {selectedTopic && (
+              {selectedTopic?.name && (
                 <>
                   <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0 hidden sm:block" />
                   <span className="text-muted-foreground text-sm truncate hidden sm:block">{selectedTopic.name}</span>
@@ -2369,10 +2369,10 @@ const Dashboard = () => {
             <div className="flex items-center justify-between mb-3 sm:mb-4">
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <h2 className="text-base sm:text-lg font-semibold shrink-0">Topics</h2>
-                {selectedTopic && (
+                {selectedTopic?.name && (
                   <div className="flex items-center text-sm text-muted-foreground">
                     <ChevronRight className="w-4 h-4" />
-                    <button 
+                    <button
                       onClick={() => setSelectedTopic(null)}
                       className="hover:text-foreground transition-colors"
                     >
@@ -2382,20 +2382,22 @@ const Dashboard = () => {
                       // Build breadcrumb path
                       const path: Topic[] = [];
                       let current: Topic | undefined = selectedTopic;
-                      while (current) {
+                      while (current?.name) {
                         path.unshift(current);
                         current = scopedTopics.find(t => t.id === current?.parent_id);
                       }
                       return path.map((topic, idx) => (
-                        <span key={topic.id} className="flex items-center">
-                          <ChevronRight className="w-4 h-4" />
-                          <button 
-                            onClick={() => setSelectedTopic(topic)}
-                            className={idx === path.length - 1 ? "text-foreground font-medium" : "hover:text-foreground transition-colors"}
-                          >
-                            {topic.name}
-                          </button>
-                        </span>
+                        topic?.name ? (
+                          <span key={topic.id} className="flex items-center">
+                            <ChevronRight className="w-4 h-4" />
+                            <button
+                              onClick={() => setSelectedTopic(topic)}
+                              className={idx === path.length - 1 ? "text-foreground font-medium" : "hover:text-foreground transition-colors"}
+                            >
+                              {topic.name}
+                            </button>
+                          </span>
+                        ) : null
                       ));
                     })()}
                   </div>
@@ -2722,8 +2724,8 @@ const Dashboard = () => {
           <DocAssistantChat
             open={showAIAssistant}
             onOpenChange={setShowAIAssistant}
-            currentProject={selectedProject ? { id: selectedProject.id, name: selectedProject.name } : null}
-            currentTopic={selectedTopic ? { id: selectedTopic.id, name: selectedTopic.name } : null}
+            currentProject={selectedProject?.name ? { id: selectedProject.id, name: selectedProject.name } : null}
+            currentTopic={selectedTopic?.name ? { id: selectedTopic.id, name: selectedTopic.name } : null}
             onRefresh={fetchData}
             googleToken={getGoogleToken()}
           />

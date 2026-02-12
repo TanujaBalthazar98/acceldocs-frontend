@@ -16,6 +16,7 @@ import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ImportItem {
   type: "folder" | "file";
@@ -51,6 +52,7 @@ export const ImportMarkdownDialog = ({
 }: ImportMarkdownDialogProps) => {
   const { toast } = useToast();
   const { createFolder } = useGoogleDrive();
+  const { googleAccessToken, user: authUser } = useAuth();
   const [importItems, setImportItems] = useState<ImportItem[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -185,14 +187,13 @@ export const ImportMarkdownDialog = ({
     setProgress(0);
 
     try {
-      // Get access token
-      const session = await supabase.auth.getSession();
-      const accessToken = session.data.session?.provider_token;
-      const user = session.data.session?.user;
-
-      if (!accessToken || !user) {
+      // Get access token from AuthContext (synchronized with localStorage)
+      if (!googleAccessToken || !authUser) {
         throw new Error("No Google access token or user available");
       }
+
+      const accessToken = googleAccessToken;
+      const user = authUser;
 
       let targetProjectId = projectId;
       let targetVersionId = projectVersionId;

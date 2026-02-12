@@ -27,11 +27,15 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isOrgOwner, setIsOrgOwner] = useState(false);
-  const hasCheckedRef = useRef(false);
+  const lastCheckRef = useRef<number>(0);
 
-  const checkDriveConnection = async () => {
-    if (!user || hasCheckedRef.current) return;
-    hasCheckedRef.current = true;
+  const checkDriveConnection = async (forceCheck = false) => {
+    if (!user) return;
+
+    // Prevent checking more than once per minute unless forced
+    const now = Date.now();
+    if (!forceCheck && now - lastCheckRef.current < 60000) return;
+    lastCheckRef.current = now;
     
     setConnectionStatus('checking');
     try {
@@ -112,12 +116,20 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
   };
 
   useEffect(() => {
-    checkDriveConnection();
+    // Initial check
+    checkDriveConnection(true);
+
+    // Set up periodic checking every 5 minutes
+    const checkInterval = setInterval(() => {
+      checkDriveConnection();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(checkInterval);
   }, [user]);
 
   const handleReconnect = async () => {
     setIsReconnecting(true);
-    hasCheckedRef.current = false;
+    lastCheckRef.current = 0; // Reset to allow immediate re-check after reconnection
     // Reset recovery state before reconnecting so fresh attempts can happen
     resetRecoveryState();
     try {

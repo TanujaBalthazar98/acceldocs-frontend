@@ -9,6 +9,7 @@ const REFRESH_LOCK_MS = 3 * 60 * 1000; // a single tab owns refresh for 3 minute
 const REFRESH_COOLDOWN_MS = 2 * 60 * 1000; // wait after a failed refresh (e.g., 429)
 const REFRESH_LOCK_KEY = "sb_refresh_owner";
 const REFRESH_COOLDOWN_KEY = "sb_refresh_cooldown_until";
+const GOOGLE_TOKEN_KEY = "google_access_token";
 
 const TAB_ID_KEY = "sb_tab_id";
 const getTabId = () => {
@@ -91,6 +92,12 @@ export const ensureFreshSession = async (): Promise<Session | null> => {
           `${tabId}:${Date.now() + REFRESH_LOCK_MS}`
         );
         localStorage.removeItem(REFRESH_COOLDOWN_KEY);
+
+        // Store refreshed Google provider token
+        if (data.session?.provider_token) {
+          localStorage.setItem(GOOGLE_TOKEN_KEY, data.session.provider_token);
+          console.log("Google access token refreshed and stored");
+        }
       }
       lastRefreshAt = Date.now();
       return data.session ?? null;
