@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Folder, ChevronRight, CornerLeftUp, Check } from "lucide-react";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 interface DriveFolderPickerDialogProps {
@@ -18,6 +19,7 @@ interface DriveFolderPickerDialogProps {
   onOpenChange: (open: boolean) => void;
   rootFolderId: string;
   onSelect: (folder: { id: string; name: string }) => void;
+  onOpenSettings?: () => void;
 }
 
 export const DriveFolderPickerDialog = ({
@@ -25,8 +27,10 @@ export const DriveFolderPickerDialog = ({
   onOpenChange,
   rootFolderId,
   onSelect,
+  onOpenSettings,
 }: DriveFolderPickerDialogProps) => {
-  const { listFolder } = useGoogleDrive();
+  const { listFolder, getGoogleToken } = useGoogleDrive();
+  const { signInWithGoogle } = useAuth();
   const [currentFolderId, setCurrentFolderId] = useState<string>(rootFolderId);
   // Need to track folder name for breadcrumbs or title? 
   // keeping it simple: just navigation stack
@@ -34,6 +38,8 @@ export const DriveFolderPickerDialog = ({
   const [folders, setFolders] = useState<DriveFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<{ id: string; name: string } | null>(null);
+  const [selectCurrent, setSelectCurrent] = useState(false);
+  const hasToken = !!getGoogleToken();
 
   useEffect(() => {
     if (open) {
@@ -43,12 +49,17 @@ export const DriveFolderPickerDialog = ({
         setCurrentFolderId(rootFolderId);
         setHistory([]);
         setSelectedFolder(null);
+        setSelectCurrent(false);
     }
   }, [open, currentFolderId]);
 
   const loadFolder = async (folderId: string) => {
     setIsLoading(true);
     try {
+      if (!getGoogleToken()) {
+        setFolders([]);
+        return;
+      }
       const { files } = await listFolder(folderId);
       if (files) {
         // Filter only folders
@@ -79,7 +90,19 @@ export const DriveFolderPickerDialog = ({
     if (selectedFolder) {
       onSelect(selectedFolder);
       onOpenChange(false);
+      return;
     }
+    if (selectCurrent) {
+      onSelect({
+        id: currentFolderId,
+        name: currentFolderId === rootFolderId ? "Root (all folders)" : "Current folder",
+      });
+      onOpenChange(false);
+    }
+  };
+
+  const handleReconnect = async () => {
+    await signInWithGoogle();
   };
 
   // Special case: Selecting the CURRENT folder?
@@ -110,14 +133,54 @@ export const DriveFolderPickerDialog = ({
             </span>
         </div>
 
+        {hasToken && (
+          <button
+            type="button"
+            className={cn(
+              "mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors",
+              selectCurrent ? "border-primary bg-primary/5 text-primary" : "border-border/60 text-muted-foreground"
+            )}
+            onClick={() => {
+              setSelectCurrent((prev) => !prev);
+              setSelectedFolder(null);
+            }}
+          >
+            <span>
+              {currentFolderId === rootFolderId ? "Use Root (all folders)" : "Use current folder"}
+            </span>
+            <Check className={cn("h-4 w-4", selectCurrent ? "opacity-100" : "opacity-0")} />
+          </button>
+        )}
+
         <ScrollArea className="h-[300px] border rounded-md">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : folders.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-              No folders found
+            <div className="flex items-center justify-center h-full px-6 text-center">
+              {hasToken ? (
+                <div className="text-sm text-muted-foreground">No folders found</div>
+              ) : (
+                <div className="w-full rounded-lg border border-dashed border-border/60 bg-muted/30 p-6 text-sm">
+                  <div className="font-medium text-foreground">Drive isn’t connected</div>
+                  <p className="mt-2 text-muted-foreground">
+                    Add the Drive Folder ID in Settings, then reconnect Google to browse folders.
+                  </p>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        onOpenChange(false);
+                        onOpenSettings?.();
+                      }}
+                    >
+                      Open Settings
+                    </Button>
+                    <Button onClick={handleReconnect}>Reconnect Google</Button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-2 space-y-1">
@@ -155,7 +218,7 @@ export const DriveFolderPickerDialog = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={!selectedFolder}>
+          <Button onClick={handleConfirm} disabled={(!selectedFolder && !selectCurrent) || !hasToken}>
             Select Folder
           </Button>
         </DialogFooter>

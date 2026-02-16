@@ -1,5 +1,12 @@
-import { Folder, FileText, FolderPlus } from "lucide-react";
+import { Folder, FileText, FolderPlus, MoreHorizontal, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { Topic } from "@/types/dashboard";
 
@@ -9,6 +16,7 @@ interface SubtopicsViewProps {
   selectedTopic: Topic | null;
   onSelectTopic: (topic: Topic) => void;
   onAddSubtopic?: (parentTopic: Topic | null) => void;
+  onDeleteTopic?: (topic: Topic) => void;
   documents?: { topic_id: string | null }[];
 }
 
@@ -18,6 +26,7 @@ export function SubtopicsView({
   selectedTopic, 
   onSelectTopic,
   onAddSubtopic,
+  onDeleteTopic,
   documents = [] 
 }: SubtopicsViewProps) {
   // Get immediate children only (one level deep)
@@ -68,14 +77,14 @@ export function SubtopicsView({
           const subtopicCount = getSubtopicCount(topic.id);
           
           return (
-            <button
+            <div
               key={topic.id}
-              onClick={() => onSelectTopic(topic)}
               className={cn(
-                "flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-lg border border-border bg-card",
+                "relative flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-lg border border-border bg-card",
                 "hover:bg-muted/50 hover:border-primary/30 transition-all text-left",
-                "focus:outline-none focus:ring-2 focus:ring-primary/20"
+                "focus-within:outline-none focus-within:ring-2 focus-within:ring-primary/20"
               )}
+              onClick={() => onSelectTopic(topic)}
             >
               <div className="p-1.5 sm:p-2 rounded-md bg-primary/10 shrink-0">
                 <Folder className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
@@ -95,7 +104,33 @@ export function SubtopicsView({
                   </span>
                 </div>
               </div>
-            </button>
+              {onDeleteTopic && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-foreground"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteTopic(topic);
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           );
         })}
       </div>

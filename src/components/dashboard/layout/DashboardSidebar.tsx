@@ -21,6 +21,7 @@ import {
   ExternalLink,
   Code as CodeIcon,
   HelpCircle,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -312,6 +313,10 @@ export function DashboardSidebar({
               }
             }}
             onCreateProject={() => setAddProjectOpen(true)}
+            onDeleteProject={(project) => {
+              setItemToDelete({ type: 'project', id: project.id, name: project.name });
+              setDeleteDialogOpen(true);
+            }}
           />
         </div>
 
@@ -422,15 +427,27 @@ export function DashboardSidebar({
                       <div className="space-y-1 pl-3">
                         {subProjects.length > 0 ? (
                           subProjects.map(p => (
-                            <Button 
-                              key={p.id}
-                              variant="ghost" 
-                              className="w-full justify-start h-8 px-3 text-sm text-muted-foreground hover:text-foreground"
-                              onClick={() => setSelectedProject(p)}
-                            >
-                              <Folder className="w-4 h-4 mr-2" />
-                              <span className="truncate">{p.name}</span>
-                            </Button>
+                            <div key={p.id} className="flex items-center gap-2 pr-1">
+                              <Button 
+                                variant="ghost" 
+                                className="flex-1 min-w-0 justify-start h-8 px-3 text-sm text-muted-foreground hover:text-foreground"
+                                onClick={() => setSelectedProject(p)}
+                              >
+                                <Folder className="w-4 h-4 mr-2" />
+                                <span className="truncate">{p.name}</span>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                onClick={() => {
+                                  setItemToDelete({ type: 'project', id: p.id, name: p.name });
+                                  setDeleteDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
                           ))
                         ) : (
                           <p className="text-[11px] italic text-muted-foreground/60 px-3 py-1">No sub-projects yet</p>
@@ -617,6 +634,10 @@ export function DashboardSidebar({
                             setParentTopicForCreate(topic);
                             setAddTopicOpen(true);
                           }}
+                          onDeleteTopic={(topic) => {
+                            setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
+                            setDeleteDialogOpen(true);
+                          }}
                           onUploadFile={(topic) => {
                             if (onUploadFile) {
                               onUploadFile(topic);
@@ -625,10 +646,6 @@ export function DashboardSidebar({
                           onOpenTopicSettings={(topic) => {
                             setSettingsTopic(topic);
                             setTopicSettingsOpen(true);
-                          }}
-                          onDeleteTopic={(topic) => {
-                            setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
-                            setDeleteDialogOpen(true);
                           }}
                           onOpenDocumentSettings={(doc) => {
                             const fullDoc = scopedDocuments.find(d => d.id === doc.id);

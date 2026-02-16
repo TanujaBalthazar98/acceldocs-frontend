@@ -1,1352 +1,359 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  ArrowLeft,
-  FolderOpen,
-  ExternalLink,
-  Users,
-  AlertTriangle,
-  Building2,
-  Trash2,
-  Palette,
-  Type,
-  Image,
-  Layout,
-  Code,
-  Upload,
-  X,
-  Sun,
-  Moon,
-  Monitor,
-  Globe,
-  Loader2,
-  Wand2,
-  UserPlus,
-  RefreshCw,
-  ChevronDown,
-  Eye,
-  Plus,
-} from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
-import { JoinRequestsPanel } from "./JoinRequestsPanel";
-import { InviteMemberDialog } from "./InviteMemberDialog";
-import { DomainSettings } from "./DomainSettings";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import docspeareIcon from "@/assets/docspeare-icon.png";
-import { DocumentationPreview } from "./DocumentationPreview";
+import { invokeFunction } from "@/lib/api/functions";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface GeneralSettingsProps {
   onBack: () => void;
 }
 
-interface Member {
+interface OrgMember {
   id: string;
   email: string;
   full_name: string | null;
   role: string;
 }
 
-interface BrandingData {
-  logo_url: string | null;
-  tagline: string | null;
-  primary_color: string;
-  secondary_color: string;
-  accent_color: string;
-  font_heading: string;
-  font_body: string;
-  custom_css: string | null;
-  hero_title: string | null;
-  hero_description: string | null;
-  show_search_on_landing: boolean;
-  show_featured_projects: boolean;
-  custom_links?: Array<{ label: string; url: string }> | null;
-}
-
-const fontOptions = [
-  "Inter",
-  "Roboto",
-  "Open Sans",
-  "Lato",
-  "Montserrat",
-  "Poppins",
-  "Source Sans Pro",
-  "Nunito",
-  "Raleway",
-  "Work Sans",
-  "DM Sans",
-  "Plus Jakarta Sans",
-  "Space Grotesk",
-  "IBM Plex Sans",
-];
-
 export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
-  const { user, profileOrganizationId, profileLoading, requestDriveAccess } = useAuth();
-  const { theme, setTheme } = useTheme();
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [orgName, setOrgName] = useState("");
-  const [orgSlug, setOrgSlug] = useState<string | null>(null);
-  const [orgSubdomain, setOrgSubdomain] = useState<string | null>(null);
+  const { googleAccessToken, requestDriveAccess } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
   const [domain, setDomain] = useState("");
   const [customDocsDomain, setCustomDocsDomain] = useState("");
-  const [savingCustomDomain, setSavingCustomDomain] = useState(false);
-  const [rootFolderId, setRootFolderId] = useState("");
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
-  const [isSavingFolder, setIsSavingFolder] = useState(false);
-  const [drivePermissionsLastSyncedAt, setDrivePermissionsLastSyncedAt] = useState<string | null>(null);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [savingBranding, setSavingBranding] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [extractingStyles, setExtractingStyles] = useState(false);
-  const [websiteUrl, setWebsiteUrl] = useState("");
-  const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
-  const [reconnectingDrive, setReconnectingDrive] = useState(false);
-  const [updatingRole, setUpdatingRole] = useState<string | null>(null);
-
-  const [branding, setBranding] = useState<BrandingData>({
-    logo_url: null,
-    tagline: null,
-    primary_color: "#3B82F6",
-    secondary_color: "#1E40AF",
-    accent_color: "#F59E0B",
-    font_heading: "Inter",
-    font_body: "Inter",
-    custom_css: null,
-    hero_title: null,
-    hero_description: null,
-    show_search_on_landing: true,
-    show_featured_projects: true,
-    custom_links: [],
-  });
+  const [driveFolderId, setDriveFolderId] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [primaryColor, setPrimaryColor] = useState("");
+  const [secondaryColor, setSecondaryColor] = useState("");
+  const [accentColor, setAccentColor] = useState("");
+  const [fontHeading, setFontHeading] = useState("");
+  const [fontBody, setFontBody] = useState("");
+  const [customCss, setCustomCss] = useState("");
+  const [heroTitle, setHeroTitle] = useState("");
+  const [heroDescription, setHeroDescription] = useState("");
+  const [showSearch, setShowSearch] = useState(true);
+  const [showFeatured, setShowFeatured] = useState(true);
+  const [showDriveId, setShowDriveId] = useState(false);
+  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [autoReconnectDrive, setAutoReconnectDrive] = useState(true);
 
   useEffect(() => {
-    let active = true;
-
-    const fetchOrgData = async () => {
-      if (!user) {
-        if (!active) return;
-        setIsLoading(false);
-        return;
-      }
-
-      // Wait for AuthContext to finish loading the user's profile/org
-      if (profileLoading) {
-        if (!active) return;
-        setIsLoading(true);
-        return;
-      }
-
-      const orgId = profileOrganizationId;
-
-      if (!orgId) {
-        if (!active) return;
-        setOrganizationId(null);
-        setOrgName("");
-        setDomain("");
-        setMembers([]);
-        setIsLoading(false);
-        return;
-      }
-
-      if (!active) return;
-      setIsLoading(true);
-
+    const storedAuto = localStorage.getItem("drive_auto_reconnect");
+    if (storedAuto !== null) {
+      setAutoReconnectDrive(storedAuto === "1");
+    }
+    const load = async () => {
+      setLoading(true);
       try {
+        const { data: workspace, error: workspaceError } = await invokeFunction("ensure-workspace", {
+          body: {},
+        });
+        if (workspaceError || !workspace?.organizationId) {
+          throw workspaceError || new Error(workspace?.error || "Failed to load workspace");
+        }
+        const orgId = String(workspace.organizationId);
         setOrganizationId(orgId);
 
-        const { data: org, error: orgError } = await supabase
-          .from("organizations")
-          .select(
-            "name, domain, slug, subdomain, drive_folder_id, drive_permissions_last_synced_at, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, custom_links"
-          )
-          .eq("id", orgId)
-          .maybeSingle();
-
-        if (!active) return;
-
-        if (orgError) {
-          console.error("Error fetching organization:", orgError);
-          toast({
-            title: "Couldn't load settings",
-            description: orgError.message,
-            variant: "destructive",
-          });
-          return;
+        const { data: orgRes, error: orgError } = await invokeFunction<{
+          ok?: boolean;
+          organization?: any;
+          error?: string;
+        }>("get-organization");
+        if (orgError || !orgRes?.ok) {
+          throw orgError || new Error(orgRes?.error || "Failed to load organization");
         }
-
-        if (!org) {
-          toast({
-            title: "Organization not found",
-            description: "Your account isn't connected to an organization yet.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        setOrgName(org.name);
-        setOrgSlug(org.slug || null);
-        setOrgSubdomain(org.subdomain || null);
-        setDomain(org.domain);
+        const org = orgRes.organization || {};
+        setName(org.name || "");
+        setSlug(org.slug || "");
+        setDomain(org.domain || "");
         setCustomDocsDomain(org.custom_docs_domain || "");
-        setRootFolderId(org.drive_folder_id || "");
-        setDrivePermissionsLastSyncedAt(org.drive_permissions_last_synced_at || null);
-        setBranding({
-          logo_url: org.logo_url,
-          tagline: org.tagline,
-          primary_color: org.primary_color || "#3B82F6",
-          secondary_color: org.secondary_color || "#1E40AF",
-          accent_color: org.accent_color || "#F59E0B",
-          font_heading: org.font_heading || "Inter",
-          font_body: org.font_body || "Inter",
-          custom_css: org.custom_css,
-          hero_title: org.hero_title,
-          hero_description: org.hero_description,
-          show_search_on_landing: org.show_search_on_landing ?? true,
-          show_featured_projects: org.show_featured_projects ?? true,
-          custom_links: (org as any).custom_links || [],
-        });
+        setDriveFolderId(org.drive_folder_id || "");
+        setTagline(org.tagline || "");
+        setLogoUrl(org.logo_url || "");
+        setPrimaryColor(org.primary_color || "");
+        setSecondaryColor(org.secondary_color || "");
+        setAccentColor(org.accent_color || "");
+        setFontHeading(org.font_heading || "");
+        setFontBody(org.font_body || "");
+        setCustomCss(org.custom_css || "");
+        setHeroTitle(org.hero_title || "");
+        setHeroDescription(org.hero_description || "");
+        setShowSearch(org.show_search_on_landing ?? true);
+        setShowFeatured(org.show_featured_projects ?? true);
 
-        // Get team members - use user_roles as source of truth for org membership
-        const { data: roles } = await supabase
-          .from("user_roles")
-          .select("user_id, role")
-          .eq("organization_id", orgId);
-
-        if (!active) return;
-
-        if (roles && roles.length > 0) {
-          // Fetch profiles for all users in user_roles
-          const userIds = roles.map((r) => r.user_id);
-          const { data: profiles } = await supabase
-            .from("profiles")
-            .select("id, email, full_name")
-            .in("id", userIds);
-
-          if (!active) return;
-
-          if (profiles) {
-            const memberList = roles.map((r) => {
-              const profile = profiles.find((p) => p.id === r.user_id);
-              return {
-                id: r.user_id,
-                email: profile?.email || "Unknown",
-                full_name: profile?.full_name || null,
-                role: r.role,
-              };
-            });
-            setMembers(memberList);
-          }
-        } else {
-          setMembers([]);
-        }
-      } catch (error) {
-        console.error("Error in fetchOrgData:", error);
+        const mapped = Array.isArray(orgRes.members)
+          ? orgRes.members.map((member: any) => ({
+              id: String(member.id ?? ""),
+              email: member.email || "",
+              full_name: member.full_name ?? null,
+              role: member.role || "viewer",
+            }))
+          : [];
+        setMembers(mapped);
+      } catch (error: any) {
         toast({
-          title: "Couldn't load settings",
-          description: "Please refresh and try again.",
+          title: "Failed to load settings",
+          description: error?.message || "Please try again.",
           variant: "destructive",
         });
       } finally {
-        if (active) setIsLoading(false);
+        setLoading(false);
       }
     };
+    load();
+  }, [toast]);
 
-    fetchOrgData();
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id, profileOrganizationId, profileLoading, toast]);
-
-  const handleSaveCustomDomain = async () => {
+  const handleSave = async () => {
     if (!organizationId) return;
-
-    setSavingCustomDomain(true);
-
-    // Validate domain format
-    const domainValue = customDocsDomain.trim().toLowerCase();
-    if (domainValue && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(domainValue)) {
+    setSaving(true);
+    const { data: updated, error } = await invokeFunction<{
+      ok?: boolean;
+      error?: string;
+    }>("update-organization", {
+      body: {
+        organizationId,
+        data: {
+          name: name.trim(),
+          slug: slug.trim() || null,
+          domain: domain.trim() || null,
+          custom_docs_domain: customDocsDomain.trim() || null,
+          drive_folder_id: driveFolderId.trim() || null,
+          tagline: tagline.trim() || null,
+          logo_url: logoUrl.trim() || null,
+          primary_color: primaryColor.trim() || null,
+          secondary_color: secondaryColor.trim() || null,
+          accent_color: accentColor.trim() || null,
+          font_heading: fontHeading.trim() || null,
+          font_body: fontBody.trim() || null,
+          custom_css: customCss.trim() || null,
+          hero_title: heroTitle.trim() || null,
+          hero_description: heroDescription.trim() || null,
+          show_search_on_landing: showSearch,
+          show_featured_projects: showFeatured,
+        },
+      },
+    });
+    setSaving(false);
+    if (error || (updated && updated.ok === false)) {
       toast({
-        title: "Invalid domain format",
-        description: "Please enter a valid domain (e.g., docs.company.com)",
-        variant: "destructive",
-      });
-      setSavingCustomDomain(false);
-      return;
-    }
-
-    const { error } = await supabase
-      .from("organizations")
-      .update({ custom_docs_domain: domainValue || null })
-      .eq("id", organizationId);
-
-    if (error) {
-      toast({
-        title: "Error saving custom domain",
-        description: error.message.includes("duplicate") 
-          ? "This domain is already in use by another organization"
-          : error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Custom domain saved",
-        description: domainValue 
-          ? "Your documentation domain has been configured. Set up DNS to point to this app."
-          : "Custom domain has been removed.",
-      });
-    }
-
-    setSavingCustomDomain(false);
-  };
-
-  const handleSaveRootFolder = async () => {
-    if (!organizationId || !rootFolderId.trim()) return;
-
-    setIsSavingFolder(true);
-
-    const { error } = await supabase
-      .from("organizations")
-      .update({ drive_folder_id: rootFolderId.trim() })
-      .eq("id", organizationId);
-
-    if (error) {
-      toast({
-        title: "Error saving root folder",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Root folder saved",
-        description: "Your Google Drive root folder has been configured.",
-      });
-    }
-
-    setIsSavingFolder(false);
-  };
-
-  const handleReconnectDrive = async () => {
-    setReconnectingDrive(true);
-    try {
-      const { error } = await requestDriveAccess();
-      if (error) {
-        toast({
-          title: "Error reconnecting",
-          description: error.message,
-          variant: "destructive",
-        });
-        setReconnectingDrive(false);
-      }
-      // If successful, the page will redirect for OAuth
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to reconnect Google Drive",
-        variant: "destructive",
-      });
-      setReconnectingDrive(false);
-    }
-  };
-
-  const handleUpdateMemberRole = async (memberId: string, newRole: string) => {
-    if (!organizationId || memberId === user?.id) return;
-
-    setUpdatingRole(memberId);
-    try {
-      const { error } = await supabase
-        .from("user_roles")
-        .update({ role: newRole as "owner" | "admin" | "editor" | "viewer" })
-        .eq("user_id", memberId)
-        .eq("organization_id", organizationId);
-
-      if (error) throw error;
-
-      setMembers(prev => prev.map(m => 
-        m.id === memberId ? { ...m, role: newRole } : m
-      ));
-
-      toast({
-        title: "Role updated",
-        description: `Member role changed to ${newRole}.`,
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error updating role",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setUpdatingRole(null);
-    }
-  };
-
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !organizationId) return;
-
-    setUploading(true);
-
-    try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${organizationId}/logo.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("org-logos")
-        .upload(fileName, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("org-logos")
-        .getPublicUrl(fileName);
-
-      setBranding(prev => ({ ...prev, logo_url: publicUrl }));
-      
-      toast({
-        title: "Logo uploaded",
-        description: "Your logo has been uploaded successfully.",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Upload failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleRemoveLogo = async () => {
-    if (!organizationId) return;
-
-    try {
-      await supabase.storage
-        .from("org-logos")
-        .remove([`${organizationId}/logo.png`, `${organizationId}/logo.jpg`, `${organizationId}/logo.svg`]);
-
-      setBranding(prev => ({ ...prev, logo_url: null }));
-      
-      toast({
-        title: "Logo removed",
-        description: "Your logo has been removed.",
-      });
-    } catch (error: any) {
-      console.error("Error removing logo:", error);
-    }
-  };
-
-  const handleSaveBranding = async () => {
-    if (!organizationId) return;
-
-    setSavingBranding(true);
-
-    const { error } = await supabase
-      .from("organizations")
-      .update({
-        logo_url: branding.logo_url,
-        tagline: branding.tagline,
-        primary_color: branding.primary_color,
-        secondary_color: branding.secondary_color,
-        accent_color: branding.accent_color,
-        font_heading: branding.font_heading,
-        font_body: branding.font_body,
-        custom_css: branding.custom_css,
-        hero_title: branding.hero_title,
-        hero_description: branding.hero_description,
-        show_search_on_landing: branding.show_search_on_landing,
-        show_featured_projects: branding.show_featured_projects,
-        custom_links: branding.custom_links,
-      })
-      .eq("id", organizationId);
-
-    if (error) {
-      toast({
-        title: "Error saving branding",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Branding saved",
-        description: "Your documentation branding has been updated.",
-      });
-    }
-
-    setSavingBranding(false);
-  };
-
-  const updateBranding = <K extends keyof BrandingData>(key: K, value: BrandingData[K]) => {
-    setBranding(prev => ({ ...prev, [key]: value }));
-  };
-
-  const handleExtractStyles = async () => {
-    if (!websiteUrl.trim()) {
-      toast({
-        title: "Website URL required",
-        description: "Please enter your company website URL to extract styles.",
+        title: "Save failed",
+        description: error?.message || updated?.error || "Could not update organization.",
         variant: "destructive",
       });
       return;
     }
-
-    setExtractingStyles(true);
-
-    try {
-      const { data, error } = await supabase.functions.invoke("extract-website-styles", {
-        body: { websiteUrl: websiteUrl.trim() },
-      });
-
-      if (error) throw error;
-
-      if (data?.success && data?.data) {
-        setBranding(prev => ({
-          ...prev,
-          primary_color: data.data.primary_color || prev.primary_color,
-          secondary_color: data.data.secondary_color || prev.secondary_color,
-          accent_color: data.data.accent_color || prev.accent_color,
-          font_heading: data.data.font_heading || prev.font_heading,
-          font_body: data.data.font_body || prev.font_body,
-        }));
-
-        toast({
-          title: "Styles extracted!",
-          description: "Brand colors and fonts have been applied. Don't forget to save.",
-        });
-      } else {
-        throw new Error(data?.error || "Failed to extract styles");
-      }
-    } catch (error: any) {
-      console.error("Error extracting styles:", error);
-      toast({
-        title: "Extraction failed",
-        description: error.message || "Could not extract styles from the website.",
-        variant: "destructive",
-      });
-    } finally {
-      setExtractingStyles(false);
-    }
+    toast({ title: "Saved", description: "Organization settings updated." });
   };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-xl overflow-hidden shadow-glow animate-pulse">
-            <img src={docspeareIcon} alt="Loading" className="w-full h-full object-cover" />
-          </div>
-          <p className="text-muted-foreground">Loading settings...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="h-14 border-b border-border flex items-center px-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onBack}
-          className="gap-2 text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Dashboard
-        </Button>
-      </header>
+    <div className="min-h-screen bg-background p-6">
+      <div className="mx-auto w-full max-w-5xl space-y-6">
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" onClick={onBack}>
+            Back
+          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => requestDriveAccess()}
+            >
+              {googleAccessToken ? "Reconnect Drive" : "Connect Drive"}
+            </Button>
+            <Button onClick={handleSave} disabled={saving || loading || !organizationId}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
 
-      {/* Content */}
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your organization, branding, and preferences
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">General Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Update your organization profile, branding, and Drive connection.
           </p>
         </div>
 
-        <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="domains">Domains</TabsTrigger>
-            <TabsTrigger value="branding">Branding</TabsTrigger>
-          </TabsList>
+        {loading ? (
+          <div className="text-sm text-muted-foreground">Loading...</div>
+        ) : (
+          <Tabs defaultValue="profile" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+              <TabsTrigger value="profile">Profile</TabsTrigger>
+              <TabsTrigger value="brand">Branding</TabsTrigger>
+              <TabsTrigger value="landing">Landing</TabsTrigger>
+              <TabsTrigger value="drive">Drive</TabsTrigger>
+              <TabsTrigger value="members">Members</TabsTrigger>
+            </TabsList>
 
-          {/* General Tab */}
-          <TabsContent value="general" className="space-y-10">
-            {/* Organization */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Organization</h2>
+            <TabsContent value="profile" className="mt-6 space-y-5">
+              <div className="grid gap-2">
+                <Label htmlFor="org-name">Organization Name</Label>
+                <Input id="org-name" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
-              
-              <div className="space-y-4 p-4 rounded-xl border border-border bg-card">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Organization Name
-                  </label>
-                  <input
-                    type="text"
-                    value={orgName}
-                    onChange={(e) => setOrgName(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  />
-                </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-tagline">Tagline</Label>
+                <Input id="org-tagline" value={tagline} onChange={(e) => setTagline(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-slug">Slug</Label>
+                <Input id="org-slug" value={slug} onChange={(e) => setSlug(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-domain">Domain</Label>
+                <Input id="org-domain" value={domain} onChange={(e) => setDomain(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-custom-domain">Custom Docs Domain</Label>
+                <Input
+                  id="org-custom-domain"
+                  value={customDocsDomain}
+                  onChange={(e) => setCustomDocsDomain(e.target.value)}
+                />
+              </div>
+            </TabsContent>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Domain
-                  </label>
-                  <div className="px-4 py-2.5 rounded-lg bg-secondary/50 border border-border text-sm text-muted-foreground">
-                    {domain}
-                  </div>
+            <TabsContent value="brand" className="mt-6 space-y-5">
+              <div className="grid gap-2">
+                <Label htmlFor="org-logo">Logo URL</Label>
+                <Input id="org-logo" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-primary">Primary Color</Label>
+                <Input id="org-primary" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-secondary">Secondary Color</Label>
+                <Input id="org-secondary" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-accent">Accent Color</Label>
+                <Input id="org-accent" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-font-heading">Heading Font</Label>
+                <Input id="org-font-heading" value={fontHeading} onChange={(e) => setFontHeading(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-font-body">Body Font</Label>
+                <Input id="org-font-body" value={fontBody} onChange={(e) => setFontBody(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-css">Custom CSS</Label>
+                <Textarea
+                  id="org-css"
+                  value={customCss}
+                  onChange={(e) => setCustomCss(e.target.value)}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="landing" className="mt-6 space-y-5">
+              <div className="grid gap-2">
+                <Label htmlFor="org-hero-title">Hero Title</Label>
+                <Input id="org-hero-title" value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="org-hero-desc">Hero Description</Label>
+                <Textarea
+                  id="org-hero-desc"
+                  value={heroDescription}
+                  onChange={(e) => setHeroDescription(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/50 p-4">
+                <div>
+                  <Label>Show Search on Landing</Label>
+                  <div className="text-xs text-muted-foreground">Enable the search bar on docs landing</div>
+                </div>
+                <Switch checked={showSearch} onCheckedChange={setShowSearch} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/50 p-4">
+                <div>
+                  <Label>Show Featured Projects</Label>
+                  <div className="text-xs text-muted-foreground">Highlight featured projects on landing</div>
+                </div>
+                <Switch checked={showFeatured} onCheckedChange={setShowFeatured} />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="drive" className="mt-6 space-y-5">
+              <div className="rounded-lg border border-border/60 bg-card/50 p-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Google Drive Connection</p>
                   <p className="text-xs text-muted-foreground">
-                    Users with this email domain automatically join your organization.
+                    Connect Drive to create folders and sync docs automatically.
                   </p>
                 </div>
-              </div>
-            </section>
-
-            {/* Appearance Section (merged) */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Monitor className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Theme</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Choose your preferred appearance for the dashboard.
-                </p>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => setTheme("light")}
-                    className={`p-4 rounded-xl border-2 transition-all ${
-                      theme === "light" 
-                        ? "border-primary bg-primary/5" 
-                        : "border-border hover:border-muted-foreground/50"
-                    }`}
-                  >
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-                        <Sun className="w-6 h-6 text-amber-600" />
-                      </div>
-                      <span className="text-sm font-medium text-foreground">Light</span>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => setTheme("dark")}
-                    className={`p-4 rounded-xl border-2 transition-all ${
-                      theme === "dark" 
-                        ? "border-primary bg-primary/5" 
-                        : "border-border hover:border-muted-foreground/50"
-                    }`}
-                  >
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center">
-                        <Moon className="w-6 h-6 text-slate-300" />
-                      </div>
-                      <span className="text-sm font-medium text-foreground">Dark</span>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            {/* Root Folder */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <FolderOpen className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Google Drive Root Folder</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Enter your Google Drive folder ID. All projects and pages will be created within this folder.
-                </p>
-
-                <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-                  Drive sharing is the source of truth. Permissions sync automatically (hourly) and the org
-                  owner can reconnect Drive if access expires.
-                </div>
-
-                <div className="text-xs text-muted-foreground">
-                  Last permission sync:{" "}
-                  <span className="font-medium text-foreground">
-                    {drivePermissionsLastSyncedAt
-                      ? new Date(drivePermissionsLastSyncedAt).toLocaleString()
-                      : "Not synced yet"}
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Root Folder ID
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={rootFolderId}
-                      onChange={(e) => setRootFolderId(e.target.value)}
-                      placeholder="e.g., 1abc123XYZ..."
-                      className="flex-1 px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                    />
-                    <Button 
-                      onClick={handleSaveRootFolder}
-                      disabled={isSavingFolder || !rootFolderId.trim()}
-                    >
-                      {isSavingFolder ? "Saving..." : "Save"}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Find this in your Google Drive folder URL: drive.google.com/drive/folders/<strong>FOLDER_ID</strong>
-                  </p>
-                </div>
-
-                {rootFolderId && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary">
-                    <FolderOpen className="w-5 h-5 text-primary" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        Root folder configured
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {rootFolderId}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => window.open(`https://drive.google.com/drive/folders/${rootFolderId}`, "_blank")}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-
-                {/* Reconnect Drive */}
-                <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
-                  <div className="flex items-start gap-3">
-                    <RefreshCw className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-foreground">
-                        Having trouble creating folders or files?
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        If you're getting permission errors, reconnect Google Drive to grant write access.
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2"
-                        onClick={handleReconnectDrive}
-                        disabled={reconnectingDrive}
-                      >
-                        {reconnectingDrive ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Reconnecting...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-2" />
-                            Reconnect Google Drive
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Team Members */}
-            <section className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-primary" />
-                  <h2 className="text-lg font-semibold text-foreground">Team Members</h2>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setInviteMemberOpen(true)}>
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Invite Member
+                <Button onClick={() => requestDriveAccess()}>
+                  {googleAccessToken ? "Reconnect Drive" : "Connect Drive"}
                 </Button>
               </div>
-
-              <div className="rounded-xl border border-border bg-card overflow-hidden">
-                <div className="divide-y divide-border">
-                  {members.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-muted-foreground">
-                      No team members yet
-                    </div>
-                  ) : (
-                    members.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center justify-between px-4 py-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
-                            <span className="text-sm font-medium text-primary">
-                              {(member.full_name || member.email).charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">
-                              {member.full_name || member.email.split("@")[0]}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {member.email}
-                            </p>
-                          </div>
-                        </div>
-                        {member.role === "owner" || member.id === user?.id ? (
-                          <span className="px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground bg-secondary capitalize">
-                            {member.role}
-                            {member.id === user?.id && " (you)"}
-                          </span>
-                        ) : (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 gap-1 text-xs capitalize"
-                                disabled={updatingRole === member.id}
-                              >
-                                {updatingRole === member.id ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <>
-                                    {member.role}
-                                    <ChevronDown className="w-3 h-3" />
-                                  </>
-                                )}
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {["admin", "editor", "viewer"].map((role) => (
-                                <DropdownMenuItem
-                                  key={role}
-                                  onClick={() => handleUpdateMemberRole(member.id, role)}
-                                  className="capitalize"
-                                >
-                                  {role}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </section>
-
-            {/* Join Requests */}
-            {organizationId && (
-              <section className="space-y-4">
-                <JoinRequestsPanel organizationId={organizationId} />
-              </section>
-            )}
-
-            {/* Danger Zone */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-destructive" />
-                <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/5 space-y-4">
-                <div className="flex items-start gap-3">
-                  <Trash2 className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-destructive">
-                      Delete Organization
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      This will permanently delete your organization and all projects.
-                      Documents in Google Drive will not be affected.
-                    </p>
-                    <Button variant="destructive" size="sm" className="mt-3">
-                      Delete Organization
-                    </Button>
+              <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/50 p-4">
+                <div>
+                  <Label>Auto‑reconnect on expiry</Label>
+                  <div className="text-xs text-muted-foreground">
+                    Automatically open Google reauth when Drive access expires.
                   </div>
                 </div>
+                <Switch
+                  checked={autoReconnectDrive}
+                  onCheckedChange={(value) => {
+                    setAutoReconnectDrive(value);
+                    localStorage.setItem("drive_auto_reconnect", value ? "1" : "0");
+                  }}
+                />
               </div>
-            </section>
-          </TabsContent>
-
-          {/* Domains Tab */}
-          <TabsContent value="domains" className="space-y-6">
-            {organizationId && (
-              <DomainSettings
-                organizationId={organizationId}
-                organizationName={orgName}
-                organizationSlug={orgSlug}
-                currentSubdomain={orgSubdomain}
-                onSubdomainChange={(subdomain) => setOrgSubdomain(subdomain)}
-              />
-            )}
-          </TabsContent>
-
-          {/* Branding Tab */}
-          <TabsContent value="branding" className="space-y-10">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">Branding & Identity</h2>
-              <Button onClick={handleSaveBranding} disabled={savingBranding}>
-                {savingBranding ? "Saving..." : "Save Branding"}
-              </Button>
-            </div>
-
-            {/* Preview Section */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Eye className="w-5 h-5 text-primary" />
-                <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Live Preview</h2>
-              </div>
-              <DocumentationPreview 
-                primaryColor={branding.primary_color}
-                secondaryColor={branding.secondary_color}
-                accentColor={branding.accent_color}
-                fontHeading={branding.font_heading}
-                fontBody={branding.font_body}
-                logoUrl={branding.logo_url}
-                tagline={branding.tagline}
-                heroTitle={branding.hero_title}
-                heroDescription={branding.hero_description}
-                customLinks={branding.custom_links}
-              />
-              <p className="text-xs text-muted-foreground text-center">
-                This is a preview of how your documentation site will look.
-              </p>
-            </section>
-
-            {/* Extract from Website */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Wand2 className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Auto-Extract from Website</h2>
-              </div>
-              
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Enter your company website and we'll extract your brand colors and fonts automatically.
-                </p>
-                
+              <div className="grid gap-2">
+                <Label htmlFor="org-drive-folder">Drive Folder ID</Label>
                 <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      value={websiteUrl}
-                      onChange={(e) => setWebsiteUrl(e.target.value)}
-                      placeholder="https://yourcompany.com"
-                      className="pl-10"
-                    />
-                  </div>
+                  <Input
+                    id="org-drive-folder"
+                    type={showDriveId ? "text" : "password"}
+                    value={driveFolderId}
+                    onChange={(e) => setDriveFolderId(e.target.value)}
+                  />
                   <Button
-                    onClick={handleExtractStyles}
-                    disabled={extractingStyles || !websiteUrl.trim()}
-                    variant="secondary"
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowDriveId((prev) => !prev)}
                   >
-                    {extractingStyles ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Extracting...
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className="w-4 h-4 mr-2" />
-                        Extract Styles
-                      </>
-                    )}
+                    {showDriveId ? "Hide" : "Show"}
                   </Button>
                 </div>
               </div>
-            </section>
+            </TabsContent>
 
-            {/* Logo & Identity */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Image className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Logo & Identity</h2>
-              </div>
-              
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
+            <TabsContent value="members" className="mt-6 space-y-4">
+              {members.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No members found.</p>
+              ) : (
                 <div className="space-y-2">
-                  <Label>Organization Logo</Label>
-                  <div className="flex items-center gap-4">
-                    {branding.logo_url ? (
-                      <div className="relative">
-                        <img 
-                          src={branding.logo_url} 
-                          alt="Logo" 
-                          className="h-16 w-auto max-w-32 object-contain rounded-lg border border-border"
-                        />
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          className="absolute -top-2 -right-2 h-6 w-6"
-                          onClick={handleRemoveLogo}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="h-16 w-32 rounded-lg border-2 border-dashed border-border flex items-center justify-center text-muted-foreground">
-                        No logo
-                      </div>
-                    )}
-                    <div>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleLogoUpload}
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploading}
-                      >
-                        <Upload className="w-4 h-4 mr-2" />
-                        {uploading ? "Uploading..." : "Upload Logo"}
-                      </Button>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        PNG, JPG, or SVG. Max 2MB.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="tagline">Tagline</Label>
-                  <Input
-                    id="tagline"
-                    value={branding.tagline || ""}
-                    onChange={(e) => updateBranding("tagline", e.target.value)}
-                    placeholder="e.g., Developer Documentation"
-                  />
-                </div>
-              </div>
-            </section>
-
-            {/* Colors */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Palette className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Colors</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="primary_color">Primary</Label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="primary_color"
-                        value={branding.primary_color}
-                        onChange={(e) => updateBranding("primary_color", e.target.value)}
-                        className="h-10 w-10 rounded-lg border border-border cursor-pointer"
-                      />
-                      <Input
-                        value={branding.primary_color}
-                        onChange={(e) => updateBranding("primary_color", e.target.value)}
-                        className="flex-1 font-mono text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="secondary_color">Secondary</Label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="secondary_color"
-                        value={branding.secondary_color}
-                        onChange={(e) => updateBranding("secondary_color", e.target.value)}
-                        className="h-10 w-10 rounded-lg border border-border cursor-pointer"
-                      />
-                      <Input
-                        value={branding.secondary_color}
-                        onChange={(e) => updateBranding("secondary_color", e.target.value)}
-                        className="flex-1 font-mono text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="accent_color">Accent</Label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="accent_color"
-                        value={branding.accent_color}
-                        onChange={(e) => updateBranding("accent_color", e.target.value)}
-                        className="h-10 w-10 rounded-lg border border-border cursor-pointer"
-                      />
-                      <Input
-                        value={branding.accent_color}
-                        onChange={(e) => updateBranding("accent_color", e.target.value)}
-                        className="flex-1 font-mono text-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Preview */}
-                <div className="p-4 rounded-lg bg-secondary/50 space-y-2">
-                  <p className="text-xs text-muted-foreground">Preview</p>
-                  <div className="flex gap-2">
-                    <div 
-                      className="h-8 w-20 rounded text-white text-xs flex items-center justify-center font-medium"
-                      style={{ backgroundColor: branding.primary_color }}
-                    >
-                      Primary
-                    </div>
-                    <div 
-                      className="h-8 w-20 rounded text-white text-xs flex items-center justify-center font-medium"
-                      style={{ backgroundColor: branding.secondary_color }}
-                    >
-                      Secondary
-                    </div>
-                    <div 
-                      className="h-8 w-20 rounded text-white text-xs flex items-center justify-center font-medium"
-                      style={{ backgroundColor: branding.accent_color }}
-                    >
-                      Accent
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Typography */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Type className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Typography</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="font_heading">Heading Font</Label>
-                    <select
-                      id="font_heading"
-                      value={branding.font_heading}
-                      onChange={(e) => updateBranding("font_heading", e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
-                    >
-                      {fontOptions.map(font => (
-                        <option key={font} value={font}>{font}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="font_body">Body Font</Label>
-                    <select
-                      id="font_body"
-                      value={branding.font_body}
-                      onChange={(e) => updateBranding("font_body", e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
-                    >
-                      {fontOptions.map(font => (
-                        <option key={font} value={font}>{font}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Landing Page */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Layout className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Landing Page</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="hero_title">Hero Title</Label>
-                  <Input
-                    id="hero_title"
-                    value={branding.hero_title || ""}
-                    onChange={(e) => updateBranding("hero_title", e.target.value)}
-                    placeholder={`e.g., Welcome to ${orgName} Documentation`}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Leave empty to use: "{orgName} Documentation"
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="hero_description">Hero Description</Label>
-                  <Textarea
-                    id="hero_description"
-                    value={branding.hero_description || ""}
-                    onChange={(e) => updateBranding("hero_description", e.target.value)}
-                    placeholder="Describe what visitors will find in your documentation..."
-                    rows={3}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between py-2">
-                  <div>
-                    <Label>Show Search on Landing</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Display a search bar on the landing page
-                    </p>
-                  </div>
-                  <Switch
-                    checked={branding.show_search_on_landing}
-                    onCheckedChange={(checked) => updateBranding("show_search_on_landing", checked)}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between py-2">
-                  <div>
-                    <Label>Show Featured Projects</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Display featured projects on the landing page
-                    </p>
-                  </div>
-                  <Switch
-                    checked={branding.show_featured_projects}
-                    onCheckedChange={(checked) => updateBranding("show_featured_projects", checked)}
-                  />
-                </div>
-              </div>
-            </section>
-
-            {/* Custom Links */}
-            <section className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ExternalLink className="w-5 h-5 text-primary" />
-                  <h2 className="text-lg font-semibold text-foreground">Custom Links</h2>
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => {
-                    const newLinks = [...(branding.custom_links || []), { label: "", url: "" }];
-                    updateBranding("custom_links", newLinks);
-                  }}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Link
-                </Button>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Add links to your header or footer (e.g., Company Website, Support, Status).
-                </p>
-                
-                {(branding.custom_links || []).length === 0 ? (
-                  <div className="text-center py-6 border border-dashed border-border rounded-lg bg-secondary/20">
-                    <p className="text-xs text-muted-foreground">No custom links added yet.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {(branding.custom_links || []).map((link, index) => (
-                      <div key={index} className="flex gap-3 items-start">
-                        <div className="grid grid-cols-2 gap-3 flex-1">
-                          <Input
-                            placeholder="Label (e.g. Website)"
-                            value={link.label}
-                            onChange={(e) => {
-                              const newLinks = [...(branding.custom_links || [])];
-                              newLinks[index].label = e.target.value;
-                              updateBranding("custom_links", newLinks);
-                            }}
-                          />
-                          <Input
-                            placeholder="URL (https://...)"
-                            value={link.url}
-                            onChange={(e) => {
-                              const newLinks = [...(branding.custom_links || [])];
-                              newLinks[index].url = e.target.value;
-                              updateBranding("custom_links", newLinks);
-                            }}
-                          />
+                  {members.map((member) => (
+                    <div key={member.id} className="flex items-center justify-between text-sm">
+                      <div>
+                        <div className="font-medium text-foreground">
+                          {member.full_name || member.email}
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            const newLinks = (branding.custom_links || []).filter((_, i) => i !== index);
-                            updateBranding("custom_links", newLinks);
-                          }}
-                        >
-                          <X className="w-4 h-4 text-destructive" />
-                        </Button>
+                        <div className="text-xs text-muted-foreground">{member.email}</div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* Custom CSS */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Code className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Custom CSS</h2>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border bg-card space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Add custom CSS to further customize your documentation appearance.
-                </p>
-                <Textarea
-                  value={branding.custom_css || ""}
-                  onChange={(e) => updateBranding("custom_css", e.target.value)}
-                  placeholder={`.docs-header {\n  /* Your custom styles */\n}`}
-                  rows={8}
-                  className="font-mono text-sm"
-                />
-              </div>
-            </section>
-          </TabsContent>
-        </Tabs>
+                      <span className="text-xs capitalize text-muted-foreground">{member.role}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
-
-      {/* Invite Member Dialog */}
-      {organizationId && (
-        <InviteMemberDialog
-          open={inviteMemberOpen}
-          onOpenChange={setInviteMemberOpen}
-          organizationId={organizationId}
-          organizationName={orgName}
-        />
-      )}
     </div>
   );
 };

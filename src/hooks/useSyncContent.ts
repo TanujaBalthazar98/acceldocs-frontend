@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
@@ -18,6 +18,15 @@ export const useSyncContent = () => {
 
   const syncDocument = async (documentId: string, googleDocId: string): Promise<string | null> => {
     const token = getGoogleToken();
+    if (!token) {
+      toast({
+        title: "Drive connection required",
+        description: "Add your Drive folder in Settings and sign in with Google.",
+        variant: "destructive",
+        duration: 12000,
+      });
+      return null;
+    }
     
     // Allow calls even without token - backend can use owner's refresh token
     setSyncing(true);
@@ -31,7 +40,7 @@ export const useSyncContent = () => {
         ...(token ? { headers: { "x-google-token": token } } : {}),
       };
 
-      const { data, error } = await supabase.functions.invoke("google-drive", invokeOptions);
+      const { data, error } = await invokeFunction("google-drive", invokeOptions);
 
       if (error) {
         console.error("Sync error:", error);
@@ -41,7 +50,7 @@ export const useSyncContent = () => {
           const recovery = await attemptRecovery("sync document");
           if (recovery.recovered && recovery.shouldRetry) {
             // Retry the call once after successful recovery
-            const retryResult = await supabase.functions.invoke("google-drive", invokeOptions);
+            const retryResult = await invokeFunction("google-drive", invokeOptions);
             if (!retryResult.error && !retryResult.data?.needsReauth) {
               toast({
                 title: "Content synced",
@@ -66,7 +75,7 @@ export const useSyncContent = () => {
         if (!isInCooldown()) {
           const recovery = await attemptRecovery("sync document");
           if (recovery.recovered && recovery.shouldRetry) {
-            const retryResult = await supabase.functions.invoke("google-drive", invokeOptions);
+            const retryResult = await invokeFunction("google-drive", invokeOptions);
             if (!retryResult.error && !retryResult.data?.needsReauth) {
               toast({
                 title: "Content synced",

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { strapiFetch } from "@/lib/api/client";
 
 interface SlugResolution {
   organizationId: string | null;
@@ -50,41 +50,31 @@ export function useSlugResolver(
     try {
       // Resolve organization by slug or domain
       let orgId: string | null = null;
-      let orgData = await supabase
-        .from("organizations")
-        .select("id, slug, domain")
-        .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
-        .maybeSingle();
+      const slugParams = new URLSearchParams({
+        "filters[slug][$eq]": orgSlug!,
+        "pagination[limit]": "1",
+      });
+      const { data: slugRes, error: slugError } = await strapiFetch<{ data: any[] }>(
+        `/api/organizations?${slugParams.toString()}`
+      );
+      if (slugError) throw slugError;
+      let org = slugRes?.data?.[0] ?? null;
 
-      if (orgData.data) {
-        orgId = orgData.data.id;
+      if (!org) {
+        const domainParams = new URLSearchParams({
+          "filters[domain][$eq]": orgSlug!,
+          "pagination[limit]": "1",
+        });
+        const { data: domainRes, error: domainError } = await strapiFetch<{ data: any[] }>(
+          `/api/organizations?${domainParams.toString()}`
+        );
+        if (domainError) throw domainError;
+        org = domainRes?.data?.[0] ?? null;
+      }
+
+      if (org?.id) {
+        orgId = String(org.id);
       } else {
-        // Check slug history for redirect
-        const { data: historyData } = await supabase
-          .from("slug_history")
-          .select("entity_id")
-          .eq("entity_type", "organization")
-          .eq("old_slug", orgSlug)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (historyData) {
-          const { data: currentOrg } = await supabase
-            .from("organizations")
-            .select("slug, domain")
-            .eq("id", historyData.entity_id)
-            .maybeSingle();
-
-          if (currentOrg) {
-            const newOrgSlug = currentOrg.slug || currentOrg.domain;
-            const newPath = buildRedirectPath(newOrgSlug, projectSlug, topicSlug, pageSlug);
-            navigate(newPath, { replace: true });
-            setResolution(prev => ({ ...prev, redirected: true, loading: false }));
-            return;
-          }
-        }
-
         setResolution({
           organizationId: null,
           projectId: null,
@@ -100,201 +90,93 @@ export function useSlugResolver(
       // Resolve project by slug within organization
       let projectId: string | null = null;
       if (projectSlug && orgId) {
-        const { data: projectData } = await supabase
-          .from("projects")
-          .select("id, slug, organization_id")
-          .eq("organization_id", orgId)
-          .eq("slug", projectSlug)
-          .maybeSingle();
-
-        if (projectData) {
-          projectId = projectData.id;
-        } else {
-          // Check slug history for project redirect
-          const { data: historyData } = await supabase
-            .from("slug_history")
-            .select("entity_id")
-            .eq("entity_type", "project")
-            .eq("old_slug", projectSlug)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (historyData) {
-            const { data: currentProject } = await supabase
-              .from("projects")
-              .select("slug, organization_id")
-              .eq("id", historyData.entity_id)
-              .eq("organization_id", orgId)
-              .maybeSingle();
-
-            if (currentProject?.slug) {
-              const newPath = buildRedirectPath(orgSlug, currentProject.slug, versionSlug, topicSlug, pageSlug);
-              navigate(newPath, { replace: true });
-              setResolution(prev => ({ ...prev, redirected: true, loading: false }));
-              return;
-            }
-          }
+        const { data, error } = await strapiFetch<{ data: any[] }>(
+          `/api/projects?filters[organization][id][$eq]=${orgId}&filters[slug][$eq]=${encodeURIComponent(projectSlug)}&pagination[limit]=1`
+        );
+        if (error) throw error;
+        const projectData = data?.data?.[0] ?? null;
+        if (projectData?.id) {
+          projectId = String(projectData.id);
         }
       }
 
       let projectVersionId: string | null = null;
       if (projectId) {
         if (versionSlug) {
-          const { data: versionData } = await supabase
-            .from("project_versions")
-            .select("id")
-            .eq("project_id", projectId)
-            .eq("slug", versionSlug)
-            .maybeSingle();
-          projectVersionId = versionData?.id ?? null;
+          const { data, error } = await strapiFetch<{ data: any[] }>(
+            `/api/project-versions?filters[project][id][$eq]=${projectId}&filters[slug][$eq]=${encodeURIComponent(versionSlug)}&pagination[limit]=1`
+          );
+          if (!error && data?.data?.[0]?.id) {
+            projectVersionId = String(data.data[0].id);
+          }
         }
 
         if (!projectVersionId) {
-          const { data: defaultVersion } = await supabase
-            .from("project_versions")
-            .select("id")
-            .eq("project_id", projectId)
-            .eq("is_default", true)
-            .maybeSingle();
-          projectVersionId = defaultVersion?.id ?? null;
+          const { data, error } = await strapiFetch<{ data: any[] }>(
+            `/api/project-versions?filters[project][id][$eq]=${projectId}&filters[is_default][$eq]=true&pagination[limit]=1`
+          );
+          if (!error && data?.data?.[0]?.id) {
+            projectVersionId = String(data.data[0].id);
+          }
         }
 
         if (!projectVersionId) {
-          const { data: publishedVersion } = await supabase
-            .from("project_versions")
-            .select("id")
-            .eq("project_id", projectId)
-            .eq("is_published", true)
-            .order("semver_major", { ascending: false })
-            .order("semver_minor", { ascending: false })
-            .order("semver_patch", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          projectVersionId = publishedVersion?.id ?? null;
+          const { data } = await strapiFetch<{ data: any[] }>(
+            `/api/project-versions?filters[project][id][$eq]=${projectId}&filters[is_published][$eq]=true&pagination[limit]=1&sort=semver_major:desc,semver_minor:desc,semver_patch:desc`
+          );
+          if (data?.data?.[0]?.id) {
+            projectVersionId = String(data.data[0].id);
+          }
         }
 
         if (!projectVersionId) {
-          const { data: latestVersion } = await supabase
-            .from("project_versions")
-            .select("id")
-            .eq("project_id", projectId)
-            .order("semver_major", { ascending: false })
-            .order("semver_minor", { ascending: false })
-            .order("semver_patch", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          projectVersionId = latestVersion?.id ?? null;
+          const { data } = await strapiFetch<{ data: any[] }>(
+            `/api/project-versions?filters[project][id][$eq]=${projectId}&pagination[limit]=1&sort=semver_major:desc,semver_minor:desc,semver_patch:desc`
+          );
+          if (data?.data?.[0]?.id) {
+            projectVersionId = String(data.data[0].id);
+          }
         }
       }
 
       // Resolve topic by slug within project (if topicSlug provided)
       let topicId: string | null = null;
       if (topicSlug && projectId) {
-        const { data: topicData } = await supabase
-          .from("topics")
-          .select("id, slug, project_id")
-          .eq("project_id", projectId)
-          .eq("project_version_id", projectVersionId)
-          .eq("slug", topicSlug)
-          .maybeSingle();
-
-        if (topicData) {
-          topicId = topicData.id;
-        } else {
-          // Check slug history for topic redirect
-          const { data: historyData } = await supabase
-            .from("slug_history")
-            .select("entity_id")
-            .eq("entity_type", "topic")
-            .eq("old_slug", topicSlug)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (historyData) {
-            const { data: currentTopic } = await supabase
-              .from("topics")
-              .select("slug, project_id")
-              .eq("id", historyData.entity_id)
-              .eq("project_id", projectId)
-              .eq("project_version_id", projectVersionId)
-              .maybeSingle();
-
-            if (currentTopic?.slug) {
-              const newPath = buildRedirectPath(orgSlug, projectSlug, versionSlug, currentTopic.slug, pageSlug);
-              navigate(newPath, { replace: true });
-              setResolution(prev => ({ ...prev, redirected: true, loading: false }));
-              return;
-            }
-          }
+        const params = new URLSearchParams({
+          "filters[project][id][$eq]": projectId,
+          "filters[slug][$eq]": topicSlug,
+          "pagination[limit]": "1",
+        });
+        if (projectVersionId) {
+          params.set("filters[project_version][id][$eq]", projectVersionId);
+        }
+        const { data, error } = await strapiFetch<{ data: any[] }>(
+          `/api/topics?${params.toString()}`
+        );
+        if (!error && data?.data?.[0]?.id) {
+          topicId = String(data.data[0].id);
         }
       }
 
       // Resolve document by slug
       let documentId: string | null = null;
       if (pageSlug && projectId) {
-        // If we have a topic, look for doc in that topic
-        // Otherwise look for doc directly under project (no topic)
-        const docQuery = supabase
-          .from("documents")
-          .select("id, slug, project_id, topic_id")
-          .eq("project_id", projectId)
-          .eq("project_version_id", projectVersionId)
-          .eq("slug", pageSlug);
-        
-        if (topicId) {
-          docQuery.eq("topic_id", topicId);
+        const params = new URLSearchParams({
+          "filters[project][id][$eq]": projectId,
+          "filters[slug][$eq]": pageSlug,
+          "pagination[limit]": "1",
+        });
+        if (projectVersionId) {
+          params.set("filters[project_version][id][$eq]", projectVersionId);
         }
-
-        const { data: docData } = await docQuery.maybeSingle();
-
-        if (docData) {
-          documentId = docData.id;
-        } else {
-          // Check slug history for document redirect
-          const { data: historyData } = await supabase
-            .from("slug_history")
-            .select("entity_id")
-            .eq("entity_type", "document")
-            .eq("old_slug", pageSlug)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (historyData) {
-            const docQuery = supabase
-              .from("documents")
-              .select("slug, project_id, topic_id")
-              .eq("id", historyData.entity_id)
-              .eq("project_id", projectId);
-            
-            docQuery.eq("project_version_id", projectVersionId);
-            
-            if (topicId) {
-              docQuery.eq("topic_id", topicId);
-            }
-
-            const { data: currentDoc } = await docQuery.maybeSingle();
-
-            if (currentDoc?.slug) {
-              // Get topic slug if document has a topic
-              let newTopicSlug = topicSlug;
-              if (currentDoc.topic_id && !topicSlug) {
-                const { data: topic } = await supabase
-                  .from("topics")
-                  .select("slug")
-                  .eq("id", currentDoc.topic_id)
-                  .single();
-                newTopicSlug = topic?.slug || undefined;
-              }
-              
-              const newPath = buildRedirectPath(orgSlug, projectSlug, versionSlug, newTopicSlug, currentDoc.slug);
-              navigate(newPath, { replace: true });
-              setResolution(prev => ({ ...prev, redirected: true, loading: false }));
-              return;
-            }
-          }
+        if (topicId) {
+          params.set("filters[topic][id][$eq]", topicId);
+        }
+        const { data, error } = await strapiFetch<{ data: any[] }>(
+          `/api/documents?${params.toString()}`
+        );
+        if (!error && data?.data?.[0]?.id) {
+          documentId = String(data.data[0].id);
         }
       }
 
@@ -349,49 +231,21 @@ export async function getDocumentSlugUrl(
   documentId: string
 ): Promise<string | null> {
   try {
-    const { data: doc } = await supabase
-      .from("documents")
-      .select(`
-        slug,
-        topic_id,
-        project_id,
-        projects!inner (
-          slug,
-          organization_id,
-          organizations!inner (
-            slug,
-            domain
-          )
-        )
-      `)
-      .eq("id", documentId)
-      .single();
-
-    if (!doc) return null;
-
-    const project = (doc as any).projects;
-    const org = project?.organizations;
+    const { data, error } = await strapiFetch<{ data: any }>(
+      `/api/documents/${documentId}?fields[0]=slug&populate[topic][fields][0]=slug&populate[project][fields][0]=slug&populate[project][populate][organization][fields][0]=slug&populate[project][populate][organization][fields][1]=domain`
+    );
+    if (error || !data?.data) return null;
+    const attrs = data.data.attributes || {};
+    const project = attrs.project?.data;
+    const org = project?.attributes?.organization?.data?.attributes;
     const orgSlug = org?.slug || org?.domain;
-    const projectSlug = project?.slug;
-    const pageSlug = doc.slug;
-
+    const projectSlug = project?.attributes?.slug;
+    const pageSlug = attrs.slug;
     if (!orgSlug || !projectSlug || !pageSlug) return null;
-
-    // Get topic slug if document has a topic
-    let topicSlug: string | null = null;
-    if (doc.topic_id) {
-      const { data: topic } = await supabase
-        .from("topics")
-        .select("slug")
-        .eq("id", doc.topic_id)
-        .single();
-      topicSlug = topic?.slug || null;
-    }
-
-    if (topicSlug) {
-      return `/docs/${orgSlug}/${projectSlug}/${topicSlug}/${pageSlug}`;
-    }
-    return `/docs/${orgSlug}/${projectSlug}/${pageSlug}`;
+    const topicSlug = attrs.topic?.data?.attributes?.slug || null;
+    return topicSlug
+      ? `/docs/${orgSlug}/${projectSlug}/${topicSlug}/${pageSlug}`
+      : `/docs/${orgSlug}/${projectSlug}/${pageSlug}`;
   } catch (error) {
     console.error("Error generating slug URL:", error);
     return null;

@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
+import { strapiFetch } from "@/lib/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { ensureFreshSession } from "@/lib/authSession";
@@ -80,40 +81,49 @@ export default function PagePreview() {
 
   const fetchDocument = async () => {
     try {
-      const { data, error } = await supabase
-        .from("documents")
-        .select(`
-          *,
-          project:projects(id, name),
-          topic:topics(id, name)
-        `)
-        .eq("id", id)
-        .single();
+      const { data, error } = await strapiFetch<{ data: any }>(
+        `/api/documents/${id}?populate[project][fields][0]=id&populate[project][fields][1]=name&populate[topic][fields][0]=id&populate[topic][fields][1]=name&populate[owner][fields][0]=email&populate[owner][fields][1]=username&populate[owner][fields][2]=full_name`
+      );
+      if (error || !data?.data) throw error || new Error("Document not found");
 
-      if (error) throw error;
+      const attrs = data.data.attributes || {};
+      const ownerAttrs = attrs.owner?.data?.attributes || {};
+      const mapped: DocumentData = {
+        id: String(data.data.id),
+        title: attrs.title || "",
+        google_doc_id: attrs.google_doc_id || "",
+        visibility: attrs.visibility ?? "internal",
+        is_published: !!attrs.is_published,
+        created_at: attrs.createdAt || attrs.created_at || "",
+        updated_at: attrs.updatedAt || attrs.updated_at || "",
+        content: attrs.content_html || null,
+        content_html: attrs.content_html || null,
+        owner_id: attrs.owner?.data?.id ? String(attrs.owner.data.id) : null,
+        owner: attrs.owner?.data
+          ? {
+              id: String(attrs.owner.data.id),
+              email: ownerAttrs.email || "",
+              full_name: ownerAttrs.full_name || ownerAttrs.username || null,
+            }
+          : undefined,
+        project: attrs.project?.data
+          ? { id: String(attrs.project.data.id), name: attrs.project.data.attributes?.name || "" }
+          : undefined,
+        topic: attrs.topic?.data
+          ? { id: String(attrs.topic.data.id), name: attrs.topic.data.attributes?.name || "" }
+          : undefined,
+      };
 
-      // Fetch owner info if owner_id exists
-      let ownerData = null;
-      if (data.owner_id) {
-        const { data: owner } = await supabase
-          .from("profiles")
-          .select("id, email, full_name")
-          .eq("id", data.owner_id)
-          .single();
-        ownerData = owner;
-      }
+      setDocument(mapped);
 
-      setDocument({ ...data, owner: ownerData } as DocumentData);
-      
-      // If we have cached content_html, use it immediately as fallback
-      if (data.content_html) {
-        const cleanedHtml = isLikelyMarkdown(data.content_html)
+      if (mapped.content_html) {
+        const cleanedHtml = isLikelyMarkdown(mapped.content_html)
           ? normalizeHtml(
               renderMarkdownToHtml(
-                stripFirstMarkdownHeading(data.content_html, data.title)
+                stripFirstMarkdownHeading(mapped.content_html, mapped.title)
               )
             )
-          : normalizeHtml(data.content_html);
+          : normalizeHtml(mapped.content_html);
         setDocContent(cleanedHtml);
       }
     } catch (error) {
@@ -157,7 +167,7 @@ export default function PagePreview() {
         };
       }
 
-      const { data, error } = await supabase.functions.invoke("google-drive", invokeArgs);
+      const { data, error } = await invokeFunction("google-drive", invokeArgs);
 
       if (error) {
         console.error("Error fetching doc content:", error);

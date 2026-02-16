@@ -4,7 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MessageSquare, Send, AlertCircle, Lightbulb, Loader2, Check, Trash2, Star } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { list, create, update, remove } from "@/lib/api/queries";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -72,11 +72,11 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
 
   const fetchFeedback = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("page_feedback")
-      .select("*")
-      .eq("document_id", documentId)
-      .order("created_at", { ascending: false });
+    const { data, error } = await list<Feedback>("page_feedback", {
+      select: "*",
+      filters: { document_id: documentId },
+      orderBy: { field: "created_at", ascending: false },
+    });
 
     if (error) {
       console.error("Error fetching feedback:", error);
@@ -97,7 +97,7 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
 
     setSubmitting(true);
     const effectiveFeedbackType = isPublicFeedback ? "rating" : feedbackType;
-    const { error } = await supabase.from("page_feedback").insert({
+    const { error } = await create("page_feedback", {
       document_id: documentId,
       user_id: user?.id ?? null,
       user_name: user?.user_metadata?.full_name || user?.email?.split("@")[0] || null,
@@ -125,10 +125,7 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
   };
 
   const handleResolve = async (feedbackId: string, currentState: boolean) => {
-    const { error } = await supabase
-      .from("page_feedback")
-      .update({ is_resolved: !currentState })
-      .eq("id", feedbackId);
+    const { error } = await update("page_feedback", feedbackId, { is_resolved: !currentState });
 
     if (error) {
       toast({ title: "Error", description: "Failed to update feedback.", variant: "destructive" });
@@ -138,7 +135,7 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
   };
 
   const handleDelete = async (feedbackId: string) => {
-    const { error } = await supabase.from("page_feedback").delete().eq("id", feedbackId);
+    const { error } = await remove("page_feedback", feedbackId);
 
     if (error) {
       toast({ title: "Error", description: "Failed to delete feedback.", variant: "destructive" });

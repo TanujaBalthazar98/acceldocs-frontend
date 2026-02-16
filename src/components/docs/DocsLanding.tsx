@@ -47,6 +47,8 @@ interface Topic {
 interface DocsLandingProps {
   organization: OrganizationBranding;
   projects: Project[];
+  featuredProjects?: Project[];
+  searchProjects?: Project[];
   documents?: Document[];
   topics?: Topic[];
   searchQuery: string;
@@ -63,6 +65,8 @@ interface DocsLandingProps {
 export const DocsLanding = ({
   organization,
   projects,
+  featuredProjects,
+  searchProjects,
   documents = [],
   topics = [],
   searchQuery,
@@ -76,6 +80,8 @@ export const DocsLanding = ({
   hasNonPublicContent = false,
 }: DocsLandingProps) => {
   const orgIdentifier = organization.slug || organization.domain;
+  const featured = featuredProjects ?? projects;
+  const searchList = searchProjects ?? projects;
 
   const heroTitle = organization.hero_title || `${organization.name} Documentation`;
   const heroDescription = organization.hero_description || 
@@ -111,7 +117,7 @@ export const DocsLanding = ({
               placeholder="Search documentation..."
               documents={documents}
               topics={topics}
-              projects={projects}
+              projects={searchList}
               primaryColor={organization.primary_color}
               size="large"
               showAIButton={true}
@@ -119,7 +125,7 @@ export const DocsLanding = ({
               onSearch={onSearchChange}
               onSelect={(result) => {
                 if (result.type === "project") {
-                  const project = projects.find(p => p.id === result.id);
+                  const project = searchList.find(p => p.id === result.id);
                   if (project) onProjectSelect(project);
                 } else if (result.type === "topic" && onTopicSelect) {
                   onTopicSelect(result.id);
@@ -132,9 +138,9 @@ export const DocsLanding = ({
         )}
 
         {/* Quick Links */}
-        {!organization.show_featured_projects && projects.length > 0 && (
+        {!organization.show_featured_projects && featured.length > 0 && (
           <div className="flex flex-wrap gap-3 justify-center">
-            {projects.slice(0, 3).map(project => (
+            {featured.slice(0, 3).map(project => (
               <Button
                 key={project.id}
                 variant="outline"
@@ -163,7 +169,7 @@ export const DocsLanding = ({
       </section>
 
       {/* Featured Projects */}
-      {organization.show_featured_projects && projects.length > 0 && (
+      {organization.show_featured_projects && featured.length > 0 && (
         <section className="px-4 pb-16 lg:pb-24">
           <div className="max-w-5xl mx-auto">
             <h2 className="text-2xl font-semibold text-foreground mb-6 text-center brand-heading">
@@ -171,7 +177,7 @@ export const DocsLanding = ({
             </h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {projects.map(project => (
+              {featured.map(project => (
                 <button
                   key={project.id}
                   onClick={() => onProjectSelect(project)}

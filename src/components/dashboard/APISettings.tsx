@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { USE_STRAPI } from "@/lib/api/client";
 
 // Recursively sanitize object to remove unsupported Unicode escape sequences
 const sanitizeForJson = (obj: unknown): unknown => {
@@ -48,19 +48,6 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
   // Fetch existing settings on mount
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("mcp_enabled, openapi_spec_url, openapi_spec_json")
-        .eq("id", projectId)
-        .single();
-
-      if (data && !error) {
-        setMcpEnabled(data.mcp_enabled ?? false);
-        setOpenApiUrl(data.openapi_spec_url ?? "");
-        if (data.openapi_spec_json) {
-          setOpenApiSpec(data.openapi_spec_json as object);
-        }
-      }
       setLoading(false);
     };
     fetchSettings();
@@ -128,6 +115,15 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
 
   const handleSave = async () => {
     setSaving(true);
+    if (USE_STRAPI) {
+      setSaving(false);
+      toast({
+        title: "Not available",
+        description: "Project API settings are not available in Strapi mode yet.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Deep sanitize to remove unsupported Unicode escape sequences
     let sanitizedSpec: object | null = null;
@@ -145,27 +141,12 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
       }
     }
 
-    const { error } = await supabase
-      .from("projects")
-      .update({
-        mcp_enabled: mcpEnabled,
-        openapi_spec_url: openApiUrl || null,
-        openapi_spec_json: sanitizedSpec as any,
-      })
-      .eq("id", projectId);
-
     setSaving(false);
-
-    if (error) {
-      console.error("Save API settings error:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save API settings.",
-        variant: "destructive",
-      });
-    } else {
-      toast({ title: "Saved", description: "API documentation settings updated." });
-    }
+    toast({
+      title: "Unavailable",
+      description: "API settings are not available in Strapi mode yet.",
+      variant: "destructive",
+    });
   };
 
   const clearSpec = () => {

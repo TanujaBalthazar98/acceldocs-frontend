@@ -88,6 +88,8 @@ export function useBrandingStyles(branding: {
     const primaryHsl = hexToHsl(branding.primary_color);
     const secondaryHsl = hexToHsl(branding.secondary_color);
     const accentHsl = hexToHsl(branding.accent_color);
+    const primaryL = Number.parseFloat(primaryHsl.split(/\s+/)[2]?.replace("%", "") || "0");
+    const isPrimaryLight = Number.isFinite(primaryL) && primaryL >= 80;
 
     // Generate CSS with branding variables - override Tailwind's primary color
     styleEl.textContent = `
@@ -152,8 +154,8 @@ export function useBrandingStyles(branding: {
       
       /* Developer dropdown active item styling */
       .docs-branded [data-highlighted] {
-        background-color: hsl(${primaryHsl}) !important;
-        color: white !important;
+        background-color: ${isPrimaryLight ? `hsl(${primaryHsl} / 0.14)` : `hsl(${primaryHsl})`} !important;
+        color: ${isPrimaryLight ? "var(--brand-primary)" : "white"} !important;
       }
       
       /* Ensure project tabs use brand color when selected */

@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 import { DRIVE_INTEGRATION_ENABLED } from "@/lib/featureFlags";
 
@@ -22,7 +22,7 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
     return null;
   }
 
-  const { requestDriveAccess, user } = useAuth();
+  const { requestDriveAccess, user, googleAccessToken } = useAuth();
   const { resetRecoveryState, attemptRecovery } = useDriveRecovery();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -39,28 +39,25 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
     
     setConnectionStatus('checking');
     try {
-      // First check if the current user is the org owner
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id, google_refresh_token_present')
-        .eq('id', user.id)
-        .maybeSingle();
+      const { data: orgRes, error: orgError } = await invokeFunction<{
+        ok?: boolean;
+        members?: Array<{ id?: string | number; role?: string }>;
+      }>("get-organization");
 
-      if (!profile?.organization_id) {
-        // User not in an org yet
-        setConnectionStatus('not_owner');
-        onStatusChange?.(true); // Don't block non-owners
+      if (orgError || !orgRes?.ok) {
+        setConnectionStatus("needs_reauth");
+        onStatusChange?.(false);
         return;
       }
 
-      // Check if user is the org owner
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('owner_id')
-        .eq('id', profile.organization_id)
-        .maybeSingle();
-
-      const userIsOwner = org?.owner_id === user.id;
+      const role =
+        orgRes.members?.find((member) => String(member.id) === String(user.id))?.role || null;
+      if (!role) {
+        setConnectionStatus("needs_reauth");
+        onStatusChange?.(false);
+        return;
+      }
+      const userIsOwner = role === "owner";
       setIsOrgOwner(userIsOwner);
 
       // Only the org owner needs to have Drive connected
@@ -71,30 +68,28 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       }
 
       // For the owner, check Drive connection
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.provider_token;
-      const hasRefreshToken = !!profile?.google_refresh_token_present;
-      
-      if (!token && !hasRefreshToken) {
+      const token = googleAccessToken || localStorage.getItem("google_access_token");
+      if (!token) {
         setConnectionStatus('needs_reauth');
         onStatusChange?.(false);
         return;
       }
 
       // Make a simple API call to verify the token works
-      const response = await supabase.functions.invoke('google-drive', {
-        body: { action: 'list_folder', folderId: 'root' }
+      const response = await invokeFunction('google-drive', {
+        body: { action: 'list_folder', folderId: 'root' },
+        headers: { "x-google-token": token },
       });
 
-      if (response.error || response.data?.needsReauth) {
+      if (response.error || response.data?.needsReauth || response.data?.ok === false || response.data?.error) {
         // Attempt silent recovery first
         const { recovered } = await attemptRecovery("Drive check failed", true);
         if (recovered) {
           setConnectionStatus('connected');
           onStatusChange?.(true);
         } else {
-          setConnectionStatus(hasRefreshToken ? 'connected' : 'needs_reauth');
-          onStatusChange?.(hasRefreshToken);
+          setConnectionStatus('needs_reauth');
+          onStatusChange?.(false);
         }
       } else {
         // Connection successful - reset any recovery state

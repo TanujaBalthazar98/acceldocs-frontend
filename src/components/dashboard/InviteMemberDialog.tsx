@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -59,66 +59,49 @@ export const InviteMemberDialog = ({
 
     setIsLoading(true);
     try {
-      // Check if invitation already exists
-      const { data: existingInvite } = await supabase
-        .from("invitations")
-        .select("id, accepted_at")
-        .eq("organization_id", organizationId)
-        .eq("email", email.toLowerCase())
-        .maybeSingle();
+      let token: string | null = null;
+      const { data, error } = await invokeFunction<{
+        status?: "created" | "pending" | "accepted" | "member";
+        token?: string;
+        error?: string;
+      }>("create-invitation", {
+        body: { organizationId, email: email.toLowerCase(), role },
+      });
 
-      if (existingInvite) {
-        if (existingInvite.accepted_at) {
-          toast({
-            title: "Already a member",
-            description: "This user has already accepted an invitation.",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Invitation pending",
-            description: "An invitation has already been sent to this email.",
-            variant: "destructive",
-          });
-        }
-        setIsLoading(false);
-        return;
-      }
+      if (error) throw error;
 
-      // Check if user is already a member
-      const { data: existingProfile } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("email", email.toLowerCase())
-        .eq("organization_id", organizationId)
-        .maybeSingle();
-
-      if (existingProfile) {
+      if (data?.status === "member") {
         toast({
           title: "Already a member",
           description: "This user is already a member of this workspace.",
           variant: "destructive",
         });
-        setIsLoading(false);
         return;
       }
 
-      // Create the invitation
-      const { data: invitation, error: inviteError } = await supabase
-        .from("invitations")
-        .insert({
-          organization_id: organizationId,
-          email: email.toLowerCase(),
-          role: role,
-          invited_by: user.id,
-        })
-        .select("token")
-        .single();
+      if (data?.status === "accepted") {
+        toast({
+          title: "Already a member",
+          description: "This user has already accepted an invitation.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-      if (inviteError) throw inviteError;
+      if (data?.status === "pending") {
+        toast({
+          title: "Invitation pending",
+          description: "An invitation has already been sent to this email.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      token = data?.token || null;
+      if (!token) throw new Error("Failed to create invitation.");
 
       // Send the invitation email
-      const { data: emailResult, error: emailError } = await supabase.functions.invoke(
+      const { data: emailResult, error: emailError } = await invokeFunction(
         "send-invitation-email",
         {
           body: {
@@ -126,7 +109,7 @@ export const InviteMemberDialog = ({
             organizationName,
             role,
             inviterName: user.email?.split("@")[0] || "A team member",
-            token: invitation.token,
+            token: token,
           },
         }
       );
@@ -173,20 +156,16 @@ export const InviteMemberDialog = ({
     setIsLoading(true);
     try {
       // Create the invitation without email
-      const { data: invitation, error: inviteError } = await supabase
-        .from("invitations")
-        .insert({
-          organization_id: organizationId,
-          email: `invite-link-${Date.now()}@pending.local`,
-          role: role,
-          invited_by: user.id,
-        })
-        .select("token")
-        .single();
+      let token: string | null = null;
+      const { data, error } = await invokeFunction<{ token?: string }>("create-invitation", {
+        body: { organizationId, role },
+      });
+      if (error) throw error;
+      token = data?.token || null;
 
-      if (inviteError) throw inviteError;
+      if (!token) throw new Error("Failed to generate invite token.");
 
-      const link = `${window.location.origin}/auth?invite=${invitation.token}`;
+      const link = `${window.location.origin}/auth?invite=${token}`;
       setInviteLink(link);
       
       toast({

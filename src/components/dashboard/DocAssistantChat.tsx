@@ -19,7 +19,7 @@ import {
   MessageSquare,
   X
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -121,7 +121,7 @@ export function DocAssistantChat({
     setIsLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke("docs-ai-assistant", {
+      const { data, error } = await invokeFunction("docs-ai-assistant", {
         body: {
           messages: [...messages, userMessage].map((m) => ({
             role: m.role,

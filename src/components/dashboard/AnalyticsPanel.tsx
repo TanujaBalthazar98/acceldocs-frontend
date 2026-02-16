@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { BarChart3, FileText, Globe2, Users } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { USE_STRAPI } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 interface AnalyticsPanelProps {
@@ -41,29 +41,12 @@ export const AnalyticsPanel = ({ projectId, documentId, className }: AnalyticsPa
       setLoading(true);
       setError(null);
 
-      const { data: response, error: invokeError } = await supabase.functions.invoke<AnalyticsResponse>(
-        "posthog-analytics",
-        {
-          body: {
-            projectId,
-            documentId: documentId || null,
-          },
-        }
-      );
-
-      if (cancelled) return;
-
-      if (invokeError) {
-        setError("Failed to load analytics.");
+      if (USE_STRAPI) {
+        setError("Analytics are not available in Strapi mode yet.");
         setData(null);
-      } else if (response?.ok === false) {
-        setError(response.error?.message || "Analytics not configured.");
-        setData(response);
-      } else {
-        setData(response || null);
+        setLoading(false);
+        return;
       }
-
-      setLoading(false);
     };
 
     fetchAnalytics();

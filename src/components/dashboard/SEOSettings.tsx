@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 interface SEOSettingsProps {
@@ -33,41 +32,22 @@ export const SEOSettings = ({ projectId }: SEOSettingsProps) => {
 
   const fetchSettings = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("projects")
-      .select("allow_indexing, disallowed_paths, allow_llm_training, allow_llm_summarization, allow_llm_crawlers")
-      .eq("id", projectId)
-      .single();
-
-    if (data && !error) {
-      setAllowIndexing(data.allow_indexing ?? true);
-      setDisallowedPaths(data.disallowed_paths ?? []);
-      setAllowLlmTraining(data.allow_llm_training ?? false);
-      setAllowLlmSummarization(data.allow_llm_summarization ?? true);
-      setAllowLlmCrawlers(data.allow_llm_crawlers ?? []);
-    }
+    setAllowIndexing(true);
+    setDisallowedPaths([]);
+    setAllowLlmTraining(false);
+    setAllowLlmSummarization(true);
+    setAllowLlmCrawlers([]);
     setLoading(false);
   };
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase
-      .from("projects")
-      .update({
-        allow_indexing: allowIndexing,
-        disallowed_paths: disallowedPaths,
-        allow_llm_training: allowLlmTraining,
-        allow_llm_summarization: allowLlmSummarization,
-        allow_llm_crawlers: allowLlmCrawlers,
-      })
-      .eq("id", projectId);
-
     setSaving(false);
-    if (error) {
-      toast({ title: "Error", description: "Failed to save SEO settings.", variant: "destructive" });
-    } else {
-      toast({ title: "Saved", description: "SEO & crawler settings updated." });
-    }
+    toast({
+      title: "Not available",
+      description: "SEO settings are not available in Strapi mode yet.",
+      variant: "destructive",
+    });
   };
 
   const addPath = () => {

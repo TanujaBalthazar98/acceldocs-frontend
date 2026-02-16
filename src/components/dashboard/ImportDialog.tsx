@@ -9,10 +9,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Upload, FileText, Folder, Loader2, AlertCircle, FolderTree } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { useAuth } from "@/contexts/AuthContext";
 import { ImportProgressIndicator } from "./ImportProgressIndicator";
-import { Progress } from "@/components/ui/progress";
 import { splitImportBatches } from "@/lib/importBatching";
 
 interface ImportDialogProps {
@@ -235,7 +234,7 @@ export const ImportDialog = ({
       const totalFiles = filesWithContext.length;
 
       const invokeBatch = (batchFiles: typeof filesWithContext, batchStart: number, jobId?: string | null) =>
-        supabase.functions.invoke("import-markdown", {
+        invokeFunction("import-markdown", {
           body: {
             files: batchFiles,
             projectId,

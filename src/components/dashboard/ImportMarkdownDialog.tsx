@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { FileText, Folder, Upload, Loader2, ArrowRight, ArrowLeft } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
@@ -209,51 +209,27 @@ export const ImportMarkdownDialog = ({
           
           initialDriveFolderId = projectFolder.id;
 
-          const { data: newProject, error: projError } = await supabase
-            .from("projects")
-            .insert({
-                name: targetName,
-                slug: targetName.toLowerCase().replace(/\s+/g, "-"),
-                organization_id: organizationId,
-                owner_id: user.id,
-                drive_folder_id: initialDriveFolderId,
-                is_published: false
-            } as any)
-            .select()
-            .single();
+          const { data: projectRes, error: projError } = await invokeFunction<{
+            ok?: boolean;
+            projectId?: string;
+            versionId?: string;
+            error?: string;
+          }>("create-project", {
+            body: {
+              name: targetName,
+              organizationId,
+              parentId: null,
+              driveFolderId: initialDriveFolderId,
+              isPublished: false,
+            },
+          });
 
-           if (projError) throw projError;
-           targetProjectId = (newProject as any).id;
-           
-           // Fetch the default version created by triggers
-           // We retry a few times to allow trigger to complete if necessary, 
-           // though usually it's fast enough or we just wait a bit.
-           // For now, simple fetch.
-           const { data: versionData } = await supabase
-             .from("project_versions")
-             .select("id")
-             .eq("project_id", targetProjectId)
-             .eq("is_default", true)
-             .maybeSingle();
-            
-           if (versionData) {
-               targetVersionId = versionData.id;
-           } else {
-               // Fallback: Create a version if trigger didn't (safeguard)
-               const { data: newVersion, error: vError } = await supabase
-                 .from("project_versions")
-                 .insert({
-                     project_id: targetProjectId,
-                     name: "v0.1.0",
-                     is_default: true,
-                     is_published: false
-                 } as any)
-                 .select()
-                 .single();
-                
-               if (vError) throw vError;
-               targetVersionId = (newVersion as any).id;
-           }
+          if (projError || !projectRes?.ok || !projectRes?.projectId) {
+            throw projError || new Error(projectRes?.error || "Failed to create project");
+          }
+
+          targetProjectId = projectRes.projectId;
+          targetVersionId = projectRes.versionId || targetVersionId;
 
       } else if (importType === 'subproject') {
           // Create Sub-project under current project
@@ -262,24 +238,27 @@ export const ImportMarkdownDialog = ({
           
           initialDriveFolderId = subProjectFolder.id;
 
-          const { data: newSubProject, error: subProjError } = await supabase
-            .from("projects")
-            .insert({
-                name: targetName,
-                slug: targetName.toLowerCase().replace(/\s+/g, "-"),
-                organization_id: organizationId,
-                parent_id: projectId,
-                owner_id: user.id,
-                drive_folder_id: initialDriveFolderId,
-                is_published: false
-            } as any)
-            .select()
-            .single();
-            
-           if (subProjError) throw subProjError;
-           targetProjectId = (newSubProject as any).id;
-           // Sub-projects use the Root Project's versioning context usually.
-           // So we keep targetVersionId = projectVersionId (from root).
+          const { data: subProjectRes, error: subProjError } = await invokeFunction<{
+            ok?: boolean;
+            projectId?: string;
+            versionId?: string;
+            error?: string;
+          }>("create-project", {
+            body: {
+              name: targetName,
+              organizationId,
+              parentId: projectId,
+              driveFolderId: initialDriveFolderId,
+              isPublished: false,
+            },
+          });
+
+          if (subProjError || !subProjectRes?.ok || !subProjectRes?.projectId) {
+            throw subProjError || new Error(subProjectRes?.error || "Failed to create sub-project");
+          }
+
+          targetProjectId = subProjectRes.projectId;
+          targetVersionId = subProjectRes.versionId || targetVersionId;
 
       } else if (importType === 'topic') {
           // Create Topic under current project
@@ -288,21 +267,24 @@ export const ImportMarkdownDialog = ({
            
            initialDriveFolderId = topicFolder.id;
 
-           const { data: newTopic, error: topicError } = await supabase
-              .from("topics")
-              .insert({
-                project_id: projectId,
-                project_version_id: projectVersionId,
-                name: targetName,
-                slug: targetName.toLowerCase().replace(/\s+/g, "-"),
-                parent_id: null, // Root topic in this context
-                drive_folder_id: initialDriveFolderId,
-              } as any)
-              .select()
-              .single();
+           const { data: topicRes, error: topicError } = await invokeFunction<{
+             ok?: boolean;
+             topicId?: string;
+             error?: string;
+           }>("create-topic", {
+             body: {
+               projectId: projectId,
+               projectVersionId: projectVersionId,
+               name: targetName,
+               parentId: null,
+               driveFolderId: initialDriveFolderId,
+             },
+           });
 
-            if (topicError) throw topicError;
-            targetParentTopicId = (newTopic as any).id;
+           if (topicError || !topicRes?.ok || !topicRes?.topicId) {
+             throw topicError || new Error(topicRes?.error || "Failed to create topic");
+           }
+           targetParentTopicId = topicRes.topicId;
       }
 
       let processedFiles = 0;
@@ -326,32 +308,29 @@ export const ImportMarkdownDialog = ({
             const targetFolderId = newDriveFolder?.id || currentDriveFolderId;
 
             // 2. Create Topic in Supabase
-            const { data: topic, error: topicError } = await supabase
-              .from("topics")
-              .insert({
-                project_id: currentProjectId,
-                project_version_id: currentProjectVersionId,
+            const { data: topic, error: topicError } = await invokeFunction<{
+              ok?: boolean;
+              topicId?: string;
+              error?: string;
+            }>("create-topic", {
+              body: {
+                projectId: currentProjectId,
+                projectVersionId: currentProjectVersionId,
                 name: item.name,
-                slug: item.name.toLowerCase().replace(/\s+/g, "-"),
-                parent_id: parentTopicId,
-                drive_folder_id: targetFolderId,
-              } as any)
-              .select()
-              .single();
+                parentId: parentTopicId,
+                driveFolderId: targetFolderId,
+              },
+            });
 
-            if (topicError) {
-              console.error("Error creating topic:", topicError);
-              errors.push({ type: 'topic', name: item.name, error: topicError.message });
-              continue;
-            }
-            if (!topic) {
-              errors.push({ type: 'topic', name: item.name, error: 'Failed to create topic record' });
+            if (topicError || !topic?.ok || !topic?.topicId) {
+              console.error("Error creating topic:", topicError || topic?.error);
+              errors.push({ type: 'topic', name: item.name, error: topicError?.message || topic?.error || "Failed to create topic record" });
               continue;
             }
 
             // Process children
             if (item.children) {
-              await processItems(item.children, (topic as any).id, token, targetFolderId, currentProjectId, currentProjectVersionId);
+              await processItems(item.children, topic.topicId, token, targetFolderId, currentProjectId, currentProjectVersionId);
             }
           } else if (item.type === "file") {
             if (!item.content) {
@@ -361,7 +340,7 @@ export const ImportMarkdownDialog = ({
 
             // Convert Markdown to Google Doc
             try {
-              const response = await supabase.functions.invoke("convert-markdown-to-gdoc", {
+              const response = await invokeFunction("convert-markdown-to-gdoc", {
                 body: {
                   markdownContent: item.content,
                   title: item.name,
@@ -379,21 +358,25 @@ export const ImportMarkdownDialog = ({
               const { documentId } = response.data;
 
               // Create document record
-              const { error: docError } = await supabase.from("documents").insert({
-                project_id: currentProjectId,
-                project_version_id: currentProjectVersionId,
-                topic_id: parentTopicId,
-                title: item.name,
-                slug: item.name.toLowerCase().replace(/\s+/g, "-"),
-                google_doc_id: documentId,
-                is_published: false,
-                visibility: "internal",
-                owner_id: user?.id
-              } as any);
+              const { data: docRes, error: docError } = await invokeFunction<{
+                ok?: boolean;
+                documentId?: string;
+                error?: string;
+              }>("create-document", {
+                body: {
+                  projectId: currentProjectId,
+                  projectVersionId: currentProjectVersionId,
+                  topicId: parentTopicId,
+                  title: item.name,
+                  googleDocId: documentId,
+                  isPublished: false,
+                  visibility: "internal",
+                },
+              });
 
-              if (docError) {
-                console.error("Error creating document record:", docError);
-                errors.push({ type: 'document', name: item.name, error: docError.message });
+              if (docError || !docRes?.ok) {
+                console.error("Error creating document record:", docError || docRes?.error);
+                errors.push({ type: 'document', name: item.name, error: docError?.message || docRes?.error || "Failed to create document record" });
                 continue;
               }
 

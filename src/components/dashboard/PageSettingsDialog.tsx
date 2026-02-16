@@ -28,7 +28,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/api/auth";
+import { list } from "@/lib/api/queries";
+import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import { Link2, ExternalLink, Trash2, FolderInput } from "lucide-react";
 
@@ -85,34 +87,38 @@ export const PageSettingsDialog = ({
   const fetchDocumentData = async () => {
     if (!documentId) return;
 
-    const { data } = await supabase
-      .from("documents")
-      .select("title, slug, is_published, content_html, published_content_html, topic_id, video_url, video_title")
-      .eq("id", documentId)
-      .single();
-
-    if (data) {
-      setTitle(data.title);
-      setSlug(data.slug || "");
-      setIsPublished(data.is_published);
-      setCurrentTopicId(data.topic_id);
-      setSelectedTopicId(data.topic_id);
-      setVideoUrl(data.video_url || "");
-      setVideoTitle(data.video_title || "");
+    const { data, error } = await strapiFetch<{ data: any }>(
+      `/api/documents/${documentId}?populate[topic][fields][0]=id`
+    );
+    if (!error && data?.data) {
+      const attrs = data.data.attributes || {};
+      const topicId = attrs.topic?.data?.id ? String(attrs.topic.data.id) : null;
+      setTitle(attrs.title || "");
+      setSlug(attrs.slug || "");
+      setIsPublished(!!attrs.is_published);
+      setCurrentTopicId(topicId);
+      setSelectedTopicId(topicId);
+      setVideoUrl(attrs.video_url || "");
+      setVideoTitle(attrs.video_title || "");
     }
   };
 
   const fetchTopics = async () => {
     if (!projectId) return;
-    
-    const { data } = await supabase
-      .from("topics")
-      .select("id, name, parent_id")
-      .eq("project_id", projectId)
-      .order("display_order");
-    
-    if (data) {
-      setTopics(data);
+
+    const { data, error } = await strapiFetch<{ data: any[] }>(
+      `/api/topics?filters[project][id][$eq]=${projectId}&populate[parent][fields][0]=id&pagination[limit]=1000&sort=display_order:asc`
+    );
+    if (!error && data?.data) {
+      const mapped = data.data.map((row) => {
+        const attrs = row.attributes || {};
+        return {
+          id: String(row.id),
+          name: attrs.name || "",
+          parent_id: attrs.parent?.data?.id ? String(attrs.parent.data.id) : null,
+        };
+      });
+      setTopics(mapped);
     }
   };
 
@@ -153,16 +159,17 @@ export const PageSettingsDialog = ({
 
   const checkSlugAvailability = async (slugValue: string): Promise<boolean> => {
     if (!slugValue || !projectId) return true;
-    
-    const { data } = await supabase
-      .from("documents")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("slug", slugValue)
-      .neq("id", documentId)
-      .maybeSingle();
-    
-    if (data) {
+
+    const { data } = await list<any>("documents", {
+      select: "id",
+      filters: {
+        project_id: projectId,
+        slug: slugValue,
+        id: { neq: documentId },
+      },
+      limit: 1,
+    });
+    if (data && data.length > 0) {
       setSlugError("This URL slug is already in use");
       return false;
     }
@@ -173,8 +180,8 @@ export const PageSettingsDialog = ({
     if (!documentId) return;
 
     // Ensure we have an authenticated session before attempting writes.
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
+    const sessionData = await auth.getSession();
+    if (!sessionData) {
       toast({
         title: "Session expired",
         description: "Please sign in again and retry.",
@@ -192,11 +199,13 @@ export const PageSettingsDialog = ({
     setIsSaving(true);
 
     // First fetch current document state to get content_html
-    const { data: currentDoc } = await supabase
-      .from("documents")
-      .select("content_html, is_published")
-      .eq("id", documentId)
-      .single();
+    const currentDoc = await invokeFunction<{
+      ok?: boolean;
+      document?: any;
+      error?: string;
+    }>("get-document", {
+      body: { documentId },
+    });
 
     const updateData: Record<string, any> = {
       title,
@@ -212,27 +221,29 @@ export const PageSettingsDialog = ({
     updateData.video_title = videoUrl.trim() ? (videoTitle.trim() || null) : null;
 
     // If publishing (was unpublished, now published), copy content_html to published_content_html
-    if (isPublished && currentDoc && !currentDoc.is_published && currentDoc.content_html) {
-      updateData.published_content_html = currentDoc.content_html;
+    const currentDocAttrs = currentDoc?.data?.document || null;
+    if (isPublished && currentDocAttrs && !currentDocAttrs.is_published && currentDocAttrs.content_html) {
+      updateData.published_content_html = currentDocAttrs.content_html;
     }
 
     // Handle topic change
     if (selectedTopicId !== currentTopicId) {
-      updateData.topic_id = selectedTopicId;
+      updateData.topic = selectedTopicId;
     }
 
-    const { data: updatedRows, error } = await supabase
-      .from("documents")
-      .update(updateData)
-      .eq("id", documentId)
-      // IMPORTANT: request returning rows so we can detect RLS "0 rows affected" cases
-      .select("id");
+    const { data, error } = await invokeFunction<{
+      ok?: boolean;
+      document?: any;
+      error?: string;
+    }>("update-document", {
+      body: { documentId, data: updateData },
+    });
 
     setIsSaving(false);
 
-    if (error || !updatedRows || updatedRows.length === 0) {
-      const { data: authData } = await supabase.auth.getUser();
-      const signedInAs = authData.user?.email ? `Signed in as ${authData.user.email}. ` : "";
+    if (error || !data?.ok) {
+      const { user: authUser } = await auth.getUser();
+      const signedInAs = authUser?.email ? `Signed in as ${authUser.email}. ` : "";
 
       toast({
         title: "Couldn't save",

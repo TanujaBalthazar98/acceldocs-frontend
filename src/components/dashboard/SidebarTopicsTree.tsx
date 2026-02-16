@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FolderPlus, Plus, MoreHorizontal, Settings, Trash2, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { USE_STRAPI } from "@/lib/api/client";
 import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
@@ -104,6 +104,7 @@ export function SidebarTopicsTree({
 
   // Drag handlers
   const handleDragStart = useCallback((e: React.DragEvent, topicId: string) => {
+    if (USE_STRAPI) return;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', topicId);
     setDragState(prev => ({ ...prev, draggedId: topicId }));
@@ -114,6 +115,7 @@ export function SidebarTopicsTree({
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent, topicId: string) => {
+    if (USE_STRAPI) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     
@@ -145,89 +147,13 @@ export function SidebarTopicsTree({
 
   const handleDrop = useCallback(async (e: React.DragEvent, targetTopicId: string) => {
     e.preventDefault();
-    
-    const draggedId = dragState.draggedId;
-    const dropPosition = dragState.dropPosition;
-    
-    if (!draggedId || draggedId === targetTopicId || !dropPosition) {
-      setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
-      return;
-    }
-
-    const draggedTopic = topics.find(t => t.id === draggedId);
-    const targetTopic = topics.find(t => t.id === targetTopicId);
-    
-    if (!draggedTopic || !targetTopic) return;
-
-    // Prevent dropping a parent into its own child
-    const isDescendant = (parentId: string, childId: string): boolean => {
-      const children = topics.filter(t => t.parent_id === parentId);
-      for (const child of children) {
-        if (child.id === childId || isDescendant(child.id, childId)) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    if (isDescendant(draggedId, targetTopicId)) {
-      toast({
-        title: "Invalid move",
-        description: "Cannot move a topic into its own subtopic.",
-        variant: "destructive",
-      });
-      setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
-      return;
-    }
-
-    try {
-      let newParentId: string | null;
-      let newOrder: number;
-      
-      if (dropPosition === 'inside') {
-        newParentId = targetTopicId;
-        const siblings = topics.filter(t => t.parent_id === targetTopicId);
-        newOrder = siblings.length > 0 ? Math.max(...siblings.map(s => s.display_order || 0)) + 1 : 0;
-        setExpandedTopics(prev => new Set([...prev, targetTopicId]));
-      } else {
-        newParentId = targetTopic.parent_id;
-        const siblings = topics.filter(t => t.parent_id === newParentId && t.id !== draggedId);
-        const targetIndex = siblings.findIndex(s => s.id === targetTopicId);
-        
-        if (dropPosition === 'before') {
-          newOrder = targetIndex > 0 
-            ? Math.floor((siblings[targetIndex - 1].display_order + targetTopic.display_order) / 2) 
-            : targetTopic.display_order - 1;
-        } else {
-          newOrder = targetIndex < siblings.length - 1 
-            ? Math.floor((targetTopic.display_order + siblings[targetIndex + 1].display_order) / 2) 
-            : targetTopic.display_order + 1;
-        }
-      }
-
-      const { error } = await supabase
-        .from('topics')
-        .update({ parent_id: newParentId, display_order: newOrder })
-        .eq('id', draggedId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Topic moved",
-        description: `"${draggedTopic.name}" has been moved.`,
-      });
-
-      onTopicsReordered?.();
-    } catch (error: any) {
-      toast({
-        title: "Failed to move topic",
-        description: error.message || "An error occurred.",
-        variant: "destructive",
-      });
-    }
-
+    toast({
+      title: "Reorder unavailable",
+      description: "Drag-and-drop reordering is not available in Strapi mode yet.",
+      variant: "destructive",
+    });
     setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
-  }, [dragState.draggedId, dragState.dropPosition, topics, toast, onTopicsReordered]);
+  }, [toast]);
 
   const renderTopicNode = (node: TopicTreeNode, depth: number = 0): JSX.Element => {
     const { topic, children } = node;
@@ -246,7 +172,7 @@ export function SidebarTopicsTree({
         
         <div
           data-topic-id={topic.id}
-          draggable
+          draggable={!USE_STRAPI}
           onDragStart={(e) => handleDragStart(e, topic.id)}
           onDragEnd={handleDragEnd}
           onDragOver={(e) => handleDragOver(e, topic.id)}
@@ -298,7 +224,10 @@ export function SidebarTopicsTree({
               e.stopPropagation();
               onAddPage(topic);
             }}
-            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
+            className={cn(
+              "p-1 rounded hover:bg-background transition-all shrink-0",
+              isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            )}
             title="Add page"
           >
             <Plus className="w-3 h-3" />
@@ -308,7 +237,10 @@ export function SidebarTopicsTree({
             <DropdownMenuTrigger asChild>
               <button
                 onClick={(e) => e.stopPropagation()}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background transition-all shrink-0"
+                className={cn(
+                  "p-1 rounded hover:bg-background transition-all shrink-0",
+                  isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}
               >
                 <MoreHorizontal className="w-3 h-3" />
               </button>

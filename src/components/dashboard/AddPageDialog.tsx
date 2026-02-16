@@ -13,7 +13,7 @@ import { FileText, Upload, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 
 interface AddPageDialogProps {
   open: boolean;
@@ -121,7 +121,7 @@ export const AddPageDialog = ({
       const fileName = selectedFile.name.replace(/\.md$/, "");
 
       // Convert markdown to Google Doc
-      const response = await supabase.functions.invoke("convert-markdown-to-gdoc", {
+      const response = await invokeFunction("convert-markdown-to-gdoc", {
         body: {
           markdownContent: fileContent,
           title: fileName,
@@ -137,23 +137,23 @@ export const AddPageDialog = ({
       const { documentId } = response.data;
 
       // Create database record
-      const { data: inserted, error: docError } = await supabase
-        .from("documents")
-        .insert({
-          project_id: projectId,
-          project_version_id: projectVersionId,
-          topic_id: topicId || null,
+      const { data: inserted, error: docError } = await invokeFunction<{
+        ok?: boolean;
+        documentId?: string;
+        error?: string;
+      }>("create-document", {
+        body: {
+          projectId,
+          projectVersionId,
+          topicId: topicId || null,
           title: fileName,
-          slug: fileName.toLowerCase().replace(/\s+/g, "-"),
-          google_doc_id: documentId,
-          is_published: false,
+          googleDocId: documentId,
+          isPublished: false,
           visibility: "internal",
-          owner_id: user?.id,
-        } as any)
-        .select("id, title, google_doc_id")
-        .single();
+        },
+      });
 
-      if (docError || !inserted) {
+      if (docError || !inserted?.ok) {
         console.error("Error saving document:", docError);
         toast({
           title: "Save failed",
@@ -165,13 +165,13 @@ export const AddPageDialog = ({
 
       toast({
         title: "Page imported",
-        description: `\"${(inserted as any).title}\" imported into ${locationText}.`,
+        description: `\"${fileName}\" imported into ${locationText}.`,
       });
 
       onCreated?.({
-        id: (inserted as any).id,
-        name: (inserted as any).title,
-        google_doc_id: (inserted as any).google_doc_id,
+        id: inserted?.documentId || "",
+        name: fileName,
+        google_doc_id: documentId,
       });
       handleClose();
     } catch (error: any) {
@@ -209,22 +209,23 @@ export const AddPageDialog = ({
         return;
       }
 
-      const { data: inserted, error } = await supabase
-        .from("documents")
-        .insert({
-          google_doc_id: doc.id,
-          project_id: projectId,
-          project_version_id: projectVersionId || undefined,
-          topic_id: topicId || null,
+      const { data: inserted, error } = await invokeFunction<{
+        ok?: boolean;
+        documentId?: string;
+        error?: string;
+      }>("create-document", {
+        body: {
+          googleDocId: doc.id,
+          projectId,
+          projectVersionId: projectVersionId || null,
+          topicId: topicId || null,
           title: doc.name,
-          owner_id: user?.id || null,
-          last_synced_at: new Date().toISOString(),
-          google_modified_at: new Date().toISOString(),
-        })
-        .select("id, title, google_doc_id")
-        .single();
+          isPublished: false,
+          visibility: "internal",
+        },
+      });
 
-      if (error || !inserted) {
+      if (error || !inserted?.ok) {
         console.error("Error saving document:", error);
         toast({
           title: "Save failed",
@@ -236,14 +237,14 @@ export const AddPageDialog = ({
 
       toast({
         title: "Page created",
-        description: `Created "${inserted.title}" in ${locationText}.`,
+        description: `Created "${doc.name}" in ${locationText}.`,
       });
       setTitle("");
       onOpenChange(false);
       onCreated?.({
-        id: inserted.id,
-        name: inserted.title,
-        google_doc_id: inserted.google_doc_id,
+        id: inserted?.documentId || "",
+        name: doc.name,
+        google_doc_id: doc.id,
       });
     } finally {
       setIsCreating(false);

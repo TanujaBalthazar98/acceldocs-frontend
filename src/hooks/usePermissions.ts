@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeFunction } from '@/lib/api/functions';
+import { USE_STRAPI } from '@/lib/api/client';
+import { create, getById, list } from '@/lib/api/queries';
 import {
   ProjectRole,
   ProjectPermissions,
@@ -67,16 +69,88 @@ export function usePermissions(projectId: string | null) {
     setLoading(true);
 
     try {
+      if (USE_STRAPI) {
+        const { data, error } = await invokeFunction<{
+          project?: any;
+          organization?: any;
+          orgRoles?: any[];
+          projectMembers?: any[];
+        }>('get-project-settings', { body: { projectId } });
+
+        if (error || !data?.project) {
+          setRole(null);
+          setPermissions(EMPTY_PERMISSIONS);
+          setLoading(false);
+          return;
+        }
+
+        const org = data.organization || null;
+        const orgOwnerId = org?.owner?.id ? String(org.owner.id) : null;
+        const orgOwner = orgOwnerId === String(user.id);
+        setIsOrgOwner(orgOwner);
+
+        if (data.effectiveRole) {
+          const effectiveRole = data.effectiveRole as ProjectRole;
+          setRole(effectiveRole);
+          setPermissions(getPermissionsForRole(effectiveRole, orgOwner));
+          setLoading(false);
+          return;
+        }
+
+        if (orgOwner) {
+          setRole('admin');
+          setPermissions(getPermissionsForRole('admin', true));
+          setLoading(false);
+          return;
+        }
+
+        const orgRoleRow = (data.orgRoles || []).find((r: any) => String(r.user?.id) === String(user.id));
+        if (orgRoleRow) {
+          const appRole = orgRoleRow.role as string;
+          let mappedRole: ProjectRole = null;
+
+          if (appRole === 'owner' || appRole === 'admin') {
+            mappedRole = 'admin';
+          } else if (appRole === 'editor') {
+            mappedRole = 'editor';
+          } else if (appRole === 'viewer') {
+            mappedRole = 'viewer';
+          }
+
+          if (mappedRole) {
+            setRole(mappedRole);
+            setPermissions(getPermissionsForRole(mappedRole, false));
+            setLoading(false);
+            return;
+          }
+        }
+
+        const membershipRow = (data.projectMembers || []).find((m: any) => String(m.user?.id) === String(user.id));
+        if (membershipRow) {
+          const userRole = membershipRow.role as ProjectRole;
+          setRole(userRole);
+          setPermissions(getPermissionsForRole(userRole, false));
+        } else {
+          const visibility = data.project?.visibility;
+          const isPublished = !!data.project?.is_published;
+          if (isPublished && visibility === 'public') {
+            setRole('viewer');
+            setPermissions(getPermissionsForRole('viewer', false));
+          } else {
+            setRole(null);
+            setPermissions(EMPTY_PERMISSIONS);
+          }
+        }
+        setLoading(false);
+        return;
+      }
+
       // Check if user is org owner first
-      const { data: project } = await supabase
-        .from('projects')
-        .select(`
-          id,
-          organization_id,
-          organizations!projects_organization_id_fkey(owner_id)
-        `)
-        .eq('id', projectId)
-        .maybeSingle();
+      const { data: project } = await getById<{ id: string; organization_id: string | null }>(
+        'projects',
+        projectId,
+        { select: 'id, organization_id' },
+      );
 
       if (!project) {
         setRole(null);
@@ -86,7 +160,10 @@ export function usePermissions(projectId: string | null) {
       }
 
       const orgId = project.organization_id;
-      const orgOwner = (project.organizations as any)?.owner_id === user.id;
+      const { data: org } = orgId
+        ? await getById<{ owner_id: string | null }>('organizations', orgId, { select: 'owner_id' })
+        : { data: null };
+      const orgOwner = org?.owner_id === user.id;
       setIsOrgOwner(orgOwner);
 
       if (orgOwner) {
@@ -98,12 +175,12 @@ export function usePermissions(projectId: string | null) {
       }
 
       // Check org-level role (user_roles table) - this cascades to all projects
-      const { data: orgRole } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('organization_id', orgId)
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const { data: orgRoles } = await list<{ role: string }>('user_roles', {
+        select: 'role',
+        filters: { organization_id: orgId, user_id: user.id },
+        limit: 1,
+      });
+      const orgRole = orgRoles?.[0] ?? null;
 
       if (orgRole) {
         // Map org-level app_role to project_role
@@ -127,12 +204,12 @@ export function usePermissions(projectId: string | null) {
       }
 
       // Check explicit project membership
-      const { data: membership } = await supabase
-        .from('project_members')
-        .select('role')
-        .eq('project_id', projectId)
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const { data: memberships } = await list<{ role: string }>('project_members', {
+        select: 'role',
+        filters: { project_id: projectId, user_id: user.id },
+        limit: 1,
+      });
+      const membership = memberships?.[0] ?? null;
 
       if (membership) {
         const userRole = membership.role as ProjectRole;
@@ -140,11 +217,11 @@ export function usePermissions(projectId: string | null) {
         setPermissions(getPermissionsForRole(userRole, false));
       } else {
         // Check if project is public
-        const { data: publicProject } = await supabase
-          .from('projects')
-          .select('is_published, visibility')
-          .eq('id', projectId)
-          .maybeSingle();
+        const { data: publicProject } = await getById<{ is_published: boolean; visibility: string | null }>(
+          'projects',
+          projectId,
+          { select: 'is_published, visibility' },
+        );
 
         if (publicProject?.is_published && publicProject?.visibility === 'public') {
           setRole('viewer');
@@ -184,7 +261,7 @@ export function usePermissions(projectId: string | null) {
     if (!projectId) return;
 
     try {
-      await supabase.functions.invoke('sync-drive-permissions', {
+      await invokeFunction('sync-drive-permissions', {
         body: { projectId }
       });
     } catch (error) {
@@ -198,7 +275,7 @@ export function usePermissions(projectId: string | null) {
 
     didDrivePullSync.current = true;
     try {
-      await supabase.functions.invoke('sync-drive-permissions', {
+      await invokeFunction('sync-drive-permissions', {
         body: { projectId, direction: "pull", enforceNoDownload: true }
       });
     } catch (error) {
@@ -238,7 +315,7 @@ export function useAuditLog() {
     if (!user) return;
 
     try {
-      await supabase.from('audit_logs').insert({
+      await create('audit_logs', {
         user_id: user.id,
         action,
         entity_type: entityType,

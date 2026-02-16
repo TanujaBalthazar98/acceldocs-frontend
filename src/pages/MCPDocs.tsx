@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { MCPDocs as MCPDocsComponent } from "@/components/docs/MCPDocs";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Bot } from "lucide-react";
 import { useBrandingLoader, useBrandingStyles } from "@/hooks/useBrandingLoader";
+import { strapiFetch } from "@/lib/api/client";
 
 interface Organization {
   id: string;
@@ -23,6 +23,14 @@ interface Organization {
   custom_css: string | null;
   mcp_enabled: boolean | null;
 }
+
+const unwrapStrapiEntity = <T extends Record<string, any>>(entity: T | null | undefined): T | null => {
+  if (!entity) return null;
+  if ("attributes" in entity) {
+    return { id: String((entity as any).id), ...(entity as any).attributes } as T;
+  }
+  return entity;
+};
 
 export default function MCPDocs() {
   const { orgSlug } = useParams();
@@ -60,14 +68,29 @@ export default function MCPDocs() {
     setError(null);
 
     try {
-      // Fetch organization by slug or domain
-      const { data: org, error: orgError } = await supabase
-        .from("organizations")
-        .select("*")
-        .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
-        .maybeSingle();
+      const slugParams = new URLSearchParams({
+        "filters[slug][$eq]": orgSlug!,
+        "pagination[limit]": "1",
+      });
+      const { data: slugRes, error: slugError } = await strapiFetch<{ data: Organization[] }>(
+        `/api/organizations?${slugParams.toString()}`,
+      );
 
-      if (orgError) throw orgError;
+      if (slugError) throw slugError;
+      let org = unwrapStrapiEntity(slugRes?.data?.[0]) as Organization | null;
+
+      if (!org) {
+        const domainParams = new URLSearchParams({
+          "filters[domain][$eq]": orgSlug!,
+          "pagination[limit]": "1",
+        });
+        const { data: domainRes, error: domainError } = await strapiFetch<{ data: Organization[] }>(
+          `/api/organizations?${domainParams.toString()}`,
+        );
+        if (domainError) throw domainError;
+        org = unwrapStrapiEntity(domainRes?.data?.[0]) as Organization | null;
+      }
+
       if (!org) {
         setError("Organization not found");
         setLoading(false);

@@ -26,7 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SharePanel } from "./SharePanel";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
+import { getById } from "@/lib/api/queries";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { ensureFreshSession } from "@/lib/authSession";
@@ -103,11 +104,11 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
       const session = await ensureFreshSession();
       const accessToken = session?.access_token;
       if (!accessToken) return;
-      const { data, error } = await supabase.functions.invoke("document-cache", {
+      const { data, error } = await invokeFunction("document-cache", {
         body: { action: "get", documentId: document.id },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (error || !data?.success) return;
+      if (error || !(data?.ok ?? data?.success)) return;
       if (data?.contentHtml) setContentHtml(data.contentHtml);
     } catch (error) {
       console.error("Error fetching cached content:", error);
@@ -119,28 +120,16 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   const fetchContentFromDB = async () => {
     setIsLoadingContent(true);
     try {
-      const { data } = await supabase
-        .from("documents")
-        .select(`
-          content_html, 
-          published_content_html, 
-          content_id,
-          published_content_id,
-          draft:document_contents!content_id(content),
-          published:document_contents!published_content_id(content),
-          video_url, 
-          video_title
-        `)
-        .eq("id", document.id)
-        .single();
-      
-      if (data) {
-        const content = (data as any).draft?.content || data.content_html || (data as any).published?.content || data.published_content_html;
-        if (content) {
-          setContentHtml(content);
-        }
-        setVideoUrl(data.video_url ?? null);
-        setVideoTitle(data.video_title ?? null);
+      const { data, error } = await getById("documents", document.id, {
+        select: "content_html,published_content_html,content_id,published_content_id,video_url,video_title",
+      });
+      if (error) throw error;
+      const row = (data as any)?.attributes ? { id: (data as any).id, ...(data as any).attributes } : data;
+      if (row) {
+        const content = row.content_html || row.published_content_html || null;
+        if (content) setContentHtml(content);
+        setVideoUrl(row.video_url ?? null);
+        setVideoTitle(row.video_title ?? null);
       }
     } catch (error) {
       console.error("Error fetching document content:", error);
@@ -164,7 +153,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
       }
 
       const token = getGoogleToken();
-      const { data, error } = await supabase.functions.invoke("google-drive", {
+      const { data, error } = await invokeFunction("google-drive", {
         body: {
           action: "sync_doc_content",
           documentId: document.id,

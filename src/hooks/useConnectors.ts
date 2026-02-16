@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeFunction } from '@/lib/api/functions';
+import { USE_STRAPI } from '@/lib/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { useAuditLog } from '@/hooks/usePermissions';
 import { 
   Connector, 
   ConnectorAction, 
@@ -32,7 +32,6 @@ interface UseConnectorsResult {
 export function useConnectors(projectId?: string | null): UseConnectorsResult {
   const { user } = useAuth();
   const { permissions, role } = usePermissions(projectId || null);
-  const { logAction } = useAuditLog();
   
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,13 +42,13 @@ export function useConnectors(projectId?: string | null): UseConnectorsResult {
   useEffect(() => {
     const fetchOrgId = async () => {
       if (!user) return;
-      const { data } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .maybeSingle();
-      if (data?.organization_id) {
-        setOrganizationId(data.organization_id);
+      if (!USE_STRAPI) return;
+
+      const { data, error } = await invokeFunction<{ organizationId?: string }>("ensure-workspace", {
+        body: {},
+      });
+      if (!error && data?.organizationId) {
+        setOrganizationId(String(data.organizationId));
       }
     };
     fetchOrgId();
@@ -66,17 +65,7 @@ export function useConnectors(projectId?: string | null): UseConnectorsResult {
     setError(null);
 
     try {
-      // Fetch organization-level connectors
-      const { data, error: fetchError } = await supabase
-        .from('connectors')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false });
-
-      if (fetchError) throw fetchError;
-      
-      // Type assertion since we know the shape matches
-      setConnectors((data || []) as unknown as Connector[]);
+      setConnectors([]);
     } catch (err) {
       console.error('Error fetching connectors:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch connectors');
@@ -109,105 +98,25 @@ export function useConnectors(projectId?: string | null): UseConnectorsResult {
       toast.error('Not authenticated or no organization');
       return null;
     }
+    toast.error('Connectors are not available in Strapi mode yet.');
+    return null;
 
-    const definition = CONNECTOR_DEFINITIONS.find(d => d.type === type);
-    if (!definition) {
-      toast.error('Unknown connector type');
-      return null;
-    }
-
-    try {
-      const { data, error: insertError } = await supabase
-        .from('connectors')
-        .insert({
-          organization_id: organizationId,
-          connector_type: type,
-          name: definition.name,
-          description: definition.description,
-          status: 'disconnected' as const,
-          is_enabled: false,
-          metadata: (config || {}) as any,
-          created_by: user.id
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      // Create default permissions for all roles
-      const permissionInserts = (['admin', 'editor', 'reviewer', 'viewer'] as const).map(r => ({
-        connector_id: data.id,
-        role: r,
-        can_view: DEFAULT_CONNECTOR_PERMISSIONS[r].can_view,
-        can_use: DEFAULT_CONNECTOR_PERMISSIONS[r].can_use,
-        can_configure: DEFAULT_CONNECTOR_PERMISSIONS[r].can_configure
-      }));
-
-      for (const perm of permissionInserts) {
-        await supabase.from('connector_permissions').insert(perm);
-      }
-
-      await logAction('install_connector', 'connector', data.id, null, { type, name: definition.name });
-      
-      toast.success(`${definition.name} connector installed`);
-      await fetchConnectors();
-      
-      return data as unknown as Connector;
-    } catch (err) {
-      console.error('Error installing connector:', err);
-      toast.error('Failed to install connector');
-      return null;
-    }
-  }, [organizationId, user, logAction, fetchConnectors]);
+  }, [organizationId, user]);
 
   const updateConnector = useCallback(async (
     id: string, 
     updates: Partial<Connector>
   ): Promise<boolean> => {
     if (!user) return false;
-
-    try {
-      const { error: updateError } = await supabase
-        .from('connectors')
-        .update(updates as any)
-        .eq('id', id);
-
-      if (updateError) throw updateError;
-
-      await logAction('update_connector', 'connector', id, null, updates);
-      await fetchConnectors();
-      
-      toast.success('Connector updated');
-      return true;
-    } catch (err) {
-      console.error('Error updating connector:', err);
-      toast.error('Failed to update connector');
-      return false;
-    }
-  }, [user, logAction, fetchConnectors]);
+    toast.error('Connectors are not available in Strapi mode yet.');
+    return false;
+  }, [user]);
 
   const deleteConnector = useCallback(async (id: string): Promise<boolean> => {
     if (!user) return false;
-
-    try {
-      const { error: deleteError } = await supabase
-        .from('connectors')
-        .delete()
-        .eq('id', id);
-
-      if (deleteError) throw deleteError;
-
-      await logAction('delete_connector', 'connector', id, null);
-      await fetchConnectors();
-      
-      toast.success('Connector deleted');
-      return true;
-    } catch (err) {
-      console.error('Error deleting connector:', err);
-      toast.error('Failed to delete connector');
-      return false;
-    }
-  }, [user, logAction, fetchConnectors]);
+    toast.error('Connectors are not available in Strapi mode yet.');
+    return false;
+  }, [user]);
 
   const enableConnector = useCallback(async (id: string): Promise<boolean> => {
     return updateConnector(id, { is_enabled: true, status: 'connected' });
@@ -219,9 +128,12 @@ export function useConnectors(projectId?: string | null): UseConnectorsResult {
 
   const testConnection = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
+    if (USE_STRAPI) {
+      return { success: false, error: 'Connectors are not available in Strapi mode yet.' };
+    }
 
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('mcp-connector', {
+      const { data, error: invokeError } = await invokeFunction('mcp-connector', {
         body: {
           action: 'health_check',
           connector_id: id,
@@ -258,63 +170,15 @@ export function useConnectors(projectId?: string | null): UseConnectorsResult {
     actionType: string,
     params: Record<string, unknown>
   ): Promise<ConnectorAction | null> => {
-    if (!user) {
-      toast.error('Not authenticated');
-      return null;
-    }
-
-    const connector = connectors.find(c => c.id === connectorId);
-    if (!connector?.is_enabled) {
-      toast.error('Connector is not enabled');
-      return null;
-    }
-
-    try {
-      const { data, error: invokeError } = await supabase.functions.invoke('mcp-connector', {
-        body: {
-          action: actionType,
-          connector_id: connectorId,
-          organization_id: organizationId,
-          params
-        }
-      });
-
-      if (invokeError) throw invokeError;
-
-      await logAction(`connector_${actionType}`, 'connector_action', connectorId, null, 
-        { action: actionType, params, result: data?.success ? 'success' : 'failed' });
-
-      if (data?.action) {
-        return data.action as ConnectorAction;
-      }
-
-      return null;
-    } catch (err) {
-      console.error('Error executing connector action:', err);
-      toast.error('Failed to execute action');
-      return null;
-    }
-  }, [organizationId, user, connectors, logAction]);
+    toast.error('Connectors are not available in Strapi mode yet.');
+    return null;
+  }, []);
 
   const getConnectorActions = useCallback(async (
     connectorId: string, 
     limit = 50
   ): Promise<ConnectorAction[]> => {
-    try {
-      const { data, error: fetchError } = await supabase
-        .from('connector_actions')
-        .select('*')
-        .eq('connector_id', connectorId)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (fetchError) throw fetchError;
-      
-      return (data || []) as unknown as ConnectorAction[];
-    } catch (err) {
-      console.error('Error fetching connector actions:', err);
-      return [];
-    }
+    return [];
   }, []);
 
   return {

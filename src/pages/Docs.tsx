@@ -28,7 +28,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/api/auth";
+import { strapiFetch } from "@/lib/api/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useBrandingLoader, useBrandingStyles } from "@/hooks/useBrandingLoader";
@@ -55,6 +57,8 @@ interface Project {
   slug: string | null;
   visibility: VisibilityLevel;
   is_published: boolean;
+  drive_folder_id?: string | null;
+  drive_parent_id?: string | null;
   organization_id: string;
   parent_id: string | null;
   mcp_enabled?: boolean | null;
@@ -81,6 +85,7 @@ interface Organization {
   slug: string | null;
   domain: string;
   custom_docs_domain: string | null;
+  drive_folder_id?: string | null;
   logo_url: string | null;
   tagline: string | null;
   primary_color: string;
@@ -181,6 +186,210 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const docsBasePath = isInternalView ? "/internal" : "/docs";
   const normalizeHostname = (value?: string | null) =>
     (value || "").replace(/^www\./i, "").toLowerCase();
+
+  const unwrapStrapiEntity = <T extends Record<string, any>>(entity: T | null | undefined): T | null => {
+    if (!entity) return null;
+    if ((entity as any).attributes) {
+      return { id: (entity as any).id, ...(entity as any).attributes } as T;
+    }
+    return entity;
+  };
+
+  const mapOrganization = (row: any): Organization => {
+    const attrs = row?.attributes || row || {};
+    return {
+      id: String(row?.id ?? attrs.id),
+      name: attrs.name || "",
+      slug: attrs.slug ?? null,
+      domain: attrs.domain || "",
+      custom_docs_domain: attrs.custom_docs_domain ?? null,
+      drive_folder_id: attrs.drive_folder_id ?? null,
+      logo_url: attrs.logo_url ?? null,
+      tagline: attrs.tagline ?? null,
+      primary_color: attrs.primary_color || "",
+      secondary_color: attrs.secondary_color || "",
+      accent_color: attrs.accent_color || "",
+      font_heading: attrs.font_heading || "",
+      font_body: attrs.font_body || "",
+      custom_css: attrs.custom_css ?? null,
+      hero_title: attrs.hero_title ?? null,
+      hero_description: attrs.hero_description ?? null,
+      show_search_on_landing: attrs.show_search_on_landing ?? true,
+      show_featured_projects: attrs.show_featured_projects ?? true,
+      mcp_enabled: attrs.mcp_enabled ?? null,
+      openapi_spec_json: attrs.openapi_spec_json ?? null,
+      openapi_spec_url: attrs.openapi_spec_url ?? null,
+    };
+  };
+
+  const mapProject = (row: any): Project => {
+    const attrs = row?.attributes || row || {};
+    const parentRaw =
+      attrs.parent?.data?.id ??
+      attrs.parent?.id ??
+      attrs.parent_id ??
+      attrs.parent ??
+      null;
+    const orgRaw =
+      attrs.organization?.data?.id ??
+      attrs.organization?.id ??
+      attrs.organization_id ??
+      attrs.organization ??
+      "";
+    return {
+      id: String(row?.id ?? attrs.id),
+      name: attrs.name || "",
+      slug: attrs.slug ?? null,
+      visibility: attrs.visibility ?? "internal",
+      is_published: !!attrs.is_published,
+      drive_folder_id: attrs.drive_folder_id ?? null,
+      drive_parent_id: attrs.drive_parent_id ?? null,
+      organization_id: orgRaw ? String(orgRaw) : "",
+      parent_id:
+        parentRaw && parentRaw !== "null" && parentRaw !== "undefined" ? String(parentRaw) : null,
+      mcp_enabled: attrs.mcp_enabled ?? null,
+      openapi_spec_json: attrs.openapi_spec_json ?? null,
+      openapi_spec_url: attrs.openapi_spec_url ?? null,
+      show_version_switcher: attrs.show_version_switcher ?? true,
+    };
+  };
+
+  const dedupeProjects = (rows: Project[]) => {
+    const normalizeName = (value: string) => value.trim().toLowerCase();
+    const byDrive = new Map<string, Project>();
+    const byNameParent = new Map<string, Project>();
+
+    for (const project of rows) {
+      if (project.drive_folder_id) {
+        const existing = byDrive.get(project.drive_folder_id);
+        if (!existing || (!existing.parent_id && project.parent_id)) {
+          byDrive.set(project.drive_folder_id, project);
+        }
+        continue;
+      }
+      const key = `${project.parent_id || "root"}::${normalizeName(project.name)}`;
+      if (!byNameParent.has(key)) {
+        byNameParent.set(key, project);
+      }
+    }
+
+    return [...byDrive.values(), ...byNameParent.values()].filter(
+      (p, idx, arr) => arr.findIndex((other) => other.id === p.id) === idx
+    );
+  };
+
+  const getDocumentDedupeKey = (doc: Document) => {
+    const version = doc.project_version_id || "none";
+    const project = doc.project_id || "none";
+    if (doc.google_doc_id) {
+      return `gdoc:${doc.google_doc_id}:v:${version}:p:${project}`;
+    }
+    return `id:${doc.id}:v:${version}:p:${project}`;
+  };
+
+  const mapVersion = (row: any): ProjectVersion => {
+    const attrs = row?.attributes || row || {};
+    const projectRaw =
+      attrs.project?.data?.id ??
+      attrs.project?.id ??
+      attrs.project_id ??
+      attrs.project ??
+      "";
+    return {
+      id: String(row?.id ?? attrs.id),
+      project_id: projectRaw ? String(projectRaw) : "",
+      name: attrs.name || "",
+      slug: attrs.slug || "",
+      is_default: !!attrs.is_default,
+      is_published: !!attrs.is_published,
+      semver_major: Number(attrs.semver_major ?? 0),
+      semver_minor: Number(attrs.semver_minor ?? 0),
+      semver_patch: Number(attrs.semver_patch ?? 0),
+    };
+  };
+
+  const mapTopic = (row: any): Topic => {
+    const attrs = row?.attributes || row || {};
+    const projectRaw =
+      attrs.project?.data?.id ??
+      attrs.project?.id ??
+      attrs.project_id ??
+      attrs.project ??
+      null;
+    const versionRaw =
+      attrs.project_version?.data?.id ??
+      attrs.project_version?.id ??
+      attrs.project_version_id ??
+      attrs.project_version ??
+      null;
+    const parentRaw =
+      attrs.parent?.data?.id ??
+      attrs.parent?.id ??
+      attrs.parent_id ??
+      attrs.parent ??
+      null;
+    return {
+      id: String(row?.id ?? attrs.id),
+      name: attrs.name || "",
+      slug: attrs.slug ?? null,
+      project_id: projectRaw ? String(projectRaw) : "",
+      project_version_id: versionRaw ? String(versionRaw) : null,
+      parent_id: parentRaw ? String(parentRaw) : null,
+      display_order: attrs.display_order ?? null,
+    };
+  };
+
+  const mapDocument = (row: any): Document => {
+    const attrs = row?.attributes || row || {};
+    const contentHtml = attrs.content_html ?? attrs.contentHtml ?? null;
+    const publishedContentHtml = attrs.published_content_html ?? attrs.publishedContentHtml ?? null;
+    const contentId = attrs.content_id ?? attrs.contentId ?? null;
+    const publishedContentId = attrs.published_content_id ?? attrs.publishedContentId ?? null;
+    const projectRaw =
+      attrs.project?.data?.id ??
+      attrs.project?.id ??
+      attrs.project_id ??
+      attrs.project ??
+      null;
+    const versionRaw =
+      attrs.project_version?.data?.id ??
+      attrs.project_version?.id ??
+      attrs.project_version_id ??
+      attrs.project_version ??
+      null;
+    const topicRaw =
+      attrs.topic?.data?.id ??
+      attrs.topic?.id ??
+      attrs.topic_id ??
+      attrs.topic ??
+      null;
+    const ownerRaw =
+      attrs.owner?.data?.id ??
+      attrs.owner?.id ??
+      attrs.owner_id ??
+      attrs.owner ??
+      null;
+    return {
+      id: String(row?.id ?? attrs.id),
+      title: attrs.title || "",
+      slug: attrs.slug ?? null,
+      google_doc_id: attrs.google_doc_id || "",
+      project_id: projectRaw ? String(projectRaw) : "",
+      project_version_id: versionRaw ? String(versionRaw) : null,
+      topic_id: topicRaw ? String(topicRaw) : null,
+      visibility: attrs.visibility ?? "internal",
+      is_published: !!attrs.is_published,
+      content_html: contentHtml,
+      published_content_html: publishedContentHtml,
+      content_id: contentId,
+      published_content_id: publishedContentId,
+      video_url: attrs.video_url ?? null,
+      video_title: attrs.video_title ?? null,
+      created_at: attrs.createdAt || attrs.created_at || "",
+      updated_at: attrs.updatedAt || attrs.updated_at || "",
+      owner_id: ownerRaw ? String(ownerRaw) : null,
+    };
+  };
   
   // Track custom domain state early for URL interpretation
   const [isCustomDomain, setIsCustomDomain] = useState(false);
@@ -263,6 +472,21 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [isFullWidth, setIsFullWidth] = useState(false);
   const [internalAccessDenied, setInternalAccessDenied] = useState(false);
   const [internalAccessReason, setInternalAccessReason] = useState<"signed_out" | "not_member" | null>(null);
+  const [useClientSideFilters, setUseClientSideFilters] = useState(false);
+
+  const selectedRootProject = useMemo(() => {
+    if (!selectedProject) return null;
+    return selectedProject.parent_id
+      ? projects.find((p) => p.id === selectedProject.parent_id) ?? selectedProject
+      : selectedProject;
+  }, [selectedProject, projects]);
+
+  const subProjects = useMemo(() => {
+    if (!selectedRootProject) return [];
+    return projects.filter((p) => p.parent_id === selectedRootProject.id);
+  }, [projects, selectedRootProject]);
+
+  const hasSubProjects = subProjects.length > 0;
 
   const getProjectVersions = (projectId: string) => {
     let currentId: string | null = projectId;
@@ -322,14 +546,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       }
       
       // Check if this hostname matches any organization's custom_docs_domain
-      const { data: orgData } = await supabase
-        .from("organizations")
-        .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
-        .eq("custom_docs_domain", hostname)
-        .maybeSingle();
-      
-      if (orgData) {
-        setCurrentOrg(orgData as Organization);
+      const { data, error } = await strapiFetch<{ data: any[] }>(
+        `/api/organizations?filters[custom_docs_domain][$eq]=${encodeURIComponent(hostname)}&pagination[limit]=1`
+      );
+      if (!error && data?.data?.[0]) {
+        const org = mapOrganization(data.data[0]);
+        setCurrentOrg(org);
         setIsCustomDomain(true);
       }
     };
@@ -345,7 +567,9 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   }, [authLoading, hasFetched]);
 
   const getDocumentHtml = (doc: Document) =>
-    isInternalView ? (doc.content_html ?? doc.published_content_html) : doc.published_content_html;
+    isInternalView
+      ? (doc.content_html ?? doc.published_content_html)
+      : (doc.published_content_html ?? doc.content_html);
 
   const setDocumentContent = async (doc: Document) => {
     setDocumentHtml(getDocumentHtml(doc) ?? null);
@@ -443,8 +667,9 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const shouldUseVersion = useMemo(() => {
     if (!selectedProject || !selectedVersion) return false;
     if (versionSlug) return true;
+    if (!isInternalView) return false;
     
-    // Check project and its ancestors for documents and topics in this version
+    // Internal view: check project and its ancestors for documents/topics in this version
     let currentId: string | null = selectedProject.id;
     while (currentId) {
       const hasDocs = documents.some(
@@ -460,7 +685,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
     
     return false;
-  }, [selectedProject, selectedVersion, versionSlug, documents, topics, projects]);
+  }, [selectedProject, selectedVersion, versionSlug, documents, topics, projects, isInternalView]);
 
   const showVersionSwitcher = useMemo(() => {
     if (!selectedProject) return false;
@@ -573,28 +798,26 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     setInternalAccessDenied(false);
     setInternalAccessReason(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await auth.getSession();
       const currentUser = session?.user;
       
       let userOrgId: string | null = null;
       let userProjectMemberships: string[] = [];
       
       if (currentUser) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("organization_id")
-          .eq("id", currentUser.id)
-          .single();
-        
-        userOrgId = profile?.organization_id || null;
-        
-        // Fetch projects the user has been invited to (for external access)
-        const { data: memberships } = await supabase
-          .from("project_members")
-          .select("project_id")
-          .eq("user_id", currentUser.id);
-        
-        userProjectMemberships = memberships?.map(m => m.project_id) || [];
+        const { data, error } = await invokeFunction<{ organizationId?: string }>("ensure-workspace", { body: {} });
+        if (!error && data?.organizationId) {
+          userOrgId = String(data.organizationId);
+        }
+
+        const { data: membershipData } = await strapiFetch<{ data: any[] }>(
+          `/api/project-members?filters[user][id][$eq]=${currentUser.id}&populate[project][fields][0]=id&pagination[limit]=1000`
+        );
+        userProjectMemberships =
+          membershipData?.data
+            ?.map((row) => row?.attributes?.project?.data?.id)
+            .filter(Boolean)
+            .map((id) => String(id)) || [];
       }
       
       const hostDomain = normalizeHostname(window.location.hostname);
@@ -605,49 +828,47 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       
       // Load org from URL slug if not already loaded from custom domain
       if (orgSlug && !currentOrg && !isCustomDomain) {
-        const { data: orgData } = await supabase
-          .from("organizations")
-          .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
-          .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
-          .maybeSingle();
-        if (orgData) {
-          targetOrg = orgData as Organization;
-          setCurrentOrg(targetOrg);
-          setIsImplicitOrgPath(
-            !!hostDomain && normalizeHostname(orgData.domain) === hostDomain
-          );
+        const { data, error } = await strapiFetch<{ data: any[] }>(
+          `/api/organizations?filters[$or][0][slug][$eq]=${encodeURIComponent(orgSlug)}&filters[$or][1][domain][$eq]=${encodeURIComponent(orgSlug)}&pagination[limit]=1`
+        );
+        if (!error && data?.data?.[0]) {
+          const org = mapOrganization(data.data[0]);
+          targetOrg = org;
+          setCurrentOrg(org);
+          setIsImplicitOrgPath(!!hostDomain && normalizeHostname(org.domain) === hostDomain);
         }
       }
       
       if (!targetOrg && !isCustomDomain && hostDomain) {
-        const { data: domainOrg } = await supabase
-          .from("organizations")
-          .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
-          .eq("domain", hostDomain)
-          .maybeSingle();
-        if (domainOrg) {
-          targetOrg = domainOrg as Organization;
-          setCurrentOrg(targetOrg);
+        const { data, error } = await strapiFetch<{ data: any[] }>(
+          `/api/organizations?filters[domain][$eq]=${encodeURIComponent(hostDomain)}&pagination[limit]=1`
+        );
+        if (!error && data?.data?.[0]) {
+          const org = mapOrganization(data.data[0]);
+          targetOrg = org;
+          setCurrentOrg(org);
           setIsImplicitOrgPath(true);
         }
       }
 
       if (!targetOrg && !isCustomDomain && projectSlug && !isInternalView) {
-        let projectLookup = supabase
-          .from("projects")
-          .select("organization_id, organization:organizations (id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url)")
-          .eq("slug", projectSlug)
-          .eq("is_published", true);
-
-        if (!currentUser) {
-          projectLookup = projectLookup.eq("visibility", "public");
-        }
-
-        const { data: projectMatches } = await projectLookup.limit(2);
-        if (projectMatches && projectMatches.length === 1 && projectMatches[0].organization) {
-          targetOrg = projectMatches[0].organization as Organization;
-          setCurrentOrg(targetOrg);
-          setIsImplicitOrgPath(true);
+        const visibilityFilter = !currentUser ? "&filters[visibility][$eq]=public" : "";
+        const { data, error } = await strapiFetch<{ data: any[] }>(
+          `/api/projects?filters[slug][$eq]=${encodeURIComponent(projectSlug)}&filters[is_published][$eq]=true${visibilityFilter}&populate[organization][fields][0]=id&pagination[limit]=2`
+        );
+        const rows = data?.data || [];
+        if (!error && rows.length === 1) {
+          const orgId = rows[0]?.attributes?.organization?.data?.id;
+          if (orgId) {
+            const { data: orgData } = await strapiFetch<{ data: any }>(
+              `/api/organizations/${orgId}`
+            );
+            if (orgData?.data) {
+              targetOrg = mapOrganization(orgData.data);
+              setCurrentOrg(targetOrg);
+              setIsImplicitOrgPath(true);
+            }
+          }
         }
       }
       
@@ -661,13 +882,9 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         targetOrgId = userOrgId;
         // Load org data if not already loaded
         if (!targetOrg) {
-          const { data: orgData } = await supabase
-            .from("organizations")
-            .select("id, name, slug, domain, custom_docs_domain, logo_url, tagline, primary_color, secondary_color, accent_color, font_heading, font_body, custom_css, hero_title, hero_description, show_search_on_landing, show_featured_projects, mcp_enabled, openapi_spec_json, openapi_spec_url")
-            .eq("id", userOrgId)
-            .single();
-          if (orgData) {
-            targetOrg = orgData as Organization;
+          const { data: orgData } = await strapiFetch<{ data: any }>(`/api/organizations/${userOrgId}`);
+          if (orgData?.data) {
+            targetOrg = mapOrganization(orgData.data);
             setCurrentOrg(targetOrg);
           }
         }
@@ -697,23 +914,93 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         return;
       }
 
-      // Build project query scoped to the target organization
-      let projectsQuery = supabase
-        .from("projects")
-        .select("id, name, slug, visibility, is_published, organization_id, parent_id, mcp_enabled, openapi_spec_json, openapi_spec_url, show_version_switcher")
-        .eq("organization_id", targetOrgId);
-
+      // Public view: use server-side public endpoint to avoid relation filter validation.
       if (!isInternalView) {
-        projectsQuery = projectsQuery.eq("is_published", true);
+        const { data: publicContent, error: publicError } = await strapiFetch<{
+          ok?: boolean;
+          projects?: any[];
+          versions?: any[];
+          topics?: any[];
+          documents?: any[];
+        }>(`/api/public-content?organizationId=${encodeURIComponent(targetOrgId)}`);
+        if (publicError || !publicContent?.ok) {
+          console.error("Error fetching public content:", publicError || publicContent);
+          setProjects([]);
+          setTopics([]);
+          setDocuments([]);
+          setProjectVersions([]);
+          setLoading(false);
+          return;
+        }
+
+        const publicProjects = dedupeProjects((publicContent.projects || []).map(mapProject));
+        setProjects(publicProjects);
+        setProjectVersions((publicContent.versions || []).map(mapVersion));
+        setTopics((publicContent.topics || []).map(mapTopic));
+        const docs = (publicContent.documents || []).map(mapDocument);
+        const docByKey = new Map<string, Document>();
+        for (const doc of docs) {
+          const key = getDocumentDedupeKey(doc);
+          const existing = docByKey.get(key);
+          if (!existing) {
+            docByKey.set(key, doc);
+            continue;
+          }
+          if (!existing.is_published && doc.is_published) {
+            docByKey.set(key, doc);
+            continue;
+          }
+          const existingUpdated = Date.parse(existing.updated_at || "") || 0;
+          const currentUpdated = Date.parse(doc.updated_at || "") || 0;
+          if (currentUpdated > existingUpdated) {
+            docByKey.set(key, doc);
+          }
+        }
+        setDocuments(Array.from(docByKey.values()));
+        setLoading(false);
+        return;
       }
 
-      const { data: projectsData, error: projectsError } = await projectsQuery.order("name");
+      // Build project query scoped to the target organization (internal view)
+      let projectsData: Project[] = [];
+      const publishedFilter = "&filters[is_published][$eq]=true";
+      const fetchProjects = async () => {
+        const urls = [
+          `/api/projects?filters[organization][id][$eq]=${encodeURIComponent(targetOrgId)}${publishedFilter}&populate[parent][fields][0]=id&populate[organization][fields][0]=id&pagination[limit]=1000&sort=name:asc`,
+          `/api/projects?filters[organization][$eq]=${encodeURIComponent(targetOrgId)}${publishedFilter}&populate[parent][fields][0]=id&populate[organization][fields][0]=id&pagination[limit]=1000&sort=name:asc`,
+        ];
 
-      if (projectsError) {
-        console.error("Error fetching projects:", projectsError);
-      } else if (projectsData) {
+        let lastError: any = null;
+        for (const url of urls) {
+          const result = await strapiFetch<{ data: any[] }>(url);
+          if (!result.error) {
+            return result.data;
+          }
+          lastError = result.error;
+        }
+
+        // Final fallback: fetch all projects (public) and filter client-side.
+        const fallback = await strapiFetch<{ data: any[] }>(
+          `/api/projects?populate[parent][fields][0]=id&populate[organization][fields][0]=id&pagination[limit]=1000&sort=name:asc`
+        );
+        if (!fallback.error) return fallback.data;
+        throw lastError || fallback.error;
+      };
+
+      try {
+        const data = await fetchProjects();
+        projectsData = dedupeProjects(
+          (data?.data || [])
+            .map(mapProject)
+            .filter((project) => !project.organization_id || project.organization_id === targetOrgId)
+        );
+      } catch (error) {
+        console.error("Error fetching projects:", error);
+      }
+
+      if (projectsData.length > 0) {
         // Filter projects based on visibility and user authentication
-        const filteredProjects = projectsData.filter(project => {
+        const filteredProjects = dedupeProjects(projectsData.filter(project => {
           // PUBLIC projects: visible to everyone (no auth required)
           if (project.visibility === "public") return true;
           
@@ -731,12 +1018,14 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           }
           
           return false;
-        });
+        }));
         
         setProjects(filteredProjects);
         const projectIds = filteredProjects.map(p => p.id);
         await fetchProjectVersions(projectIds);
         await fetchTopicsAndDocuments(projectIds, userOrgId, currentUser?.id || null);
+      } else {
+        setProjects([]);
       }
     } catch (error) {
       console.error("Error fetching content:", error);
@@ -745,39 +1034,53 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
   };
 
+  const isInvalidKeyError = (error: ApiError | null) =>
+    !!error && error.status === 400 && typeof error.message === "string" && error.message.includes("Invalid key");
+
   const fetchProjectVersions = async (projectIds: string[]) => {
     if (projectIds.length === 0) return;
 
-    let versionsQuery = supabase
-      .from("project_versions")
-      .select("id, project_id, name, slug, is_default, is_published, semver_major, semver_minor, semver_patch")
-      .in("project_id", projectIds);
-
-    if (!isInternalView) {
-      versionsQuery = versionsQuery.eq("is_published", true);
-    }
-
-    const { data: versionsData, error: versionsError } = await versionsQuery;
-
-    if (versionsError) {
-      console.error("Error fetching project versions:", versionsError);
+    if (useClientSideFilters) {
+      const { data: fallbackData } = await strapiFetch<{ data: any[] }>(
+        `/api/project-versions?populate[project][fields][0]=id&pagination[limit]=1000`
+      );
+      const fallbackRows = (fallbackData?.data || [])
+        .map(mapVersion)
+        .filter((row) => projectIds.includes(row.project_id));
+      if (fallbackRows.length > 0) {
+        setProjectVersions(fallbackRows);
+      }
       return;
     }
 
-    if (versionsData && versionsData.length > 0) {
-      setProjectVersions(versionsData as ProjectVersion[]);
+    const inParams = `filters[project][id][$in]=${encodeURIComponent(projectIds.join(","))}`;
+    const publishedFilter = !isInternalView ? "&filters[is_published][$eq]=true" : "";
+    const { data, error } = await strapiFetch<{ data: any[] }>(
+      `/api/project-versions?${inParams}${publishedFilter}&populate[project][fields][0]=id&pagination[limit]=1000`
+    );
+    if (error) {
+      if (!isInvalidKeyError(error)) {
+        console.error("Error fetching project versions:", error);
+        return;
+      }
+      setUseClientSideFilters(true);
+    }
+    const rows = (data?.data || []).map(mapVersion);
+    if (rows.length > 0) {
+      setProjectVersions(rows);
       return;
     }
 
     // Fallback: if no published versions exist, use all versions so docs remain visible.
     if (!isInternalView) {
-      const { data: fallbackVersions } = await supabase
-        .from("project_versions")
-        .select("id, project_id, name, slug, is_default, is_published, semver_major, semver_minor, semver_patch")
-        .in("project_id", projectIds);
-
-      if (fallbackVersions) {
-        setProjectVersions(fallbackVersions as ProjectVersion[]);
+      const { data: fallbackData } = await strapiFetch<{ data: any[] }>(
+        `/api/project-versions?populate[project][fields][0]=id&pagination[limit]=1000`
+      );
+      const fallbackRows = (fallbackData?.data || [])
+        .map(mapVersion)
+        .filter((row) => projectIds.includes(row.project_id));
+      if (fallbackRows.length > 0) {
+        setProjectVersions(fallbackRows);
       }
     }
   };
@@ -785,46 +1088,144 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const fetchTopicsAndDocuments = async (projectIds: string[], userOrgId: string | null, userId: string | null) => {
     if (projectIds.length === 0) return;
 
-    const { data: topicsData } = await supabase
-      .from("topics")
-      .select("id, name, slug, project_id, project_version_id, parent_id, display_order")
-      .in("project_id", projectIds)
-      .order("display_order")
-      .order("name");
+    if (useClientSideFilters) {
+      const { data: fallbackTopics } = await strapiFetch<{ data: any[] }>(
+        `/api/topics?populate[project][fields][0]=id&populate[project_version][fields][0]=id&populate[parent][fields][0]=id&pagination[limit]=1000&sort=display_order:asc`
+      );
+      const topicsRows = (fallbackTopics?.data || []).map(mapTopic).filter(t => projectIds.includes(t.project_id));
+      const topics = topicsRows.sort((a, b) => {
+        const orderA = a.display_order ?? 0;
+        const orderB = b.display_order ?? 0;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.name.localeCompare(b.name);
+      });
+      setTopics(topics);
 
-    if (topicsData) {
-      setTopics(topicsData);
+      const { data: fallbackDocs } = await strapiFetch<{ data: any[] }>(
+        `/api/documents?populate[project][fields][0]=id&populate[project_version][fields][0]=id&populate[topic][fields][0]=id&populate[owner][fields][0]=id&pagination[limit]=1000&sort=display_order:asc`
+      );
+      let docs = (fallbackDocs?.data || [])
+        .map(mapDocument)
+        .filter((doc) => projectIds.includes(doc.project_id));
+
+      if (!isInternalView) {
+        docs = docs.filter(
+          (doc) => doc.is_published || !!doc.published_content_html || !!doc.content_html
+        );
+      }
+
+      if (docs.length > 0) {
+        const docByKey = new Map<string, Document>();
+        for (const doc of docs) {
+          const key = doc.google_doc_id ? `gdoc:${doc.google_doc_id}` : `id:${doc.id}`;
+          const existing = docByKey.get(key);
+          if (!existing) {
+            docByKey.set(key, doc);
+            continue;
+          }
+          if (!existing.is_published && doc.is_published) {
+            docByKey.set(key, doc);
+            continue;
+          }
+          const existingUpdated = Date.parse(existing.updated_at || "") || 0;
+          const currentUpdated = Date.parse(doc.updated_at || "") || 0;
+          if (currentUpdated > existingUpdated) {
+            docByKey.set(key, doc);
+          }
+        }
+        const dedupedDocs = Array.from(docByKey.values()).sort((a, b) => {
+          const orderA = a.display_order ?? 0;
+          const orderB = b.display_order ?? 0;
+          if (orderA !== orderB) return orderA - orderB;
+          return a.title.localeCompare(b.title);
+        });
+        setDocuments(dedupedDocs);
+      } else {
+        setDocuments([]);
+      }
+      return;
     }
 
-    let docsQuery = supabase
-      .from("documents")
-      .select(`
-        id, title, slug, google_doc_id, project_id, project_version_id, topic_id, visibility, is_published, 
-        content_html, published_content_html, 
-        content_id, published_content_id,
-        draft:document_contents!content_id(content),
-        published:document_contents!published_content_id(content),
-        video_url, video_title, created_at, updated_at, owner_id, display_order
-      `)
-      .in("project_id", projectIds);
-
-    if (!isInternalView) {
-      docsQuery = docsQuery.or("published_content_id.not.is.null,published_content_html.not.is.null");
+    const inParams = `filters[project][id][$in]=${encodeURIComponent(projectIds.join(","))}`;
+    const { data: topicsData, error: topicsError } = await strapiFetch<{ data: any[] }>(
+      `/api/topics?${inParams}&populate[project][fields][0]=id&populate[project_version][fields][0]=id&populate[parent][fields][0]=id&pagination[limit]=1000&sort=display_order:asc`
+    );
+    let topicsRows = (topicsData?.data || []).map(mapTopic);
+    if (topicsError) {
+      if (!isInvalidKeyError(topicsError)) {
+        console.error("Error fetching topics:", topicsError);
+      } else {
+        setUseClientSideFilters(true);
+      }
+      const { data: fallbackTopics } = await strapiFetch<{ data: any[] }>(
+        `/api/topics?populate[project][fields][0]=id&populate[project_version][fields][0]=id&populate[parent][fields][0]=id&pagination[limit]=1000&sort=display_order:asc`
+      );
+      topicsRows = (fallbackTopics?.data || []).map(mapTopic).filter(t => projectIds.includes(t.project_id));
     }
+    const topics = topicsRows.sort((a, b) => {
+      const orderA = a.display_order ?? 0;
+      const orderB = b.display_order ?? 0;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.name.localeCompare(b.name);
+    });
+    setTopics(topics);
 
-    const { data: docsData, error: docsError } = await docsQuery
-      .order("display_order")
-      .order("title");
+    const publishedFilter = !isInternalView
+      ? "&filters[$or][0][is_published][$eq]=true&filters[$or][1][published_content_html][$notNull]=true"
+      : "";
+    const { data: docsData, error: docsError } = await strapiFetch<{ data: any[] }>(
+      `/api/documents?${inParams}${publishedFilter}&populate[project][fields][0]=id&populate[project_version][fields][0]=id&populate[topic][fields][0]=id&populate[owner][fields][0]=id&pagination[limit]=1000&sort=display_order:asc`
+    );
 
+    let docs = (docsData?.data || []).map(mapDocument);
     if (docsError) {
-      console.error("Error fetching documents:", docsError);
-    } else if (docsData) {
-      const mappedDocs = (docsData as any[]).map((d) => ({
-        ...d,
-        content_html: d.draft?.content || d.content_html,
-        published_content_html: d.published?.content || d.published_content_html
-      }));
-      setDocuments(mappedDocs as Document[]);
+      if (!isInvalidKeyError(docsError)) {
+        console.error("Error fetching documents:", docsError);
+      } else {
+        setUseClientSideFilters(true);
+      }
+      const { data: fallbackDocs } = await strapiFetch<{ data: any[] }>(
+        `/api/documents?populate[project][fields][0]=id&populate[project_version][fields][0]=id&populate[topic][fields][0]=id&populate[owner][fields][0]=id&pagination[limit]=1000&sort=display_order:asc`
+      );
+      docs = (fallbackDocs?.data || [])
+        .map(mapDocument)
+        .filter((doc) => projectIds.includes(doc.project_id));
+    }
+    if (!isInternalView && docs.length === 0) {
+      const { data: fallbackDocs } = await strapiFetch<{ data: any[] }>(
+        `/api/documents?${inParams}&populate[project][fields][0]=id&populate[project_version][fields][0]=id&populate[topic][fields][0]=id&populate[owner][fields][0]=id&pagination[limit]=1000&sort=display_order:asc`
+      );
+      const fallbackRows = (fallbackDocs?.data || []).map(mapDocument);
+      docs = fallbackRows.filter(
+        (doc) => doc.is_published || !!doc.published_content_html || !!doc.content_html
+      );
+    }
+    if (docs.length > 0) {
+      const docByKey = new Map<string, Document>();
+      for (const doc of docs) {
+        const key = getDocumentDedupeKey(doc);
+        const existing = docByKey.get(key);
+        if (!existing) {
+          docByKey.set(key, doc);
+          continue;
+        }
+        if (!existing.is_published && doc.is_published) {
+          docByKey.set(key, doc);
+          continue;
+        }
+        const existingUpdated = Date.parse(existing.updated_at || "") || 0;
+        const currentUpdated = Date.parse(doc.updated_at || "") || 0;
+        if (currentUpdated > existingUpdated) {
+          docByKey.set(key, doc);
+        }
+      }
+      const dedupedDocs = Array.from(docByKey.values()).sort((a, b) => {
+        const orderA = a.display_order ?? 0;
+        const orderB = b.display_order ?? 0;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.title.localeCompare(b.title);
+      });
+      setDocuments(dedupedDocs);
     }
   };
 
@@ -1230,6 +1631,31 @@ const getTopicDocuments = (topicId: string) =>
     );
   }
 
+  const landingProjects = (() => {
+    const driveIdToProjectId = new Map<string, string>();
+    for (const project of projects) {
+      if (project.drive_folder_id) {
+        driveIdToProjectId.set(project.drive_folder_id, project.id);
+      }
+    }
+    const getEffectiveParentId = (project: Project): string | null => {
+      if (project.parent_id) return project.parent_id;
+      if (project.drive_parent_id) {
+        return driveIdToProjectId.get(project.drive_parent_id) ?? null;
+      }
+      return null;
+    };
+
+    const driveRoots = dedupeProjects(
+      projects.filter((p) => {
+        if (!currentOrg?.drive_folder_id) return false;
+        return p.drive_parent_id === currentOrg.drive_folder_id;
+      })
+    );
+    if (driveRoots.length > 0) return driveRoots;
+    return dedupeProjects(projects.filter((p) => !getEffectiveParentId(p)));
+  })();
+
   if (showLandingPage) {
     return (
       <div className="min-h-screen bg-background flex flex-col docs-branded">
@@ -1294,7 +1720,9 @@ const getTopicDocuments = (topicId: string) =>
 
         <DocsLanding
           organization={currentOrg}
-          projects={projects.filter(p => !p.parent_id).map(p => ({ ...p, description: null }))}
+          projects={landingProjects.map(p => ({ ...p, description: null }))}
+          featuredProjects={landingProjects.map(p => ({ ...p, description: null }))}
+          searchProjects={projects.map(p => ({ ...p, description: null }))}
           documents={landingDocuments.map(d => ({
             id: d.id,
             title: d.title,
@@ -1507,90 +1935,86 @@ const getTopicDocuments = (topicId: string) =>
         </header>
 
         {/* Sub-Project Tabs Bar - Only show if there are sub-projects */}
-        {(() => {
-          const selectedRoot = selectedProject?.parent_id
-            ? projects.find((p) => p.id === selectedProject.parent_id) ?? null
-            : selectedProject;
-
-          const subProjects = selectedRoot ? projects.filter((p) => p.parent_id === selectedRoot.id) : [];
-          const hasSubProjects = subProjects.length > 0;
-
-          return hasSubProjects ? (
-            <div className="border-b border-border bg-card">
-              <div className="flex items-center justify-between">
-                {/* Left: Sub-project tabs */}
-                <div className="flex items-center gap-0 overflow-x-auto pl-3">
-                  {loading ? (
-                    <div className="flex gap-2 py-2">
-                      {[1, 2, 3].map(i => (
-                        <Skeleton key={i} className="h-8 w-24" />
-                      ))}
-                    </div>
-                  ) : (
-                    <>
-                      {/* Sub-project tabs only (root project is shown in header) */}
-                      {subProjects.map((project) => (
-                        <button
-                          key={project.id}
-                          onClick={() => selectProject(project)}
-                          className={cn(
-                            "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
-                            selectedProject?.id === project.id
-                              ? "text-foreground"
-                              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                          )}
-                          style={selectedProject?.id === project.id ? {
-                            borderColor: currentOrg?.primary_color || 'hsl(var(--primary))'
-                          } : undefined}
-                        >
-                          {project.name}
-                        </button>
-                      ))}
-                    </>
-                  )}
-                </div>
-            
-            {/* Right: Developer Dropdown */}
-            {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
-              <div className="flex items-center pr-3 lg:pr-6 shrink-0">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="gap-1 sm:gap-1.5 text-muted-foreground hover:text-foreground px-2 sm:px-3">
-                      <Code className="h-4 w-4" />
-                      <span className="hidden sm:inline">Developer</span>
-                      <ChevronDown className="h-3 w-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-40 bg-popover z-50">
-                    {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url) && (
-                      <DropdownMenuItem asChild>
-                        <Link to={`/api/${currentOrg?.slug || currentOrg?.domain}`} className="cursor-pointer">
-                          API Reference
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
-                    {currentOrg?.mcp_enabled && (
-                      <DropdownMenuItem asChild>
-                        <Link to={`/mcp/${currentOrg?.slug || currentOrg?.domain}`} className="cursor-pointer">
-                          MCP Protocol
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+        {hasSubProjects ? (
+          <div className="border-b border-border bg-card">
+            <div className="flex items-center justify-between">
+              {/* Left: Sub-project tabs */}
+              <div className="flex items-center gap-0 overflow-x-auto pl-3">
+                {loading ? (
+                  <div className="flex gap-2 py-2">
+                    {[1, 2, 3].map(i => (
+                      <Skeleton key={i} className="h-8 w-24" />
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    {/* Sub-project tabs only (root project is shown in header) */}
+                    {subProjects.map((project) => (
+                      <button
+                        key={project.id}
+                        onClick={() => selectProject(project)}
+                        className={cn(
+                          "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
+                          selectedProject?.id === project.id
+                            ? "text-foreground"
+                            : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                        )}
+                        style={selectedProject?.id === project.id ? {
+                          borderColor: currentOrg?.primary_color || 'hsl(var(--primary))'
+                        } : undefined}
+                      >
+                        {project.name}
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
-            )}
-          </div>
+          
+          {/* Right: Developer Dropdown */}
+          {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
+            <div className="flex items-center pr-3 lg:pr-6 shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-1 sm:gap-1.5 text-muted-foreground hover:text-foreground px-2 sm:px-3">
+                    <Code className="h-4 w-4" />
+                    <span className="hidden sm:inline">Developer</span>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40 bg-popover z-50">
+                  {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url) && (
+                    <DropdownMenuItem asChild>
+                      <Link to={`/api/${currentOrg?.slug || currentOrg?.domain}`} className="cursor-pointer">
+                        API Reference
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {currentOrg?.mcp_enabled && (
+                    <DropdownMenuItem asChild>
+                      <Link to={`/mcp/${currentOrg?.slug || currentOrg?.domain}`} className="cursor-pointer">
+                        MCP Protocol
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
-          ) : null;
-        })()}
+      </div>
+        ) : null}
       </div>
 
       {/* Main Layout */}
       <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar - Sticky */}
         {!sidebarCollapsed && (
-          <aside className="hidden lg:flex w-64 border-r border-border flex-col bg-card sticky top-[104px] h-[calc(100vh-104px)] overflow-hidden">
+          <aside
+            className={cn(
+              "hidden lg:flex w-64 border-r border-border flex-col bg-card sticky overflow-hidden",
+              hasSubProjects ? "top-[104px] h-[calc(100vh-104px)]" : "top-[56px] h-[calc(100vh-56px)]"
+            )}
+          >
             {sidebarContent}
           </aside>
         )}
@@ -1710,7 +2134,11 @@ const getTopicDocuments = (topicId: string) =>
                 ) : (
                   <div className="text-center py-10 text-muted-foreground">
                     <p className="font-medium">
-                      {isInternalView ? "This page doesn't have content yet." : "This page hasn't been published yet."}
+                      {isInternalView
+                        ? "This page doesn't have content yet."
+                        : (selectedDocument.is_published || !!selectedDocument.published_content_html)
+                          ? "This page has no published content yet."
+                          : "This page hasn't been published yet."}
                     </p>
                   </div>
                 )}

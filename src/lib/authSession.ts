@@ -1,5 +1,5 @@
-import { supabase } from "@/integrations/supabase/client";
-import type { Session } from "@supabase/supabase-js";
+import { auth, type ApiSession } from "@/lib/api/auth";
+import { USE_STRAPI } from "@/lib/api/client";
 
 // Deduplicates refresh attempts and avoids hammering Supabase with refresh requests,
 // which can trigger 429s and force the client to sign out.
@@ -21,18 +21,22 @@ const getTabId = () => {
   return id;
 };
 
-let refreshPromise: Promise<Session | null> | null = null;
+let refreshPromise: Promise<ApiSession | null> | null = null;
 let lastRefreshAt = 0;
 
-export const ensureFreshSession = async (): Promise<Session | null> => {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const currentSession = sessionData.session;
+export const ensureFreshSession = async (): Promise<ApiSession | null> => {
+  const currentSession = await auth.getSession();
   const now = Date.now();
   if (!currentSession) return null;
 
   const expiresAtMs = currentSession.expires_at
     ? currentSession.expires_at * 1000
     : 0;
+
+  // Strapi sessions may not expose expiry; avoid forced refresh loops.
+  if (USE_STRAPI && !currentSession.expires_at) {
+    return currentSession;
+  }
 
   // If the session exists and isn't close to expiring, return it.
   if (currentSession && expiresAtMs - now > REFRESH_BUFFER_MS) {
@@ -72,14 +76,12 @@ export const ensureFreshSession = async (): Promise<Session | null> => {
     return currentSession;
   }
 
-  refreshPromise = supabase.auth
+  refreshPromise = auth
     .refreshSession()
-    .then(({ data, error }) => {
-      if (error) {
-        console.warn("Session refresh failed:", error.message);
-        // Back off globally on 429/rate-limit responses
-        const isRateLimited = error.message?.includes("429");
-        if (isRateLimited) {
+    .then((session) => {
+      if (!session) {
+        if (!USE_STRAPI) {
+          console.warn("Session refresh failed");
           localStorage.setItem(
             REFRESH_COOLDOWN_KEY,
             String(Date.now() + REFRESH_COOLDOWN_MS)
@@ -94,13 +96,13 @@ export const ensureFreshSession = async (): Promise<Session | null> => {
         localStorage.removeItem(REFRESH_COOLDOWN_KEY);
 
         // Store refreshed Google provider token
-        if (data.session?.provider_token) {
-          localStorage.setItem(GOOGLE_TOKEN_KEY, data.session.provider_token);
+        if (session.provider_token) {
+          localStorage.setItem(GOOGLE_TOKEN_KEY, session.provider_token);
           console.log("Google access token refreshed and stored");
         }
       }
       lastRefreshAt = Date.now();
-      return data.session ?? null;
+      return session ?? null;
     })
     .finally(() => {
       refreshPromise = null;

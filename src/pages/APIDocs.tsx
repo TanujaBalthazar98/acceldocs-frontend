@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { APIDocs as APIDocsComponent } from "@/components/docs/APIDocs";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, FileJson } from "lucide-react";
 import { useBrandingLoader, useBrandingStyles } from "@/hooks/useBrandingLoader";
-import type { Json } from "@/integrations/supabase/types";
+import { strapiFetch } from "@/lib/api/client";
 
 interface Organization {
   id: string;
@@ -24,13 +23,20 @@ interface Organization {
   custom_css: string | null;
 }
 
+const unwrapStrapiEntity = <T extends Record<string, any>>(entity: T | null | undefined): T | null => {
+  if (!entity) return null;
+  if ("attributes" in entity) {
+    return { id: String((entity as any).id), ...(entity as any).attributes } as T;
+  }
+  return entity;
+};
 
 export default function APIDocs() {
   const { orgSlug } = useParams();
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [openApiSpec, setOpenApiSpec] = useState<Json | null>(null);
+  const [openApiSpec, setOpenApiSpec] = useState<object | null>(null);
   const [openApiSpecUrl, setOpenApiSpecUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,14 +69,29 @@ export default function APIDocs() {
     setError(null);
 
     try {
-      // Fetch organization by slug or domain - including OpenAPI spec fields
-      const { data: org, error: orgError } = await supabase
-        .from("organizations")
-        .select("*")
-        .or(`slug.eq.${orgSlug},domain.eq.${orgSlug}`)
-        .maybeSingle();
+      const slugParams = new URLSearchParams({
+        "filters[slug][$eq]": orgSlug!,
+        "pagination[limit]": "1",
+      });
+      const { data: slugRes, error: slugError } = await strapiFetch<{ data: Organization[] }>(
+        `/api/organizations?${slugParams.toString()}`,
+      );
 
-      if (orgError) throw orgError;
+      if (slugError) throw slugError;
+      let org = unwrapStrapiEntity(slugRes?.data?.[0]) as Organization | null;
+
+      if (!org) {
+        const domainParams = new URLSearchParams({
+          "filters[domain][$eq]": orgSlug!,
+          "pagination[limit]": "1",
+        });
+        const { data: domainRes, error: domainError } = await strapiFetch<{ data: Organization[] }>(
+          `/api/organizations?${domainParams.toString()}`,
+        );
+        if (domainError) throw domainError;
+        org = unwrapStrapiEntity(domainRes?.data?.[0]) as Organization | null;
+      }
+
       if (!org) {
         setError("Organization not found");
         setLoading(false);
@@ -78,10 +99,8 @@ export default function APIDocs() {
       }
 
       setOrganization(org);
-      
-      // Get OpenAPI spec directly from organization
-      setOpenApiSpec((org as any).openapi_spec_json);
-      setOpenApiSpecUrl((org as any).openapi_spec_url);
+      setOpenApiSpec((org as any).openapi_spec_json ?? null);
+      setOpenApiSpecUrl((org as any).openapi_spec_url ?? null);
     } catch (err) {
       console.error("Error fetching API docs data:", err);
       setError("Failed to load API documentation");

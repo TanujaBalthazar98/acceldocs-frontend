@@ -26,7 +26,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
 
 type VisibilityLevel = "internal" | "external" | "public";
 
@@ -96,14 +95,7 @@ export const PublishingPreview = ({
   }, [open, organization.id]);
 
   const fetchCustomDomains = async () => {
-    const { data } = await supabase
-      .from("domains")
-      .select("domain")
-      .eq("organization_id", organization.id)
-      .eq("is_verified", true)
-      .eq("ssl_status", "active");
-
-    setCustomDomains((data || []).map((d: any) => d.domain));
+    setCustomDomains([]);
   };
 
   const handlePublish = async () => {

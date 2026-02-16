@@ -1,14 +1,15 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
-import { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
 import { ensureFreshSession } from "@/lib/authSession";
+import { auth, type ApiSession, type ApiUser } from "@/lib/api/auth";
+import { USE_STRAPI } from "@/lib/api/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { identifyPosthog, resetPosthog } from "@/lib/analytics/posthog";
 
 type AccountType = "individual" | "team" | "enterprise";
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: ApiUser | null;
+  session: ApiSession | null;
   loading: boolean;
   googleAccessToken: string | null;
   profileOrganizationId: string | null;
@@ -45,8 +46,8 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<ApiUser | null>(null);
+  const [session, setSession] = useState<ApiSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(() => {
     // Initialize from localStorage
@@ -67,7 +68,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     hasAttemptedStoreTokenRef.current = true;
 
     try {
-      const { data, error } = await supabase.functions.invoke("store-refresh-token", {
+      const { data, error } = await invokeFunction("store-refresh-token", {
         body: refreshToken ? { refreshToken } : {},
       });
 
@@ -86,9 +87,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   useEffect(() => {
     // Set up auth state listener FIRST
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    const { unsubscribe } = auth.onAuthStateChange((event, session) => {
       console.log("Auth state changed:", event);
       setSession(session);
       setUser(session?.user ?? null);
@@ -133,7 +132,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
 
     // THEN check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    auth.getSession().then(async (session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -148,7 +147,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       scheduleSessionRefresh(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
   // Sync googleAccessToken state with localStorage changes
@@ -166,7 +165,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, [googleAccessToken]);
 
   // Schedule a single refresh per session, shortly before expiry.
-  const scheduleSessionRefresh = (currentSession: Session | null) => {
+  const scheduleSessionRefresh = (currentSession: ApiSession | null) => {
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
       refreshTimeoutRef.current = null;
@@ -198,45 +197,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
 
       setProfileLoading(true);
-      const { data } = await supabase
-        .from("profiles")
-        .select("organization_id, google_refresh_token_present")
-        .eq("id", user.id)
-        .maybeSingle();
 
-      if (!active) return;
-      let organizationId = data?.organization_id ?? null;
-      if (data?.google_refresh_token_present) {
-        localStorage.setItem(GOOGLE_DRIVE_REFRESH_PRESENT_KEY, "1");
-      }
-
-      if (!data && user.email) {
-        const accountTypeRaw = user.user_metadata?.account_type;
-        const accountType =
-          accountTypeRaw === "team" || accountTypeRaw === "enterprise" || accountTypeRaw === "individual"
-            ? accountTypeRaw
-            : "individual";
-
-        const { data: inserted, error: insertError } = await supabase
-          .from("profiles")
-          .insert({
-            id: user.id,
-            email: user.email,
-            full_name: user.user_metadata?.full_name ?? null,
-            account_type: accountType,
-          })
-          .select("organization_id")
-          .maybeSingle();
-
-        if (insertError && insertError.code !== "23505") {
-          console.error("Failed to create missing profile:", insertError);
-        } else if (inserted?.organization_id) {
-          organizationId = inserted.organization_id;
+      try {
+        const { data, error } = await invokeFunction("ensure-workspace", { body: {} });
+        if (!active) return;
+        if (error || !data?.ok || !data?.organizationId) {
+          setProfileOrganizationId(null);
+        } else {
+          setProfileOrganizationId(String(data.organizationId));
         }
+      } finally {
+        setProfileLoading(false);
       }
-
-      setProfileOrganizationId(organizationId);
-      setProfileLoading(false);
     };
 
     fetchProfile();
@@ -308,25 +280,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const signInWithGoogle = async (options?: { oauthWindow?: Window | null }) => {
-    const redirectUrl = `${getAuthRedirectOrigin()}/dashboard`;
+    const redirectPath = USE_STRAPI ? "/auth" : "/dashboard";
+    const redirectUrl = `${getAuthRedirectOrigin()}${redirectPath}`;
 
     // Allow a fresh attempt to store refresh tokens after consent flows
     hasAttemptedStoreTokenRef.current = false;
 
     // Use skipBrowserRedirect so we can control navigation (new tab in preview iframe).
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: redirectUrl,
-        skipBrowserRedirect: true,
-        queryParams: {
-          prompt: "select_account",
-        },
-      },
+    const { url, error } = await auth.signInWithGoogle({
+      redirectTo: redirectUrl,
+      skipBrowserRedirect: true,
     });
 
-    if (!error && data?.url) {
-      navigateToOAuth(data.url, options?.oauthWindow);
+    if (!error && url) {
+      navigateToOAuth(url, options?.oauthWindow);
     }
 
     return { error };
@@ -335,7 +302,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Separate function to request Drive access after sign-in
   // Using drive.readonly to read existing files + drive.file to create new ones
   const requestDriveAccess = async (options?: { oauthWindow?: Window | null }) => {
-    const redirectUrl = `${getAuthRedirectOrigin()}/dashboard`;
+    const redirectPath = USE_STRAPI ? "/auth" : "/dashboard";
+    const redirectUrl = `${getAuthRedirectOrigin()}${redirectPath}`;
 
     // Allow a fresh attempt to store refresh tokens after consent flows
     hasAttemptedStoreTokenRef.current = false;
@@ -351,48 +319,30 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       queryParams.prompt = "consent select_account";
     }
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: redirectUrl,
-        skipBrowserRedirect: true,
-        scopes:
-          "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents",
-        queryParams,
-      },
+    const { url, error } = await auth.requestDriveAccess({
+      redirectTo: redirectUrl,
+      skipBrowserRedirect: true,
+      queryParams,
     });
 
-    if (!error && data?.url) {
-      navigateToOAuth(data.url, options?.oauthWindow);
+    if (!error && url) {
+      navigateToOAuth(url, options?.oauthWindow);
     }
 
     return { error };
   };
 
   const signInWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    return { error };
+    return auth.signInWithEmail(email, password);
   };
 
   const signUpWithEmail = async (email: string, password: string, accountType: AccountType = "individual") => {
     const redirectUrl = `${getRedirectBase()}/`;
     
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          account_type: accountType,
-        },
-      },
+    return auth.signUpWithEmail(email, password, {
+      account_type: accountType,
+      redirectTo: redirectUrl,
     });
-
-    return { error };
   };
 
   const signOut = async () => {
@@ -405,7 +355,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     localStorage.removeItem(GOOGLE_DRIVE_ACCESS_REQUESTED_KEY);
 
     // Let route guards handle navigation (avoids hard reloads that can hide error toasts)
-    await supabase.auth.signOut();
+    await auth.signOut();
   };
 
   return (

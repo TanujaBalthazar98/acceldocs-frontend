@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 
 interface Workspace {
   id: string;
@@ -30,31 +30,26 @@ export const WorkspaceSwitcher = ({
     }
 
     try {
-      const { data: org, error: orgError } = await supabase
-        .from("organizations")
-        .select("id, name")
-        .eq("id", currentOrganizationId)
-        .maybeSingle();
+      const { data, error } = await invokeFunction<{
+        ok?: boolean;
+        organization?: { id?: string | number; name?: string };
+        members?: Array<{ id?: string | number; role?: string }>;
+        error?: string;
+      }>("get-organization");
 
-      if (orgError) {
-        console.error("Error fetching organization:", orgError);
+      if (error || !data?.ok || !data?.organization) {
+        console.error("Error fetching organization:", error || data?.error);
         return;
       }
 
-      if (org) {
-        const { data: userRole } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .eq("organization_id", currentOrganizationId)
-          .maybeSingle();
+      const role =
+        data.members?.find((member) => String(member.id) === String(user.id))?.role || "viewer";
 
-        setCurrentWorkspace({
-          id: org.id,
-          name: org.name,
-          role: userRole?.role || "viewer",
-        });
-      }
+      setCurrentWorkspace({
+        id: String(data.organization.id ?? currentOrganizationId),
+        name: data.organization.name || "Workspace",
+        role,
+      });
     } catch (error) {
       console.error("Error fetching workspace:", error);
     } finally {

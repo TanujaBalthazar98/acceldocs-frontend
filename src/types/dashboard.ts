@@ -8,6 +8,7 @@ export interface Project {
     name: string;
     slug: string | null;
     drive_folder_id: string | null;
+    drive_parent_id?: string | null;
     visibility: VisibilityLevel;
     is_published: boolean;
     parent_id: string | null;

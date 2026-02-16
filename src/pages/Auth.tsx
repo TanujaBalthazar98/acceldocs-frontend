@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { STRAPI_URL, USE_STRAPI, setStrapiToken } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, BookOpen, Loader2 } from "lucide-react";
 
@@ -25,6 +26,50 @@ const Auth = () => {
     const searchParams = new URLSearchParams(location.search);
     const hashParams = new URLSearchParams(location.hash.replace(/^#/, ""));
 
+    const jwt = searchParams.get("jwt") || hashParams.get("jwt");
+    const accessToken = searchParams.get("access_token") || hashParams.get("access_token");
+    const idToken = searchParams.get("id_token") || hashParams.get("id_token");
+    const debugAuth = searchParams.get("debug_auth") === "1";
+
+    if (USE_STRAPI && jwt) {
+      setStrapiToken(jwt);
+      if (debugAuth) {
+        setAuthError("Strapi JWT received. You can now navigate to /dashboard.");
+        return;
+      }
+      // Force reload so AuthContext picks up the new token.
+      window.location.assign(from);
+      return;
+    }
+
+    if (USE_STRAPI && accessToken) {
+      localStorage.setItem("google_access_token", accessToken);
+    }
+
+    if (USE_STRAPI && (accessToken || idToken) && !jwt) {
+      (async () => {
+        try {
+          const token = accessToken || idToken || "";
+          const callbackUrl = `${STRAPI_URL}/api/auth/google/callback?access_token=${encodeURIComponent(token)}`;
+          const response = await fetch(callbackUrl);
+          const payload = await response.json().catch(() => ({}));
+          if (response.ok && payload?.jwt) {
+            setStrapiToken(payload.jwt);
+            if (debugAuth) {
+              setAuthError("Strapi JWT received from callback. You can now navigate to /dashboard.");
+              return;
+            }
+            window.location.assign(from);
+            return;
+          }
+          setAuthError(payload?.error?.message || payload?.message || "Failed to exchange Google token.");
+        } catch (err) {
+          setAuthError(err instanceof Error ? err.message : "Failed to exchange Google token.");
+        }
+      })();
+      return;
+    }
+
     const error = searchParams.get("error") || hashParams.get("error");
     const errorCode = searchParams.get("error_code") || hashParams.get("error_code");
     const errorDescription =
@@ -41,7 +86,7 @@ const Auth = () => {
         navigate("/auth", { replace: true });
       }
     }
-  }, [location.search, location.hash, navigate]);
+  }, [location.search, location.hash, navigate, from]);
 
   const isEmbedded = (() => {
     try {

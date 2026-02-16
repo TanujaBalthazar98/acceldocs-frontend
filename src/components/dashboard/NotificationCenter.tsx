@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { invokeFunction } from "@/lib/api/functions";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -115,18 +115,7 @@ export const NotificationCenter = ({ organizationId, onWorkspaceChange }: Notifi
   useEffect(() => {
     if (!user) return;
 
-    const checkWorkspaces = async () => {
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("organization_id")
-        .eq("user_id", user.id);
-
-      if (!error && data) {
-        setHasMultipleWorkspaces(data.length > 1);
-      }
-    };
-
-    checkWorkspaces();
+    setHasMultipleWorkspaces(false);
   }, [user]);
 
   // Fetch pending join requests on mount - only once
@@ -134,16 +123,16 @@ export const NotificationCenter = ({ organizationId, onWorkspaceChange }: Notifi
     if (!user || !organizationId || initialFetchDone.current) return;
 
     const fetchPendingRequests = async () => {
-      const { data } = await supabase
-        .from("join_requests")
-        .select("id, user_email, user_name, requested_at")
-        .eq("organization_id", organizationId)
-        .eq("status", "pending")
-        .order("requested_at", { ascending: false })
-        .limit(10);
+      let requests: Array<{ id: string; user_email: string; user_name: string | null; requested_at: string }> = [];
+      const { data, error } = await invokeFunction<{ requests: typeof requests }>("list-join-requests", {
+        body: { organizationId },
+      });
+      if (!error && data?.requests) {
+        requests = data.requests;
+      }
 
-      if (data && data.length > 0) {
-        data.forEach((req) => {
+      if (requests && requests.length > 0) {
+        requests.forEach((req) => {
           // Only add if not already seen/read
           if (!seenRequestIds.has(req.id) && !readNotificationIds.has(req.id)) {
             setSeenRequestIds((prev) => new Set([...prev, req.id]));
@@ -164,88 +153,7 @@ export const NotificationCenter = ({ organizationId, onWorkspaceChange }: Notifi
 
   // Subscribe to real-time events
   useEffect(() => {
-    if (!user || !organizationId) return;
-
-    // Listen for new join requests
-    const joinRequestChannel = supabase
-      .channel(`join-requests-notifications-${organizationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "join_requests",
-          filter: `organization_id=eq.${organizationId}`,
-        },
-        (payload) => {
-          const newRequest = payload.new as any;
-          if (!seenRequestIds.has(newRequest.id)) {
-            setSeenRequestIds((prev) => new Set([...prev, newRequest.id]));
-            addNotification({
-              type: "join_request",
-              title: "New Join Request",
-              message: `${newRequest.user_name || newRequest.user_email} wants to join your workspace`,
-              metadata: { requestId: newRequest.id },
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    // Listen for project invitations being accepted
-    const invitationChannel = supabase
-      .channel(`invitation-notifications-${organizationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "invitations",
-          filter: `organization_id=eq.${organizationId}`,
-        },
-        (payload) => {
-          const updated = payload.new as any;
-          if (updated.accepted_at && !payload.old?.accepted_at) {
-            addNotification({
-              type: "member_added",
-              title: "Invitation Accepted",
-              message: `${updated.email} has joined your workspace`,
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    // Listen for new projects
-    const projectChannel = supabase
-      .channel(`project-notifications-${organizationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "projects",
-          filter: `organization_id=eq.${organizationId}`,
-        },
-        (payload) => {
-          const newProject = payload.new as any;
-          // Don't notify if the current user created it
-          if (newProject.created_by !== user.id) {
-            addNotification({
-              type: "project_created",
-              title: "New Project",
-              message: `A new project "${newProject.name}" was created`,
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(joinRequestChannel);
-      supabase.removeChannel(invitationChannel);
-      supabase.removeChannel(projectChannel);
-    };
+    return;
   }, [user, organizationId, seenRequestIds, addNotification]);
 
   const markAsRead = (id: string) => {

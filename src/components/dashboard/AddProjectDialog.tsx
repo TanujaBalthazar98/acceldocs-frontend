@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase, IS_SUPABASE_CONFIGURED } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
+import { create, list } from "@/lib/api/queries";
 import { DriveFolderPickerDialog } from "./DriveFolderPickerDialog";
 import { DiscoveryResult } from "./DriveDiscoveryDialog";
 import { Folder, X, Upload, Loader2, FileText } from "lucide-react";
@@ -23,6 +24,7 @@ interface AddProjectDialogProps {
   organizationId?: string;
   parentProjectId?: string | null;
   parentProjectName?: string;
+  onOpenSettings?: () => void;
   onCreated?: (result: {
     id: string;
     name: string;
@@ -46,6 +48,7 @@ export const AddProjectDialog = ({
   parentProjectId,
   parentProjectName,
   rootFolderId,
+  onOpenSettings,
   onCreated,
 }: AddProjectDialogProps) => {
   const [projectName, setProjectName] = useState("");
@@ -62,39 +65,7 @@ export const AddProjectDialog = ({
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
 
-  const ensureDefaultVersion = async (projectId: string, isPublished: boolean) => {
-    const { data: existing } = await supabase
-      .from("project_versions")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("is_default", true)
-      .maybeSingle();
-
-    if (existing?.id) return existing.id;
-
-    const { data: created, error: createError } = await supabase
-      .from("project_versions")
-      .insert({
-        project_id: projectId,
-        name: "v1.0",
-        slug: "v1.0",
-        is_default: true,
-        is_published: isPublished,
-        semver_major: 1,
-        semver_minor: 0,
-        semver_patch: 0,
-        created_by: user?.id ?? null,
-      })
-      .select("id")
-      .single();
-
-    if (createError) {
-      console.error("Error creating default version:", createError);
-      return null;
-    }
-
-    return (created as any)?.id ?? null;
-  };
+  const ensureDefaultVersion = async () => null;
 
   const resetAndClose = () => {
     setProjectName("");
@@ -217,39 +188,41 @@ export const AddProjectDialog = ({
         for (const item of items) {
           if (item.type === "folder") {
             // Create Drive folder for the project/sub-project
-            const folderResponse = await supabase.functions.invoke("google-drive", {
+            const folderResponse = await invokeFunction("google-drive", {
               body: {
-                action: "createFolder",
-                accessToken: googleAccessToken,
-                folderName: item.name,
+                action: "create_folder",
+                name: item.name,
                 parentFolderId: currentDriveFolderId,
+              },
+              headers: {
+                "x-google-token": googleAccessToken,
               },
             });
 
-            const targetFolderId = folderResponse.data?.id || currentDriveFolderId;
+            const targetFolderId = folderResponse.data?.folder?.id || currentDriveFolderId;
 
             // Create project/sub-project in database
-            const { data: project, error: projectError } = await supabase
-              .from("projects")
-              .insert({
+            const { data: projectRes, error: projectError } = await invokeFunction<{
+              ok?: boolean;
+              projectId?: string;
+              versionId?: string;
+              error?: string;
+            }>("create-project", {
+              body: {
                 name: item.name,
-                organization_id: organizationId,
-                created_by: user.id,
-                parent_id: currentParentProjectId,
-                drive_folder_id: targetFolderId,
-              } as any)
-              .select("id, name, is_published")
-              .single();
+                organizationId,
+                parentId: currentParentProjectId || null,
+                driveFolderId: targetFolderId,
+              },
+            });
 
-            if (projectError || !project) {
-              console.error("Error creating project:", projectError);
-              errors.push({ type: "project", name: item.name, error: projectError?.message || "Failed to create" });
+            if (projectError || !projectRes?.ok || !projectRes?.projectId) {
+              console.error("Error creating project:", projectError || projectRes?.error);
+              errors.push({ type: "project", name: item.name, error: projectError?.message || projectRes?.error || "Failed to create" });
               continue;
             }
 
-            // Create default version
-            const versionId = await ensureDefaultVersion((project as any).id, (project as any).is_published ?? false);
-
+            const versionId = projectRes.versionId || null;
             if (!versionId) {
               errors.push({ type: "version", name: item.name, error: "Failed to create default version" });
               continue;
@@ -261,11 +234,18 @@ export const AddProjectDialog = ({
               const hasFolders = item.children.some((child) => child.type === "folder");
 
               if (hasFolders) {
-                // Children are sub-projects
-                await processItems(item.children, (project as any).id, targetFolderId);
+                // Children include sub-projects (and possibly files at this level)
+                const childFolders = item.children.filter((child) => child.type === "folder");
+                const childFiles = item.children.filter((child) => child.type === "file");
+                if (childFolders.length > 0) {
+                  await processItems(childFolders, projectRes.projectId, targetFolderId);
+                }
+                if (childFiles.length > 0) {
+                  await processDocuments(childFiles, projectRes.projectId, versionId, null, targetFolderId);
+                }
               } else {
                 // Children are documents - create them directly under the project
-                await processDocuments(item.children, (project as any).id, versionId, null, targetFolderId);
+                await processDocuments(item.children, projectRes.projectId, versionId, null, targetFolderId);
               }
             }
           }
@@ -287,7 +267,7 @@ export const AddProjectDialog = ({
             }
 
             try {
-              const response = await supabase.functions.invoke("convert-markdown-to-gdoc", {
+              const response = await invokeFunction("convert-markdown-to-gdoc", {
                 body: {
                   markdownContent: item.content,
                   title: item.name,
@@ -303,20 +283,25 @@ export const AddProjectDialog = ({
 
               const { documentId } = response.data;
 
-              const { error: docError } = await supabase.from("documents").insert({
-                project_id: projectId,
-                project_version_id: versionId,
-                topic_id: topicId,
-                title: item.name,
-                slug: item.name.toLowerCase().replace(/\s+/g, "-"),
-                google_doc_id: documentId,
-                is_published: false,
-                visibility: "internal",
-                owner_id: user?.id,
-              } as any);
+              const { data: docRes, error: docError } = await invokeFunction<{
+                ok?: boolean;
+                documentId?: string;
+                error?: string;
+              }>("create-document", {
+                body: {
+                  projectId,
+                  projectVersionId: versionId,
+                  topicId: topicId,
+                  title: item.name,
+                  slug: item.name.toLowerCase().replace(/\s+/g, "-"),
+                  googleDocId: documentId,
+                  isPublished: false,
+                  visibility: "internal",
+                },
+              });
 
-              if (docError) {
-                errors.push({ type: "document", name: item.name, error: docError.message });
+              if (docError || !docRes?.ok) {
+                errors.push({ type: "document", name: item.name, error: docError?.message || docRes?.error || "Failed to create document" });
                 continue;
               }
 
@@ -385,32 +370,25 @@ export const AddProjectDialog = ({
   const handleCreate = async () => {
     if (!projectName.trim() || !organizationId || !user) return;
 
-    if (!IS_SUPABASE_CONFIGURED) {
-      toast({
-        title: "Supabase not configured",
-        description: "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsCreating(true);
     try {
       // Create project
-      const { data: project, error: createProjectError } = await supabase
-        .from("projects")
-        .insert({
+      const { data: projectRes, error: createProjectError } = await invokeFunction<{
+        ok?: boolean;
+        projectId?: string;
+        versionId?: string;
+        error?: string;
+      }>("create-project", {
+        body: {
           name: projectName.trim(),
-          organization_id: organizationId,
-          created_by: user.id,
-          parent_id: parentProjectId || null,
-          drive_folder_id: selectedDriveFolder?.id || null, // Link to selected folder
-        } as any)
-        .select("id, name, is_published")
-        .single();
+          organizationId,
+          parentId: parentProjectId || null,
+          driveFolderId: selectedDriveFolder?.id || null,
+        },
+      });
 
-      if (createProjectError || !project) {
-        console.error("Create project error:", createProjectError);
+      if (createProjectError || !projectRes?.ok || !projectRes?.projectId) {
+        console.error("Create project error:", createProjectError || projectRes?.error);
         toast({
           title: "Project not created",
           description: "Failed to create the project. Please try again.",
@@ -419,7 +397,7 @@ export const AddProjectDialog = ({
         return;
       }
 
-      const versionId = await ensureDefaultVersion((project as any).id, (project as any).is_published ?? false);
+      const versionId = projectRes.versionId || null;
 
       // Perform Auto-Discovery if a folder was linked
       let discoveryResult: DiscoveryResult | undefined;
@@ -431,7 +409,7 @@ export const AddProjectDialog = ({
             description: "Checking for existing documentation content.",
           });
           
-          const { data, error } = await supabase.functions.invoke("discover-drive-structure", {
+          const { data, error } = await invokeFunction("discover-drive-structure", {
             body: {
               folderId: selectedDriveFolder.id,
               accessToken: googleAccessToken,
@@ -459,12 +437,12 @@ export const AddProjectDialog = ({
 
       toast({
         title: "Project created",
-        description: `"${(project as any).name}" created successfully.`,
+        description: `"${projectName.trim()}" created successfully.`,
       });
       
       onCreated?.({ 
-        id: (project as any).id, 
-        name: (project as any).name, 
+        id: projectRes.projectId, 
+        name: projectName.trim(), 
         versionId: versionId || undefined,
         discoveryResult 
       });
@@ -643,6 +621,7 @@ export const AddProjectDialog = ({
         onOpenChange={setFolderPickerOpen}
         rootFolderId={rootFolderId || ""}
         onSelect={setSelectedDriveFolder}
+        onOpenSettings={onOpenSettings}
       />
     </>
   );

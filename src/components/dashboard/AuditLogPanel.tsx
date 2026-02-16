@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { strapiFetch } from "@/lib/api/client";
 import { formatDistanceToNow } from 'date-fns';
 import {
   FileText,
@@ -113,39 +113,32 @@ export function AuditLogPanel({ open, onOpenChange, projectId, projectName = 'Pr
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false })
-        .limit(200);
-
+      const { data, error } = await strapiFetch<{ data: any[] }>(
+        `/api/audit-logs?filters[project][id][$eq]=${projectId}&populate[user][fields][0]=email&populate[user][fields][1]=full_name&sort=createdAt:desc&pagination[limit]=200`
+      );
       if (error) throw error;
 
-      // Fetch user details for each log
-      const userIds = [...new Set((data || []).map(log => log.user_id).filter(Boolean))];
-      
-      let userMap: Record<string, { email: string; full_name: string | null }> = {};
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, email, full_name')
-          .in('id', userIds);
-        
-        if (profiles) {
-          userMap = Object.fromEntries(
-            profiles.map(p => [p.id, { email: p.email, full_name: p.full_name }])
-          );
-        }
-      }
+      const mapped = (data?.data || []).map((row) => {
+        const attrs = row.attributes || {};
+        const userData = attrs.user?.data;
+        const userAttrs = userData?.attributes || {};
+        return {
+          id: String(row.id),
+          user_id: userData?.id ? String(userData.id) : "",
+          action: attrs.action || "",
+          entity_type: attrs.entity_type || "",
+          entity_id: attrs.entity_id ?? null,
+          project_id: projectId,
+          metadata: attrs.metadata ?? null,
+          success: attrs.success ?? true,
+          error_message: attrs.error_message ?? null,
+          created_at: attrs.createdAt || "",
+          user_email: userAttrs.email,
+          user_name: userAttrs.full_name ?? null,
+        } as AuditLog;
+      });
 
-      const logsWithUsers = (data || []).map(log => ({
-        ...log,
-        user_email: userMap[log.user_id]?.email,
-        user_name: userMap[log.user_id]?.full_name,
-      }));
-
-      setLogs(logsWithUsers);
+      setLogs(mapped);
     } catch (error) {
       console.error('Failed to fetch audit logs:', error);
     } finally {

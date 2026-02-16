@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction, invokeRpc } from "@/lib/api/functions";
+import { list } from "@/lib/api/queries";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,14 +42,11 @@ export const JoinRequestsPanel = ({ organizationId }: JoinRequestsPanelProps) =>
 
   const fetchRequests = async () => {
     try {
-      const { data, error } = await supabase
-        .from("join_requests")
-        .select("id, user_email, user_name, status, requested_at")
-        .eq("organization_id", organizationId)
-        .order("requested_at", { ascending: false });
-
+      const { data, error } = await invokeFunction<{ requests: JoinRequest[] }>("list-join-requests", {
+        body: { organizationId },
+      });
       if (error) throw error;
-      setRequests(data || []);
+      setRequests(data?.requests || []);
     } catch (error) {
       console.error("Error fetching join requests:", error);
     } finally {
@@ -63,7 +61,7 @@ export const JoinRequestsPanel = ({ organizationId }: JoinRequestsPanelProps) =>
   const handleApprove = async (requestId: string) => {
     setProcessingId(requestId);
     try {
-      const { error } = await supabase.rpc("approve_join_request", {
+      const { error } = await invokeRpc("approve_join_request", {
         _request_id: requestId,
       });
 
@@ -76,18 +74,21 @@ export const JoinRequestsPanel = ({ organizationId }: JoinRequestsPanelProps) =>
 
       // Auto-sync Drive permissions for all org projects with Drive folders
       if (organizationId) {
-        const { data: projects } = await supabase
-          .from("projects")
-          .select("id, drive_folder_id")
-          .eq("organization_id", organizationId)
-          .not("drive_folder_id", "is", null);
+        let projects: Array<{ id: string; drive_folder_id?: string | null }> = [];
+        const { data: rows } = await list("projects", {
+          filters: { organization_id: organizationId, drive_folder_id: { is: "not_null" } },
+        });
+        projects = (rows || []).map((row: any) => ({
+          id: String(row.id),
+          drive_folder_id: row.attributes?.drive_folder_id ?? null,
+        }));
         
         if (projects && projects.length > 0) {
           console.log(`Syncing Drive permissions for ${projects.length} projects...`);
           // Sync in parallel for efficiency
           await Promise.all(
             projects.map(project =>
-              supabase.functions.invoke("sync-drive-permissions", {
+              invokeFunction("sync-drive-permissions", {
                 body: { projectId: project.id }
               }).catch(err => console.error(`Failed to sync project ${project.id}:`, err))
             )
@@ -116,7 +117,7 @@ export const JoinRequestsPanel = ({ organizationId }: JoinRequestsPanelProps) =>
 
     setProcessingId(selectedRequest.id);
     try {
-      const { error } = await supabase.rpc("reject_join_request", {
+      const { error } = await invokeRpc("reject_join_request", {
         _request_id: selectedRequest.id,
         _reason: rejectionReason || null,
       });

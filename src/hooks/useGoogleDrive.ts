@@ -1,4 +1,5 @@
-import { supabase, IS_SUPABASE_CONFIGURED } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
+import { USE_STRAPI } from "@/lib/api/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
@@ -30,24 +31,18 @@ export const useGoogleDrive = () => {
     body: Record<string, unknown> | FormData,
     errorMessage: string
   ): Promise<{ data: T | null; needsDriveAccess?: boolean }> => {
-    if (!IS_SUPABASE_CONFIGURED) {
-      toast({
-        title: "Supabase config missing",
-        description: "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY).",
-        variant: "destructive",
-        duration: 12000,
-      });
-      return { data: null };
-    }
-
     const token = getGoogleToken();
+
+    if (!token) {
+      return { data: null, needsDriveAccess: true };
+    }
 
     const invokeOptions = {
       body,
       ...(token ? { headers: { "x-google-token": token } } : {}),
     };
 
-    const { data, error } = await supabase.functions.invoke("google-drive", invokeOptions);
+    const { data, error } = await invokeFunction("google-drive", invokeOptions);
 
     // Handle invoke-level errors
     if (error) {
@@ -69,7 +64,7 @@ export const useGoogleDrive = () => {
         const recovery = await attemptRecovery(errorMessage);
         if (recovery.recovered && recovery.shouldRetry) {
           // Retry the call once after successful recovery
-          const retryResult = await supabase.functions.invoke("google-drive", invokeOptions);
+          const retryResult = await invokeFunction("google-drive", invokeOptions);
           if (!retryResult.error && !retryResult.data?.needsReauth) {
             return { data: retryResult.data as T };
           }
@@ -91,7 +86,7 @@ export const useGoogleDrive = () => {
         const recovery = await attemptRecovery(data?.error || errorMessage);
         if (recovery.recovered && recovery.shouldRetry) {
           // Retry once after recovery
-          const retryResult = await supabase.functions.invoke("google-drive", invokeOptions);
+          const retryResult = await invokeFunction("google-drive", invokeOptions);
           if (!retryResult.error && !retryResult.data?.needsReauth) {
             return { data: retryResult.data as T };
           }
@@ -112,7 +107,7 @@ export const useGoogleDrive = () => {
       if (isAuthError && !isInCooldown()) {
         const recovery = await attemptRecovery(data.error);
         if (recovery.recovered && recovery.shouldRetry) {
-          const retryResult = await supabase.functions.invoke("google-drive", invokeOptions);
+          const retryResult = await invokeFunction("google-drive", invokeOptions);
           if (!retryResult.error && !retryResult.data?.error) {
             return { data: retryResult.data as T };
           }
@@ -151,12 +146,15 @@ export const useGoogleDrive = () => {
     projectId?: string,
   ): Promise<{ exists: boolean; needsDriveAccess?: boolean; error?: string; errorCode?: string }> => {
     const token = getGoogleToken();
+    if (!token) {
+      return { exists: false, needsDriveAccess: true, errorCode: "NEEDS_REAUTH" };
+    }
     const invokeOptions = {
       body: { action: "list_folder", folderId, ...(projectId ? { projectId } : {}) },
       ...(token ? { headers: { "x-google-token": token } } : {}),
     };
 
-    const { data, error } = await supabase.functions.invoke("google-drive", invokeOptions);
+    const { data, error } = await invokeFunction("google-drive", invokeOptions);
 
     if (error) {
       return { exists: false, error: error.message, errorCode: "INVOKE_ERROR" };
@@ -283,4 +281,3 @@ export const useGoogleDrive = () => {
 
   return { listFolder, checkFolderAccess, createFolder, createDoc, uploadFile, moveFile, trashFile, getGoogleToken };
 };
-

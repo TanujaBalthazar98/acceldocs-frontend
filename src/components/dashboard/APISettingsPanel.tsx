@@ -17,8 +17,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import yaml from "js-yaml";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getById, update } from "@/lib/api/queries";
 
 // Recursively sanitize object to remove unsupported Unicode escape sequences
 const sanitizeForJson = (obj: unknown): unknown => {
@@ -61,12 +61,9 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
   // Fetch existing settings on mount
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data, error } = await supabase
-        .from("organizations")
-        .select("openapi_spec_url, openapi_spec_json")
-        .eq("id", organizationId)
-        .single();
-
+      const { data, error } = await getById<any>("organizations", organizationId, {
+        select: "openapi_spec_url,openapi_spec_json",
+      });
       if (data && !error) {
         setOpenApiUrl((data as any).openapi_spec_url ?? "");
         if ((data as any).openapi_spec_json) {
@@ -158,13 +155,10 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
       return;
     }
 
-    const { error } = await supabase
-      .from("organizations")
-      .update({
-        openapi_spec_url: openApiUrl || null,
-        openapi_spec_json: sanitizedSpec as any,
-      } as any)
-      .eq("id", organizationId);
+    const { error } = await update("organizations", organizationId, {
+      openapi_spec_url: openApiUrl || null,
+      openapi_spec_json: sanitizedSpec as any,
+    });
 
     setSaving(false);
 
@@ -184,13 +178,10 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
   const handleUnpublish = async () => {
     setSaving(true);
 
-    const { error } = await supabase
-      .from("organizations")
-      .update({
-        openapi_spec_url: null,
-        openapi_spec_json: null,
-      } as any)
-      .eq("id", organizationId);
+    const { error } = await update("organizations", organizationId, {
+      openapi_spec_url: null,
+      openapi_spec_json: null,
+    });
 
     setSaving(false);
 

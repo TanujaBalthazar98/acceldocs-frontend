@@ -11,8 +11,8 @@ import {
   Send,
   Code,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getById, update } from "@/lib/api/queries";
 
 interface MCPSettingsPanelProps {
   organizationId: string;
@@ -30,12 +30,9 @@ export const MCPSettingsPanel = ({ organizationId, orgSlug, onBack }: MCPSetting
   // Fetch existing settings on mount
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data, error } = await supabase
-        .from("organizations")
-        .select("mcp_enabled")
-        .eq("id", organizationId)
-        .single();
-
+      const { data, error } = await getById<any>("organizations", organizationId, {
+        select: "mcp_enabled",
+      });
       if (data && !error) {
         setMcpEnabled((data as any).mcp_enabled ?? false);
       }
@@ -48,12 +45,7 @@ export const MCPSettingsPanel = ({ organizationId, orgSlug, onBack }: MCPSetting
     setSaving(true);
     const newState = !mcpEnabled;
 
-    const { error } = await supabase
-      .from("organizations")
-      .update({
-        mcp_enabled: newState,
-      } as any)
-      .eq("id", organizationId);
+    const { error } = await update("organizations", organizationId, { mcp_enabled: newState });
 
     setSaving(false);
 

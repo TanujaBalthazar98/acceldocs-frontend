@@ -116,9 +116,12 @@ import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
 
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { DriveStatusIndicator } from "@/components/dashboard/DriveStatusIndicator";
+import { DriveReauthListener } from "@/components/dashboard/DriveReauthListener";
 import { DRIVE_INTEGRATION_ENABLED } from "@/lib/featureFlags";
 import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction, invokeRpc } from "@/lib/api/functions";
+import { strapiFetch } from "@/lib/api/client";
+import { list } from "@/lib/api/queries";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 import { buildDriveFolderTree } from "@/lib/driveFolderTree";
@@ -143,7 +146,7 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
 };
 
 const Dashboard = () => {
-  const { user, signOut, requestDriveAccess, googleAccessToken } = useAuth();
+  const { user, signOut, googleAccessToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -195,7 +198,7 @@ const Dashboard = () => {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [needsDriveAccess, setNeedsDriveAccess] = useState(false);
-  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
+  const [isConnectingDrive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'project' | 'topic' | 'document'; id: string; name: string; forceDelete?: boolean } | null>(null);
@@ -221,6 +224,123 @@ const Dashboard = () => {
   const [subProjectsExpanded, setSubProjectsExpanded] = useState(true);
   const [topicsExpanded, setTopicsExpanded] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+
+  const unwrapStrapiEntity = <T extends Record<string, any>>(
+    entity: T | null | undefined,
+  ): T | null => {
+    if (!entity) return null;
+    if ((entity as any).attributes) {
+      return { id: (entity as any).id, ...(entity as any).attributes } as T;
+    }
+    return entity;
+  };
+
+  const mapProjectFromStrapi = (item: any, orgId: string): Project => {
+    const attrs = item?.attributes || item || {};
+    const parentRaw =
+      attrs.parent?.data?.id ??
+      attrs.parent?.id ??
+      attrs.parent_id ??
+      attrs.parent ??
+      null;
+    const normalizedParent =
+      parentRaw && parentRaw !== "null" && parentRaw !== "undefined" ? String(parentRaw) : null;
+    return {
+      id: String(item?.id ?? attrs.id),
+      name: attrs.name || "",
+      slug: attrs.slug ?? null,
+      drive_folder_id: attrs.drive_folder_id ?? null,
+      drive_parent_id: attrs.drive_parent_id ?? null,
+      visibility: attrs.visibility ?? "internal",
+      is_published: !!attrs.is_published,
+      parent_id: normalizedParent,
+      organization_id: orgId,
+      show_version_switcher: attrs.show_version_switcher ?? true,
+    };
+  };
+
+  const mapVersionFromStrapi = (item: any): ProjectVersion => {
+    const attrs = item?.attributes || item || {};
+    return {
+      id: String(item?.id ?? attrs.id),
+      project_id: attrs.project?.data?.id
+        ? String(attrs.project.data.id)
+        : attrs.project?.id
+          ? String(attrs.project.id)
+          : "",
+      name: attrs.name || "",
+      slug: attrs.slug || "",
+      is_default: !!attrs.is_default,
+      is_published: !!attrs.is_published,
+      semver_major: Number(attrs.semver_major ?? 0),
+      semver_minor: Number(attrs.semver_minor ?? 0),
+      semver_patch: Number(attrs.semver_patch ?? 0),
+    };
+  };
+
+  const mapTopicFromStrapi = (item: any): Topic => {
+    const attrs = item?.attributes || item || {};
+    return {
+      id: String(item?.id ?? attrs.id),
+      name: attrs.name || "",
+      drive_folder_id: attrs.drive_folder_id ?? "",
+      project_id: attrs.project?.data?.id
+        ? String(attrs.project.data.id)
+        : attrs.project?.id
+          ? String(attrs.project.id)
+          : "",
+      project_version_id: attrs.project_version?.data?.id
+        ? String(attrs.project_version.data.id)
+        : attrs.project_version?.id
+          ? String(attrs.project_version.id)
+          : null,
+      parent_id: attrs.parent?.data?.id
+        ? String(attrs.parent.data.id)
+        : attrs.parent?.id
+          ? String(attrs.parent.id)
+          : null,
+      display_order: attrs.display_order ?? null,
+    };
+  };
+
+  const mapDocumentFromStrapi = (item: any): Document => {
+    const attrs = item?.attributes || item || {};
+    const owner = attrs.owner?.data?.attributes || attrs.owner || {};
+    return {
+      id: String(item?.id ?? attrs.id),
+      title: attrs.title || "",
+      google_doc_id: attrs.google_doc_id || "",
+      project_id: attrs.project?.data?.id
+        ? String(attrs.project.data.id)
+        : attrs.project?.id
+          ? String(attrs.project.id)
+          : null,
+      project_version_id: attrs.project_version?.data?.id
+        ? String(attrs.project_version.data.id)
+        : attrs.project_version?.id
+          ? String(attrs.project_version.id)
+          : null,
+      topic_id: attrs.topic?.data?.id
+        ? String(attrs.topic.data.id)
+        : attrs.topic?.id
+          ? String(attrs.topic.id)
+          : null,
+      display_order: attrs.display_order ?? null,
+      google_modified_at: attrs.google_modified_at ?? null,
+      created_at: attrs.createdAt || attrs.created_at || "",
+      updated_at: attrs.updatedAt || attrs.updated_at || "",
+      visibility: attrs.visibility ?? "internal",
+      is_published: !!attrs.is_published,
+      owner_id: attrs.owner?.data?.id ? String(attrs.owner.data.id) : null,
+      owner_name: owner.full_name || owner.email || owner.username || undefined,
+      content_html: attrs.content_html ?? null,
+      published_content_html: attrs.published_content_html ?? null,
+      content_id: attrs.content_id ?? null,
+      published_content_id: attrs.published_content_id ?? null,
+      video_url: attrs.video_url ?? null,
+      video_title: attrs.video_title ?? null,
+    };
+  };
   
   // Permissions and audit logging
   const { permissions, role, loading: permissionsLoading, isOrgOwner } = usePermissions(selectedProject?.id || null);
@@ -242,7 +362,7 @@ const Dashboard = () => {
     if (selectedProject?.id === projectId && permissions.canPublish) return true;
     
     // Otherwise, call the database function directly
-    const { data: canEdit, error } = await supabase.rpc("can_edit_project" as any, {
+    const { data: canEdit, error } = await invokeRpc("can_edit_project" as any, {
       _project_id: projectId as any,
       _user_id: user.id as any,
     });
@@ -308,204 +428,141 @@ const Dashboard = () => {
     }
 
     try {
-      // Get user's profile and organization
-      // First try profile.organization_id, then fall back to user_roles as source of truth
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id as any)
-        .maybeSingle();
-      
-      if (profileError) throw profileError;
+      const { data: workspace, error: workspaceError } = await invokeFunction("ensure-workspace", {
+        body: {},
+      });
 
-      let effectiveOrgId = (profile as any)?.organization_id || null;
+      if (workspaceError || !workspace?.ok || !workspace?.organizationId) {
+        throw workspaceError || new Error(workspace?.error || "Failed to ensure workspace");
+      }
 
-      // If no org in profile, check user_roles as the authoritative source
-      if (!effectiveOrgId) {
-        const { data: userRole, error: roleError } = await supabase
-          .from("user_roles")
-          .select("organization_id, role")
-          .eq("user_id", user.id as any)
-          .maybeSingle();
-        
-        if (roleError) throw roleError;
+      const orgId = String(workspace.organizationId);
+      setOrganizationId(orgId);
+      setNeedsOnboarding(false);
 
-        if ((userRole as any)?.organization_id) {
-          effectiveOrgId = (userRole as any).organization_id;
-          // Sync the profile's organization_id for consistency
-          await supabase
-            .from("profiles")
-            .update({ organization_id: (userRole as any).organization_id } as any)
-            .eq("id", user.id as any);
+      const { data: orgResponse, error: orgError } = await invokeFunction<{
+        ok?: boolean;
+        organization?: any;
+        error?: string;
+      }>("get-organization");
+      if (orgError || !orgResponse?.ok) {
+        throw orgError || new Error(orgResponse?.error || "Failed to load organization");
+      }
+      const org = orgResponse.organization || null;
+
+      if (org?.drive_folder_id) {
+        setRootFolderId(org.drive_folder_id);
+      }
+      setNeedsDriveAccess(!org?.drive_folder_id);
+      if (org?.slug || org?.domain) {
+        setOrganizationSlug(org.slug || org.domain);
+      }
+      setOrgMcpEnabled(org?.mcp_enabled ?? false);
+      setOrgHasApiSpec(!!(org?.openapi_spec_json || org?.openapi_spec_url));
+      setOrganizationName(org?.name || "");
+
+      const memberRole =
+        orgResponse?.members?.find((member: any) => String(member?.id) === String(user.id))?.role ||
+        "viewer";
+      setAppRole(memberRole);
+
+      const { data: projectRes, error: projectError } = await invokeFunction<{
+        ok?: boolean;
+        projects?: any[];
+        error?: string;
+      }>("list-projects", {
+        body: { organizationId: orgId },
+      });
+
+      if (projectError || !projectRes?.ok) {
+        throw projectError || new Error(projectRes?.error || "Failed to load projects");
+      }
+
+      const mappedProjects = (projectRes.projects || [])
+        .map((row) => mapProjectFromStrapi(row, orgId))
+        .filter((p) => p.name.trim().length > 0);
+
+      const normalizeName = (value: string) => value.trim().toLowerCase();
+      const uniqueByDrive = new Map<string, Project>();
+      const uniqueByNameParent = new Map<string, Project>();
+      for (const project of mappedProjects) {
+        if (project.drive_folder_id) {
+          const existing = uniqueByDrive.get(project.drive_folder_id);
+          if (!existing || (!existing.parent_id && project.parent_id)) {
+            uniqueByDrive.set(project.drive_folder_id, project);
+          }
+          continue;
+        }
+        const key = `${project.parent_id || "root"}::${normalizeName(project.name)}`;
+        if (!uniqueByNameParent.has(key)) {
+          uniqueByNameParent.set(key, project);
         }
       }
 
-      if (effectiveOrgId) {
-        setOrganizationId(effectiveOrgId);
+      const dedupedProjects = [
+        ...uniqueByDrive.values(),
+        ...uniqueByNameParent.values(),
+      ].filter((p, idx, arr) => arr.findIndex((other) => other.id === p.id) === idx);
 
-        // Get organization details
-        const { data: org, error: orgError } = await supabase
-          .from("organizations")
-          .select(
-            "id, drive_folder_id, name, slug, domain, mcp_enabled, openapi_spec_json, openapi_spec_url, owner_id",
-          )
-          .eq("id", effectiveOrgId as any)
-          .single();
-        
-        if (orgError) throw orgError;
+      setProjects(dedupedProjects);
 
-        if ((org as any)?.drive_folder_id) {
-          setRootFolderId((org as any).drive_folder_id);
-        }
-        if ((org as any)?.slug || (org as any)?.domain) {
-          setOrganizationSlug((org as any).slug || (org as any).domain);
-        }
-
-        // Set org-level API/MCP settings
-        setOrgMcpEnabled((org as any)?.mcp_enabled ?? false);
-        setOrgHasApiSpec(!!((org as any)?.openapi_spec_json || (org as any)?.openapi_spec_url));
-        setOrganizationName((org as any)?.name || "");
-
-        // Onboarding is complete if the organization has a name set (not just the default domain)
-        setNeedsOnboarding(false);
-
-        // Get projects - only from user's own organization (not public projects from other orgs)
-        const { data: projectsData, error: projError } = await supabase
-          .from("projects")
-          .select("id, name, slug, drive_folder_id, visibility, is_published, parent_id, organization_id, show_version_switcher")
-          .eq("organization_id", effectiveOrgId as any)
-          .order("name");
-        
-        if (projError) throw projError;
-
-        if (projectsData) {
-          setProjects(projectsData as Project[]);
-
-          const projectIds = (projectsData as any[]).map((p) => p.id);
-          const docsSelect = `
-              id, title, google_doc_id, project_id, project_version_id, topic_id, display_order, google_modified_at, created_at, updated_at, video_url, video_title,
-              visibility, is_published, owner_id, content_id, published_content_id,
-              owner:profiles!documents_owner_id_fkey(full_name, email)
-            `;
-
-          let docsData: any[] = [];
-
-          if (projectIds.length > 0) {
-            const { data: versionsData, error: versionsError } = await supabase
-              .from("project_versions")
-              .select("id, project_id, name, slug, is_default, is_published, semver_major, semver_minor, semver_patch")
-              .in("project_id", projectIds);
-
-            if (versionsError) throw versionsError;
-
-            if (versionsData) {
-              setProjectVersions(versionsData as ProjectVersion[]);
-            }
-
-            const { data: topicsData, error: topicsError } = await supabase
-              .from("topics")
-              .select("id, name, drive_folder_id, project_id, project_version_id, parent_id, display_order")
-              .in("project_id", projectIds)
-              .order("display_order");
-            
-            if (topicsError) throw topicsError;
-
-            if (topicsData) {
-              setTopics(topicsData as Topic[]);
-            }
-
-            const { data: projectDocs, error: pDocsError } = await supabase
-              .from("documents")
-              .select(docsSelect)
-              .in("project_id", projectIds)
-              .order("display_order", { ascending: true, nullsFirst: false });
-            
-            if (pDocsError) throw pDocsError;
-
-            docsData = projectDocs || [];
-          } else {
-            setProjectVersions([]);
-            setTopics([]);
-          }
-
-          const { data: unassignedDocs } = await supabase
-            .from("documents")
-            .select(docsSelect)
-            .is("project_id", null)
-            .order("display_order", { ascending: true, nullsFirst: false });
-
-          const combinedDocs = [...docsData, ...(unassignedDocs || [])];
-
-          if (combinedDocs.length > 0) {
-            const baseDocs = combinedDocs.map((doc: any) => ({
-              ...doc,
-              content_html: null,
-              published_content_html: null,
-              owner_name: doc.owner?.full_name || doc.owner?.email?.split("@")[0] || null,
-            }));
-
-
-            const unpublishedIds = baseDocs.filter((d: any) => !d.is_published).map((d: any) => d.id);
-
-            if (unpublishedIds.length > 0) {
-              const { data: contentRows, error: contentError } = await supabase
-                .from("documents")
-                .select(`
-                  id, 
-                  content_html, 
-                  published_content_html,
-                  content_id,
-                  published_content_id
-                `)
-                .in("id", unpublishedIds);
-              
-              if (contentError) throw contentError;
-
-              const contentById = new Map((contentRows || []).map((r: any) => [
-                r.id, 
-                {
-                  ...r,
-                  content_html: r.content_html,
-                  published_content_html: r.published_content_html
-                }
-              ]));
-
-              const merged = baseDocs.map((d: any) => ({
-                ...d,
-                ...(contentById.get(d.id) || {}),
-              }));
-
-              setDocuments(merged as Document[]);
-            } else {
-              setDocuments(baseDocs as Document[]);
-            }
-          } else {
-            setDocuments([]);
-          }
-        } else {
-          setProjects([]);
-          setProjectVersions([]);
-          setTopics([]);
-          setDocuments([]);
-        }
-
-        const { data: orgRoleData, error: roleError } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("organization_id", effectiveOrgId as any)
-          .eq("user_id", user.id as any)
-          .maybeSingle();
-        
-        if (roleError) throw roleError;
-
-        const resolvedRole = (org as any)?.owner_id === user.id ? "owner" : (orgRoleData as any)?.role ?? null;
-        setAppRole(resolvedRole ?? "viewer");
-      } else {
-        // No organization - individual user needs onboarding to create one
-        setNeedsOnboarding(true);
-        setOrganizationId(null);
-        setAppRole(null);
+      const projectIds = dedupedProjects.map((p) => p.id);
+      if (projectIds.length === 0) {
+        setProjectVersions([]);
+        setTopics([]);
+        setDocuments([]);
+        return;
       }
+
+      const { data: versionRes, error: versionError } = await invokeFunction<{
+        ok?: boolean;
+        versions?: any[];
+        error?: string;
+      }>("list-project-versions", { body: { projectIds } });
+      if (versionError || !versionRes?.ok) {
+        throw versionError || new Error(versionRes?.error || "Failed to load versions");
+      }
+      setProjectVersions((versionRes.versions || []).map(mapVersionFromStrapi));
+
+      const { data: topicRes, error: topicError } = await invokeFunction<{
+        ok?: boolean;
+        topics?: any[];
+        error?: string;
+      }>("list-topics", { body: { projectIds } });
+      if (topicError || !topicRes?.ok) {
+        throw topicError || new Error(topicRes?.error || "Failed to load topics");
+      }
+      setTopics((topicRes.topics || []).map(mapTopicFromStrapi));
+
+      const { data: docRes, error: docError } = await invokeFunction<{
+        ok?: boolean;
+        documents?: any[];
+        error?: string;
+      }>("list-documents", { body: { projectIds } });
+      if (docError || !docRes?.ok) {
+        throw docError || new Error(docRes?.error || "Failed to load documents");
+      }
+      const mappedDocs = (docRes.documents || []).map(mapDocumentFromStrapi);
+      const docByKey = new Map<string, Document>();
+      for (const doc of mappedDocs) {
+        const key = doc.google_doc_id ? `gdoc:${doc.google_doc_id}` : `id:${doc.id}`;
+        const existing = docByKey.get(key);
+        if (!existing) {
+          docByKey.set(key, doc);
+          continue;
+        }
+        if (!existing.is_published && doc.is_published) {
+          docByKey.set(key, doc);
+          continue;
+        }
+        const existingUpdated = Date.parse(existing.updated_at || "") || 0;
+        const currentUpdated = Date.parse(doc.updated_at || "") || 0;
+        if (currentUpdated > existingUpdated) {
+          docByKey.set(key, doc);
+        }
+      }
+      setDocuments(Array.from(docByKey.values()));
+      return;
     } finally {
       if (blockUI) {
         setIsLoading(false);
@@ -518,6 +575,10 @@ const Dashboard = () => {
   useEffect(() => {
     fetchData();
   }, [user?.id]);
+
+  useEffect(() => {
+    setNeedsDriveAccess(!rootFolderId);
+  }, [rootFolderId]);
 
   const getHighestSemverVersion = (versions: ProjectVersion[]) =>
     versions
@@ -756,223 +817,45 @@ const Dashboard = () => {
   
   // Delete handlers with RBAC enforcement
   const handleDeleteProject = async (projectId: string, forceDelete = false): Promise<boolean> => {
-    // RBAC check - only admins can delete projects
     if (!permissions.canDeleteProject) {
-      toast({
-        title: "Permission Denied",
-        description: "You don't have permission to delete projects.",
-        variant: "destructive",
-      });
-      await logUnauthorizedAttempt(
-        "delete_project",
-        "project",
-        projectId,
-        projectId,
-        "canDeleteProject"
-      );
+      toast({ title: "Permission Denied", description: "You don't have permission to delete projects.", variant: "destructive" });
+      await logUnauthorizedAttempt('delete_project', 'project', projectId, projectId, 'canDeleteProject');
       return false;
     }
 
     const project = projects.find((p) => p.id === projectId);
+    const { data, error } = await invokeFunction<{
+      ok?: boolean;
+      error?: string;
+    }>("delete-project", {
+      body: { projectId },
+    });
 
-    const fail = (title: string, description: string) => {
-      toast({ title, description, variant: "destructive" });
+    if (error || !data?.ok) {
+      toast({ title: "Error", description: "Failed to delete project.", variant: "destructive" });
       return false;
-    };
-
-    // Check for and delete child projects first (sub-projects)
-    const childProjects = projects.filter(p => p.parent_id === projectId);
-    for (const child of childProjects) {
-      const childDeleted = await handleDeleteProject(child.id, forceDelete);
-      if (!childDeleted) {
-        return fail("Error", `Failed to delete sub-project "${child.name}". Please delete it first.`);
-      }
     }
 
-    // Trash the Drive folder if it exists - block deletion if it fails (unless force delete)
-    if (project?.drive_folder_id && !forceDelete) {
+    const canUseDrive = !!googleAccessToken;
+    if (project?.drive_folder_id && canUseDrive && !forceDelete) {
       const trashResult = await trashFile(project.drive_folder_id);
       if (!trashResult.success) {
-        if (trashResult.errorCode === "NOT_AUTHORIZED") {
-          setForceDeleteAvailable(true);
-          toast({
-            title: "Cannot Delete from Drive",
-            description:
-              "This folder contains files not created by this app. Use 'Force Delete' to remove only from the app.",
-            variant: "destructive",
-          });
-          return false;
-        }
-
-        return fail(
-          "Cannot Delete Project",
-          trashResult.error ||
-            "Failed to trash the Drive folder. Please reconnect to Google Drive and try again."
-        );
-      }
-      if (trashResult.alreadyDeleted) {
         toast({
-          title: "Drive Folder Missing",
-          description: "Drive folder was already removed. Cleaning up the project in Docspeare.",
+          title: "Drive not updated",
+          description: trashResult.error || "Project removed from app, but Drive folder was not deleted.",
+          variant: "destructive",
         });
       }
     }
 
-    // IMPORTANT: Projects have many related records with foreign keys.
-    // We must delete/clear those first or the project delete will fail.
-
-    // 1) Delete connector actions (FK to documents/connectors)
-    {
-      const { error } = await supabase
-        .from("connector_actions")
-        .delete()
-        .eq("project_id", projectId);
-      if (error) return fail("Error", `Failed to delete connector actions: ${error.message}`);
-    }
-
-    // 2) Delete page feedback for documents in this project (FK to documents)
-    {
-      const { data: docRows, error: docRowsError } = await supabase
-        .from("documents")
-        .select("id")
-        .eq("project_id", projectId);
-      if (docRowsError)
-        return fail("Error", `Failed to load project documents: ${docRowsError.message}`);
-
-      const docIds = (docRows || []).map((r: any) => r.id).filter(Boolean);
-      if (docIds.length > 0) {
-        const { error } = await supabase
-          .from("page_feedback")
-          .delete()
-          .in("document_id", docIds as any);
-        if (error) return fail("Error", `Failed to delete page feedback: ${error.message}`);
-      }
-    }
-
-    // 3) Delete other project-linked rows
-    {
-      const { error } = await supabase
-        .from("drive_permission_sync")
-        .delete()
-        .eq("project_id", projectId);
-      if (error) return fail("Error", `Failed to delete Drive permission sync rows: ${error.message}`);
-    }
-
-    {
-      const { error } = await supabase
-        .from("project_invitations")
-        .delete()
-        .eq("project_id", projectId);
-      if (error) return fail("Error", `Failed to delete project invitations: ${error.message}`);
-    }
-
-    {
-      const { error } = await supabase
-        .from("project_members")
-        .delete()
-        .eq("project_id", projectId);
-      if (error) return fail("Error", `Failed to delete project members: ${error.message}`);
-    }
-
-    // 4) Clear nullable foreign keys (keep history)
-    {
-      const { error } = await supabase
-        .from("audit_logs")
-        .update({ project_id: null } as any)
-        .eq("project_id", projectId);
-      if (error) return fail("Error", `Failed to detach audit logs: ${error.message}`);
-    }
-
-    {
-      const { error } = await supabase
-        .from("domains")
-        .update({ project_id: null } as any)
-        .eq("project_id", projectId as any);
-      if (error) return fail("Error", `Failed to detach domains: ${error.message}`);
-    }
-
-    // 5) Delete project connectors (and their related rows)
-    {
-      const { data: connectorRows, error: connectorRowsError } = await supabase
-        .from("connectors")
-        .select("id")
-        .eq("project_id", projectId);
-
-      if (connectorRowsError)
-        return fail("Error", `Failed to load project connectors: ${connectorRowsError.message}`);
-
-      const connectorIds = (connectorRows || []).map((r: any) => r.id).filter(Boolean);
-      if (connectorIds.length > 0) {
-        const { error: permsError } = await supabase
-          .from("connector_permissions")
-          .delete()
-          .in("connector_id", connectorIds as any);
-        if (permsError) return fail("Error", `Failed to delete connector permissions: ${permsError.message}`);
-
-        const { error: credsError } = await supabase
-          .from("connector_credentials")
-          .delete()
-          .in("connector_id", connectorIds as any);
-        if (credsError) return fail("Error", `Failed to delete connector credentials: ${credsError.message}`);
-
-        const { error: connectorsError } = await supabase
-          .from("connectors")
-          .delete()
-          .in("id", connectorIds as any);
-        if (connectorsError) return fail("Error", `Failed to delete connectors: ${connectorsError.message}`);
-      }
-    }
-
-    // 6) Delete project content
-    {
-      const { error } = await supabase
-        .from("documents")
-        .delete()
-        .eq("project_id", projectId);
-      if (error) return fail("Error", `Failed to delete project pages: ${error.message}`);
-    }
-
-    {
-      const { error } = await supabase
-        .from("topics")
-        .delete()
-        .eq("project_id", projectId);
-      if (error) return fail("Error", `Failed to delete project topics: ${error.message}`);
-    }
-
-    // 6b) Delete slug history for project
-    {
-      const { error } = await supabase
-        .from("slug_history")
-        .delete()
-        .eq("entity_type", "project" as any)
-        .eq("entity_id", projectId as any);
-      if (error) console.warn("Failed to delete slug history:", error.message);
-    }
-
-    // 7) Delete the project
-    {
-      const { error } = await supabase.from("projects").delete().eq("id", projectId as any);
-      if (error) return fail("Error", `Failed to delete project: ${error.message}`);
-    }
-
-    await logAction("delete_project", "project", projectId, projectId, {
-      projectName: project?.name,
-      forceDelete,
-    });
-
+    await logAction('delete_project', 'project', projectId, projectId, { forceDelete });
     toast({
       title: "Deleted",
-      description: forceDelete
-        ? "Project deleted from app (Drive files remain)."
-        : "Project moved to Drive trash and deleted from app.",
+      description: project?.drive_folder_id ? "Project deleted from app and Drive." : "Project deleted from app.",
     });
-
     if (selectedProject?.id === projectId) {
       setSelectedProject(null);
-      setSelectedTopic(null);
     }
-
     fetchData();
     return true;
   };
@@ -988,25 +871,29 @@ const Dashboard = () => {
     // Get the topic's drive folder ID first
     const topic = topics.find(t => t.id === topicId);
     
+    // If Drive is not connected, allow app-only delete
+    const canUseDrive = !!googleAccessToken;
+
     // Trash the Drive folder if it exists - block deletion if it fails (unless force delete)
-    if (topic?.drive_folder_id && !forceDelete) {
+    if (topic?.drive_folder_id && !forceDelete && canUseDrive) {
       const trashResult = await trashFile(topic.drive_folder_id);
       if (!trashResult.success) {
-        if (trashResult.errorCode === "NOT_AUTHORIZED") {
+        if (trashResult.errorCode === "NOT_AUTHORIZED" || trashResult.errorCode === "NEEDS_REAUTH") {
           setForceDeleteAvailable(true);
           toast({ 
             title: "Cannot Delete from Drive", 
-            description: "This folder contains files not created by this app. Use 'Force Delete' to remove only from the app.", 
+            description: "Drive access is unavailable. Deleting from app only.", 
+            variant: "destructive" 
+          });
+          // fall through to app-only delete
+        } else {
+          toast({ 
+            title: "Cannot Delete Topic", 
+            description: trashResult.error || "Failed to trash the Drive folder. Please reconnect to Google Drive and try again.", 
             variant: "destructive" 
           });
           return false;
         }
-        toast({ 
-          title: "Cannot Delete Topic", 
-          description: trashResult.error || "Failed to trash the Drive folder. Please reconnect to Google Drive and try again.", 
-          variant: "destructive" 
-        });
-        return false;
       }
       if (trashResult.alreadyDeleted) {
         toast({
@@ -1014,14 +901,21 @@ const Dashboard = () => {
           description: "Drive folder was already removed. Cleaning up the topic in Docspeare.",
         });
       }
+    } else if (topic?.drive_folder_id && !forceDelete && !canUseDrive) {
+      toast({
+        title: "Drive not connected",
+        description: "Deleting topic from app only (Drive folder will remain).",
+      });
     }
     
-    // Delete all documents in the topic first
-    await supabase.from("documents").delete().eq("topic_id" as any, topicId as any);
-    // Delete the topic
-    const { error } = await supabase.from("topics").delete().eq("id", topicId as any);
+    const { data, error } = await invokeFunction<{
+      ok?: boolean;
+      error?: string;
+    }>("delete-topic", {
+      body: { topicId },
+    });
     
-    if (error) {
+    if (error || !data?.ok) {
       toast({ title: "Error", description: "Failed to delete topic.", variant: "destructive" });
       return false;
     } else {
@@ -1046,28 +940,28 @@ const Dashboard = () => {
     // Get the document's google doc ID first (search all documents, not just filtered)
     const doc = documents.find(d => d.id === docId);
     
+    const canUseDrive = !!googleAccessToken;
+
     // Trash the Drive file if it exists - block deletion if it fails (unless force delete)
-    if (doc?.google_doc_id && !forceDelete) {
+    if (doc?.google_doc_id && !forceDelete && canUseDrive) {
       const trashResult = await trashFile(doc.google_doc_id);
       if (!trashResult.success) {
-        if (trashResult.errorCode === "NOT_AUTHORIZED") {
+        if (trashResult.errorCode === "NOT_AUTHORIZED" || trashResult.errorCode === "NEEDS_REAUTH") {
           setForceDeleteAvailable(true);
           toast({ 
             title: "Cannot Delete from Drive", 
-            description: "This file was not created by this app. Use 'Force Delete' to remove only from the app.", 
+            description: "Drive access is unavailable. Deleting from app only.", 
             variant: "destructive" 
           });
-          return false;
-        }
-        // For non-owners, don't show reconnect prompt - the issue is with the owner's token
-        if (trashResult.errorCode !== "NEEDS_REAUTH") {
+          // fall through to app-only delete
+        } else {
           toast({ 
             title: "Cannot Delete Page", 
             description: trashResult.error || "Failed to trash the Drive file.", 
             variant: "destructive" 
           });
+          return false;
         }
-        return false;
       }
       if (trashResult.alreadyDeleted) {
         toast({
@@ -1075,11 +969,21 @@ const Dashboard = () => {
           description: "Drive file was already removed. Cleaning up the page in Docspeare.",
         });
       }
+    } else if (doc?.google_doc_id && !forceDelete && !canUseDrive) {
+      toast({
+        title: "Drive not connected",
+        description: "Deleting page from app only (Drive file will remain).",
+      });
     }
     
-    const { error } = await supabase.from("documents").delete().eq("id", docId as any);
+    const { data, error } = await invokeFunction<{
+      ok?: boolean;
+      error?: string;
+    }>("delete-document", {
+      body: { documentId: docId },
+    });
     
-    if (error) {
+    if (error || !data?.ok) {
       toast({ title: "Error", description: "Failed to delete page.", variant: "destructive" });
       return false;
     } else {
@@ -1169,12 +1073,18 @@ const Dashboard = () => {
       }
     }
     
-    const { error } = await supabase
-      .from("documents")
-      .update(updateData)
-      .eq("id", docId);
+    const { data, error } = await invokeFunction<{
+      ok?: boolean;
+      document?: any;
+      error?: string;
+    }>("update-document", {
+      body: {
+        documentId: docId,
+        data: updateData,
+      },
+    });
 
-    if (error) {
+    if (error || !data?.ok) {
       toast({ title: "Error", description: "Failed to update publish state.", variant: "destructive" });
     } else {
       await logAction(newState ? 'publish' : 'unpublish', 'document', docId, docProjectId, { 
@@ -1216,16 +1126,22 @@ const Dashboard = () => {
       return;
     }
     
-    const { error } = await supabase
-      .from("documents")
-      .update({ 
-        is_published: true,
-        published_content_id: doc.content_id,
-        published_content_html: doc.content_html // Backward compatibility
-      } as any)
-      .eq("id", docId);
+    const { data, error } = await invokeFunction<{
+      ok?: boolean;
+      document?: any;
+      error?: string;
+    }>("update-document", {
+      body: {
+        documentId: docId,
+        data: {
+          is_published: true,
+          published_content_id: doc.content_id,
+          published_content_html: doc.content_html,
+        },
+      },
+    });
 
-    if (error) {
+    if (error || !data?.ok) {
       toast({ title: "Error", description: "Failed to republish.", variant: "destructive" });
     } else {
       await logAction('republish', 'document', docId, docProjectId, { documentTitle: doc?.title });
@@ -1271,19 +1187,25 @@ const Dashboard = () => {
     }
     
     setIsBulkPublishing(true);
-    const docsToPublish = documents.filter(d => selectedDocIds.has(d.id) && d.content_html && !d.is_published);
+    const docsToPublish = documents.filter(d => selectedDocIds.has(d.id) && !d.is_published);
     
     let successCount = 0;
     for (const doc of docsToPublish) {
-      const { error } = await supabase
-        .from("documents")
-        .update({ 
-          is_published: true,
-          published_content_html: doc.content_html 
-        } as any)
-        .eq("id", doc.id);
+      const { data, error } = await invokeFunction<{
+        ok?: boolean;
+        document?: any;
+        error?: string;
+      }>("update-document", {
+        body: {
+          documentId: doc.id,
+          data: {
+            is_published: true,
+            ...(doc.content_html ? { published_content_html: doc.content_html } : {}),
+          },
+        },
+      });
       
-      if (!error) {
+      if (!error && data?.ok) {
         successCount++;
         await logAction('publish', 'document', doc.id, doc.project_id, { documentTitle: doc.title, bulk: true });
       }
@@ -1297,7 +1219,7 @@ const Dashboard = () => {
       setSelectedDocIds(new Set());
       fetchData();
     } else {
-      toast({ title: "No pages published", description: "Selected pages are already published or have no content.", variant: "destructive" });
+      toast({ title: "No pages published", description: "Selected pages are already published.", variant: "destructive" });
     }
     setIsBulkPublishing(false);
   };
@@ -1313,12 +1235,18 @@ const Dashboard = () => {
     
     let successCount = 0;
     for (const doc of docsToUnpublish) {
-      const { error } = await supabase
-        .from("documents")
-        .update({ is_published: false })
-        .eq("id", doc.id);
+      const { data, error } = await invokeFunction<{
+        ok?: boolean;
+        document?: any;
+        error?: string;
+      }>("update-document", {
+        body: {
+          documentId: doc.id,
+          data: { is_published: false },
+        },
+      });
       
-      if (!error) {
+      if (!error && data?.ok) {
         successCount++;
         await logAction('unpublish', 'document', doc.id, doc.project_id, { documentTitle: doc.title, bulk: true });
       }
@@ -1349,47 +1277,35 @@ const Dashboard = () => {
       toast({ title: "Permission Denied", description: "You don't have permission to delete pages.", variant: "destructive" });
       return;
     }
-    
+
     setIsBulkDeleting(true);
-    const docsToDelete = documents.filter(d => selectedDocIds.has(d.id));
-    
+    const docIds = Array.from(selectedDocIds);
     let successCount = 0;
-    let errorCount = 0;
-    
-    for (const doc of docsToDelete) {
-      // Trash from Drive first
-      if (doc.google_doc_id) {
-        const trashResult = await trashFile(doc.google_doc_id);
-        if (!trashResult.success && trashResult.errorCode !== "NOT_AUTHORIZED") {
-          errorCount++;
-          continue;
-        }
-      }
-      
-      // Delete from database
-      const { error } = await supabase
-        .from("documents")
-        .delete()
-        .eq("id", doc.id);
-      
-      if (!error) {
+
+    for (const docId of docIds) {
+      const { data, error } = await invokeFunction<{
+        ok?: boolean;
+        error?: string;
+      }>("delete-document", {
+        body: { documentId: docId },
+      });
+
+      if (!error && data?.ok) {
         successCount++;
-        await logAction('delete', 'document', doc.id, doc.project_id, { documentTitle: doc.title, bulk: true });
-      } else {
-        errorCount++;
       }
     }
-    
+
     if (successCount > 0) {
       toast({
-        title: "Bulk Delete Complete",
-        description: `Deleted ${successCount} page${successCount > 1 ? 's' : ''} successfully.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
+        title: "Bulk delete complete",
+        description: `Deleted ${successCount} page${successCount > 1 ? "s" : ""}.`,
       });
       setSelectedDocIds(new Set());
       fetchData();
     } else {
-      toast({ title: "No pages deleted", description: "Could not delete any of the selected pages.", variant: "destructive" });
+      toast({ title: "No pages deleted", description: "Could not delete selected pages.", variant: "destructive" });
     }
+
     setIsBulkDeleting(false);
     setBulkDeleteDialogOpen(false);
   };
@@ -1425,7 +1341,7 @@ const Dashboard = () => {
   const handleNormalizeStructure = async (projectId: string) => {
     setIsNormalizing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('normalize-structure', {
+      const { data, error } = await invokeFunction('normalize-structure', {
         body: { projectId }
       });
       
@@ -1456,7 +1372,7 @@ const Dashboard = () => {
     setIsRepairing(true);
     try {
       // First do a dry run to see what would be repaired
-      const { data: dryRunData, error: dryRunError } = await supabase.functions.invoke('repair-hierarchy', {
+      const { data: dryRunData, error: dryRunError } = await invokeFunction('repair-hierarchy', {
         body: { projectId, dryRun: true }
       });
       
@@ -1472,7 +1388,7 @@ const Dashboard = () => {
       }
       
       // Show what was found and apply repairs
-      const { data, error } = await supabase.functions.invoke('repair-hierarchy', {
+      const { data, error } = await invokeFunction('repair-hierarchy', {
         body: { projectId, dryRun: false }
       });
       
@@ -1499,56 +1415,46 @@ const Dashboard = () => {
 
   // Connect to Google Drive (request access)
   const handleConnectDrive = async () => {
-    setIsConnectingDrive(true);
-    try {
-      await requestDriveAccess();
-    } catch (error) {
-      console.error("Failed to connect Drive:", error);
-      toast({
-        title: "Failed to connect",
-        description: "Could not connect to Google Drive. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsConnectingDrive(false);
-    }
+    setShowGeneralSettings(true);
   };
 
   const ensureDefaultVersionForProject = async (projectId: string, isPublished: boolean) => {
-    const { data: existing, error: existingError } = await supabase
-      .from("project_versions")
-      .select("id")
-      .eq("project_id", projectId as any)
-      .eq("is_default", true as any)
-      .maybeSingle();
+    const { data: versionRes, error: versionError } = await invokeFunction<{
+      ok?: boolean;
+      versions?: any[];
+      error?: string;
+    }>("list-project-versions", { body: { projectIds: [projectId] } });
 
-    if (existingError) {
-      console.error("Error checking default version:", existingError);
+    if (versionError || !versionRes?.ok) {
+      console.error("Error checking default version:", versionError || versionRes?.error);
+    } else {
+      const existingDefault = (versionRes.versions || []).find((v: any) => v.is_default);
+      if (existingDefault?.id) return String(existingDefault.id);
     }
-    if ((existing as any)?.id) return (existing as any).id as string;
 
-    const { data: created, error: createError } = await supabase
-      .from("project_versions")
-      .insert({
-        project_id: projectId,
+    const { data: created, error: createError } = await invokeFunction<{
+      ok?: boolean;
+      versionId?: string;
+      error?: string;
+    }>("create-project-version", {
+      body: {
+        projectId,
         name: "v1.0",
         slug: "v1.0",
-        is_default: true,
-        is_published: isPublished,
-        semver_major: 1,
-        semver_minor: 0,
-        semver_patch: 0,
-        created_by: user?.id ?? null,
-      } as any)
-      .select("id")
-      .single();
+        isDefault: true,
+        isPublished,
+        semverMajor: 1,
+        semverMinor: 0,
+        semverPatch: 0,
+      },
+    });
 
-    if (createError) {
-      console.error("Error creating default version:", createError);
+    if (createError || !created?.ok) {
+      console.error("Error creating default version:", createError || created?.error);
       return null;
     }
 
-    return (created as any)?.id ?? null;
+    return created?.versionId ?? null;
   };
 
   const handleAssignProject = async () => {
@@ -1566,17 +1472,22 @@ const Dashboard = () => {
       const finalTopicId =
         assignTopicId && assignableTopics.some((t) => t.id === assignTopicId) ? assignTopicId : null;
 
-      const { data: updatedRows, error } = await supabase
-        .from("documents")
-        .update({
-          project_id: assignProjectId,
-          project_version_id: versionId,
-          topic_id: finalTopicId,
-        } as any)
-        .eq("id", assignTargetDoc.id as any)
-        .select("id, project_id, project_version_id, topic_id");
+      const { data: updated, error } = await invokeFunction<{
+        ok?: boolean;
+        document?: any;
+        error?: string;
+      }>("update-document", {
+        body: {
+          documentId: assignTargetDoc.id,
+          data: {
+            project: assignProjectId,
+            project_version: versionId,
+            topic: finalTopicId,
+          },
+        },
+      });
 
-      if (error || !updatedRows || updatedRows.length === 0) {
+      if (error || !updated?.ok) {
         toast({
           title: "Couldn't assign project",
           description: error?.message || "No changes were applied.",
@@ -1655,6 +1566,18 @@ const Dashboard = () => {
       const projectIdByFolderId = new Map<string, string>();
       const versionIdByProjectId = new Map<string, string | null>();
       const topicIdByFolderId = new Map<string, string>();
+      const normalizeProjectName = (value: string) => value.trim().toLowerCase();
+      const projectsByDriveId = new Map<string, Project>();
+      const projectsByNameParent = new Map<string, Project[]>();
+      for (const project of projects) {
+        if (project.drive_folder_id) {
+          projectsByDriveId.set(project.drive_folder_id, project);
+        }
+        const nameKey = `${project.parent_id || "root"}::${normalizeProjectName(project.name)}`;
+        const list = projectsByNameParent.get(nameKey) ?? [];
+        list.push(project);
+        projectsByNameParent.set(nameKey, list);
+      }
       let syncedProjects = 0;
       let syncedTopics = 0;
       let syncedDocs = 0;
@@ -1668,97 +1591,268 @@ const Dashboard = () => {
         return null;
       };
 
-      for (const node of topLevelFolders) {
-        const { data: existingProject } = await supabase
-          .from("projects")
-          .select("id, is_published")
-          .eq("drive_folder_id", node.id)
-          .maybeSingle();
+      const getParentIdFromRow = (row: any): string | null => {
+        const attrs = row?.attributes || row || {};
+        const parentRaw =
+          attrs.parent?.data?.id ??
+          attrs.parent?.id ??
+          attrs.parent_id ??
+          attrs.parent ??
+          null;
+        return parentRaw && parentRaw !== "null" && parentRaw !== "undefined" ? String(parentRaw) : null;
+      };
 
-        let projectId = existingProject?.id ?? null;
-        let projectIsPublished = existingProject?.is_published ?? false;
+      const getDriveParentIdFromRow = (row: any): string | null => {
+        const attrs = row?.attributes || row || {};
+        const raw =
+          attrs.drive_parent_id ??
+          attrs.driveParentId ??
+          attrs.drive_parent ??
+          null;
+        return raw && raw !== "null" && raw !== "undefined" ? String(raw) : null;
+      };
+
+      const pickExistingProject = (name: string, parentId: string | null, folderId: string) => {
+        const byDrive = projectsByDriveId.get(folderId);
+        if (byDrive) return byDrive;
+        const nameKey = `${parentId || "root"}::${normalizeProjectName(name)}`;
+        const candidates = projectsByNameParent.get(nameKey) ?? [];
+        const withoutDrive = candidates.find((p) => !p.drive_folder_id);
+        return withoutDrive || candidates[0] || null;
+      };
+
+      for (const node of topLevelFolders) {
+        let projectId: string | null = null;
+        let projectIsPublished = false;
+        let existingParentId: string | null = null;
+        let existingDriveParentId: string | null = null;
+
+        const existingFromState = pickExistingProject(node.name, null, node.id);
+        if (existingFromState) {
+          projectId = existingFromState.id;
+          projectIsPublished = existingFromState.is_published ?? false;
+          existingParentId = existingFromState.parent_id ?? null;
+          existingDriveParentId = existingFromState.drive_parent_id ?? null;
+        } else {
+          let existingProject: any = null;
+          const { data: projectRows } = await list("projects", {
+            filters: { drive_folder_id: node.id },
+            limit: 1,
+          });
+          existingProject = Array.isArray(projectRows) ? projectRows[0] : null;
+
+          projectId = existingProject?.id ?? null;
+          projectIsPublished = existingProject?.is_published ?? false;
+          existingParentId = existingProject ? getParentIdFromRow(existingProject) : null;
+          existingDriveParentId = existingProject ? getDriveParentIdFromRow(existingProject) : null;
+        }
 
         if (!projectId) {
-          const { data: newProject, error: projectError } = await supabase
-            .from("projects")
-            .insert({
+          const { data: created, error: projectError } = await invokeFunction<{
+            ok?: boolean;
+            projectId?: string;
+            versionId?: string;
+            error?: string;
+          }>("create-project", {
+            body: {
               name: node.name,
-              drive_folder_id: node.id,
-              organization_id: organizationId,
-              created_by: user.id,
-              is_connected: true,
-              parent_id: null,
-            } as any)
-            .select("id, is_published")
-            .single();
+              organizationId,
+              parentId: null,
+              driveFolderId: node.id,
+              driveParentId: rootFolderId,
+              isPublished: false,
+            },
+          });
 
-          if (projectError || !newProject) {
-            console.error("Error creating project:", projectError);
+          if (projectError || !created?.ok || !created?.projectId) {
+            console.error("Error creating project:", projectError || created?.error);
             continue;
           }
 
-          projectId = newProject.id;
-          projectIsPublished = newProject.is_published ?? false;
+          projectId = created.projectId;
+          projectIsPublished = false;
           syncedProjects++;
+          if (created.versionId) {
+            versionIdByProjectId.set(projectId, created.versionId);
+          }
+        } else {
+          const updateData: Record<string, unknown> = {};
+          if (existingParentId) {
+            updateData.parent = null;
+          }
+          if (!projectsByDriveId.has(node.id)) {
+            updateData.drive_folder_id = node.id;
+          }
+          if (existingDriveParentId !== rootFolderId) {
+            updateData.drive_parent_id = rootFolderId;
+          }
+          if (Object.keys(updateData).length > 0) {
+            await invokeFunction("update-project-settings", {
+              body: { projectId, data: updateData },
+            });
+          }
         }
 
         projectIdByFolderId.set(node.id, projectId);
 
-        const defaultVersionId = await ensureDefaultVersionForProject(projectId, projectIsPublished);
-        versionIdByProjectId.set(projectId, defaultVersionId ?? null);
+        if (!versionIdByProjectId.has(projectId)) {
+          const defaultVersionId = await ensureDefaultVersionForProject(projectId, projectIsPublished);
+          versionIdByProjectId.set(projectId, defaultVersionId ?? null);
+        }
       }
 
+      const subProjectFolders = folderNodes.filter(
+        (node) => node.depth === 2 && node.parentId && projectIdByFolderId.has(node.parentId)
+      );
+
+      for (const node of subProjectFolders) {
+        if (projectIdByFolderId.has(node.id)) continue;
+        const parentProjectId = node.parentId ? projectIdByFolderId.get(node.parentId) : null;
+        if (!parentProjectId) continue;
+
+        let projectId: string | null = null;
+        let projectIsPublished = false;
+        let existingParentId: string | null = null;
+        let existingDriveParentId: string | null = null;
+
+        const existingFromState = pickExistingProject(node.name, parentProjectId, node.id);
+        if (existingFromState) {
+          projectId = existingFromState.id;
+          projectIsPublished = existingFromState.is_published ?? false;
+          existingParentId = existingFromState.parent_id ?? null;
+          existingDriveParentId = existingFromState.drive_parent_id ?? null;
+        } else {
+          let existingProject: any = null;
+          const { data: projectRows } = await list("projects", {
+            filters: { drive_folder_id: node.id },
+            limit: 1,
+          });
+          existingProject = Array.isArray(projectRows) ? projectRows[0] : null;
+
+          projectId = existingProject?.id ?? null;
+          projectIsPublished = existingProject?.is_published ?? false;
+          existingParentId = existingProject ? getParentIdFromRow(existingProject) : null;
+          existingDriveParentId = existingProject ? getDriveParentIdFromRow(existingProject) : null;
+        }
+
+        if (!projectId) {
+          const { data: created, error: projectError } = await invokeFunction<{
+            ok?: boolean;
+            projectId?: string;
+            versionId?: string;
+            error?: string;
+          }>("create-project", {
+            body: {
+              name: node.name,
+              organizationId,
+              parentId: parentProjectId,
+              driveFolderId: node.id,
+              driveParentId: node.parentId,
+              isPublished: false,
+            },
+          });
+
+          if (projectError || !created?.ok || !created?.projectId) {
+            console.error("Error creating sub-project:", projectError || created?.error);
+            continue;
+          }
+
+          projectId = created.projectId;
+          projectIsPublished = false;
+          syncedProjects++;
+          if (created.versionId) {
+            versionIdByProjectId.set(projectId, created.versionId);
+          }
+        } else {
+          const updateData: Record<string, unknown> = {};
+          if (existingParentId !== parentProjectId) {
+            updateData.parent = parentProjectId;
+          }
+          if (!projectsByDriveId.has(node.id)) {
+            updateData.drive_folder_id = node.id;
+          }
+          if (existingDriveParentId !== (node.parentId || null)) {
+            updateData.drive_parent_id = node.parentId || null;
+          }
+          if (Object.keys(updateData).length > 0) {
+            await invokeFunction("update-project-settings", {
+              body: { projectId, data: updateData },
+            });
+          }
+        }
+
+        projectIdByFolderId.set(node.id, projectId);
+        if (!versionIdByProjectId.has(projectId)) {
+          const defaultVersionId = await ensureDefaultVersionForProject(projectId, projectIsPublished);
+          versionIdByProjectId.set(projectId, defaultVersionId ?? null);
+        }
+      }
+
+      const getProjectForNode = (nodeId: string): string | null => {
+        let current = nodeById.get(nodeId);
+        while (current) {
+          const projectId = projectIdByFolderId.get(current.id);
+          if (projectId) return projectId;
+          current = current.parentId ? nodeById.get(current.parentId) : undefined;
+        }
+        return null;
+      };
+
       const topicNodes = folderNodes
-        .filter((node) => node.depth >= 2)
+        .filter((node) => node.depth >= 3)
         .sort((a, b) => a.depth - b.depth);
 
       for (const node of topicNodes) {
-        const topFolderId = getTopFolderId(node.id);
-        const projectId = topFolderId ? projectIdByFolderId.get(topFolderId) : null;
+        const projectId = getProjectForNode(node.id);
         if (!projectId) continue;
 
         const defaultVersionId = versionIdByProjectId.get(projectId) ?? null;
-        const parentTopicId = node.parentId ? topicIdByFolderId.get(node.parentId) ?? null : null;
+        const parentTopicId =
+          node.parentId && topicIdByFolderId.has(node.parentId)
+            ? topicIdByFolderId.get(node.parentId) ?? null
+            : null;
 
-        const { data: existingTopic } = await supabase
-          .from("topics")
-          .select("id")
-          .eq("drive_folder_id", node.id)
-          .maybeSingle();
+        let existingTopic: any = null;
+        const { data: topicRows } = await list("topics", {
+          filters: { drive_folder_id: node.id },
+          limit: 1,
+        });
+        existingTopic = Array.isArray(topicRows) ? topicRows[0] : null;
 
         if (existingTopic?.id) {
           topicIdByFolderId.set(node.id, existingTopic.id);
           continue;
         }
 
-        const { data: newTopic, error: topicError } = await supabase
-          .from("topics")
-          .insert({
+        const { data: created, error: topicError } = await invokeFunction<{
+          ok?: boolean;
+          topicId?: string;
+          error?: string;
+        }>("create-topic", {
+          body: {
             name: node.name,
-            drive_folder_id: node.id,
-            project_id: projectId,
-            project_version_id: defaultVersionId,
-            parent_id: parentTopicId,
-          } as any)
-          .select("id")
-          .single();
+            projectId,
+            projectVersionId: defaultVersionId,
+            parentId: parentTopicId,
+            driveFolderId: node.id,
+          },
+        });
 
-        if (topicError || !newTopic) {
-          console.error("Error creating topic:", topicError);
+        if (topicError || !created?.ok || !created?.topicId) {
+          console.error("Error creating topic:", topicError || created?.error);
           continue;
         }
 
-        topicIdByFolderId.set(node.id, newTopic.id);
+        topicIdByFolderId.set(node.id, created.topicId);
         syncedTopics++;
       }
 
       for (const node of folderNodes) {
-        const topFolderId = getTopFolderId(node.id);
-        const projectId = topFolderId ? projectIdByFolderId.get(topFolderId) : null;
+        const projectId = getProjectForNode(node.id);
         if (!projectId) continue;
 
         const defaultVersionId = versionIdByProjectId.get(projectId) ?? null;
-        const topicId = node.depth >= 2 ? topicIdByFolderId.get(node.id) ?? null : null;
+        const topicId = node.depth >= 3 ? topicIdByFolderId.get(node.id) ?? null : null;
         const projectResult = await listFolder(node.id);
 
         if (projectResult.needsDriveAccess) {
@@ -1779,46 +1873,67 @@ const Dashboard = () => {
         const docs = projectResult.files.filter(item => item.mimeType === docMimeType);
 
         for (const doc of docs) {
-          const { data: existingDoc } = await supabase
-            .from("documents")
-            .select("id, project_version_id, topic_id")
-            .eq("google_doc_id", doc.id)
-            .maybeSingle();
+          let existingDocs: any[] = [];
+          const { data: docRows } = await list("documents", {
+            filters: { google_doc_id: doc.id },
+            limit: 50,
+          });
+          existingDocs = Array.isArray(docRows) ? docRows : [];
+
+          let existingDoc: any = existingDocs[0] || null;
+          if (existingDocs.length > 1) {
+            existingDoc =
+              existingDocs.find((row) => row?.attributes?.is_published) ||
+              existingDocs.sort((a, b) => {
+                const aUpdated = Date.parse(a?.attributes?.updatedAt || a?.updatedAt || "") || 0;
+                const bUpdated = Date.parse(b?.attributes?.updatedAt || b?.updatedAt || "") || 0;
+                return bUpdated - aUpdated;
+              })[0];
+
+            for (const dup of existingDocs) {
+              if (!existingDoc || dup?.id === existingDoc?.id) continue;
+              await invokeFunction("delete-document", { body: { documentId: dup.id } });
+            }
+          }
 
           if (existingDoc) {
-            const updatePayload: Record<string, unknown> = {
+            const payload = {
               title: doc.name,
               google_modified_at: doc.modifiedTime,
+              ...((defaultVersionId && !(existingDoc as any)?.attributes?.project_version?.data?.id)
+                ? { project_version: defaultVersionId }
+                : {}),
+              ...((topicId && !(existingDoc as any)?.attributes?.topic?.data?.id)
+                ? { topic: topicId }
+                : {}),
             };
-
-            if (!existingDoc.project_version_id && defaultVersionId) {
-              updatePayload.project_version_id = defaultVersionId;
-            }
-            if (!existingDoc.topic_id && topicId) {
-              updatePayload.topic_id = topicId;
-            }
-
-            await supabase
-              .from("documents")
-              .update(updatePayload)
-              .eq("id", existingDoc.id);
+            await invokeFunction("update-document", {
+              body: {
+                documentId: (existingDoc as any).id,
+                data: payload as any,
+              },
+            });
           } else {
-            const { data: newDoc, error: docError } = await supabase
-              .from("documents")
-              .insert({
+            const { data: created, error: docError } = await invokeFunction<{
+              ok?: boolean;
+              documentId?: string;
+              error?: string;
+            }>("create-document", {
+              body: {
                 title: doc.name,
-                google_doc_id: doc.id,
-                project_id: projectId,
-                project_version_id: defaultVersionId,
-                topic_id: topicId,
-                google_modified_at: doc.modifiedTime,
-                owner_id: user.id,
-              } as any)
-              .select("id")
-              .single();
+                googleDocId: doc.id,
+                projectId,
+                projectVersionId: defaultVersionId,
+                topicId,
+                isPublished: false,
+                visibility: "internal",
+              },
+            });
 
-            if (!docError) {
+            if (!docError && created?.ok) {
               syncedDocs++;
+            } else if (docError || created?.error) {
+              console.error("Error creating document:", docError || created?.error);
             }
           }
         }
@@ -1911,26 +2026,13 @@ const Dashboard = () => {
   if (selectedPage && selectedDocument) {
     // Callback to refresh document content after sync
     const handleDocumentUpdate = async () => {
-      // Fetch fresh document data including content_html
-      const { data: freshDoc } = await supabase
-        .from("documents")
-        .select(`
-          id, title, google_doc_id, project_id, topic_id, display_order, google_modified_at, created_at, updated_at,
-          visibility, is_published, owner_id, content_html, published_content_html,
-          owner:profiles!documents_owner_id_fkey(full_name, email)
-        `)
-        .eq("id", selectedDocument.id as any)
-        .single();
-
-      if (freshDoc) {
-        const updatedDoc = {
-          ...freshDoc,
-          owner_name: (freshDoc.owner as any)?.full_name || (freshDoc.owner as any)?.email?.split("@")[0] || null,
-        };
-        setSelectedDocument(updatedDoc as Document);
-        // Also update the documents array
-        setDocuments(prev => prev.map(d => d.id === freshDoc.id ? updatedDoc as Document : d));
-      }
+      const { data: freshRes, error } = await strapiFetch<{ data: any }>(
+        `/api/documents/${selectedDocument.id}?populate[owner][fields][0]=full_name&populate[owner][fields][1]=email&populate[owner][fields][2]=username&populate[project][fields][0]=id&populate[project_version][fields][0]=id&populate[topic][fields][0]=id`
+      );
+      if (error || !freshRes?.data) return;
+      const updatedDoc = mapDocumentFromStrapi(freshRes.data);
+      setSelectedDocument(updatedDoc as Document);
+      setDocuments(prev => prev.map(d => d.id === updatedDoc.id ? updatedDoc as Document : d));
     };
 
     return (
@@ -1959,6 +2061,7 @@ const Dashboard = () => {
 
   return (
     <TooltipProvider>
+    <DriveReauthListener />
     <div className="min-h-screen bg-background flex w-full">
       <DashboardSidebar
         sidebarCollapsed={sidebarCollapsed}
@@ -1993,7 +2096,7 @@ const Dashboard = () => {
         driveIntegrationEnabled={DRIVE_INTEGRATION_ENABLED}
         needsDriveAccess={needsDriveAccess}
         rootFolderId={rootFolderId}
-        isConnectingDrive={isConnectingDrive}
+        isConnectingDrive={false}
         isSyncing={isSyncing}
         handleConnectDrive={handleConnectDrive}
         handleSyncFromDrive={handleSyncFromDrive}
@@ -2081,6 +2184,18 @@ const Dashboard = () => {
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
               <DriveStatusIndicator onStatusChange={(connected) => setNeedsDriveAccess(!connected)} />
+              {rootFolderId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-8 px-2 sm:px-3"
+                  onClick={handleSyncFromDrive}
+                  disabled={isSyncing}
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
+                  <span className="hidden sm:inline">{isSyncing ? "Syncing..." : "Sync Drive"}</span>
+                </Button>
+              )}
               {organizationId && <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => fetchData()} />}
               {(isOrgOwner || appRole === 'admin') && (
                 <Button
@@ -2243,8 +2358,8 @@ const Dashboard = () => {
                     </div>
                   </div>
                   {needsDriveAccess ? (
-                    <Button size="sm" onClick={handleConnectDrive} disabled={isConnectingDrive}>
-                      {isConnectingDrive ? "Connecting..." : "Connect Drive"}
+                    <Button size="sm" onClick={handleConnectDrive}>
+                      Connect Drive
                     </Button>
                   ) : (
                     <Badge variant="secondary" className="w-fit">Ready</Badge>
@@ -2426,6 +2541,10 @@ const Dashboard = () => {
                 onAddSubtopic={(parentTopic) => {
                   setParentTopicForCreate(parentTopic);
                   setAddTopicOpen(true);
+                }}
+                onDeleteTopic={(topic) => {
+                  setItemToDelete({ type: 'topic', id: topic.id, name: topic.name });
+                  setDeleteDialogOpen(true);
                 }}
                 documents={scopedDocuments}
               />
@@ -2778,7 +2897,46 @@ const Dashboard = () => {
         organizationId={organizationId || undefined}
         parentProjectId={parentProjectForCreate?.id}
         parentProjectName={parentProjectForCreate?.name}
+        onOpenSettings={() => setShowGeneralSettings(true)}
         onCreated={(result) => {
+          if (result?.id) {
+            setProjects((prev) => {
+              if (prev.some((p) => p.id === result.id)) return prev;
+              const newProject: Project = {
+                id: result.id,
+                name: result.name,
+                slug: null,
+                drive_folder_id: null,
+                visibility: "internal",
+                is_published: false,
+                parent_id: parentProjectForCreate?.id ?? null,
+                organization_id: organizationId || "",
+                show_version_switcher: true,
+              };
+              return [newProject, ...prev];
+            });
+
+            if (result.versionId) {
+              setProjectVersions((prev) => {
+                if (prev.some((v) => v.id === result.versionId)) return prev;
+                return [
+                  {
+                    id: result.versionId,
+                    project_id: result.id,
+                    name: "v1.0",
+                    slug: "v1.0",
+                    is_default: true,
+                    is_published: false,
+                    semver_major: 1,
+                    semver_minor: 0,
+                    semver_patch: 0,
+                  },
+                  ...prev,
+                ];
+              });
+            }
+          }
+
           fetchData();
           setParentProjectForCreate(null);
           

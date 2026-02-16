@@ -1,5 +1,5 @@
 import { useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import * as React from "react";
 import { ToastAction } from "@/components/ui/toast";
@@ -37,25 +37,20 @@ export const useDriveRecovery = () => {
     if (!user) return false;
 
     try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .maybeSingle();
+      const { data, error } = await invokeFunction<{
+        ok?: boolean;
+        members?: Array<{ id?: string | number; role?: string }>;
+      }>("get-organization");
 
-      if (!profile?.organization_id) {
-        isOrgOwnerRef.current = false;
-        return false;
+      if (!error && data?.ok) {
+        const role =
+          data.members?.find((member) => String(member.id) === String(user.id))?.role || null;
+        isOrgOwnerRef.current = role === "owner";
+        return isOrgOwnerRef.current;
       }
 
-      const { data: org } = await supabase
-        .from("organizations")
-        .select("owner_id")
-        .eq("id", profile.organization_id)
-        .maybeSingle();
-
-      isOrgOwnerRef.current = org?.owner_id === user.id;
-      return isOrgOwnerRef.current;
+      isOrgOwnerRef.current = false;
+      return false;
     } catch {
       return false;
     }
@@ -111,7 +106,7 @@ export const useDriveRecovery = () => {
         if (refreshed) {
           const token = getGoogleToken();
           // Try to verify the token works by making a simple call
-          const verifyResponse = await supabase.functions.invoke("google-drive", {
+          const verifyResponse = await invokeFunction("google-drive", {
             body: { action: "list_folder", folderId: "root" },
             ...(token ? { headers: { "x-google-token": token } } : {}),
           });

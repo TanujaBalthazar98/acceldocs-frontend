@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Folder, Upload, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface AddTopicDialogProps {
@@ -76,19 +76,51 @@ export const AddTopicDialog = ({
 
     setIsCreating(true);
     try {
-      const { data: topic, error } = await supabase
-        .from("topics")
-        .insert({
-          name: topicName.trim(),
-          project_id: projectId,
-          project_version_id: projectVersionId,
-          parent_id: parentTopic?.id || null,
-        } as any)
-        .select("id, name")
-        .single();
+      const payload = {
+        name: topicName.trim(),
+        projectId,
+        projectVersionId,
+        parentId: parentTopic?.id || null,
+        driveFolderId: null as string | null,
+      };
 
-      if (error || !topic) {
-        console.error("Error saving topic:", error);
+      const driveParentId = parentTopic?.drive_folder_id || projectFolderId || null;
+      if (driveParentId && !googleAccessToken) {
+        toast({
+          title: "Drive connection required",
+          description: "Reconnect Google Drive to create a topic folder.",
+          variant: "destructive",
+        });
+      } else if (driveParentId && googleAccessToken) {
+        const folderResponse = await invokeFunction("google-drive", {
+          body: {
+            action: "create_folder",
+            name: payload.name,
+            parentFolderId: driveParentId,
+          },
+          headers: {
+            "x-google-token": googleAccessToken,
+          },
+        });
+        payload.driveFolderId = folderResponse.data?.folder?.id || null;
+      }
+
+      const { data: topic, error } = await invokeFunction<{
+        ok?: boolean;
+        topicId?: string;
+        error?: string;
+      }>("create-topic", {
+        body: {
+          projectId: payload.projectId,
+          projectVersionId: payload.projectVersionId,
+          name: payload.name,
+          parentId: payload.parentId,
+          driveFolderId: payload.driveFolderId,
+        },
+      });
+
+      if (error || !topic?.ok || !topic?.topicId) {
+        console.error("Error saving topic:", error || topic?.error);
         toast({
           title: "Error",
           description: "Failed to create the topic.",
@@ -101,7 +133,7 @@ export const AddTopicDialog = ({
         title: parentTopic ? "Subtopic created" : "Topic created",
         description: `"${topicName}" created in ${locationText}.`,
       });
-      onCreated?.({ id: (topic as any).id, name: (topic as any).name, drive_folder_id: null });
+      onCreated?.({ id: topic.topicId, name: topicName.trim(), drive_folder_id: payload.driveFolderId });
       handleClose();
     } finally {
       setIsCreating(false);
@@ -217,44 +249,43 @@ export const AddTopicDialog = ({
         for (const item of items) {
           if (item.type === "folder") {
             // Create Drive folder
-            const folderResponse = await supabase.functions.invoke("google-drive", {
+            const folderResponse = await invokeFunction("google-drive", {
               body: {
-                action: "createFolder",
-                accessToken: googleAccessToken,
-                folderName: item.name,
+                action: "create_folder",
+                name: item.name,
                 parentFolderId: currentDriveFolderId,
+              },
+              headers: {
+                "x-google-token": googleAccessToken,
               },
             });
 
-            const targetFolderId = folderResponse.data?.id || currentDriveFolderId;
+            const targetFolderId = folderResponse.data?.folder?.id || currentDriveFolderId;
 
             // Create topic in database
-            const { data: topic, error: topicError } = await supabase
-              .from("topics")
-              .insert({
-                project_id: projectId,
-                project_version_id: projectVersionId,
+            const { data: topic, error: topicError } = await invokeFunction<{
+              ok?: boolean;
+              topicId?: string;
+              error?: string;
+            }>("create-topic", {
+              body: {
+                projectId,
+                projectVersionId,
                 name: item.name,
-                slug: item.name.toLowerCase().replace(/\s+/g, "-"),
-                parent_id: parentTopicId,
-                drive_folder_id: targetFolderId,
-              } as any)
-              .select()
-              .single();
+                parentId: parentTopicId,
+                driveFolderId: targetFolderId,
+              },
+            });
 
-            if (topicError) {
-              console.error("Error creating topic:", topicError);
-              errors.push({ type: "topic", name: item.name, error: topicError.message });
-              continue;
-            }
-            if (!topic) {
-              errors.push({ type: "topic", name: item.name, error: "Failed to create topic record" });
+            if (topicError || !topic?.ok || !topic?.topicId) {
+              console.error("Error creating topic:", topicError || topic?.error);
+              errors.push({ type: "topic", name: item.name, error: topicError?.message || topic?.error || "Failed to create topic record" });
               continue;
             }
 
             // Process children
             if (item.children) {
-              await processItems(item.children, (topic as any).id, targetFolderId);
+              await processItems(item.children, topic.topicId, targetFolderId);
             }
           } else if (item.type === "file") {
             if (!item.content) {
@@ -263,7 +294,7 @@ export const AddTopicDialog = ({
             }
 
             try {
-              const response = await supabase.functions.invoke("convert-markdown-to-gdoc", {
+              const response = await invokeFunction("convert-markdown-to-gdoc", {
                 body: {
                   markdownContent: item.content,
                   title: item.name,
@@ -279,20 +310,24 @@ export const AddTopicDialog = ({
 
               const { documentId } = response.data;
 
-              const { error: docError } = await supabase.from("documents").insert({
-                project_id: projectId,
-                project_version_id: projectVersionId,
-                topic_id: parentTopicId,
-                title: item.name,
-                slug: item.name.toLowerCase().replace(/\s+/g, "-"),
-                google_doc_id: documentId,
-                is_published: false,
-                visibility: "internal",
-                owner_id: user?.id,
-              } as any);
+              const { data: docRes, error: docError } = await invokeFunction<{
+                ok?: boolean;
+                documentId?: string;
+                error?: string;
+              }>("create-document", {
+                body: {
+                  projectId,
+                  projectVersionId,
+                  topicId: parentTopicId,
+                  title: item.name,
+                  googleDocId: documentId,
+                  isPublished: false,
+                  visibility: "internal",
+                },
+              });
 
-              if (docError) {
-                errors.push({ type: "document", name: item.name, error: docError.message });
+              if (docError || !docRes?.ok) {
+                errors.push({ type: "document", name: item.name, error: docError?.message || docRes?.error || "Failed to create document" });
                 continue;
               }
 

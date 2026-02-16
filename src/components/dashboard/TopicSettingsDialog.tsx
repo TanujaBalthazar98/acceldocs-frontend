@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { getById, list, update } from "@/lib/api/queries";
 import { useToast } from "@/hooks/use-toast";
 import { Link2, FolderPlus } from "lucide-react";
 import { ConvertTopicDialog } from "./ConvertTopicDialog";
@@ -52,15 +52,10 @@ export const TopicSettingsDialog = ({
   const fetchTopicData = async () => {
     if (!topicId) return;
 
-    const { data } = await supabase
-      .from("topics")
-      .select("name, slug")
-      .eq("id", topicId)
-      .single();
-
+    const { data } = await getById<any>("topics", topicId, { select: "name,slug" });
     if (data) {
-      setName(data.name);
-      setSlug(data.slug || "");
+      setName((data as any).name || "");
+      setSlug((data as any).slug || "");
     }
   };
 
@@ -85,16 +80,17 @@ export const TopicSettingsDialog = ({
 
   const checkSlugAvailability = async (slugValue: string): Promise<boolean> => {
     if (!slugValue || !projectId) return true;
-    
-    const { data } = await supabase
-      .from("topics")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("slug", slugValue)
-      .neq("id", topicId)
-      .maybeSingle();
-    
-    if (data) {
+
+    const { data } = await list<any>("topics", {
+      select: "id",
+      filters: {
+        project_id: projectId,
+        slug: slugValue,
+        id: { neq: topicId },
+      },
+      limit: 1,
+    });
+    if (data && data.length > 0) {
       setSlugError("This URL slug is already in use");
       return false;
     }
@@ -121,10 +117,7 @@ export const TopicSettingsDialog = ({
       updateData.slug = slug;
     }
 
-    const { error } = await supabase
-      .from("topics")
-      .update(updateData)
-      .eq("id", topicId);
+    const { error } = await update("topics", topicId, updateData);
 
     setIsSaving(false);
 

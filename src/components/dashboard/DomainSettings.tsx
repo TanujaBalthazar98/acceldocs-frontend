@@ -36,7 +36,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert";
-import { supabase } from "@/integrations/supabase/client";
+import { create, list, remove, updateWhere } from "@/lib/api/queries";
 import { useToast } from "@/hooks/use-toast";
 
 interface Domain {
@@ -84,11 +84,11 @@ export const DomainSettings = ({
   const fetchDomains = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("domains")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .order("is_primary", { ascending: false });
+      const { data, error } = await list<Domain>("domains", {
+        select: "*",
+        filters: { organization_id: organizationId },
+        orderBy: { field: "is_primary", ascending: false },
+      });
 
       if (error) throw error;
       setDomains((data || []) as Domain[]);
@@ -122,13 +122,15 @@ export const DomainSettings = ({
 
     setSavingSubdomain(true);
     try {
-      const { error } = await supabase
-        .from("organizations")
-        .update({ subdomain: subdomain.toLowerCase() })
-        .eq("id", organizationId);
+      const { error, errorDetails } = await updateWhere(
+        "organizations",
+        { id: organizationId },
+        { subdomain: subdomain.toLowerCase() },
+      );
 
       if (error) {
-        if (error.code === "23505") {
+        const errorCode = (errorDetails as { code?: string } | undefined)?.code;
+        if (errorCode === "23505") {
           toast({
             title: "Subdomain taken",
             description: "This subdomain is already in use. Please choose another.",
@@ -176,7 +178,7 @@ export const DomainSettings = ({
       // Generate verification token
       const verificationToken = `docspeare-verify-${crypto.randomUUID().slice(0, 8)}`;
 
-      const { error } = await supabase.from("domains").insert({
+      const { error, errorDetails } = await create("domains", {
         organization_id: organizationId,
         domain: newDomain.toLowerCase(),
         domain_type: "custom",
@@ -185,7 +187,8 @@ export const DomainSettings = ({
       });
 
       if (error) {
-        if (error.code === "23505") {
+        const errorCode = (errorDetails as { code?: string } | undefined)?.code;
+        if (errorCode === "23505") {
           toast({
             title: "Domain already exists",
             description: "This domain is already registered.",
@@ -218,10 +221,7 @@ export const DomainSettings = ({
 
   const removeDomain = async (domainId: string) => {
     try {
-      const { error } = await supabase
-        .from("domains")
-        .delete()
-        .eq("id", domainId);
+      const { error } = await remove("domains", domainId);
 
       if (error) throw error;
 
@@ -243,16 +243,10 @@ export const DomainSettings = ({
   const setPrimaryDomain = async (domainId: string) => {
     try {
       // First, unset all as primary
-      await supabase
-        .from("domains")
-        .update({ is_primary: false })
-        .eq("organization_id", organizationId);
+      await updateWhere("domains", { organization_id: organizationId }, { is_primary: false });
 
       // Then set the selected one as primary
-      const { error } = await supabase
-        .from("domains")
-        .update({ is_primary: true })
-        .eq("id", domainId);
+      const { error } = await updateWhere("domains", { id: domainId }, { is_primary: true });
 
       if (error) throw error;
 

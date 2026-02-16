@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Plus, Search, FolderTree } from "lucide-react";
+import { ChevronDown, Plus, Search, FolderTree, MoreHorizontal, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -7,6 +7,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 interface Project {
@@ -24,6 +30,7 @@ interface ProjectSwitcherProps {
   organizationSlug: string | null;
   onSelectProject: (project: Project) => void;
   onCreateProject: () => void;
+  onDeleteProject?: (project: Project) => void;
   collapsed?: boolean;
 }
 
@@ -33,6 +40,7 @@ export const ProjectSwitcher = ({
   organizationSlug,
   onSelectProject,
   onCreateProject,
+  onDeleteProject,
   collapsed = false,
 }: ProjectSwitcherProps) => {
   const [open, setOpen] = useState(false);
@@ -43,10 +51,13 @@ export const ProjectSwitcher = ({
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const dedupedProjects = filteredProjects.filter(
+    (p, idx, arr) => arr.findIndex((other) => other.id === p.id) === idx
+  );
   // Organize: root projects first, then sub-projects indented
-  const rootProjects = filteredProjects.filter((p) => !p.parent_id);
+  const rootProjects = dedupedProjects.filter((p) => !p.parent_id);
   const getSubProjects = (parentId: string) =>
-    filteredProjects.filter((p) => p.parent_id === parentId);
+    dedupedProjects.filter((p) => p.parent_id === parentId);
 
   // Get the base docs URL for the project
   const getProjectUrl = (project: Project) => {
@@ -82,6 +93,10 @@ export const ProjectSwitcher = ({
             }}
             onCreateProject={() => {
               onCreateProject();
+              setOpen(false);
+            }}
+            onDeleteProject={(project) => {
+              onDeleteProject?.(project);
               setOpen(false);
             }}
           />
@@ -121,6 +136,10 @@ export const ProjectSwitcher = ({
             onCreateProject();
             setOpen(false);
           }}
+          onDeleteProject={(project) => {
+            onDeleteProject?.(project);
+            setOpen(false);
+          }}
         />
       </PopoverContent>
     </Popover>
@@ -136,6 +155,7 @@ interface ProjectListProps {
   getProjectUrl: (project: Project) => string;
   onSelectProject: (project: Project) => void;
   onCreateProject: () => void;
+  onDeleteProject?: (project: Project) => void;
 }
 
 const ProjectList = ({
@@ -147,13 +167,14 @@ const ProjectList = ({
   getProjectUrl,
   onSelectProject,
   onCreateProject,
+  onDeleteProject,
 }: ProjectListProps) => {
   const renderProjectItem = (project: Project, isSubProject = false) => {
     const subProjects = getSubProjects(project.id);
     
     return (
       <div key={project.id}>
-        <button
+        <div
           onClick={() => onSelectProject(project)}
           className={cn(
             "w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/80 transition-colors text-left",
@@ -180,7 +201,33 @@ const ProjectList = ({
           {project.is_published && (
             <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
           )}
-        </button>
+          {onDeleteProject && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground ml-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreHorizontal className="w-3.5 h-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteProject(project);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
         {/* Render sub-projects */}
         {subProjects.map((subProject) => renderProjectItem(subProject, true))}
       </div>

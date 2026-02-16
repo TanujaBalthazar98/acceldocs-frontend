@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight, ArrowLeft, Loader2, Building2, Puzzle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunction } from "@/lib/api/functions";
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -27,7 +27,12 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [isCheckingOrg, setIsCheckingOrg] = useState(true);
 
-  const workspaceDomain = user?.email?.toLowerCase().trim() || null;
+  const workspaceDomain = (() => {
+    const email = user?.email?.toLowerCase().trim();
+    if (!email) return null;
+    const domain = email.split("@")[1]?.trim();
+    return domain || email;
+  })();
   const workspaceName = formatPersonalWorkspaceName(user?.email || null, user?.user_metadata?.full_name || null);
 
   useEffect(() => {
@@ -39,13 +44,13 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
       }
 
       try {
-        const { data: existingRole } = await supabase
-          .from("user_roles")
-          .select("id, organization_id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (existingRole) {
+        const { data: orgRes } = await invokeFunction<{
+          ok?: boolean;
+          members?: Array<{ id?: string | number; role?: string }>;
+        }>("get-organization");
+        const role =
+          orgRes?.members?.find((member) => String(member?.id) === String(user.id))?.role || null;
+        if (role) {
           onComplete();
           return;
         }
@@ -74,7 +79,7 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
         throw new Error("Missing workspace identifier for creation.");
       }
 
-      const { data, error } = await supabase.functions.invoke("ensure-workspace", {
+      const { data, error } = await invokeFunction("ensure-workspace", {
         body: {
           domain: workspaceDomain,
           name: workspaceName,

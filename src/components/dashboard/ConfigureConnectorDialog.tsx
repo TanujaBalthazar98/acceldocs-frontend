@@ -23,7 +23,6 @@ import {
 } from '@/components/ui/select';
 import { Loader2, Shield, Key, Settings } from 'lucide-react';
 import { useConnectors } from '@/hooks/useConnectors';
-import { supabase } from '@/integrations/supabase/client';
 import { Connector, CONNECTOR_DEFINITIONS } from '@/lib/connectors/types';
 import { toast } from 'sonner';
 
@@ -64,19 +63,7 @@ export function ConfigureConnectorDialog({
   useEffect(() => {
     // Load existing permissions
     const loadPermissions = async () => {
-      const { data } = await supabase
-        .from('connector_permissions')
-        .select('*')
-        .eq('connector_id', connector.id);
-      
-      if (data && data.length > 0) {
-        setPermissions(data.map(p => ({
-          role: p.role,
-          can_view: p.can_view,
-          can_use: p.can_use,
-          can_configure: p.can_configure
-        })));
-      }
+      return;
     };
     
     if (open) {
@@ -88,43 +75,8 @@ export function ConfigureConnectorDialog({
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Update connector metadata
-      await updateConnector(connector.id, { 
-        metadata: config,
-        endpoint_url: config.endpoint_url || connector.endpoint_url
-      });
-
-      // Update credentials if provided
-      if (Object.keys(credentials).some(k => credentials[k])) {
-        const { error: credError } = await supabase
-          .from('connector_credentials')
-          .upsert({
-            connector_id: connector.id,
-            encrypted_credentials: credentials
-          }, {
-            onConflict: 'connector_id'
-          });
-        
-        if (credError) throw credError;
-      }
-
-      // Update permissions
-      for (const perm of permissions) {
-        await supabase
-          .from('connector_permissions')
-          .upsert({
-            connector_id: connector.id,
-            role: perm.role as 'admin' | 'editor' | 'reviewer' | 'viewer',
-            can_view: perm.can_view,
-            can_use: perm.can_use,
-            can_configure: perm.can_configure
-          }, {
-            onConflict: 'connector_id,role'
-          });
-      }
-
-      toast.success('Connector configuration saved');
-      onOpenChange(false);
+      toast.error('Connectors are not available in Strapi mode yet.');
+      return;
     } catch (err) {
       console.error('Error saving connector config:', err);
       toast.error('Failed to save configuration');
