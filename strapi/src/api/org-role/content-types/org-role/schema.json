@@ -1,0 +1,29 @@
+{
+  "kind": "collectionType",
+  "collectionName": "org_roles",
+  "info": {
+    "singularName": "org-role",
+    "pluralName": "org-roles",
+    "displayName": "Org Role"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "organization": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::organization.organization"
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "role": {
+      "type": "enumeration",
+      "enum": ["owner", "admin", "editor", "viewer"],
+      "default": "viewer"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "kind": "collectionType",
+  "collectionName": "page_feedback",
+  "info": {
+    "singularName": "page-feedback",
+    "pluralName": "page-feedbacks",
+    "displayName": "Page Feedback"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "document": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::document.document"
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "user_name": { "type": "string" },
+    "user_email": { "type": "string" },
+    "content": { "type": "text" },
+    "feedback_type": {
+      "type": "enumeration",
+      "enum": ["rating", "comment", "suggestion", "issue"],
+      "default": "comment"
+    },
+    "issue_type": { "type": "string" },
+    "rating": { "type": "integer" },
+    "is_resolved": { "type": "boolean", "default": false }
+  }
+}

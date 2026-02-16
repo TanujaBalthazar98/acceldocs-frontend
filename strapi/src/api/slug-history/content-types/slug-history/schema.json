@@ -1,0 +1,21 @@
+{
+  "kind": "collectionType",
+  "collectionName": "slug_history",
+  "info": {
+    "singularName": "slug-history",
+    "pluralName": "slug-histories",
+    "displayName": "Slug History"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "entity_type": {
+      "type": "enumeration",
+      "enum": ["project", "topic", "document"]
+    },
+    "entity_id": { "type": "string" },
+    "old_slug": { "type": "string" },
+    "new_slug": { "type": "string" }
+  }
+}

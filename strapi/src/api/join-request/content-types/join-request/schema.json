@@ -1,0 +1,30 @@
+{
+  "kind": "collectionType",
+  "collectionName": "join_requests",
+  "info": {
+    "singularName": "join-request",
+    "pluralName": "join-requests",
+    "displayName": "Join Request"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "organization": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::organization.organization"
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "message": { "type": "text" },
+    "status": {
+      "type": "enumeration",
+      "enum": ["pending", "approved", "rejected"],
+      "default": "pending"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "kind": "collectionType",
+  "collectionName": "document_cache",
+  "info": {
+    "singularName": "document-cache",
+    "pluralName": "document-caches",
+    "displayName": "Document Cache"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "document": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::document.document"
+    },
+    "organization": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::organization.organization"
+    },
+    "content_html_encrypted": { "type": "text" },
+    "content_text_encrypted": { "type": "text" },
+    "headings_encrypted": { "type": "text" },
+    "published_content_html_encrypted": { "type": "text" }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "kind": "collectionType",
+  "collectionName": "invitations",
+  "info": {
+    "singularName": "invitation",
+    "pluralName": "invitations",
+    "displayName": "Invitation"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "organization": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::organization.organization"
+    },
+    "project": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::project.project"
+    },
+    "email": { "type": "string", "required": true },
+    "role": {
+      "type": "enumeration",
+      "enum": ["owner", "admin", "editor", "viewer", "reviewer"],
+      "default": "viewer"
+    },
+    "token": { "type": "uid", "required": true },
+    "invited_by": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "accepted_at": { "type": "datetime" },
+    "expires_at": { "type": "datetime" }
+  }
+}

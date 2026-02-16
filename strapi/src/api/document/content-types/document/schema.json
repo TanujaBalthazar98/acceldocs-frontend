@@ -1,0 +1,55 @@
+{
+  "kind": "collectionType",
+  "collectionName": "documents",
+  "info": {
+    "singularName": "document",
+    "pluralName": "documents",
+    "displayName": "Document"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "title": { "type": "string", "required": true },
+    "slug": { "type": "string" },
+    "project": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::project.project",
+      "inversedBy": "documents"
+    },
+    "project_version": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::project-version.project-version",
+      "inversedBy": "documents"
+    },
+    "topic": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::topic.topic",
+      "inversedBy": "documents"
+    },
+    "google_doc_id": { "type": "string" },
+    "visibility": {
+      "type": "enumeration",
+      "enum": ["internal", "external", "public"],
+      "default": "internal"
+    },
+    "is_published": { "type": "boolean", "default": false },
+    "content_html": { "type": "text" },
+    "published_content_html": { "type": "text" },
+    "content_id": { "type": "string" },
+    "published_content_id": { "type": "string" },
+    "video_url": { "type": "string" },
+    "video_title": { "type": "string" },
+    "owner": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "display_order": { "type": "integer" },
+    "last_synced_at": { "type": "datetime" },
+    "google_modified_at": { "type": "datetime" }
+  }
+}
