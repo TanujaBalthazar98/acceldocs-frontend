@@ -121,7 +121,13 @@ export function DocAssistantChat({
     setIsLoading(true);
 
     try {
-      const { data, error } = await invokeFunction("docs-ai-assistant", {
+      const { data, error } = await invokeFunction<{
+        error?: string;
+        details?: string;
+        message?: string;
+        actions?: Array<{ name: string; args: Record<string, any> }>;
+        toolResults?: Array<{ success: boolean; result?: any; error?: string }>;
+      }>("docs-ai-assistant", {
         body: {
           messages: [...messages, userMessage].map((m) => ({
             role: m.role,
@@ -138,7 +144,7 @@ export function DocAssistantChat({
       });
 
       if (error) {
-        console.error("Supabase function error:", error);
+        console.error("AI assistant function error:", error);
         if (error.message?.includes("401") || error.message?.includes("Authentication")) {
           throw new Error("Authentication required. Please refresh the page and try again.");
         }

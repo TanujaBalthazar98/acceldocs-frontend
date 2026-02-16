@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { USE_STRAPI } from "@/lib/api/client";
 
 // Recursively sanitize object to remove unsupported Unicode escape sequences
 const sanitizeForJson = (obj: unknown): unknown => {
@@ -115,15 +114,13 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
 
   const handleSave = async () => {
     setSaving(true);
-    if (USE_STRAPI) {
-      setSaving(false);
-      toast({
-        title: "Not available",
-        description: "Project API settings are not available in Strapi mode yet.",
-        variant: "destructive",
-      });
-      return;
-    }
+    setSaving(false);
+    toast({
+      title: "Not available",
+      description: "Project API settings are not available yet.",
+      variant: "destructive",
+    });
+    return;
 
     // Deep sanitize to remove unsupported Unicode escape sequences
     let sanitizedSpec: object | null = null;

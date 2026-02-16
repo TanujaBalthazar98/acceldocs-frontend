@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { BarChart3, FileText, Globe2, Users } from "lucide-react";
-import { USE_STRAPI } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 interface AnalyticsPanelProps {
@@ -41,12 +40,9 @@ export const AnalyticsPanel = ({ projectId, documentId, className }: AnalyticsPa
       setLoading(true);
       setError(null);
 
-      if (USE_STRAPI) {
-        setError("Analytics are not available in Strapi mode yet.");
-        setData(null);
-        setLoading(false);
-        return;
-      }
+      setError("Analytics are not available yet.");
+      setData(null);
+      setLoading(false);
     };
 
     fetchAnalytics();

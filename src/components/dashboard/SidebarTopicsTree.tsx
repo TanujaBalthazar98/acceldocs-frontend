@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FolderPlus, Plus, MoreHorizontal, Settings, Trash2, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { USE_STRAPI } from "@/lib/api/client";
 import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
@@ -104,7 +103,7 @@ export function SidebarTopicsTree({
 
   // Drag handlers
   const handleDragStart = useCallback((e: React.DragEvent, topicId: string) => {
-    if (USE_STRAPI) return;
+    return;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', topicId);
     setDragState(prev => ({ ...prev, draggedId: topicId }));
@@ -115,7 +114,7 @@ export function SidebarTopicsTree({
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent, topicId: string) => {
-    if (USE_STRAPI) return;
+    return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     
@@ -172,7 +171,7 @@ export function SidebarTopicsTree({
         
         <div
           data-topic-id={topic.id}
-          draggable={!USE_STRAPI}
+          draggable={false}
           onDragStart={(e) => handleDragStart(e, topic.id)}
           onDragEnd={handleDragEnd}
           onDragOver={(e) => handleDragOver(e, topic.id)}

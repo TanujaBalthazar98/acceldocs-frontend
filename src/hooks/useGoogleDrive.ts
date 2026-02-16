@@ -1,5 +1,5 @@
 import { invokeFunction } from "@/lib/api/functions";
-import { USE_STRAPI } from "@/lib/api/client";
+
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
@@ -42,7 +42,22 @@ export const useGoogleDrive = () => {
       ...(token ? { headers: { "x-google-token": token } } : {}),
     };
 
-    const { data, error } = await invokeFunction("google-drive", invokeOptions);
+    interface DriveResponse {
+      ok?: boolean;
+      error?: string;
+      needsReauth?: boolean;
+      needsDriveAccess?: boolean;
+      errorCode?: string;
+      files?: unknown[];
+      folder?: unknown;
+      doc?: unknown;
+      file?: unknown;
+      html?: string;
+      modifiedAt?: string;
+      [key: string]: unknown;
+    }
+
+    const { data, error } = await invokeFunction<DriveResponse>("google-drive", invokeOptions);
 
     // Handle invoke-level errors
     if (error) {
@@ -154,7 +169,13 @@ export const useGoogleDrive = () => {
       ...(token ? { headers: { "x-google-token": token } } : {}),
     };
 
-    const { data, error } = await invokeFunction("google-drive", invokeOptions);
+    const { data, error } = await invokeFunction<{
+      ok?: boolean;
+      error?: string;
+      needsReauth?: boolean;
+      needsDriveAccess?: boolean;
+      errorCode?: string;
+    }>("google-drive", invokeOptions);
 
     if (error) {
       return { exists: false, error: error.message, errorCode: "INVOKE_ERROR" };

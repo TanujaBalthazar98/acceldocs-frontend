@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { STRAPI_URL, USE_STRAPI, setStrapiToken } from "@/lib/api/client";
+import { STRAPI_URL, setStrapiToken } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, BookOpen, Loader2 } from "lucide-react";
 
@@ -31,7 +31,7 @@ const Auth = () => {
     const idToken = searchParams.get("id_token") || hashParams.get("id_token");
     const debugAuth = searchParams.get("debug_auth") === "1";
 
-    if (USE_STRAPI && jwt) {
+    if (jwt) {
       setStrapiToken(jwt);
       if (debugAuth) {
         setAuthError("Strapi JWT received. You can now navigate to /dashboard.");
@@ -42,11 +42,11 @@ const Auth = () => {
       return;
     }
 
-    if (USE_STRAPI && accessToken) {
+    if (accessToken) {
       localStorage.setItem("google_access_token", accessToken);
     }
 
-    if (USE_STRAPI && (accessToken || idToken) && !jwt) {
+    if ((accessToken || idToken) && !jwt) {
       (async () => {
         try {
           const token = accessToken || idToken || "";
@@ -78,7 +78,7 @@ const Auth = () => {
     if (error || errorDescription || errorCode) {
       const baseMessage = errorDescription || errorCode || error || "Authentication failed.";
       const hint = baseMessage.includes("Unable to exchange external code")
-        ? "Check Supabase Google provider credentials and callback URI."
+        ? "Check Google provider credentials and callback URI in Strapi settings."
         : null;
       setAuthError(hint ? `${baseMessage} ${hint}` : baseMessage);
 

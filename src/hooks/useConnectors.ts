@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invokeFunction } from '@/lib/api/functions';
-import { USE_STRAPI } from '@/lib/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { 
@@ -42,7 +41,6 @@ export function useConnectors(projectId?: string | null): UseConnectorsResult {
   useEffect(() => {
     const fetchOrgId = async () => {
       if (!user) return;
-      if (!USE_STRAPI) return;
 
       const { data, error } = await invokeFunction<{ organizationId?: string }>("ensure-workspace", {
         body: {},
@@ -128,42 +126,8 @@ export function useConnectors(projectId?: string | null): UseConnectorsResult {
 
   const testConnection = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
-    if (USE_STRAPI) {
-      return { success: false, error: 'Connectors are not available in Strapi mode yet.' };
-    }
-
-    try {
-      const { data, error: invokeError } = await invokeFunction('mcp-connector', {
-        body: {
-          action: 'health_check',
-          connector_id: id,
-          organization_id: organizationId
-        }
-      });
-
-      if (invokeError) throw invokeError;
-
-      const now = new Date().toISOString();
-      if (data?.success) {
-        await updateConnector(id, { 
-          last_health_check: now, 
-          status: 'connected',
-          last_error: null 
-        });
-        return { success: true };
-      } else {
-        await updateConnector(id, { 
-          last_health_check: now, 
-          status: 'error',
-          last_error: data?.error || 'Health check failed' 
-        });
-        return { success: false, error: data?.error };
-      }
-    } catch (err) {
-      console.error('Error testing connection:', err);
-      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
-    }
-  }, [organizationId, user, updateConnector]);
+    return { success: false, error: 'Connectors are not available yet.' };
+  }, [user]);
 
   const executeAction = useCallback(async (
     connectorId: string,

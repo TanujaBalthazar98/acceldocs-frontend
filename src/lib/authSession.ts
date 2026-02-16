@@ -1,7 +1,5 @@
 import { auth, type ApiSession } from "@/lib/api/auth";
-import { USE_STRAPI } from "@/lib/api/client";
-
-// Deduplicates refresh attempts and avoids hammering Supabase with refresh requests,
+// Deduplicates refresh attempts and avoids hammering the backend with refresh requests,
 // which can trigger 429s and force the client to sign out.
 const REFRESH_BUFFER_MS = 2 * 60 * 1000; // refresh only when expiring within 2 minutes
 const MIN_REFRESH_INTERVAL_MS = 30 * 1000; // don't refresh more than once every 30s
@@ -34,7 +32,7 @@ export const ensureFreshSession = async (): Promise<ApiSession | null> => {
     : 0;
 
   // Strapi sessions may not expose expiry; avoid forced refresh loops.
-  if (USE_STRAPI && !currentSession.expires_at) {
+  if (!currentSession.expires_at) {
     return currentSession;
   }
 
@@ -80,13 +78,11 @@ export const ensureFreshSession = async (): Promise<ApiSession | null> => {
     .refreshSession()
     .then((session) => {
       if (!session) {
-        if (!USE_STRAPI) {
           console.warn("Session refresh failed");
-          localStorage.setItem(
-            REFRESH_COOLDOWN_KEY,
-            String(Date.now() + REFRESH_COOLDOWN_MS)
-          );
-        }
+        localStorage.setItem(
+          REFRESH_COOLDOWN_KEY,
+          String(Date.now() + REFRESH_COOLDOWN_MS)
+        );
       } else {
         // Extend lock on success
         localStorage.setItem(

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { ensureFreshSession } from "@/lib/authSession";
 import { auth, type ApiSession, type ApiUser } from "@/lib/api/auth";
-import { USE_STRAPI } from "@/lib/api/client";
+// Strapi is the only backend (Supabase retired)
 import { invokeFunction } from "@/lib/api/functions";
 import { identifyPosthog, resetPosthog } from "@/lib/analytics/posthog";
 
@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     hasAttemptedStoreTokenRef.current = true;
 
     try {
-      const { data, error } = await invokeFunction("store-refresh-token", {
+      const { data, error } = await invokeFunction<{ success?: boolean }>("store-refresh-token", {
         body: refreshToken ? { refreshToken } : {},
       });
 
@@ -199,7 +199,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setProfileLoading(true);
 
       try {
-        const { data, error } = await invokeFunction("ensure-workspace", { body: {} });
+        const { data, error } = await invokeFunction<{ ok?: boolean; organizationId?: string | number }>("ensure-workspace", { body: {} });
         if (!active) return;
         if (error || !data?.ok || !data?.organizationId) {
           setProfileOrganizationId(null);
@@ -280,7 +280,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const signInWithGoogle = async (options?: { oauthWindow?: Window | null }) => {
-    const redirectPath = USE_STRAPI ? "/auth" : "/dashboard";
+    const redirectPath = "/auth";
     const redirectUrl = `${getAuthRedirectOrigin()}${redirectPath}`;
 
     // Allow a fresh attempt to store refresh tokens after consent flows
@@ -302,7 +302,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Separate function to request Drive access after sign-in
   // Using drive.readonly to read existing files + drive.file to create new ones
   const requestDriveAccess = async (options?: { oauthWindow?: Window | null }) => {
-    const redirectPath = USE_STRAPI ? "/auth" : "/dashboard";
+    const redirectPath = "/auth";
     const redirectUrl = `${getAuthRedirectOrigin()}${redirectPath}`;
 
     // Allow a fresh attempt to store refresh tokens after consent flows
@@ -337,11 +337,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const signUpWithEmail = async (email: string, password: string, accountType: AccountType = "individual") => {
-    const redirectUrl = `${getRedirectBase()}/`;
-    
     return auth.signUpWithEmail(email, password, {
       account_type: accountType,
-      redirectTo: redirectUrl,
     });
   };
 
