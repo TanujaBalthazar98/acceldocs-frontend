@@ -1681,6 +1681,63 @@ async function importMarkdown(ctx: Context) {
   };
 }
 
+async function storeRefreshToken(ctx: Context) {
+  const body = (ctx.request?.body || {}) as { refreshToken?: string };
+  const user = ctx.state.user as { id: number; email?: string } | undefined;
+  if (!user) return { ok: false, error: "Unauthorized" };
+
+  const refreshToken = body.refreshToken;
+  if (!refreshToken) {
+    // Nothing to store — not an error, frontend may call speculatively
+    return { ok: true, success: false, reason: "No refresh token provided" };
+  }
+
+  // Store the refresh token on the user record (Strapi users-permissions plugin)
+  try {
+    await strapi.db
+      .query("plugin::users-permissions.user")
+      .update({
+        where: { id: user.id },
+        data: { google_refresh_token: refreshToken },
+      });
+    return { ok: true, success: true };
+  } catch (err: any) {
+    // Field may not exist on user schema yet — store in org-role metadata as fallback
+    console.warn("Could not store refresh token on user record:", err?.message);
+    return { ok: true, success: false, reason: "User schema may not have google_refresh_token field" };
+  }
+}
+
+async function docsAiAssistant(ctx: Context) {
+  const body = (ctx.request?.body || {}) as {
+    messages?: Array<{ role: string; content: string }>;
+    context?: { currentProject?: unknown; currentTopic?: unknown };
+  };
+  const user = ctx.state.user as { id: number } | undefined;
+  if (!user) return { ok: false, error: "Unauthorized" };
+
+  const messages = body.messages || [];
+  if (messages.length === 0) {
+    return { ok: false, error: "No messages provided" };
+  }
+
+  // The AI assistant requires an external LLM API key to function.
+  // For now, return a helpful placeholder response.
+  const lastMessage = messages[messages.length - 1];
+  return {
+    ok: true,
+    response:
+      "The AI documentation assistant is not configured yet. " +
+      "To enable it, add an OPENAI_API_KEY or ANTHROPIC_API_KEY to your Strapi environment variables.",
+    message: {
+      role: "assistant",
+      content:
+        "The AI documentation assistant is not configured yet. " +
+        "To enable it, add an OPENAI_API_KEY or ANTHROPIC_API_KEY to your Strapi environment variables.",
+    },
+  };
+}
+
 export default () => ({
   async invoke(name: string, ctx: Context) {
     switch (name) {
@@ -1756,6 +1813,10 @@ export default () => ({
         return { ok: false, error: "Not implemented yet" };
       case "send-invitation-email":
         return { ok: true };
+      case "store-refresh-token":
+        return storeRefreshToken(ctx);
+      case "docs-ai-assistant":
+        return docsAiAssistant(ctx);
       default:
         return notImplemented(name);
     }

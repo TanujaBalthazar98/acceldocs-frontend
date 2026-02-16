@@ -165,10 +165,17 @@ export async function removeWhere(
   collection: string,
   filters: QueryOptions["filters"],
 ): Promise<QueryResult<{ count?: number }>> {
-  return {
-    data: null,
-    error: new Error("removeWhere is not supported in Strapi mode."),
-  };
+  // List matching items, then delete each
+  const { data: items, error: listError } = await list<{ id: string | number }>(collection, { filters });
+  if (listError) return { data: null, error: listError };
+  if (!items || items.length === 0) return { data: { count: 0 }, error: null };
+
+  let count = 0;
+  for (const item of items) {
+    const { error: delError } = await remove(collection, item.id);
+    if (!delError) count++;
+  }
+  return { data: { count }, error: null };
 }
 
 export async function updateWhere<T = unknown>(
@@ -176,8 +183,16 @@ export async function updateWhere<T = unknown>(
   filters: QueryOptions["filters"],
   payload: Record<string, unknown>,
 ): Promise<QueryResult<T>> {
-  return {
-    data: null,
-    error: new Error("updateWhere is not supported in Strapi mode."),
-  };
+  // List matching items, then update each
+  const { data: items, error: listError } = await list<{ id: string | number }>(collection, { filters });
+  if (listError) return { data: null, error: listError };
+  if (!items || items.length === 0) return { data: null, error: null };
+
+  let lastUpdated: T | null = null;
+  for (const item of items) {
+    const { data: updated, error: updateError } = await update<T>(collection, item.id, payload);
+    if (updateError) return { data: null, error: updateError };
+    lastUpdated = updated;
+  }
+  return { data: lastUpdated, error: null };
 }
