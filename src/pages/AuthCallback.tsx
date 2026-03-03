@@ -4,13 +4,41 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { setToken, getCurrentUser, handleGoogleCallback } from '@/lib/auth-new';
 import { Loader2 } from 'lucide-react';
 
+/**
+ * After tokens are stored, notify the opener window (if popup)
+ * or do a full-page redirect (if main window).
+ */
+function completeAuth() {
+  if (window.opener && window.opener !== window) {
+    // Popup flow — send tokens back to parent via postMessage
+    const googleToken = localStorage.getItem('google_access_token');
+    const jwt = localStorage.getItem('acceldocs_auth_token');
+    const userStr = localStorage.getItem('acceldocs_user');
+    const user = userStr ? JSON.parse(userStr) : null;
+
+    window.opener.postMessage(
+      {
+        type: 'GOOGLE_AUTH_SUCCESS',
+        accessToken: googleToken,
+        jwt: jwt,
+        user: user,
+      },
+      window.location.origin,
+    );
+    window.close();
+    return;
+  }
+
+  // Main window — full page reload so all providers remount with fresh localStorage
+  window.location.assign('/dashboard');
+}
+
 export default function AuthCallbackPage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,7 +49,7 @@ export default function AuthCallbackPage() {
 
       if (errorParam) {
         setError('Authentication was cancelled or failed');
-        setTimeout(() => navigate('/login'), 3000);
+        setTimeout(() => window.location.assign('/login'), 3000);
         return;
       }
 
@@ -30,11 +58,11 @@ export default function AuthCallbackPage() {
         setToken(token);
         try {
           await getCurrentUser();
-          navigate('/dashboard', { replace: true });
+          completeAuth();
         } catch (err) {
           console.error('Failed to get user:', err);
           setError('Failed to load user data');
-          setTimeout(() => navigate('/login'), 3000);
+          setTimeout(() => window.location.assign('/login'), 3000);
         }
         return;
       }
@@ -43,21 +71,21 @@ export default function AuthCallbackPage() {
       if (code) {
         try {
           await handleGoogleCallback(code);
-          navigate('/dashboard', { replace: true });
+          completeAuth();
         } catch (err) {
           console.error('OAuth code exchange failed:', err);
           setError(err instanceof Error ? err.message : 'Authentication failed');
-          setTimeout(() => navigate('/login'), 3000);
+          setTimeout(() => window.location.assign('/login'), 3000);
         }
         return;
       }
 
       setError('No token received');
-      setTimeout(() => navigate('/login'), 3000);
+      setTimeout(() => window.location.assign('/login'), 3000);
     }
 
     processCallback();
-  }, [searchParams, navigate]);
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

@@ -146,20 +146,7 @@ export default function SignUp() {
 
     setCreatingSignup(true);
     try {
-      // Preferred flow: backend /auth/login with organizationId in query
-      const loginResponse = await fetch(
-        `${API_URL}/auth/login?organizationId=${encodeURIComponent(String(selectedOrg))}`
-      );
-
-      if (loginResponse.ok) {
-        const payload = await loginResponse.json().catch(() => ({} as any));
-        if (payload?.url) {
-          window.location.href = payload.url;
-          return;
-        }
-      }
-
-      // Fallback for older prepare-signup backends
+      // Create signup token with org join info
       const response = await fetch(`${API_URL}/auth/prepare-signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,11 +159,13 @@ export default function SignUp() {
       if (!response.ok) throw new Error(await readErrorMessage(response));
 
       const { signup_token } = await response.json();
-      const legacyLoginResponse = await fetch(
+
+      // Get OAuth URL with signup token in state
+      const loginResponse = await fetch(
         `${API_URL}/auth/login?state=${encodeURIComponent(signup_token)}`
       );
-      if (!legacyLoginResponse.ok) throw new Error("Failed to get OAuth URL");
-      const { url } = await legacyLoginResponse.json();
+      if (!loginResponse.ok) throw new Error("Failed to get OAuth URL");
+      const { url } = await loginResponse.json();
       window.location.href = url;
     } catch (err: any) {
       toast({
@@ -224,47 +213,7 @@ export default function SignUp() {
         return;
       }
 
-      // Primary flow for current automation backend: create org first
-      const createResponse = await fetch(`${API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newOrgName.trim(),
-          domain: newOrgName.trim().toLowerCase().replace(/\s+/g, "-"),
-          drive_folder_id: rootFolderId.trim(),
-        }),
-      });
-
-      if (createResponse.ok) {
-        const created = await createResponse.json();
-        const createdOrgId = created?.organizationId;
-        if (!createdOrgId) {
-          throw new Error("Organization created but no id returned");
-        }
-
-        const loginResponse = await fetch(
-          `${API_URL}/auth/login?organizationId=${encodeURIComponent(String(createdOrgId))}`
-        );
-        if (!loginResponse.ok) throw new Error("Failed to get OAuth URL");
-        const { url } = await loginResponse.json();
-        window.location.href = url;
-        return;
-      }
-
-      // If current backend says org already exists, don't try legacy routes.
-      const createMsg = await readErrorMessage(createResponse);
-      if (
-        createResponse.status === 409 ||
-        createResponse.status === 400 ||
-        /already exists|duplicate|exists/i.test(createMsg)
-      ) {
-        setSearchQuery(newOrgName.trim());
-        setSearchResults(await runOrganizationSearch(newOrgName));
-        setStep("search");
-        throw new Error("Workspace already exists. Search and join it instead.");
-      }
-
-      // Fallback for older prepare-signup backends
+      // Create org via prepare-signup with signup token flow
       const response = await fetch(`${API_URL}/auth/prepare-signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

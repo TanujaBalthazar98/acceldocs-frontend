@@ -370,7 +370,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const signInWithGoogle = async (options?: { oauthWindow?: Window | null }) => {
-    const redirectPath = "/auth";
+    const redirectPath = "/auth/callback";
     const redirectUrl = `${getAuthRedirectOrigin()}${redirectPath}`;
     let preparedOAuthWindow = options?.oauthWindow ?? null;
 
@@ -404,7 +404,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Separate function to request Drive access after sign-in
   // Using drive.readonly to read existing files + drive.file to create new ones
   const requestDriveAccess = async (options?: { oauthWindow?: Window | null }) => {
-    const redirectPath = "/auth";
+    const redirectPath = "/auth/callback";
     const redirectUrl = `${getAuthRedirectOrigin()}${redirectPath}`;
     let preparedOAuthWindow = options?.oauthWindow ?? null;
 
