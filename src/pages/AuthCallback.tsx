@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { setToken, getCurrentUser } from '@/lib/auth-new';
+import { setToken, getCurrentUser, handleGoogleCallback } from '@/lib/auth-new';
 import { Loader2 } from 'lucide-react';
 
 export default function AuthCallbackPage() {
@@ -16,6 +16,7 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     async function processCallback() {
       const token = searchParams.get('token');
+      const code = searchParams.get('code');
       const errorParam = searchParams.get('error');
 
       if (errorParam) {
@@ -33,6 +34,19 @@ export default function AuthCallbackPage() {
         } catch (err) {
           console.error('Failed to get user:', err);
           setError('Failed to load user data');
+          setTimeout(() => navigate('/login'), 3000);
+        }
+        return;
+      }
+
+      // If we have an authorization code from Google, exchange it for a token
+      if (code) {
+        try {
+          await handleGoogleCallback(code);
+          navigate('/dashboard', { replace: true });
+        } catch (err) {
+          console.error('OAuth code exchange failed:', err);
+          setError(err instanceof Error ? err.message : 'Authentication failed');
           setTimeout(() => navigate('/login'), 3000);
         }
         return;
