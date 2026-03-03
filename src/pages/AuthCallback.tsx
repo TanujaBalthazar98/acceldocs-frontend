@@ -73,6 +73,8 @@ export default function AuthCallbackPage() {
           await handleGoogleCallback(code);
           completeAuth();
         } catch (err) {
+          // If user was redirected to signup (no account), don't show error
+          if (err instanceof Error && err.message === 'NO_ACCOUNT_REDIRECT') return;
           console.error('OAuth code exchange failed:', err);
           setError(err instanceof Error ? err.message : 'Authentication failed');
           setTimeout(() => window.location.assign('/login'), 3000);

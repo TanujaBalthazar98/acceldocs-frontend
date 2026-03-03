@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,9 +41,20 @@ async function readErrorMessage(response: Response): Promise<string> {
 
 export default function SignUp() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
   const [step, setStep] = useState<"search" | "create">("search");
+
+  // Show message if redirected from login (no account found)
+  useEffect(() => {
+    if (searchParams.get("reason") === "no_account") {
+      toast({
+        title: "Account not found",
+        description: "Please create or join an organization to get started.",
+      });
+    }
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Organization[]>([]);
   const [searching, setSearching] = useState(false);

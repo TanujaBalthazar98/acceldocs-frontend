@@ -118,11 +118,17 @@ export async function handleGoogleCallback(code: string): Promise<User & { strap
     throw new Error(errorMsg);
   }
 
-  let data: AuthResponse & { strapi_jwt?: string };
+  let data: AuthResponse & { strapi_jwt?: string; error?: string; redirect?: string };
   try {
     data = await response.json();
   } catch {
     throw new Error('Backend returned non-JSON response. Please restart backend and try again.');
+  }
+
+  // Handle "no account" response — new user needs to sign up first
+  if (data.error === 'no_account') {
+    window.location.assign(data.redirect || '/signup?reason=no_account');
+    throw new Error('NO_ACCOUNT_REDIRECT');
   }
 
   // Store token and user
