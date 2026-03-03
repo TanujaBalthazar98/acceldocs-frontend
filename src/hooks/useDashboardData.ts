@@ -283,7 +283,6 @@ export const useDashboardData = () => {
 
       const orgId = String(workspace.organization.id);
       setOrganizationId(orgId);
-      setNeedsOnboarding(false);
 
       const { data: orgResponse, error: orgError } = await invokeFunction<{
         ok?: boolean;
@@ -317,6 +316,13 @@ export const useDashboardData = () => {
       const memberRole =
         orgResponse?.members?.find((member: any) => String(member?.id) === String(user.id))?.role || "viewer";
       setAppRole(memberRole);
+
+      // Show onboarding if owner has no Drive folder configured yet
+      if (!org?.drive_folder_id && memberRole === "owner") {
+        setNeedsOnboarding(true);
+      } else {
+        setNeedsOnboarding(false);
+      }
 
       const { data: projectRes, error: projectError } = await invokeFunction<{
         ok?: boolean;
