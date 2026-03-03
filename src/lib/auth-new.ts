@@ -3,7 +3,9 @@
  * Connects to FastAPI backend at /auth endpoints
  */
 
-const API_URL = import.meta.env.VITE_AUTH_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const PRODUCTION_API_URL = "https://web-production-6a023.up.railway.app";
+const API_URL = import.meta.env.VITE_AUTH_URL || import.meta.env.VITE_API_URL
+  || (import.meta.env.PROD ? PRODUCTION_API_URL : 'http://localhost:8000');
 const TOKEN_KEY = 'acceldocs_auth_token';
 const USER_KEY = 'acceldocs_user';
 

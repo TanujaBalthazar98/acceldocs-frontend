@@ -6,8 +6,10 @@
 
 const AUTH_TOKEN_KEY = "acceldocs_auth_token";
 
-// Backend base URL
-export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "http://localhost:8000";
+// Backend base URL — Railway in production, localhost in dev
+const PRODUCTION_API_URL = "https://web-production-6a023.up.railway.app";
+export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "")
+  || (import.meta.env.PROD ? PRODUCTION_API_URL : "http://localhost:8000");
 
 /** @deprecated Use API_BASE_URL */
 export const STRAPI_URL = API_BASE_URL;
