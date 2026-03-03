@@ -15,6 +15,9 @@ export default defineConfig(({ mode }) => {
       host: "::",
       port: 8081,
       allowedHosts: true,
+      watch: {
+        ignored: ["**/acceldocs-backend/**"],
+      },
       proxy: {
         // OAuth callback — backend handles code exchange and postMessage back to popup opener
         "/auth/callback": {
@@ -107,6 +110,11 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@": path.resolve(__dirname, "./src"),
       },
+    },
+    // Exclude backend folder from Vite's file watcher and optimizer
+    optimizeDeps: {
+      exclude: [],
+      entries: ["src/**/*.{ts,tsx}"],
     },
     appType: "spa",
     test: {
