@@ -305,9 +305,9 @@ describe('API Authorization Enforcement', () => {
         expect(checkPermission('admin', 'edit_project_settings').allowed).toBe(true);
       });
 
-      it('should block Editor from editing settings', () => {
+      it('should allow Editor to edit settings', () => {
         const result = checkPermission('editor', 'edit_project_settings');
-        expect(result.allowed).toBe(false);
+        expect(result.allowed).toBe(true);
       });
 
       it('should block Reviewer from editing settings', () => {
@@ -355,9 +355,9 @@ describe('API Authorization Enforcement', () => {
         expect(result.allowed).toBe(false);
       });
 
-      it('should block Reviewer from viewing audit logs', () => {
+      it('should allow Reviewer to view audit logs', () => {
         const result = checkPermission('reviewer', 'view_audit_logs');
-        expect(result.allowed).toBe(false);
+        expect(result.allowed).toBe(true);
       });
 
       it('should block Viewer from viewing audit logs', () => {

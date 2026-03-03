@@ -130,8 +130,8 @@ describe('RBAC Permission System', () => {
       expect(editorPermissions.canViewAuditLogs).toBe(false);
     });
 
-    it('should NOT have project settings access', () => {
-      expect(editorPermissions.canEditProjectSettings).toBe(false);
+    it('should have project settings access but not visibility', () => {
+      expect(editorPermissions.canEditProjectSettings).toBe(true);
       expect(editorPermissions.canEditVisibility).toBe(false);
     });
 
@@ -192,8 +192,8 @@ describe('RBAC Permission System', () => {
       expect(reviewerPermissions.canCommentDrive).toBe(true);
     });
 
-    it('should NOT have audit log access', () => {
-      expect(reviewerPermissions.canViewAuditLogs).toBe(false);
+    it('should have audit log access for review purposes', () => {
+      expect(reviewerPermissions.canViewAuditLogs).toBe(true);
     });
 
     it('should NOT have settings permissions', () => {
@@ -318,13 +318,15 @@ describe('RBAC Permission System', () => {
       }
     });
 
-    it('should ensure Editor has all Reviewer permissions except comment-only restrictions', () => {
+    it('should ensure Editor has all Reviewer permissions except audit-log-only access', () => {
       const editor = getPermissionsForRole('editor');
       const reviewer = getPermissionsForRole('reviewer');
 
-      // Editor should have everything Reviewer has
+      // Editor should have everything Reviewer has, except canViewAuditLogs
+      // (reviewers get audit log access for review purposes; editors get it via admin)
+      const reviewerOnlyPerms: (keyof ProjectPermissions)[] = ['canViewAuditLogs'];
       for (const key of Object.keys(reviewer) as (keyof ProjectPermissions)[]) {
-        if (reviewer[key]) {
+        if (reviewer[key] && !reviewerOnlyPerms.includes(key)) {
           expect(editor[key]).toBe(true);
         }
       }

@@ -1462,11 +1462,13 @@ async function googleDrive(ctx: Context) {
     }
     const html = await response.text();
 
+    // Update draft content without changing publish state.
+    // If the document was published, it stays published but now has
+    // unpublished changes (content_html differs from published_content_html).
     await strapi.entityService.update("api::document.document", documentId, {
       data: {
         content_html: html,
         last_synced_at: new Date().toISOString(),
-        is_published: false,
         ...(modifiedAt ? { google_modified_at: modifiedAt } : {}),
       },
     });

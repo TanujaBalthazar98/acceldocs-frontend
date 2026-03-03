@@ -1,69 +1,52 @@
-// Test setup and utilities
-import { vi } from 'vitest';
+/**
+ * Test Setup File
+ * 
+ * Global test configuration and mocks
+ */
 
-// Mock Supabase client
-export const mockSupabase = {
-  auth: {
-    getUser: vi.fn(),
-    getSession: vi.fn(),
-    onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
-  },
-  from: vi.fn(() => ({
-    select: vi.fn(() => ({
-      eq: vi.fn(() => ({
-        maybeSingle: vi.fn(),
-        single: vi.fn(),
-      })),
-    })),
-    insert: vi.fn(() => ({
-      select: vi.fn(() => ({
-        single: vi.fn(),
-      })),
-    })),
-    update: vi.fn(() => ({
-      eq: vi.fn(),
-    })),
-    delete: vi.fn(() => ({
-      eq: vi.fn(),
-    })),
-  })),
-  rpc: vi.fn(),
-  functions: {
-    invoke: vi.fn(),
-  },
-};
+import { expect, afterEach, vi } from 'vitest';
+import { cleanup } from '@testing-library/react';
+import * as matchers from '@testing-library/jest-dom/matchers';
 
-// Mock user factory
-export function createMockUser(overrides = {}) {
-  return {
-    id: 'user-123',
-    email: 'test@example.com',
-    ...overrides,
-  };
-}
+// Extend Vitest's expect with jest-dom matchers
+expect.extend(matchers);
 
-// Mock project factory
-export function createMockProject(overrides = {}) {
-  return {
-    id: 'project-123',
-    name: 'Test Project',
-    organization_id: 'org-123',
-    is_published: true,
-    visibility: 'public',
-    ...overrides,
-  };
-}
-
-// Mock permission response factory
-export function createMockPermissionResponse(role: string, allowed: boolean) {
-  return {
-    allowed,
-    role,
-    action: 'test_action',
-  };
-}
-
-// Reset all mocks
-export function resetMocks() {
+// Cleanup after each test
+afterEach(() => {
+  cleanup();
   vi.clearAllMocks();
-}
+});
+
+// Mock window.matchMedia
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
+
+// Mock IntersectionObserver
+global.IntersectionObserver = class IntersectionObserver {
+  constructor() {}
+  disconnect() {}
+  observe() {}
+  takeRecords() {
+    return [];
+  }
+  unobserve() {}
+} as any;
+
+// Mock ResizeObserver
+global.ResizeObserver = class ResizeObserver {
+  constructor() {}
+  disconnect() {}
+  observe() {}
+  unobserve() {}
+} as any;

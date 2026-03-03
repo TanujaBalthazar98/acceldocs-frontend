@@ -31,3 +31,17 @@ supabase/.temp/
 *.sw?
 .vercel
 .env*.local
+
+# Claude/AI agent working dirs
+.claude/
+.agents/
+.mcp.json
+
+# Test env
+.env.test
+
+# Temp files
+*.timestamp-*
+
+# Backend data
+automation-backend/data/*.db

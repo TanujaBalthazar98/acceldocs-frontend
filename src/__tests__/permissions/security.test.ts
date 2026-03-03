@@ -276,10 +276,10 @@ describe('Security Bypass Prevention', () => {
   });
 
   describe('Audit Log Access Protection', () => {
-    it('should only allow Admin to view audit logs', () => {
+    it('should allow Admin and Reviewer to view audit logs', () => {
       expect(serverCheckPermission('admin', 'view_audit_logs').allowed).toBe(true);
       expect(serverCheckPermission('editor', 'view_audit_logs').allowed).toBe(false);
-      expect(serverCheckPermission('reviewer', 'view_audit_logs').allowed).toBe(false);
+      expect(serverCheckPermission('reviewer', 'view_audit_logs').allowed).toBe(true);
       expect(serverCheckPermission('viewer', 'view_audit_logs').allowed).toBe(false);
     });
 

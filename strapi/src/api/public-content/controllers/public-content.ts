@@ -44,24 +44,37 @@ export default {
     });
 
     const documentsAll = await strapi.entityService.findMany("api::document.document", {
+      filters: {
+        project: { id: { $in: projectIds } },
+        is_published: true,
+      },
+      fields: [
+        "id",
+        "title",
+        "slug",
+        "google_doc_id",
+        "visibility",
+        "is_published",
+        "content_html",
+        "published_content_html",
+        "content_id",
+        "published_content_id",
+        "display_order",
+        "video_url",
+        "video_title",
+        "last_synced_at",
+        "google_modified_at",
+      ],
       populate: {
         project: { fields: ["id"] },
         project_version: { fields: ["id"] },
         topic: { fields: ["id"] },
-        owner: true,
+        owner: { fields: ["id", "email", "username"] },
       },
       sort: { display_order: "asc" },
     });
 
-    const documents = (documentsAll as any[]).filter((doc) => {
-      const projectId = (doc as any)?.project?.id ?? (doc as any)?.project?.data?.id ?? null;
-      if (!projectId || !projectIds.includes(String(projectId))) return false;
-      return (
-        (doc as any)?.is_published === true ||
-        !!(doc as any)?.published_content_html ||
-        !!(doc as any)?.published_content_id
-      );
-    });
+    const documents = documentsAll as any[];
 
     ctx.body = {
       ok: true,
