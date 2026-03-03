@@ -3,7 +3,7 @@
  * Connects to FastAPI backend at /auth endpoints
  */
 
-const API_URL = import.meta.env.VITE_AUTH_URL || import.meta.env.VITE_API_URL || 'http://localhost:4001';
+const API_URL = import.meta.env.VITE_AUTH_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const TOKEN_KEY = 'acceldocs_auth_token';
 const USER_KEY = 'acceldocs_user';
 

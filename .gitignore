@@ -43,5 +43,6 @@ supabase/.temp/
 # Temp files
 *.timestamp-*
 
-# Backend data
-automation-backend/data/*.db
+# Redundant backends (real backend is acceldocs-backend, separate repo)
+automation-backend/
+strapi/

@@ -1,13 +1,13 @@
 /**
  * API Client Abstraction Layer
  *
- * All traffic goes to the automation-backend.
+ * All traffic goes to the acceldocs-backend (Python/FastAPI).
  */
 
 const AUTH_TOKEN_KEY = "acceldocs_auth_token";
 
 // Backend base URL
-export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "http://localhost:4001";
+export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "http://localhost:8000";
 
 /** @deprecated Use API_BASE_URL */
 export const STRAPI_URL = API_BASE_URL;
