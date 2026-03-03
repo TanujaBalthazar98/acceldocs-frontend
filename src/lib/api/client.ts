@@ -1,19 +1,16 @@
 /**
  * API Client Abstraction Layer
  *
- * Strapi HTTP client.
- *
- * Supabase has been retired; all traffic goes to Strapi.
+ * All traffic goes to the automation-backend.
  */
 
-const STRAPI_JWT_KEY = "strapi_jwt";
-const REFRESH_LOCK_KEY = "api_refresh_lock";
+const AUTH_TOKEN_KEY = "acceldocs_auth_token";
 
-// Supabase retired: always use Strapi
-export const USE_STRAPI = true;
+// Backend base URL
+export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "http://localhost:4001";
 
-// Strapi base URL (only needed when USE_STRAPI is true)
-export const STRAPI_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "";
+/** @deprecated Use API_BASE_URL */
+export const STRAPI_URL = API_BASE_URL;
 
 export interface ApiError {
   status: number;
@@ -27,47 +24,48 @@ export interface ApiResponse<T = unknown> {
 }
 
 /**
- * Get the stored Strapi JWT token
+ * Get the stored auth token
  */
-export function getStrapiToken(): string | null {
-  return localStorage.getItem(STRAPI_JWT_KEY);
+export function getAuthToken(): string | null {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
 }
 
+/** @deprecated Use getAuthToken() */
+export const getStrapiToken = getAuthToken;
+
 /**
- * Set the Strapi JWT token
+ * Set the auth token
  */
-export function setStrapiToken(token: string | null): void {
+export function setAuthToken(token: string | null): void {
   if (token) {
-    localStorage.setItem(STRAPI_JWT_KEY, token);
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
   } else {
-    localStorage.removeItem(STRAPI_JWT_KEY);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
   }
 }
 
+/** @deprecated Use setAuthToken() */
+export const setStrapiToken = setAuthToken;
+
 /**
- * Core fetch wrapper for Strapi API calls.
+ * Core fetch wrapper for API calls.
  * Injects JWT, handles errors, and normalizes responses.
  */
-export async function strapiFetch<T = unknown>(
+export async function apiFetch<T = unknown>(
   path: string,
   options: RequestInit = {},
+  retryCount: number = 0,
 ): Promise<ApiResponse<T>> {
-  const token = getStrapiToken();
-  const url = `${STRAPI_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [1000, 2000, 4000];
+
+  const token = getAuthToken();
+  const url = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string> | undefined),
   };
-
-  const isFormData =
-    typeof FormData !== "undefined" &&
-    typeof options.body !== "undefined" &&
-    options.body instanceof FormData;
-
-  if (isFormData) {
-    delete headers["Content-Type"];
-  }
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
@@ -84,15 +82,12 @@ export async function strapiFetch<T = unknown>(
       const message =
         errorBody?.error?.message ||
         errorBody?.message ||
+        errorBody?.error ||
         `Request failed with status ${response.status}`;
 
-      // Handle 401 - attempt token refresh
       if (response.status === 401 && token) {
-        const refreshed = await attemptTokenRefresh();
-        if (refreshed) {
-          // Retry the original request with the new token
-          return strapiFetch<T>(path, options);
-        }
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        window.location.href = "/login";
       }
 
       return {
@@ -101,7 +96,6 @@ export async function strapiFetch<T = unknown>(
       };
     }
 
-    // Handle 204 No Content
     if (response.status === 204) {
       return { data: null as T, error: null };
     }
@@ -109,6 +103,12 @@ export async function strapiFetch<T = unknown>(
     const data = await response.json();
     return { data: data as T, error: null };
   } catch (err) {
+    if (retryCount < MAX_RETRIES && err instanceof TypeError && err.message.includes('fetch')) {
+      const delay = RETRY_DELAYS[retryCount] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return apiFetch<T>(path, options, retryCount + 1);
+    }
+
     return {
       data: null,
       error: {
@@ -120,44 +120,5 @@ export async function strapiFetch<T = unknown>(
   }
 }
 
-/**
- * Attempt to refresh the Strapi JWT token.
- * Uses a lock to prevent concurrent refresh attempts.
- */
-async function attemptTokenRefresh(): Promise<boolean> {
-  const now = Date.now();
-  const lockUntil = Number(localStorage.getItem(REFRESH_LOCK_KEY) || "0");
-
-  // Prevent concurrent refresh attempts
-  if (lockUntil && now < lockUntil) {
-    return false;
-  }
-
-  localStorage.setItem(REFRESH_LOCK_KEY, String(now + 30_000));
-
-  try {
-    const currentToken = getStrapiToken();
-    if (!currentToken) return false;
-
-    const response = await fetch(`${STRAPI_URL}/api/auth/refresh-token`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${currentToken}`,
-      },
-    });
-
-    if (!response.ok) return false;
-
-    const data = await response.json();
-    if (data?.jwt) {
-      setStrapiToken(data.jwt);
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  } finally {
-    localStorage.removeItem(REFRESH_LOCK_KEY);
-  }
-}
+/** @deprecated Use apiFetch() */
+export const strapiFetch = apiFetch;

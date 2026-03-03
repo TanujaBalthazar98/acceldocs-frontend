@@ -64,6 +64,10 @@ export default function APIDocs() {
     fetchData();
   }, [orgSlug]);
 
+  const handleRetry = () => {
+    fetchData();
+  };
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
@@ -138,12 +142,17 @@ export default function APIDocs() {
           <p className="text-muted-foreground mb-4">
             The requested API documentation could not be loaded.
           </p>
-          <Link to="/">
-            <Button variant="outline">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Go Home
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+            <Button variant="outline" onClick={handleRetry}>
+              Retry
             </Button>
-          </Link>
+            <Link to="/">
+              <Button variant="outline">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Go Home
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     );

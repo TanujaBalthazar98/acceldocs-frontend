@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, ExternalLink, Share2, User, Calendar, Eye, Lock, Globe, RefreshCw } from "lucide-react";
+import { ArrowLeft, ExternalLink, Share2, User, Calendar, Eye, Lock, Globe, RefreshCw, WifiOff, AlertTriangle } from "lucide-react";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
 import { Button } from "@/components/ui/button";
@@ -66,12 +66,40 @@ export default function PagePreview() {
   const [showSharePanel, setShowSharePanel] = useState(false);
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const [fileTooLarge, setFileTooLarge] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
+  const [usingCachedContent, setUsingCachedContent] = useState(false);
+
+  const cachedContentKey = useMemo(() => (id ? `page-preview:${id}` : null), [id]);
 
   useEffect(() => {
     if (id) {
       fetchDocument();
     }
   }, [id]);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOffline(!navigator.onLine);
+    updateOnlineStatus();
+    window.addEventListener("online", updateOnlineStatus);
+    window.addEventListener("offline", updateOnlineStatus);
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus);
+      window.removeEventListener("offline", updateOnlineStatus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cachedContentKey) return;
+    try {
+      const cached = localStorage.getItem(cachedContentKey);
+      if (cached && !docContent) {
+        setDocContent(cached);
+        setUsingCachedContent(true);
+      }
+    } catch (error) {
+      console.warn("Failed to read cached content:", error);
+    }
+  }, [cachedContentKey, docContent]);
 
   useEffect(() => {
     if (document?.google_doc_id) {
@@ -125,6 +153,14 @@ export default function PagePreview() {
             )
           : normalizeHtml(mapped.content_html);
         setDocContent(cleanedHtml);
+        setUsingCachedContent(true);
+        if (cachedContentKey) {
+          try {
+            localStorage.setItem(cachedContentKey, cleanedHtml);
+          } catch (error) {
+            console.warn("Failed to cache document content:", error);
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching document:", error);
@@ -172,6 +208,7 @@ export default function PagePreview() {
       if (error) {
         console.error("Error fetching doc content:", error);
         setNeedsReconnect(true);
+        setUsingCachedContent(!!docContent);
         return;
       }
       
@@ -182,7 +219,10 @@ export default function PagePreview() {
         if (!docContent && document?.content_html) {
           const cleanedHtml = normalizeHtml(document.content_html);
           setDocContent(cleanedHtml);
+          setUsingCachedContent(true);
         } else if (!docContent) {
+          setFileTooLarge(true);
+        } else {
           setFileTooLarge(true);
         }
         return;
@@ -192,6 +232,7 @@ export default function PagePreview() {
       if (data?.needsReauth) {
         console.log("Google token expired, needs re-authentication");
         setNeedsReconnect(true);
+        setUsingCachedContent(!!docContent);
         return;
       }
       
@@ -199,13 +240,23 @@ export default function PagePreview() {
       if (data?.html) {
         const cleanedHtml = normalizeHtml(data.html);
         setDocContent(cleanedHtml);
+        setUsingCachedContent(false);
+        if (cachedContentKey) {
+          try {
+            localStorage.setItem(cachedContentKey, cleanedHtml);
+          } catch (error) {
+            console.warn("Failed to cache document content:", error);
+          }
+        }
       } else if (data?.error) {
         console.error("API error:", data.error);
         setNeedsReconnect(true);
+        setUsingCachedContent(!!docContent);
       }
     } catch (error) {
       console.error("Error fetching doc content:", error);
       setNeedsReconnect(true);
+      setUsingCachedContent(!!docContent);
     } finally {
       setLoadingContent(false);
     }
@@ -219,7 +270,10 @@ export default function PagePreview() {
         description: "Failed to connect to Google Drive. Please try again.",
         variant: "destructive",
       });
+      return;
     }
+    setNeedsReconnect(false);
+    fetchDocContent();
   };
 
   const handleOpenInDrive = () => {
@@ -319,6 +373,40 @@ export default function PagePreview() {
 
       {/* Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {(isOffline || usingCachedContent || needsReconnect || fileTooLarge) && (
+          <div className="mb-4 space-y-2">
+            {isOffline && (
+              <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-3 py-2">
+                <WifiOff className="h-3.5 w-3.5" />
+                You’re offline. Showing the most recent cached content.
+              </div>
+            )}
+            {usingCachedContent && !isOffline && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Showing cached content while we refresh the latest version.
+              </div>
+            )}
+            {needsReconnect && docContent && (
+              <div className="flex items-center justify-between gap-3 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Google Drive access expired. Reconnect to refresh.
+                </div>
+                <Button size="sm" variant="outline" onClick={handleReconnectDrive}>
+                  Reconnect
+                </Button>
+              </div>
+            )}
+            {fileTooLarge && docContent && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
+                <ExternalLink className="h-3.5 w-3.5" />
+                This document is large. Opening in Google Docs is recommended.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Title and Meta */}
         <div className="mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-3 sm:mb-4">{document.title}</h1>
@@ -359,7 +447,7 @@ export default function PagePreview() {
               <div className="h-4 w-full bg-muted animate-pulse rounded" />
               <div className="h-4 w-5/6 bg-muted animate-pulse rounded" />
             </div>
-          ) : needsReconnect ? (
+          ) : needsReconnect && !docContent ? (
             <div className="text-center py-12">
               <RefreshCw className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="text-lg font-medium text-foreground mb-2">Google Drive Access Expired</h3>
@@ -377,7 +465,7 @@ export default function PagePreview() {
                 </Button>
               </div>
             </div>
-          ) : fileTooLarge ? (
+          ) : fileTooLarge && !docContent ? (
             <div className="text-center py-12">
               <ExternalLink className="h-12 w-12 mx-auto mb-4 text-amber-500" />
               <h3 className="text-lg font-medium text-foreground mb-2">Document Too Large</h3>

@@ -1,8 +1,7 @@
 /**
  * Functions Abstraction Layer
  *
- * Provides a unified way to invoke backend "functions" regardless of
- * custom Strapi controllers.
+ * All API calls go to the automation-backend (FastAPI)
  */
 
 import { strapiFetch } from "./client";
@@ -16,21 +15,6 @@ export interface InvokeOptions {
 export interface InvokeResult<T = unknown> {
   data: T | null;
   error: Error | null;
-}
-
-/**
- * Invoke a backend RPC by name.
- * Maps to POST /api/rpc/:name (custom route).
- */
-export async function invokeRpc<T = unknown>(
-  name: string,
-  params: Record<string, unknown>,
-): Promise<InvokeResult<T>> {
-  const { data, error } = await strapiFetch<T>(`/api/rpc/${name}`, {
-    method: "POST",
-    body: JSON.stringify(params ?? {}),
-  });
-  return { data: data ?? null, error: error ? new Error(error.message) : null };
 }
 
 /**
@@ -57,11 +41,19 @@ export async function invokeFunction<T = unknown>(
     headers: options.headers,
     body,
   });
-  const payload = data as any;
-  if (payload?.needsReauth || (typeof payload?.error === "string" && /(UNAUTHENTICATED|Invalid Credentials)/i.test(payload.error))) {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("drive:reauth"));
-    }
-  }
+  return { data: data ?? null, error: error ? new Error(error.message) : null };
+}
+
+/**
+ * Invoke a backend RPC by name.
+ */
+export async function invokeRpc<T = unknown>(
+  name: string,
+  params: Record<string, unknown>,
+): Promise<InvokeResult<T>> {
+  const { data, error } = await strapiFetch<T>(`/api/rpc/${name}`, {
+    method: "POST",
+    body: JSON.stringify(params ?? {}),
+  });
   return { data: data ?? null, error: error ? new Error(error.message) : null };
 }

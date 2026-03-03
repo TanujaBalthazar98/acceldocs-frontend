@@ -64,8 +64,10 @@ export function SmartSearch({
   const [isOpen, setIsOpen] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isSearching, setIsSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keyboard shortcut to open search
   useEffect(() => {
@@ -84,15 +86,23 @@ export function SmartSearch({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Search logic
+  // Search logic with sanitization and error handling
   const performSearch = useCallback((searchQuery: string) => {
     if (!searchQuery.trim()) {
       setResults([]);
       return;
     }
 
-    const q = searchQuery.toLowerCase();
-    const searchResults: SearchResult[] = [];
+    try {
+      // Sanitize search query to prevent XSS
+      const sanitizedQuery = searchQuery.replace(/<[^>]*>/g, '').trim();
+      if (!sanitizedQuery) {
+        setResults([]);
+        return;
+      }
+
+      const q = sanitizedQuery.toLowerCase();
+      const searchResults: SearchResult[] = [];
 
     // Search projects
     projects.forEach((project) => {
@@ -147,14 +157,51 @@ export function SmartSearch({
       }
     });
 
-    // Limit results
-    setResults(searchResults.slice(0, 10));
-    setSelectedIndex(0);
+      // Limit results
+      setResults(searchResults.slice(0, 10));
+      setSelectedIndex(0);
+    } catch (error) {
+      console.error("Search error:", error);
+      setResults([]);
+      // Don't throw - gracefully handle search errors
+    }
   }, [documents, topics, projects]);
 
+  // Debounced search to improve performance
   useEffect(() => {
-    performSearch(query);
-    onSearch?.(query);
+    // Clear previous timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Set loading state immediately
+    if (query.trim()) {
+      setIsSearching(true);
+    } else {
+      setIsSearching(false);
+      setResults([]);
+      onSearch?.("");
+      return;
+    }
+
+    // Debounce search execution
+    debounceTimeoutRef.current = setTimeout(() => {
+      try {
+        performSearch(query);
+        onSearch?.(query);
+      } catch (error) {
+        console.error("Search error:", error);
+        setResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300); // 300ms debounce
+
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
   }, [query, performSearch, onSearch]);
 
   // Handle keyboard navigation
@@ -270,9 +317,14 @@ export function SmartSearch({
       {/* Results Dropdown */}
       {isOpen && (query.trim() || results.length > 0) && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-popover border border-border rounded-lg shadow-lg z-50 overflow-hidden">
-          {results.length === 0 && query.trim() ? (
+          {isSearching ? (
             <div className="p-4 text-center text-muted-foreground">
-              <p className="text-sm">No results found for "{query}"</p>
+              <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+              <p className="text-sm">Searching...</p>
+            </div>
+          ) : results.length === 0 && query.trim() ? (
+            <div className="p-4 text-center text-muted-foreground">
+              <p className="text-sm">No results found for "{query.replace(/<[^>]*>/g, '')}"</p>
               {showAIButton && (
                 <Button
                   variant="link"

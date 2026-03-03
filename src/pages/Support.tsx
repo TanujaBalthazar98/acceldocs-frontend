@@ -1,9 +1,26 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { ArrowLeft, LifeBuoy, Mail, FileText } from "lucide-react";
+import { ArrowLeft, LifeBuoy, Mail, FileText, Send } from "lucide-react";
 import docspeareIcon from "@/assets/docspeare-icon.png";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 const Support = () => {
+  const [email, setEmail] = useState("");
+  const [workspace, setWorkspace] = useState("");
+  const [message, setMessage] = useState("");
+
+  const submitSupportTicket = (event: React.FormEvent) => {
+    event.preventDefault();
+    const subject = encodeURIComponent("Docspeare support request");
+    const body = encodeURIComponent(
+      `Email: ${email || "N/A"}\nWorkspace: ${workspace || "N/A"}\n\nMessage:\n${message || "N/A"}`
+    );
+    window.location.href = `mailto:hello@docspeare.io?subject=${subject}&body=${body}`;
+  };
+
   return (
     <>
       <Helmet>
@@ -83,6 +100,40 @@ const Support = () => {
                   hello@docspeare.io
                 </a>.
               </p>
+            </section>
+
+            <section className="rounded-lg border border-border bg-card p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <Send className="h-5 w-5 text-primary" />
+                <h2 className="text-xl font-semibold text-foreground">Quick support ticket</h2>
+              </div>
+              <p className="text-muted-foreground mb-4">
+                Submit a structured request and we will open your email client with a ready draft.
+              </p>
+              <form className="grid gap-3" onSubmit={submitSupportTicket}>
+                <Input
+                  type="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <Input
+                  type="text"
+                  placeholder="Workspace URL (optional)"
+                  value={workspace}
+                  onChange={(e) => setWorkspace(e.target.value)}
+                />
+                <Textarea
+                  placeholder="Describe your issue or request"
+                  rows={5}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  required
+                />
+                <div>
+                  <Button type="submit">Send ticket</Button>
+                </div>
+              </form>
             </section>
           </div>
         </main>

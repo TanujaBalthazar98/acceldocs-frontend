@@ -31,7 +31,7 @@ export const ensureFreshSession = async (): Promise<ApiSession | null> => {
     ? currentSession.expires_at * 1000
     : 0;
 
-  // Strapi sessions may not expose expiry; avoid forced refresh loops.
+  // Sessions may not expose expiry; avoid forced refresh loops.
   if (!currentSession.expires_at) {
     return currentSession;
   }

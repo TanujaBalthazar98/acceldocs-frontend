@@ -146,14 +146,33 @@ export function DocAssistantChat({
       if (error) {
         console.error("AI assistant function error:", error);
         if (error.message?.includes("401") || error.message?.includes("Authentication")) {
-          throw new Error("Authentication required. Please refresh the page and try again.");
+          const authError = new Error("Authentication required. Please refresh the page and try again.");
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: authError.message,
+            needsDriveReauth: false,
+          }]);
+          setIsLoading(false);
+          return;
         }
-        throw new Error(error.message || "Failed to get response from assistant");
+        const errorMsg = error.message || "Failed to get response from assistant";
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `Error: ${errorMsg}`,
+        }]);
+        setIsLoading(false);
+        return;
       }
 
       if (data?.error) {
         console.error("Assistant returned error:", data.error, data.details);
-        throw new Error(data.details || data.error);
+        const errorMsg = data.details || data.error || "An error occurred";
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `Error: ${errorMsg}`,
+        }]);
+        setIsLoading(false);
+        return;
       }
 
       const writeActions = ["create_topic", "create_page", "update_page_content"];

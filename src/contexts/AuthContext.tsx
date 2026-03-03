@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { ensureFreshSession } from "@/lib/authSession";
 import { auth, type ApiSession, type ApiUser } from "@/lib/api/auth";
-// Strapi is the only backend (Supabase retired)
+import { setAuthToken } from "@/lib/api/client";
 import { invokeFunction } from "@/lib/api/functions";
 import { identifyPosthog, resetPosthog } from "@/lib/analytics/posthog";
 
@@ -59,6 +59,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Track if we've already tried to store refresh token for the current Drive-consent flow
   const hasAttemptedStoreTokenRef = useRef(false);
   const refreshTimeoutRef = useRef<number | null>(null);
+  const isRefreshingRef = useRef(false); // Prevent concurrent token refreshes
 
   // Store refresh token by calling backend function.
   // If refreshToken isn't provided, the backend will try to extract it from the user's Google identity.
@@ -132,22 +133,67 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
 
     // THEN check for existing session
-    auth.getSession().then(async (session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-
-      // Also check for provider_token on initial load
-      if (session?.provider_token) {
-        console.log("Initial session has provider_token, storing it");
-        localStorage.setItem(GOOGLE_TOKEN_KEY, session.provider_token);
-        setGoogleAccessToken(session.provider_token);
+    (async () => {
+      let initialSession: ApiSession | null = null;
+      try {
+        initialSession = (await auth.getSession?.()) ?? null;
+        setSession(initialSession);
+        setUser(initialSession?.user ?? null);
+      } catch (err) {
+        console.error("Failed to get initial session:", err);
+        setSession(null);
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
 
-      scheduleSessionRefresh(session);
-    });
+      // Also check for provider_token on initial load
+      if (initialSession?.provider_token) {
+        console.log("Initial session has provider_token, storing it");
+        localStorage.setItem(GOOGLE_TOKEN_KEY, initialSession.provider_token);
+        setGoogleAccessToken(initialSession.provider_token);
+      }
+
+      // Schedule manual refresh when session exists
+      scheduleSessionRefresh(initialSession);
+    })();
 
     return () => unsubscribe();
+  }, []);
+
+  // Listen for OAuth popup messages (for new backend OAuth flow)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'GOOGLE_AUTH_SUCCESS') {
+        const { accessToken, jwt, user: userData } = event.data;
+
+        console.log("Received OAuth success from popup");
+
+        // Store Google access token
+        localStorage.setItem(GOOGLE_TOKEN_KEY, accessToken);
+        setGoogleAccessToken(accessToken);
+
+        // Store JWT and update session
+        if (jwt) {
+          setAuthToken(jwt);
+          // Update auth state with new user data
+          if (userData) {
+            setUser({
+              id: String(userData.id),
+              email: userData.email,
+              user_metadata: {
+                full_name: userData.name || undefined,
+              },
+            });
+          }
+        }
+
+        console.log("Google Drive connected successfully");
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   // Sync googleAccessToken state with localStorage changes
@@ -182,7 +228,25 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     refreshTimeoutRef.current = window.setTimeout(async () => {
       // Avoid background tabs hammering the endpoint
       if (document.visibilityState !== "visible") return;
-      await ensureFreshSession();
+      
+      // Prevent concurrent refreshes across tabs using a mutex pattern
+      if (isRefreshingRef.current) {
+        console.log("Token refresh already in progress, skipping");
+        return;
+      }
+      
+      try {
+        isRefreshingRef.current = true;
+        await ensureFreshSession();
+      } catch (error) {
+        console.error("Token refresh failed:", error);
+        // Don't throw - let the session expire naturally
+      } finally {
+        // Reset after a short delay to allow other tabs to refresh if needed
+        setTimeout(() => {
+          isRefreshingRef.current = false;
+        }, 5000);
+      }
     }, delay);
   };
 
@@ -199,12 +263,40 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setProfileLoading(true);
 
       try {
-        const { data, error } = await invokeFunction<{ ok?: boolean; organizationId?: string | number }>("ensure-workspace", { body: {} });
+        let data:
+          | {
+              ok?: boolean;
+              organizationId?: string | number;
+              organization?: { id?: string | number };
+              id?: string | number;
+            }
+          | null
+          | undefined;
+        let error: any = null;
+        try {
+          const resp = await invokeFunction<{
+            ok?: boolean;
+            organizationId?: string | number;
+            organization?: { id?: string | number };
+            id?: string | number;
+          }>(
+            "ensure-workspace",
+            { body: {} }
+          );
+          data = resp?.data;
+          error = resp?.error;
+        } catch (err) {
+          console.error("Profile fetch failed:", err);
+          data = null;
+          error = err;
+        }
         if (!active) return;
-        if (error || !data?.ok || !data?.organizationId) {
+        const resolvedOrgId =
+          data?.organizationId ?? data?.organization?.id ?? data?.id ?? null;
+        if (error || !data?.ok || !resolvedOrgId) {
           setProfileOrganizationId(null);
         } else {
-          setProfileOrganizationId(String(data.organizationId));
+          setProfileOrganizationId(String(resolvedOrgId));
         }
       } finally {
         setProfileLoading(false);
@@ -269,19 +361,27 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
     }
 
-    // Okta/SSO pages often refuse to render in iframes; the preview runs in an iframe.
-    // Open OAuth in a new tab when embedded.
-    if (isEmbedded()) {
-      const opened = window.open(url, "_blank", "noopener,noreferrer");
-      if (opened) return;
-    }
+    // Prefer popup/new-tab for OAuth so callback can postMessage to opener.
+    const opened = window.open(url, "_blank");
+    if (opened) return;
 
+    // Fallback if popup is blocked.
     window.location.assign(url);
   };
 
   const signInWithGoogle = async (options?: { oauthWindow?: Window | null }) => {
     const redirectPath = "/auth";
     const redirectUrl = `${getAuthRedirectOrigin()}${redirectPath}`;
+    let preparedOAuthWindow = options?.oauthWindow ?? null;
+
+    // Prepare popup synchronously from click path to avoid popup blockers.
+    if (!preparedOAuthWindow) {
+      try {
+        preparedOAuthWindow = window.open("about:blank", "_blank");
+      } catch {
+        preparedOAuthWindow = null;
+      }
+    }
 
     // Allow a fresh attempt to store refresh tokens after consent flows
     hasAttemptedStoreTokenRef.current = false;
@@ -293,7 +393,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
 
     if (!error && url) {
-      navigateToOAuth(url, options?.oauthWindow);
+      navigateToOAuth(url, preparedOAuthWindow);
+    } else if (preparedOAuthWindow && !preparedOAuthWindow.closed) {
+      preparedOAuthWindow.close();
     }
 
     return { error };
@@ -304,6 +406,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const requestDriveAccess = async (options?: { oauthWindow?: Window | null }) => {
     const redirectPath = "/auth";
     const redirectUrl = `${getAuthRedirectOrigin()}${redirectPath}`;
+    let preparedOAuthWindow = options?.oauthWindow ?? null;
+
+    // Prepare popup synchronously from click path to avoid popup blockers.
+    if (!preparedOAuthWindow) {
+      try {
+        preparedOAuthWindow = window.open("about:blank", "_blank");
+      } catch {
+        preparedOAuthWindow = null;
+      }
+    }
 
     // Allow a fresh attempt to store refresh tokens after consent flows
     hasAttemptedStoreTokenRef.current = false;
@@ -326,7 +438,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
 
     if (!error && url) {
-      navigateToOAuth(url, options?.oauthWindow);
+      navigateToOAuth(url, preparedOAuthWindow);
+    } else if (preparedOAuthWindow && !preparedOAuthWindow.closed) {
+      preparedOAuthWindow.close();
     }
 
     return { error };

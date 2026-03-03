@@ -114,12 +114,25 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
   const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const isValidSpec = (data: any): data is OpenAPISpec =>
+    !!data && (!!data.openapi || !!data.swagger) && !!data.info?.title && !!data.paths;
 
   useEffect(() => {
     if (specUrl && !spec) {
       loadSpec(specUrl);
     }
   }, [specUrl, spec]);
+
+  useEffect(() => {
+    if (!spec) return;
+    if (!isValidSpec(spec)) {
+      setLoadedSpec(null);
+      setError("Invalid OpenAPI specification");
+      return;
+    }
+    setLoadedSpec(spec);
+    setError(null);
+  }, [spec]);
 
   const loadSpec = async (url: string) => {
     setLoading(true);
@@ -128,6 +141,7 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
       const response = await fetch(url);
       if (!response.ok) throw new Error("Failed to load OpenAPI spec");
       const data = await response.json();
+      if (!isValidSpec(data)) throw new Error("Invalid OpenAPI specification");
       setLoadedSpec(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load spec");
@@ -226,7 +240,14 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
   if (error) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-destructive">{error}</div>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="text-destructive">{error}</div>
+          {specUrl && (
+            <Button variant="outline" size="sm" onClick={() => loadSpec(specUrl)}>
+              Retry
+            </Button>
+          )}
+        </div>
       </div>
     );
   }

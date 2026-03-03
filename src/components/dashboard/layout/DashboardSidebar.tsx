@@ -686,27 +686,7 @@ export function DashboardSidebar({
               </div>
             )}
 
-            {/* Developer Resources Section */}
-            <div className="space-y-2">
-              {!sidebarCollapsed ? (
-                <>
-                  <div className="px-3">
-                    <span className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Developer Resources</span>
-                  </div>
-                  <div className="space-y-1">
-                    <NavItem icon={CodeIcon} label="API Reference" collapsed={sidebarCollapsed} onClick={() => setShowAPISettings(true)} />
-                    <NavItem icon={MessageSquare} label="MCP Protocol" collapsed={sidebarCollapsed} onClick={() => setShowMCPSettings(true)} />
-                    <NavItem icon={Plug2} label="Integrations" collapsed={sidebarCollapsed} onClick={() => setShowIntegrations(true)} />
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center gap-1">
-                  <NavItem icon={CodeIcon} label="API Reference" collapsed={sidebarCollapsed} onClick={() => setShowAPISettings(true)} />
-                  <NavItem icon={MessageSquare} label="MCP Protocol" collapsed={sidebarCollapsed} onClick={() => setShowMCPSettings(true)} />
-                  <NavItem icon={Plug2} label="Integrations" collapsed={sidebarCollapsed} onClick={() => setShowIntegrations(true)} />
-                </div>
-              )}
-            </div>
+            {/* Developer Resources section removed — not part of Google Docs + MkDocs + Git architecture */}
           </div>
         </div>
 

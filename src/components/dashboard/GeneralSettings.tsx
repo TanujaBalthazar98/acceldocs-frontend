@@ -7,7 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { invokeFunction } from "@/lib/api/functions";
+import { API_BASE_URL } from "@/lib/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { Github, ExternalLink, RefreshCw, Globe, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 
 interface GeneralSettingsProps {
   onBack: () => void;
@@ -20,12 +22,34 @@ interface OrgMember {
   role: string;
 }
 
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "live.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+]);
+
+function inferWorkspaceDomain(email?: string | null): string {
+  if (!email) return "";
+  const atIndex = email.indexOf("@");
+  if (atIndex < 0) return "";
+  const domain = email.slice(atIndex + 1).trim().toLowerCase();
+  if (!domain || PUBLIC_EMAIL_DOMAINS.has(domain)) return "";
+  return domain;
+}
+
 export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const { toast } = useToast();
-  const { googleAccessToken, requestDriveAccess } = useAuth();
+  const { user, googleAccessToken, requestDriveAccess } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [domain, setDomain] = useState("");
@@ -46,6 +70,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const [showDriveId, setShowDriveId] = useState(false);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [autoReconnectDrive, setAutoReconnectDrive] = useState(true);
+  const inferredDomain = inferWorkspaceDomain(user?.email);
 
   useEffect(() => {
     const storedAuto = localStorage.getItem("drive_auto_reconnect");
@@ -55,27 +80,53 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
     const load = async () => {
       setLoading(true);
       try {
-        const { data: workspace, error: workspaceError } = await invokeFunction("ensure-workspace", {
+        const { data: workspace, error: workspaceError } = await invokeFunction<{
+          ok?: boolean;
+          organization?: { id: number; name: string };
+          error?: string;
+        }>("ensure-workspace", {
           body: {},
         });
-        if (workspaceError || !workspace?.organizationId) {
+        if (workspaceError || !workspace?.organization?.id) {
           throw workspaceError || new Error(workspace?.error || "Failed to load workspace");
         }
-        const orgId = String(workspace.organizationId);
+        const orgId = Number(workspace.organization.id);
+        if (!Number.isFinite(orgId)) {
+          throw new Error("Invalid workspace id");
+        }
         setOrganizationId(orgId);
 
         const { data: orgRes, error: orgError } = await invokeFunction<{
           ok?: boolean;
-          organization?: any;
+          id?: number;
+          name?: string;
+          slug?: string;
+          domain?: string;
+          custom_docs_domain?: string;
+          drive_folder_id?: string;
+          tagline?: string;
+          logo_url?: string;
+          primary_color?: string;
+          secondary_color?: string;
+          accent_color?: string;
+          font_heading?: string;
+          font_body?: string;
+          custom_css?: string;
+          hero_title?: string;
+          hero_description?: string;
+          show_search_on_landing?: boolean;
+          show_featured_projects?: boolean;
+          members?: any[];
           error?: string;
         }>("get-organization");
         if (orgError || !orgRes?.ok) {
           throw orgError || new Error(orgRes?.error || "Failed to load organization");
         }
-        const org = orgRes.organization || {};
+        const org = orgRes || {};
         setName(org.name || "");
         setSlug(org.slug || "");
-        setDomain(org.domain || "");
+        const resolvedDomain = (org.domain || "").trim().toLowerCase() || inferredDomain;
+        setDomain(resolvedDomain);
         setCustomDocsDomain(org.custom_docs_domain || "");
         setDriveFolderId(org.drive_folder_id || "");
         setTagline(org.tagline || "");
@@ -111,46 +162,87 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
       }
     };
     load();
-  }, [toast]);
+  }, [inferredDomain, toast]);
+
+  const handleConnectDrive = async () => {
+    const oauthWindow = window.open("about:blank", "_blank");
+    if (!oauthWindow) {
+      toast({
+        title: "Popup blocked",
+        description: "Allow popups and try reconnecting Drive again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error } = await requestDriveAccess({ oauthWindow });
+    if (error) {
+      toast({
+        title: "Drive reconnect failed",
+        description: error.message || "Could not start Google Drive authorization.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleSave = async () => {
     if (!organizationId) return;
     setSaving(true);
-    const { data: updated, error } = await invokeFunction<{
-      ok?: boolean;
-      error?: string;
-    }>("update-organization", {
-      body: {
-        organizationId,
-        data: {
-          name: name.trim(),
-          slug: slug.trim() || null,
-          domain: domain.trim() || null,
-          custom_docs_domain: customDocsDomain.trim() || null,
-          drive_folder_id: driveFolderId.trim() || null,
-          tagline: tagline.trim() || null,
-          logo_url: logoUrl.trim() || null,
-          primary_color: primaryColor.trim() || null,
-          secondary_color: secondaryColor.trim() || null,
-          accent_color: accentColor.trim() || null,
-          font_heading: fontHeading.trim() || null,
-          font_body: fontBody.trim() || null,
-          custom_css: customCss.trim() || null,
-          hero_title: heroTitle.trim() || null,
-          hero_description: heroDescription.trim() || null,
-          show_search_on_landing: showSearch,
-          show_featured_projects: showFeatured,
-        },
-      },
-    });
+    const normalizedDomain = (domain.trim().toLowerCase() || inferredDomain || null);
+    const payload = {
+      name: name.trim(),
+      slug: slug.trim() || null,
+      domain: normalizedDomain,
+      custom_docs_domain: customDocsDomain.trim() || null,
+      drive_folder_id: driveFolderId.trim() || null,
+      tagline: tagline.trim() || null,
+      logo_url: logoUrl.trim() || null,
+      primary_color: primaryColor.trim() || null,
+      secondary_color: secondaryColor.trim() || null,
+      accent_color: accentColor.trim() || null,
+      font_heading: fontHeading.trim() || null,
+      font_body: fontBody.trim() || null,
+      custom_css: customCss.trim() || null,
+      hero_title: heroTitle.trim() || null,
+      hero_description: heroDescription.trim() || null,
+      show_search_on_landing: showSearch,
+      show_featured_projects: showFeatured,
+    };
+
+    const attempts = [
+      { organizationId, data: payload },
+      { id: organizationId, ...payload },
+      { id: organizationId, data: payload },
+      { organizationId, ...payload },
+      { org_id: organizationId, data: payload },
+    ];
+
+    let finalError: Error | null = null;
+    let saved = false;
+    for (const body of attempts) {
+      const { data: updated, error } = await invokeFunction<{ ok?: boolean; error?: string }>(
+        "update-organization",
+        { body }
+      );
+      if (!error && updated?.ok !== false) {
+        saved = true;
+        break;
+      }
+      finalError = error || new Error(updated?.error || "Could not update organization.");
+    }
+
     setSaving(false);
-    if (error || (updated && updated.ok === false)) {
+    if (!saved) {
       toast({
         title: "Save failed",
-        description: error?.message || updated?.error || "Could not update organization.",
+        description: finalError?.message || "Could not update organization.",
         variant: "destructive",
       });
       return;
+    }
+
+    if (normalizedDomain && normalizedDomain !== domain) {
+      setDomain(normalizedDomain);
     }
     toast({ title: "Saved", description: "Organization settings updated." });
   };
@@ -165,7 +257,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={() => requestDriveAccess()}
+              onClick={handleConnectDrive}
             >
               {googleAccessToken ? "Reconnect Drive" : "Connect Drive"}
             </Button>
@@ -186,11 +278,12 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           <div className="text-sm text-muted-foreground">Loading...</div>
         ) : (
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="brand">Branding</TabsTrigger>
               <TabsTrigger value="landing">Landing</TabsTrigger>
               <TabsTrigger value="drive">Drive</TabsTrigger>
+              <TabsTrigger value="github">GitHub</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
             </TabsList>
 
@@ -209,7 +302,18 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="org-domain">Domain</Label>
-                <Input id="org-domain" value={domain} onChange={(e) => setDomain(e.target.value)} />
+                <Input
+                  id="org-domain"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  placeholder={inferredDomain || "example.com"}
+                  readOnly={!!inferredDomain}
+                />
+                {inferredDomain ? (
+                  <p className="text-xs text-muted-foreground">
+                    Auto-detected from your login email.
+                  </p>
+                ) : null}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="org-custom-domain">Custom Docs Domain</Label>
@@ -293,7 +397,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                     Connect Drive to create folders and sync docs automatically.
                   </p>
                 </div>
-                <Button onClick={() => requestDriveAccess()}>
+                <Button onClick={handleConnectDrive}>
                   {googleAccessToken ? "Reconnect Drive" : "Connect Drive"}
                 </Button>
               </div>
@@ -332,6 +436,10 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
               </div>
             </TabsContent>
 
+            <TabsContent value="github" className="mt-6 space-y-5">
+              <GitHubSettingsTab organizationId={organizationId} />
+            </TabsContent>
+
             <TabsContent value="members" className="mt-6 space-y-4">
               {members.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No members found.</p>
@@ -357,3 +465,248 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
     </div>
   );
 };
+
+interface GitHubSettingsTabProps {
+  organizationId: number | null;
+}
+
+interface GitHubSettings {
+  connected: boolean;
+  username?: string;
+  repoName?: string;
+  repoFullName?: string;
+  customDomain?: string;
+  domainVerified?: boolean;
+  pagesUrl?: string;
+  lastPublishedAt?: string;
+}
+
+function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [settings, setSettings] = useState<GitHubSettings | null>(null);
+  const [customDomain, setCustomDomain] = useState("");
+  const [domainVerifying, setDomainVerifying] = useState(false);
+
+  useEffect(() => {
+    if (organizationId) {
+      loadSettings();
+    }
+  }, [organizationId]);
+
+  const loadSettings = async () => {
+    if (!organizationId) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/github/settings/${organizationId}`);
+      const data = await response.json();
+      if (data.ok) {
+        setSettings(data);
+        setCustomDomain(data.customDomain || "");
+      }
+    } catch (error) {
+      console.error("Failed to load GitHub settings:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConnectGitHub = async () => {
+    if (!organizationId) return;
+    setConnecting(true);
+    window.location.href = `${API_BASE_URL}/auth/github/authorize?organizationId=${organizationId}`;
+  };
+
+  const handleCreateRepo = async () => {
+    if (!organizationId) return;
+    setCreating(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/github/create-repo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId }),
+      });
+      const data = await response.json();
+      if (data.ok) {
+        toast({ title: "Repository created", description: `Created ${data.repo.fullName}` });
+        await loadSettings();
+      } else {
+        toast({ title: "Failed", description: data.error, variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!organizationId) return;
+    setPublishing(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/publish/mkdocs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId }),
+      });
+      const data = await response.json();
+      if (data.ok) {
+        toast({ title: "Published!", description: `Docs published to ${data.pagesUrl}` });
+        await loadSettings();
+      } else {
+        toast({ title: "Publish failed", description: data.error, variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleSetCustomDomain = async () => {
+    if (!organizationId || !customDomain) return;
+    setDomainVerifying(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/github/custom-domain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId, domain: customDomain }),
+      });
+      const data = await response.json();
+      if (data.ok) {
+        toast({ title: "Custom domain set", description: "Verify DNS configuration" });
+        await loadSettings();
+      } else {
+        toast({ title: "Failed", description: data.error, variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setDomainVerifying(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-sm text-muted-foreground">Loading...</div>;
+  }
+
+  if (!settings?.connected) {
+    return (
+      <div className="rounded-lg border border-border/60 bg-card/50 p-6 text-center">
+        <Github className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+        <h3 className="text-lg font-medium mb-2">Connect GitHub</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Connect your GitHub account to publish documentation to GitHub Pages.
+        </p>
+        <Button onClick={handleConnectGitHub} disabled={connecting}>
+          <Github className="w-4 h-4 mr-2" />
+          {connecting ? "Connecting..." : "Connect GitHub"}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-border/60 bg-card/50 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Github className="w-5 h-5" />
+            <div>
+              <p className="font-medium">Connected as @{settings.username}</p>
+              <p className="text-xs text-muted-foreground">
+                {settings.repoFullName || "No repository created"}
+              </p>
+            </div>
+          </div>
+          <CheckCircle className="w-5 h-5 text-green-500" />
+        </div>
+      </div>
+
+      {!settings.repoName ? (
+        <div className="rounded-lg border border-border/60 bg-card/50 p-4">
+          <h4 className="font-medium mb-2">Create Documentation Repository</h4>
+          <p className="text-sm text-muted-foreground mb-4">
+            We'll create a new repository for your documentation and enable GitHub Pages.
+          </p>
+          <Button onClick={handleCreateRepo} disabled={creating}>
+            {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            {creating ? "Creating..." : "Create Repository"}
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="rounded-lg border border-border/60 bg-card/50 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="font-medium">Published Site</h4>
+                <p className="text-sm text-muted-foreground">
+                  {settings.pagesUrl || "Not published yet"}
+                </p>
+              </div>
+              {settings.pagesUrl && (
+                <a
+                  href={settings.pagesUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-500 hover:underline flex items-center gap-1"
+                >
+                  View <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+            <Button onClick={handlePublish} disabled={publishing}>
+              {publishing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              {publishing ? "Publishing..." : "Publish to GitHub Pages"}
+            </Button>
+            {settings.lastPublishedAt && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Last published: {new Date(settings.lastPublishedAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border/60 bg-card/50 p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Globe className="w-4 h-4" />
+              <h4 className="font-medium">Custom Domain</h4>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Use your own domain for the published documentation.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="docs.yourcompany.com"
+                value={customDomain}
+                onChange={(e) => setCustomDomain(e.target.value)}
+              />
+              <Button onClick={handleSetCustomDomain} disabled={domainVerifying || !customDomain}>
+                {domainVerifying ? "Setting..." : "Set Domain"}
+              </Button>
+            </div>
+            {settings.customDomain && (
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                {settings.domainVerified ? (
+                  <>
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <span className="text-green-600">{settings.customDomain} verified</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-amber-500" />
+                    <span className="text-amber-600">
+                      {settings.customDomain} - Add CNAME record pointing to your GitHub Pages domain
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

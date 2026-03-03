@@ -42,11 +42,16 @@ export function useConnectors(projectId?: string | null): UseConnectorsResult {
     const fetchOrgId = async () => {
       if (!user) return;
 
-      const { data, error } = await invokeFunction<{ organizationId?: string }>("ensure-workspace", {
+      const { data, error } = await invokeFunction<{
+        organizationId?: string | number;
+        organization?: { id?: string | number };
+        id?: string | number;
+      }>("ensure-workspace", {
         body: {},
       });
-      if (!error && data?.organizationId) {
-        setOrganizationId(String(data.organizationId));
+      const resolvedOrgId = data?.organizationId ?? data?.organization?.id ?? data?.id;
+      if (!error && resolvedOrgId) {
+        setOrganizationId(String(resolvedOrgId));
       }
     };
     fetchOrgId();

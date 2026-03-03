@@ -82,6 +82,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
   );
   const { toast } = useToast();
   const { googleAccessToken } = useAuth();
+
   const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
 
   // Update content when document changes or fetch from DB if missing

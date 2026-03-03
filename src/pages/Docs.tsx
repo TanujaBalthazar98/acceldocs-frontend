@@ -2,24 +2,22 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import {
   ChevronRight,
-  ChevronDown,
-  FileText,
   FolderTree,
   Menu,
   Lock,
   Eye,
   Globe,
   Sparkles,
-  PanelLeftClose,
   PanelRightClose,
   Code,
   Maximize2,
   Minimize2,
+  WifiOff,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -46,38 +44,12 @@ import { ThemeToggle } from "@/components/docs/ThemeToggle";
 import { VersionSwitcher } from "@/components/docs/VersionSwitcher";
 import { SmartSearch } from "@/components/SmartSearch";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
-import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
+import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading, stripFrontmatter } from "@/lib/markdown";
 import { captureDocView } from "@/lib/analytics/posthog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { DocsSidebar } from "@/components/docs/DocsSidebar";
+import type { Document, Project, ProjectVersion, Topic, VisibilityLevel } from "@/components/docs/types";
 
-type VisibilityLevel = "internal" | "external" | "public";
-
-interface Project {
-  id: string;
-  name: string;
-  slug: string | null;
-  visibility: VisibilityLevel;
-  is_published: boolean;
-  drive_folder_id?: string | null;
-  drive_parent_id?: string | null;
-  organization_id: string;
-  parent_id: string | null;
-  mcp_enabled?: boolean | null;
-  openapi_spec_json?: any;
-  openapi_spec_url?: string | null;
-  show_version_switcher?: boolean;
-}
-
-interface ProjectVersion {
-  id: string;
-  project_id: string;
-  name: string;
-  slug: string;
-  is_default: boolean;
-  is_published: boolean;
-  semver_major: number;
-  semver_minor: number;
-  semver_patch: number;
-}
 
 interface Organization {
   id: string;
@@ -103,36 +75,26 @@ interface Organization {
   openapi_spec_url?: string | null;
 }
 
-interface Topic {
-  id: string;
-  name: string;
-  slug: string | null;
-  project_id: string;
-  project_version_id: string | null;
-  parent_id: string | null;
-  display_order: number | null;
-}
+const normalizeHostname = (value?: string | null) =>
+  (value || "").replace(/^www\./i, "").toLowerCase();
 
-interface Document {
-  id: string;
-  title: string;
-  slug: string | null;
-  google_doc_id: string;
-  project_id: string;
-  project_version_id: string | null;
-  topic_id: string | null;
-  visibility: VisibilityLevel;
-  is_published: boolean;
-  content_html: string | null;
-  published_content_html: string | null;
-  content_id: string | null;
-  published_content_id: string | null;
-  video_url?: string | null;
-  video_title?: string | null;
-  created_at: string;
-  updated_at: string;
-  owner_id: string | null;
-}
+const orgCacheById = new Map<string, Organization>();
+const orgCacheBySlug = new Map<string, Organization>();
+const orgCacheByDomain = new Map<string, Organization>();
+
+const cacheOrganization = (org: Organization) => {
+  if (!org?.id) return;
+  orgCacheById.set(org.id, org);
+  if (org.slug) {
+    orgCacheBySlug.set(org.slug.toLowerCase(), org);
+  }
+  if (org.domain) {
+    orgCacheByDomain.set(normalizeHostname(org.domain), org);
+  }
+  if (org.custom_docs_domain) {
+    orgCacheByDomain.set(normalizeHostname(org.custom_docs_domain), org);
+  }
+};
 
 const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: string }> = {
   internal: { icon: Lock, label: "Internal" },
@@ -169,13 +131,71 @@ function removeFirstHeadingIfMatches(html: string, title: string): string {
   return container.innerHTML;
 }
 
+/**
+ * Strip YAML/TOML frontmatter that has been rendered as HTML by Google Docs.
+ * Matches a block starting with a "---" paragraph followed by "key: value"
+ * paragraphs until a closing "---" paragraph.
+ */
+function stripHtmlFrontmatter(html: string): string {
+  if (!html) return html;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const container = doc.body.firstElementChild as HTMLElement | null;
+  if (!container) return html;
+
+  const children = Array.from(container.children);
+  if (children.length < 2) return html;
+
+  // Check if the first element's text is "---"
+  const firstText = (children[0].textContent || "").trim();
+  if (firstText !== "---" && firstText !== "+++") return html;
+
+  // Find the closing "---" or "+++" element
+  const delimiter = firstText;
+  let closingIndex = -1;
+  for (let i = 1; i < children.length; i++) {
+    const text = (children[i].textContent || "").trim();
+    if (text === delimiter) {
+      closingIndex = i;
+      break;
+    }
+    // If we find something that doesn't look like frontmatter (key: value),
+    // and it's not empty, stop searching
+    if (text && !text.includes(":") && text !== delimiter) break;
+  }
+
+  if (closingIndex === -1) return html;
+
+  // Also remove the "---published" line if it follows (common pattern)
+  let removeUntil = closingIndex;
+  if (removeUntil + 1 < children.length) {
+    const nextText = (children[removeUntil + 1].textContent || "").trim();
+    if (nextText.startsWith("---") || nextText.startsWith("+++")) {
+      removeUntil++;
+    }
+  }
+
+  // Remove frontmatter elements
+  for (let i = removeUntil; i >= 0; i--) {
+    children[i].remove();
+  }
+
+  return container.innerHTML;
+}
+
 function resolveDocumentHtml(html: string, title: string): string {
-  if (isLikelyMarkdown(html)) {
-    const stripped = stripFirstMarkdownHeading(html, title);
+  // Strip raw YAML/TOML frontmatter (for markdown content)
+  const withoutFrontmatter = stripFrontmatter(html);
+
+  if (isLikelyMarkdown(withoutFrontmatter)) {
+    const stripped = stripFirstMarkdownHeading(withoutFrontmatter, title);
     return normalizeHtml(renderMarkdownToHtml(stripped));
   }
 
-  return removeFirstHeadingIfMatches(normalizeHtml(html), title);
+  // For HTML content, strip frontmatter rendered as HTML elements
+  const cleaned = stripHtmlFrontmatter(withoutFrontmatter);
+  return removeFirstHeadingIfMatches(normalizeHtml(cleaned), title);
 }
 
 export default function Docs({ mode }: { mode?: "public" | "internal" }) {
@@ -184,8 +204,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const { user, loading: authLoading } = useAuth();
   const isInternalView = mode === "internal";
   const docsBasePath = isInternalView ? "/internal" : "/docs";
-  const normalizeHostname = (value?: string | null) =>
-    (value || "").replace(/^www\./i, "").toLowerCase();
 
   const unwrapStrapiEntity = <T extends Record<string, any>>(entity: T | null | undefined): T | null => {
     if (!entity) return null;
@@ -197,7 +215,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
   const mapOrganization = (row: any): Organization => {
     const attrs = row?.attributes || row || {};
-    return {
+    const mapped: Organization = {
       id: String(row?.id ?? attrs.id),
       name: attrs.name || "",
       slug: attrs.slug ?? null,
@@ -220,6 +238,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       openapi_spec_json: attrs.openapi_spec_json ?? null,
       openapi_spec_url: attrs.openapi_spec_url ?? null,
     };
+    cacheOrganization(mapped);
+    return mapped;
   };
 
   const mapProject = (row: any): Project => {
@@ -395,6 +415,32 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [isCustomDomain, setIsCustomDomain] = useState(false);
   const [isImplicitOrgPath, setIsImplicitOrgPath] = useState(false);
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
+  const [githubPagesUrl, setGithubPagesUrl] = useState<string | null>(null);
+
+  // Redirect to GitHub Pages if configured
+  useEffect(() => {
+    const checkGitHubRedirect = async () => {
+      if (!currentOrg?.id) return;
+      
+      try {
+        const { API_BASE_URL } = await import("@/lib/api/client");
+        const response = await fetch(`${API_BASE_URL}/github/settings/${currentOrg.id}`);
+        const data = await response.json();
+        if (data.ok && data.connected && data.pagesUrl) {
+          const currentPath = location.pathname;
+          const redirectUrl = data.pagesUrl + currentPath;
+          window.location.href = redirectUrl;
+        }
+      } catch (error) {
+        // Silently fail - stay on current page
+        console.log("GitHub redirect check failed:", error);
+      }
+    };
+
+    if (currentOrg?.id && !isCustomDomain) {
+      checkGitHubRedirect();
+    }
+  }, [currentOrg?.id, isCustomDomain, location.pathname]);
   
   // On custom domains, URL structure shifts: org is implicit from domain
   // Standard: /docs/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug
@@ -473,6 +519,19 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [internalAccessDenied, setInternalAccessDenied] = useState(false);
   const [internalAccessReason, setInternalAccessReason] = useState<"signed_out" | "not_member" | null>(null);
   const [useClientSideFilters, setUseClientSideFilters] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOffline(!navigator.onLine);
+    updateOnlineStatus();
+    window.addEventListener("online", updateOnlineStatus);
+    window.addEventListener("offline", updateOnlineStatus);
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus);
+      window.removeEventListener("offline", updateOnlineStatus);
+    };
+  }, []);
 
   const selectedRootProject = useMemo(() => {
     if (!selectedProject) return null;
@@ -615,7 +674,10 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     const orgPrefix = getOrgPathPrefix(org);
     const topic = doc.topic_id ? topics.find(t => t.id === doc.topic_id) : null;
     const version = getVersionById(doc.project_version_id) || selectedVersion;
-    const versionSegment = version?.slug ? `/${version.slug}` : "";
+    // Only include version slug in URL when there are multiple published versions,
+    // otherwise it causes unnecessary version filtering that can hide documents.
+    const publishedVersions = getProjectVersions(project.id);
+    const versionSegment = version?.slug && publishedVersions.length > 1 ? `/${version.slug}` : "";
     
     // For custom domains, use simplified URLs without org prefix
     if (isCustomDomain || isImplicitOrgPath) {
@@ -716,6 +778,54 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     })[0];
   };
 
+  const findDocumentFromUrl = (
+    project: Project,
+    pageSlugValue?: string,
+    topicSlugValue?: string
+  ): { doc: Document | undefined; topicDocNeedsRedirect: boolean } => {
+    if (!pageSlugValue) {
+      return { doc: undefined, topicDocNeedsRedirect: false };
+    }
+
+    if (topicSlugValue) {
+      const topic = topics.find(
+        (t) =>
+          t.slug === topicSlugValue &&
+          t.project_id === project.id &&
+          (!visibleVersion || t.project_version_id === visibleVersion.id)
+      );
+      if (!topic) {
+        return { doc: undefined, topicDocNeedsRedirect: false };
+      }
+      const doc = documents.find(
+        (d) =>
+          d.slug === pageSlugValue &&
+          d.topic_id === topic.id &&
+          (!visibleVersion || d.project_version_id === visibleVersion.id)
+      );
+      return { doc, topicDocNeedsRedirect: false };
+    }
+
+    const projectLevelDoc = documents.find(
+      (d) =>
+        d.slug === pageSlugValue &&
+        d.project_id === project.id &&
+        (!visibleVersion || d.project_version_id === visibleVersion.id) &&
+        !d.topic_id
+    );
+    if (projectLevelDoc) {
+      return { doc: projectLevelDoc, topicDocNeedsRedirect: false };
+    }
+
+    const topicDoc = documents.find(
+      (d) =>
+        d.slug === pageSlugValue &&
+        d.project_id === project.id &&
+        (!visibleVersion || d.project_version_id === visibleVersion.id)
+    );
+    return { doc: topicDoc, topicDocNeedsRedirect: !!topicDoc?.topic_id };
+  };
+
   // Handle document selection from URL
   useEffect(() => {
     if (!selectedProject) return;
@@ -724,46 +834,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     if (shouldUseVersion && !visibleVersion) return;
 
     if (pageSlug) {
-      let doc: Document | undefined;
-      
-      if (topicSlug) {
-        const topic = topics.find(
-          t =>
-            t.slug === topicSlug &&
-            t.project_id === selectedProject.id &&
-            (!visibleVersion || t.project_version_id === visibleVersion.id)
-        );
-        if (topic) {
-          doc = documents.find(
-            d =>
-              d.slug === pageSlug &&
-              d.topic_id === topic.id &&
-              (!visibleVersion || d.project_version_id === visibleVersion.id)
-          );
-        }
-      } else {
-        doc = documents.find(
-          d =>
-            d.slug === pageSlug &&
-            d.project_id === selectedProject.id &&
-            (!visibleVersion || d.project_version_id === visibleVersion.id) &&
-            !d.topic_id
-        );
-        
-        if (!doc) {
-          doc = documents.find(
-            d =>
-              d.slug === pageSlug &&
-              d.project_id === selectedProject.id &&
-              (!visibleVersion || d.project_version_id === visibleVersion.id)
-          );
-          if (doc?.topic_id && currentOrg) {
-            navigate(buildDocUrl(doc, selectedProject, currentOrg), { replace: true });
-            return;
-          }
-        }
+      const { doc, topicDocNeedsRedirect } = findDocumentFromUrl(selectedProject, pageSlug, topicSlug);
+      if (topicDocNeedsRedirect && doc && currentOrg) {
+        navigate(buildDocUrl(doc, selectedProject, currentOrg), { replace: true });
+        return;
       }
-      
+
       if (doc) {
         setSelectedDocument(doc);
         setDocumentContent(doc);
@@ -797,6 +873,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     setLoading(true);
     setInternalAccessDenied(false);
     setInternalAccessReason(null);
+    setContentError(null);
     try {
       const session = await auth.getSession();
       const currentUser = session?.user;
@@ -805,9 +882,18 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       let userProjectMemberships: string[] = [];
       
       if (currentUser) {
-        const { data, error } = await invokeFunction<{ organizationId?: string }>("ensure-workspace", { body: {} });
-        if (!error && data?.organizationId) {
-          userOrgId = String(data.organizationId);
+        const { data, error } = await invokeFunction<{
+          organizationId?: string | number;
+          organization?: { id?: string | number };
+          id?: string | number;
+        }>("ensure-workspace", { body: {} });
+        const resolvedOrgId =
+          data?.organizationId ??
+          data?.organization?.id ??
+          data?.id ??
+          null;
+        if (!error && resolvedOrgId) {
+          userOrgId = String(resolvedOrgId);
         }
 
         const { data: membershipData } = await strapiFetch<{ data: any[] }>(
@@ -825,29 +911,44 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       // Determine the target organization - from URL slug, custom domain, or user's org
       let targetOrgId: string | null = null;
       let targetOrg: Organization | null = currentOrg;
+      const normalizedOrgSlug = orgSlug ? orgSlug.toLowerCase() : null;
       
       // Load org from URL slug if not already loaded from custom domain
       if (orgSlug && !currentOrg && !isCustomDomain) {
-        const { data, error } = await strapiFetch<{ data: any[] }>(
-          `/api/organizations?filters[$or][0][slug][$eq]=${encodeURIComponent(orgSlug)}&filters[$or][1][domain][$eq]=${encodeURIComponent(orgSlug)}&pagination[limit]=1`
-        );
-        if (!error && data?.data?.[0]) {
-          const org = mapOrganization(data.data[0]);
-          targetOrg = org;
-          setCurrentOrg(org);
-          setIsImplicitOrgPath(!!hostDomain && normalizeHostname(org.domain) === hostDomain);
+        const cached = normalizedOrgSlug ? orgCacheBySlug.get(normalizedOrgSlug) : null;
+        if (cached) {
+          targetOrg = cached;
+          setCurrentOrg(cached);
+          setIsImplicitOrgPath(!!hostDomain && normalizeHostname(cached.domain) === hostDomain);
+        } else {
+          const { data, error } = await strapiFetch<{ data: any[] }>(
+            `/api/organizations?filters[$or][0][slug][$eq]=${encodeURIComponent(orgSlug)}&filters[$or][1][domain][$eq]=${encodeURIComponent(orgSlug)}&pagination[limit]=1`
+          );
+          if (!error && data?.data?.[0]) {
+            const org = mapOrganization(data.data[0]);
+            targetOrg = org;
+            setCurrentOrg(org);
+            setIsImplicitOrgPath(!!hostDomain && normalizeHostname(org.domain) === hostDomain);
+          }
         }
       }
       
       if (!targetOrg && !isCustomDomain && hostDomain) {
-        const { data, error } = await strapiFetch<{ data: any[] }>(
-          `/api/organizations?filters[domain][$eq]=${encodeURIComponent(hostDomain)}&pagination[limit]=1`
-        );
-        if (!error && data?.data?.[0]) {
-          const org = mapOrganization(data.data[0]);
-          targetOrg = org;
-          setCurrentOrg(org);
+        const cached = orgCacheByDomain.get(hostDomain);
+        if (cached) {
+          targetOrg = cached;
+          setCurrentOrg(cached);
           setIsImplicitOrgPath(true);
+        } else {
+          const { data, error } = await strapiFetch<{ data: any[] }>(
+            `/api/organizations?filters[domain][$eq]=${encodeURIComponent(hostDomain)}&pagination[limit]=1`
+          );
+          if (!error && data?.data?.[0]) {
+            const org = mapOrganization(data.data[0]);
+            targetOrg = org;
+            setCurrentOrg(org);
+            setIsImplicitOrgPath(true);
+          }
         }
       }
 
@@ -882,10 +983,16 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         targetOrgId = userOrgId;
         // Load org data if not already loaded
         if (!targetOrg) {
-          const { data: orgData } = await strapiFetch<{ data: any }>(`/api/organizations/${userOrgId}`);
-          if (orgData?.data) {
-            targetOrg = mapOrganization(orgData.data);
-            setCurrentOrg(targetOrg);
+          const cached = orgCacheById.get(userOrgId);
+          if (cached) {
+            targetOrg = cached;
+            setCurrentOrg(cached);
+          } else {
+            const { data: orgData } = await strapiFetch<{ data: any }>(`/api/organizations/${userOrgId}`);
+            if (orgData?.data) {
+              targetOrg = mapOrganization(orgData.data);
+              setCurrentOrg(targetOrg);
+            }
           }
         }
       }
@@ -910,6 +1017,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       // If no organization context at all, show nothing (don't leak cross-org data)
       if (!targetOrgId) {
         setProjects([]);
+        setContentError("We couldn’t determine which workspace to load for this URL.");
         setLoading(false);
         return;
       }
@@ -925,6 +1033,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         }>(`/api/public-content?organizationId=${encodeURIComponent(targetOrgId)}`);
         if (publicError || !publicContent?.ok) {
           console.error("Error fetching public content:", publicError || publicContent);
+          setContentError("We couldn’t load the public docs. Please try again.");
           setProjects([]);
           setTopics([]);
           setDocuments([]);
@@ -996,6 +1105,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         );
       } catch (error) {
         console.error("Error fetching projects:", error);
+        setContentError("We couldn’t load projects for this workspace. Please try again.");
       }
 
       if (projectsData.length > 0) {
@@ -1029,6 +1139,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       }
     } catch (error) {
       console.error("Error fetching content:", error);
+      setContentError("Something went wrong while loading docs. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -1326,246 +1437,41 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
   }, [selectedProject, projects, documents, loading, pageSlug, isCustomDomain, currentOrg]);
 
-  // Filter content by search
-  const searchLower = searchQuery.toLowerCase();
-  
-  const projectTopics = selectedProject 
-    ? topics.filter(
-        t => t.project_id === selectedProject.id && (!visibleVersion || t.project_version_id === visibleVersion.id)
-      )
-    : [];
-
-  const projectDocuments = selectedProject
-    ? documents.filter(
-        d => d.project_id === selectedProject.id && (!visibleVersion || d.project_version_id === visibleVersion.id)
-      )
-    : [];
-  
-  const filteredDocuments = projectDocuments.filter(d =>
-    !searchQuery || d.title.toLowerCase().includes(searchLower)
-  );
-  
-  const filteredTopics = projectTopics.filter(t =>
-    !searchQuery || 
-    t.name.toLowerCase().includes(searchLower) ||
-    filteredDocuments.some(d => d.topic_id === t.id)
+  const projectDocuments = useMemo(
+    () =>
+      selectedProject
+        ? documents.filter(
+            (d) => d.project_id === selectedProject.id && (!visibleVersion || d.project_version_id === visibleVersion.id)
+          )
+        : [],
+    [selectedProject, documents, visibleVersion]
   );
 
-  // Get root topics (no parent) for hierarchical rendering
-  const getRootTopics = () => filteredTopics.filter(t => !t.parent_id);
-  
-  // Get child topics for a given parent
-  const getChildTopics = (parentId: string) => 
-    filteredTopics.filter(t => t.parent_id === parentId)
-      .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
-
-const getTopicDocuments = (topicId: string) =>
-    filteredDocuments
-      .filter(d => d.topic_id === topicId)
-      .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
-
-  const getProjectLevelDocuments = () =>
-    filteredDocuments
-      .filter(d => !d.topic_id)
-      .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
-
-  // Check if a topic should be "invisible" (same name as project, only root topic)
-  const isInvisibleTopic = (topic: Topic) => {
-    if (!selectedProject) return false;
-    if (topic.parent_id) return false; // Only check root topics
-    
-    // Root topic with same name as project AND it's the only root topic
-    const rootTopics = projectTopics.filter(t => !t.parent_id);
-    const nameMatch = topic.name.toLowerCase().trim() === selectedProject.name.toLowerCase().trim();
-    
-    return nameMatch && rootTopics.length === 1;
-  };
-
-  // Get documents from invisible topics (treat them as project-level)
-  const getInvisibleTopicDocuments = () => {
-    const invisibleTopics = projectTopics.filter(isInvisibleTopic);
-    if (invisibleTopics.length === 0) return [];
-    return filteredDocuments
-      .filter(d => invisibleTopics.some(t => t.id === d.topic_id))
-      .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
-  };
-
-  const twoLineClampClass =
-    "min-w-0 flex-1 text-left overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] leading-snug";
-
-  // Recursive topic renderer component
-  const renderTopic = (topic: Topic, depth: number = 0) => {
-    // Skip rendering invisible topics (handled separately)
-    if (isInvisibleTopic(topic)) return null;
-
-    const topicDocs = getTopicDocuments(topic.id);
-    const childTopics = getChildTopics(topic.id);
-    const isTopicExpanded = expandedTopics.has(topic.id);
-    const hasChildren = topicDocs.length > 0 || childTopics.length > 0;
-
-    return (
-      <div key={topic.id} className="min-w-0" style={{ paddingLeft: `${depth * 12}px` }}>
-        <button
-          onClick={() => hasChildren && toggleTopic(topic.id)}
-          className={cn(
-            "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
-            "hover:bg-accent/50 hover:text-accent-foreground",
-            isTopicExpanded && "sidebar-item-selected"
-          )}
-        >
-          {hasChildren ? (
-            isTopicExpanded ? (
-              <ChevronDown className="h-4 w-4 shrink-0 mt-0.5" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 mt-0.5" />
-            )
-          ) : (
-            <div className="w-4 shrink-0 mt-0.5" />
-          )}
-          <span className={cn(twoLineClampClass, "font-medium")}>{topic.name}</span>
-        </button>
-
-        {/* Expanded content: child topics and documents */}
-        {isTopicExpanded && hasChildren && (
-          <div className="mt-1 space-y-0.5">
-            {/* Render child topics recursively */}
-            {childTopics.map((childTopic) => renderTopic(childTopic, depth + 1))}
-
-            {/* Render topic documents */}
-            {topicDocs.map((doc) => (
-              <div key={doc.id} className="min-w-0" style={{ paddingLeft: "12px" }}>
-                <button
-                  onClick={() => selectDocument(doc)}
-                  className={cn(
-                    "flex min-w-0 items-start gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
-                    "hover:bg-accent hover:text-accent-foreground",
-                    selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
-                  )}
-                >
-                  <span className={twoLineClampClass}>{doc.title}</span>
-                  {isOrgUser && !doc.is_published && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] px-1.5 py-0 h-4 shrink-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400"
-                    >
-                      Draft
-                    </Badge>
-                  )}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // Sidebar content for topics and pages
   const sidebarContent = (
-    <div className="flex flex-col h-full">
-      {/* Sidebar Header with collapse button */}
-      <div className="p-3 border-b border-border flex items-center justify-between">
-        <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-sm font-medium text-muted-foreground truncate">
-            {selectedProject?.name || "Documentation"}
-          </span>
-          {showVersionSwitcher && (
-            <VersionSwitcher 
-              currentVersion={visibleVersion}
-              versions={getProjectVersions(selectedProject!.id)}
-              onVersionSelect={(v) => {
-                if (currentOrg) {
-                  navigate(buildProjectUrl(selectedProject!, v));
-                  setMobileMenuOpen(false);
-                }
-              }}
-              className="justify-start -ml-2"
-            />
-          )}
-        </div>
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="h-7 w-7 hidden lg:flex"
-          onClick={() => setSidebarCollapsed(true)}
-        >
-          <PanelLeftClose className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Navigation Tree */}
-      <ScrollArea className="flex-1">
-        {loading ? (
-          <div className="space-y-2 p-2">
-            {[1, 2, 3].map(i => (
-              <Skeleton key={i} className="h-8 w-full" />
-            ))}
-          </div>
-        ) : !selectedProject ? (
-          <div className="p-4 text-center text-muted-foreground text-sm">
-            Select a project above
-          </div>
-        ) : getRootTopics().filter(t => !isInvisibleTopic(t)).length === 0 && getProjectLevelDocuments().length === 0 && getInvisibleTopicDocuments().length === 0 ? (
-          <div className="p-4 text-center text-muted-foreground text-sm">
-            No pages found
-          </div>
-        ) : (
-          <nav className="py-2 pr-3">
-            {/* Root topics (hierarchical) - excluding invisible topics */}
-            {getRootTopics()
-              .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
-              .map(topic => renderTopic(topic, 0))}
-
-            {/* Documents from invisible topics (shown as if project-level) */}
-            {getInvisibleTopicDocuments().map(doc => (
-              <button
-                key={doc.id}
-                onClick={() => selectDocument(doc)}
-                className={cn(
-                  "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
-                )}
-              >
-                <FileText className="h-4 w-4 shrink-0 mt-0.5" />
-                <span className={twoLineClampClass}>
-                  {doc.title}
-                </span>
-              </button>
-            ))}
-
-            {/* Project-level documents (no topic) */}
-            {getProjectLevelDocuments().map(doc => (
-              <button
-                key={doc.id}
-                onClick={() => selectDocument(doc)}
-                className={cn(
-                  "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
-                )}
-              >
-                <FileText className="h-4 w-4 shrink-0 mt-0.5" />
-                <span className={twoLineClampClass}>
-                  {doc.title}
-                </span>
-              </button>
-            ))}
-          </nav>
-        )}
-      </ScrollArea>
-
-      {/* Footer - show Dashboard link ONLY for authenticated org members viewing non-public content */}
-      {user && isOrgUser && selectedProject?.visibility !== "public" && (
-        <div className="p-3 border-t border-border">
-          <Link to="/dashboard">
-            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground">
-              Go to Dashboard
-            </Button>
-          </Link>
-        </div>
-      )}
-    </div>
+    <DocsSidebar
+      loading={loading}
+      selectedProject={selectedProject}
+      selectedDocument={selectedDocument}
+      showVersionSwitcher={showVersionSwitcher}
+      visibleVersion={visibleVersion}
+      projects={projects}
+      topics={topics}
+      documents={documents}
+      searchQuery={searchQuery}
+      expandedTopics={expandedTopics}
+      setExpandedTopics={setExpandedTopics}
+      onSelectDocument={selectDocument}
+      onSelectProjectVersion={(v) => {
+        if (selectedProject && currentOrg) {
+          navigate(buildProjectUrl(selectedProject, v));
+          setMobileMenuOpen(false);
+        }
+      }}
+      getProjectVersions={getProjectVersions}
+      isOrgUser={isOrgUser}
+      onCollapse={() => setSidebarCollapsed(true)}
+      showDashboardLink={!!user && isOrgUser && selectedProject?.visibility !== "public"}
+    />
   );
 
   // Show landing page when no project or page is selected
@@ -1624,6 +1530,28 @@ const getTopicDocuments = (topicId: string) =>
             </Link>
             <Link to={publicDocsPath}>
               <Button variant="ghost" size="sm">View public docs</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (contentError && !loading && !selectedProject && !selectedDocument) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6 docs-branded">
+        <div className="max-w-lg w-full rounded-xl border border-border bg-card p-6 text-center space-y-4">
+          <div className="flex items-center justify-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+            <h1 className="text-lg font-semibold">Unable to load docs</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">{contentError}</p>
+          <div className="flex items-center justify-center gap-2">
+            <Button size="sm" onClick={fetchContent}>
+              Retry
+            </Button>
+            <Link to="/dashboard">
+              <Button variant="ghost" size="sm">Go to Dashboard</Button>
             </Link>
           </div>
         </div>
@@ -1718,6 +1646,29 @@ const getTopicDocuments = (topicId: string) =>
           </div>
         </header>
 
+        {contentError && (
+          <div className="border-b border-border bg-amber-50/60 dark:bg-amber-950/40">
+            <div className="max-w-5xl mx-auto px-4 py-2 text-sm text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                <span>{contentError}</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={fetchContent}>
+                Retry
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {isOffline && (
+          <div className="border-b border-border bg-muted/40">
+            <div className="max-w-5xl mx-auto px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
+              <WifiOff className="h-3.5 w-3.5" />
+              You’re offline. Showing the most recent content available.
+            </div>
+          </div>
+        )}
+
         <DocsLanding
           organization={currentOrg}
           projects={landingProjects.map(p => ({ ...p, description: null }))}
@@ -1762,7 +1713,8 @@ const getTopicDocuments = (topicId: string) =>
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col docs-branded">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-background flex flex-col docs-branded">
       {/* Sticky Navigation Container */}
       <div className="sticky top-0 z-50">
         {/* Top Header */}
@@ -1864,6 +1816,12 @@ const getTopicDocuments = (topicId: string) =>
 
           {/* Right: Theme toggle + Auth buttons */}
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {isOffline && (
+              <Badge variant="outline" className="hidden sm:inline-flex gap-1 text-xs text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-300">
+                <WifiOff className="h-3 w-3" />
+                Offline
+              </Badge>
+            )}
             <ThemeToggle className="h-8 w-8 sm:h-9 sm:w-9" />
             {authLoading ? (
               <Skeleton className="h-8 w-16 sm:h-9 sm:w-24" />
@@ -2005,6 +1963,29 @@ const getTopicDocuments = (topicId: string) =>
         ) : null}
       </div>
 
+      {contentError && !loading && (
+        <div className="border-b border-border bg-amber-50/60 dark:bg-amber-950/40">
+          <div className="max-w-5xl mx-auto px-4 py-2 text-sm text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              <span>{contentError}</span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={fetchContent}>
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isOffline && (
+        <div className="border-b border-border bg-muted/40">
+          <div className="max-w-5xl mx-auto px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
+            <WifiOff className="h-3.5 w-3.5" />
+            You’re offline. Showing the most recent content available.
+          </div>
+        </div>
+      )}
+
       {/* Main Layout */}
       <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar - Sticky */}
@@ -2054,7 +2035,7 @@ const getTopicDocuments = (topicId: string) =>
                     <span>{selectedProject?.name}</span>
                     {selectedDocument.topic_id && (() => {
                       const topic = topics.find(t => t.id === selectedDocument.topic_id);
-                      if (topic && !isInvisibleTopic(topic)) {
+                      if (topic) {
                         return (
                           <>
                             <ChevronRight className="h-3 w-3" />
@@ -2195,5 +2176,6 @@ const getTopicDocuments = (topicId: string) =>
         documentTitle={selectedDocument?.title}
       />
     </div>
+    </ErrorBoundary>
   );
 }

@@ -86,7 +86,12 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
         },
       });
 
-      if (error || !data?.ok || !data?.organizationId) {
+      const resolvedOrgId =
+        data?.organizationId ??
+        data?.organization?.id ??
+        data?.id ??
+        null;
+      if (error || !data?.ok || !resolvedOrgId) {
         throw error || new Error(data?.error || "Failed to ensure workspace");
       }
 

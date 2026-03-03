@@ -957,3 +957,41 @@
     white-space: nowrap;
   }
 }
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  header,
+  nav,
+  aside,
+  .docs-sidebar,
+  .docs-topbar,
+  .docs-search,
+  .docs-actions,
+  .docs-mobile-menu,
+  .docs-breadcrumbs,
+  .docs-footer,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  .docs-content {
+    max-width: 100% !important;
+    font-size: 12pt;
+    color: #111;
+  }
+
+  .docs-content a {
+    color: #111;
+    text-decoration: underline;
+  }
+
+  .docs-content pre,
+  .docs-content code {
+    background: #f5f5f5 !important;
+    color: #111 !important;
+  }
+}

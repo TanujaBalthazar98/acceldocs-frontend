@@ -21,6 +21,13 @@ export function isLikelyMarkdown(content: string | null | undefined): boolean {
   return false;
 }
 
+export function stripFrontmatter(content: string): string {
+  if (!content) return content;
+  // Strip YAML (---) or TOML (+++) frontmatter blocks
+  return content.replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n?/, "")
+                .replace(/^\s*\+\+\+\s*\n[\s\S]*?\n\+\+\+\s*\n?/, "");
+}
+
 export function stripFirstMarkdownHeading(markdown: string, title: string): string {
   if (!markdown || !title) return markdown;
 

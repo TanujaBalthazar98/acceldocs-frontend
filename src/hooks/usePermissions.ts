@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuthNew';
 import { invokeFunction } from '@/lib/api/functions';
 import { create } from '@/lib/api/queries';
 import {

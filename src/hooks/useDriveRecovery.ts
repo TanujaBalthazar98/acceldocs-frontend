@@ -23,8 +23,8 @@ export interface DriveRecoveryState {
 
 export const useDriveRecovery = () => {
   const { toast } = useToast();
-  const { requestDriveAccess, user, googleAccessToken } = useAuth();
-  
+  const { user, googleAccessToken, requestDriveAccess } = useAuth();
+
   const isRecoveringRef = useRef(false);
   const lastRecoveryRef = useRef<number | null>(null);
   const ownerNotifiedRef = useRef(false);

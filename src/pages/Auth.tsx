@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { STRAPI_URL, setStrapiToken } from "@/lib/api/client";
+import { API_BASE_URL, setAuthToken } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, BookOpen, Loader2 } from "lucide-react";
 
@@ -11,6 +11,7 @@ const Auth = () => {
   const location = useLocation();
   
   const [isLoading, setIsLoading] = useState(false);
+  const [isExchangingToken, setIsExchangingToken] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const from = (location.state as { from?: Location })?.from?.pathname || "/dashboard";
@@ -32,9 +33,9 @@ const Auth = () => {
     const debugAuth = searchParams.get("debug_auth") === "1";
 
     if (jwt) {
-      setStrapiToken(jwt);
+      setAuthToken(jwt);
       if (debugAuth) {
-        setAuthError("Strapi JWT received. You can now navigate to /dashboard.");
+        setAuthError("JWT received. You can now navigate to /dashboard.");
         return;
       }
       // Force reload so AuthContext picks up the new token.
@@ -48,15 +49,16 @@ const Auth = () => {
 
     if ((accessToken || idToken) && !jwt) {
       (async () => {
+        setIsExchangingToken(true);
         try {
           const token = accessToken || idToken || "";
-          const callbackUrl = `${STRAPI_URL}/api/auth/google/callback?access_token=${encodeURIComponent(token)}`;
+          const callbackUrl = `${API_BASE_URL}/auth/callback?access_token=${encodeURIComponent(token)}`;
           const response = await fetch(callbackUrl);
           const payload = await response.json().catch(() => ({}));
-          if (response.ok && payload?.jwt) {
-            setStrapiToken(payload.jwt);
+          if (response.ok && payload?.access_token) {
+            setAuthToken(payload.access_token);
             if (debugAuth) {
-              setAuthError("Strapi JWT received from callback. You can now navigate to /dashboard.");
+              setAuthError("JWT received from callback. You can now navigate to /dashboard.");
               return;
             }
             window.location.assign(from);
@@ -65,6 +67,8 @@ const Auth = () => {
           setAuthError(payload?.error?.message || payload?.message || "Failed to exchange Google token.");
         } catch (err) {
           setAuthError(err instanceof Error ? err.message : "Failed to exchange Google token.");
+        } finally {
+          setIsExchangingToken(false);
         }
       })();
       return;
@@ -78,7 +82,7 @@ const Auth = () => {
     if (error || errorDescription || errorCode) {
       const baseMessage = errorDescription || errorCode || error || "Authentication failed.";
       const hint = baseMessage.includes("Unable to exchange external code")
-        ? "Check Google provider credentials and callback URI in Strapi settings."
+        ? "Check Google provider credentials and callback URI in backend settings."
         : null;
       setAuthError(hint ? `${baseMessage} ${hint}` : baseMessage);
 
@@ -195,9 +199,9 @@ const Auth = () => {
                 size="lg"
                 className="w-full h-12 gap-3 text-base font-medium border-2 hover:bg-muted/50 transition-colors"
                 onClick={handleGoogleSignIn}
-                disabled={isLoading}
+                disabled={isLoading || isExchangingToken}
               >
-                {isLoading ? (
+                {isLoading || isExchangingToken ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -209,6 +213,23 @@ const Auth = () => {
                 )}
                 Continue with Google
               </Button>
+
+              {isExchangingToken && (
+                <div className="text-sm text-muted-foreground text-center">
+                  Finishing sign-in…
+                </div>
+              )}
+
+              {authError && !isLoading && !isExchangingToken && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
+                  onClick={handleGoogleSignIn}
+                >
+                  Retry sign-in
+                </Button>
+              )}
 
             </div>
           </div>

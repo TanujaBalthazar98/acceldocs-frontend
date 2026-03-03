@@ -16,7 +16,7 @@ const GOOGLE_TOKEN_KEY = "google_access_token";
 
 export const useGoogleDrive = () => {
   const { toast } = useToast();
-  const { googleAccessToken } = useAuth();
+  const { user, googleAccessToken } = useAuth();
   const { attemptRecovery, isInCooldown } = useDriveRecovery();
 
   const getGoogleToken = (): string | null => {
@@ -32,10 +32,6 @@ export const useGoogleDrive = () => {
     errorMessage: string
   ): Promise<{ data: T | null; needsDriveAccess?: boolean }> => {
     const token = getGoogleToken();
-
-    if (!token) {
-      return { data: null, needsDriveAccess: true };
-    }
 
     const invokeOptions = {
       body,
@@ -161,9 +157,6 @@ export const useGoogleDrive = () => {
     projectId?: string,
   ): Promise<{ exists: boolean; needsDriveAccess?: boolean; error?: string; errorCode?: string }> => {
     const token = getGoogleToken();
-    if (!token) {
-      return { exists: false, needsDriveAccess: true, errorCode: "NEEDS_REAUTH" };
-    }
     const invokeOptions = {
       body: { action: "list_folder", folderId, ...(projectId ? { projectId } : {}) },
       ...(token ? { headers: { "x-google-token": token } } : {}),

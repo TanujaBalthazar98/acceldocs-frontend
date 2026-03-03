@@ -22,19 +22,19 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
     return null;
   }
 
-  const { requestDriveAccess, user, googleAccessToken } = useAuth();
+  const { user, googleAccessToken, requestDriveAccess } = useAuth();
   const { resetRecoveryState, attemptRecovery } = useDriveRecovery();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isOrgOwner, setIsOrgOwner] = useState(false);
   const lastCheckRef = useRef<number>(0);
 
-  const checkDriveConnection = async (forceCheck = false) => {
-    if (!user) return;
+  const checkDriveConnection = async (forceCheck = false): Promise<boolean> => {
+    if (!user) return false;
 
     // Prevent checking more than once per minute unless forced
     const now = Date.now();
-    if (!forceCheck && now - lastCheckRef.current < 60000) return;
+    if (!forceCheck && now - lastCheckRef.current < 60000) return connectionStatus === "connected";
     lastCheckRef.current = now;
     
     setConnectionStatus('checking');
@@ -47,7 +47,7 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       if (orgError || !orgRes?.ok) {
         setConnectionStatus("needs_reauth");
         onStatusChange?.(false);
-        return;
+        return false;
       }
 
       const role =
@@ -55,7 +55,7 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       if (!role) {
         setConnectionStatus("needs_reauth");
         onStatusChange?.(false);
-        return;
+        return false;
       }
       const userIsOwner = role === "owner";
       setIsOrgOwner(userIsOwner);
@@ -64,38 +64,63 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       if (!userIsOwner) {
         setConnectionStatus('not_owner');
         onStatusChange?.(true); // Non-owners don't need Drive access
-        return;
+        return true;
       }
 
-      // For the owner, check Drive connection
+      // For the owner, check Drive connection.
+      // First use frontend token; if that fails, try backend-managed refresh token.
       const token = googleAccessToken || localStorage.getItem("google_access_token");
-      if (!token) {
-        setConnectionStatus('needs_reauth');
-        onStatusChange?.(false);
-        return;
-      }
+      const response = await invokeFunction('google-drive', token
+        ? {
+            body: { action: 'list_folder', folderId: 'root' },
+            headers: { "x-google-token": token },
+          }
+        : {
+            body: { action: 'list_folder', folderId: 'root' },
+          });
 
-      // Make a simple API call to verify the token works
-      const response = await invokeFunction('google-drive', {
-        body: { action: 'list_folder', folderId: 'root' },
-        headers: { "x-google-token": token },
-      });
+      const firstCheckFailed =
+        !!response.error ||
+        response.data?.needsReauth ||
+        response.data?.ok === false ||
+        !!response.data?.error;
 
-      if (response.error || response.data?.needsReauth || response.data?.ok === false || response.data?.error) {
+      if (firstCheckFailed) {
+        // Fallback: token in browser may be stale; allow backend to refresh with stored token.
+        const serverSideCheck = await invokeFunction('google-drive', {
+          body: { action: 'list_folder', folderId: 'root' },
+        });
+
+        const serverSideConnected =
+          !serverSideCheck.error &&
+          !serverSideCheck.data?.needsReauth &&
+          serverSideCheck.data?.ok !== false &&
+          !serverSideCheck.data?.error;
+
+        if (serverSideConnected) {
+          resetRecoveryState();
+          setConnectionStatus('connected');
+          onStatusChange?.(true);
+          return true;
+        }
+
         // Attempt silent recovery first
         const { recovered } = await attemptRecovery("Drive check failed", true);
         if (recovered) {
           setConnectionStatus('connected');
           onStatusChange?.(true);
+          return true;
         } else {
           setConnectionStatus('needs_reauth');
           onStatusChange?.(false);
+          return false;
         }
       } else {
         // Connection successful - reset any recovery state
         resetRecoveryState();
         setConnectionStatus('connected');
         onStatusChange?.(true);
+        return true;
       }
     } catch (error) {
       console.error('Error checking Drive connection:', error);
@@ -103,11 +128,14 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
       if (isOrgOwner) {
         setConnectionStatus('needs_reauth');
         onStatusChange?.(false);
+        return false;
       } else {
         setConnectionStatus('not_owner');
         onStatusChange?.(true);
+        return true;
       }
     }
+    return false;
   };
 
   useEffect(() => {
@@ -120,7 +148,7 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
     }, 5 * 60 * 1000); // 5 minutes
 
     return () => clearInterval(checkInterval);
-  }, [user]);
+  }, [user, googleAccessToken]);
 
   const handleReconnect = async () => {
     setIsReconnecting(true);
@@ -128,10 +156,20 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
     // Reset recovery state before reconnecting so fresh attempts can happen
     resetRecoveryState();
     try {
-      await requestDriveAccess();
-      // The page will redirect for OAuth - no need to re-check here
+      const popup = window.open("about:blank", "_blank");
+      await requestDriveAccess({ oauthWindow: popup });
+      // Re-check repeatedly for a short window because OAuth popup completes asynchronously.
+      const started = Date.now();
+      const timer = window.setInterval(async () => {
+        const connected = await checkDriveConnection(true);
+        const timedOut = Date.now() - started > 30000;
+        if (connected || timedOut) {
+          window.clearInterval(timer);
+        }
+      }, 2000);
     } catch (error) {
       console.error('Error reconnecting to Drive:', error);
+    } finally {
       setIsReconnecting(false);
     }
   };

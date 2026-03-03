@@ -1,12 +1,15 @@
 /**
  * Auth Abstraction Layer
  *
- * Strapi auth interface (Supabase retired).
+ * Automation-backend auth interface.
  */
 
-import { strapiFetch, getStrapiToken, setStrapiToken } from "./client";
+import { getAuthToken, setAuthToken, API_BASE_URL, getStrapiToken, setStrapiToken } from "./client";
 
-// Unified user type that works with both backends
+// Re-export deprecated names for backward compat
+export { getStrapiToken, setStrapiToken };
+
+// Unified user type
 export interface ApiUser {
   id: string;
   email: string | undefined;
@@ -38,42 +41,54 @@ export type AuthEventType =
 
 export type AuthChangeCallback = (event: AuthEventType, session: ApiSession | null) => void;
 
-// ── Strapi Implementation ───────────────────────────────────
+const API_BASE = API_BASE_URL;
 
-const strapiAuth = {
+const authImpl = {
   async getUser(): Promise<CurrentUserResult> {
-    const session = await strapiAuth.getSession();
+    const session = await authImpl.getSession();
     return { user: session?.user ?? null };
   },
+
   async getSession(): Promise<ApiSession | null> {
-    const token = getStrapiToken();
+    const token = getAuthToken();
     if (!token) return null;
 
-    const { data, error } = await strapiFetch<{ id: number; email: string; username: string }>("/api/users/me");
-    if (error || !data) return null;
+    try {
+      const response = await fetch(`${API_BASE}/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
 
-    return {
-      user: {
-        id: String(data.id),
-        email: data.email,
-        user_metadata: {},
-      },
-      access_token: token,
-    };
+      // Backend returns { id, email, name, organization }
+      const userId = data?.id || data?.user?.id;
+      const email = data?.email || data?.user?.email;
+      const name = data?.name || data?.user?.displayName || data?.user?.display_name;
+
+      if (!userId) return null;
+
+      return {
+        user: {
+          id: String(userId),
+          email,
+          user_metadata: {
+            full_name: name || undefined,
+          },
+        },
+        access_token: token,
+      };
+    } catch {
+      return null;
+    }
   },
 
   async signInWithEmail(email: string, password: string): Promise<{ error: Error | null }> {
-    const { data, error } = await strapiFetch<{ jwt: string; user: { id: number; email: string } }>(
-      "/api/auth/local",
-      {
-        method: "POST",
-        body: JSON.stringify({ identifier: email, password }),
-      },
-    );
-
-    if (error) return { error: new Error(error.message) };
-    if (data?.jwt) setStrapiToken(data.jwt);
-    return { error: null };
+    void email;
+    void password;
+    return { error: new Error("Email/password sign-in is not enabled. Use Google sign-in.") };
   },
 
   async signUpWithEmail(
@@ -81,19 +96,10 @@ const strapiAuth = {
     password: string,
     metadata?: { account_type?: string },
   ): Promise<{ error: Error | null }> {
-    const { data, error } = await strapiFetch<{ jwt: string }>("/api/auth/local/register", {
-      method: "POST",
-      body: JSON.stringify({
-        username: email,
-        email,
-        password,
-        account_type: metadata?.account_type || "individual",
-      }),
-    });
-
-    if (error) return { error: new Error(error.message) };
-    if (data?.jwt) setStrapiToken(data.jwt);
-    return { error: null };
+    void email;
+    void password;
+    void metadata;
+    return { error: new Error("Email/password sign-up is not enabled. Use Google sign-up.") };
   },
 
   async signInWithGoogle(options?: {
@@ -101,17 +107,24 @@ const strapiAuth = {
     skipBrowserRedirect?: boolean;
     queryParams?: Record<string, string>;
   }): Promise<{ url?: string; error: Error | null }> {
-    const redirectTo = options?.redirectTo || `${window.location.origin}/dashboard`;
-    const params = new URLSearchParams({
-      redirect: redirectTo,
-      ...(options?.queryParams || {}),
-    });
-    const url = `${import.meta.env.VITE_API_URL}/api/connect/google?${params.toString()}`;
-
-    if (!options?.skipBrowserRedirect) {
-      window.location.assign(url);
+    try {
+      const redirectUri = options?.redirectTo || `${window.location.origin}/auth/callback`;
+      const query = new URLSearchParams({
+        redirect_uri: redirectUri,
+        ...(options?.queryParams || {}),
+      }).toString();
+      const response = await fetch(`${API_BASE}/auth/login?${query}`, { method: "GET" });
+      if (!response.ok) return { error: new Error("Failed to start Google sign-in") };
+      const payload = await response.json();
+      const url = payload?.url as string | undefined;
+      if (!url) return { error: new Error("OAuth URL missing from backend response") };
+      if (!options?.skipBrowserRedirect) {
+        window.location.assign(url);
+      }
+      return { url, error: null };
+    } catch (err) {
+      return { error: err instanceof Error ? err : new Error("Failed to start Google sign-in") };
     }
-    return { url, error: null };
   },
 
   async requestDriveAccess(options?: {
@@ -119,48 +132,31 @@ const strapiAuth = {
     skipBrowserRedirect?: boolean;
     queryParams?: Record<string, string>;
   }): Promise<{ url?: string; error: Error | null }> {
-    const redirectTo = options?.redirectTo || `${window.location.origin}/dashboard`;
-    const driveScope = [
-      "openid",
-      "email",
-      "profile",
-      "https://www.googleapis.com/auth/drive.readonly",
-      "https://www.googleapis.com/auth/drive.file",
-    ].join(" ");
-    const params = new URLSearchParams({
-      redirect: redirectTo,
-      scope: driveScope,
-      ...(options?.queryParams || {}),
-    });
-    const url = `${import.meta.env.VITE_API_URL}/api/connect/google?${params.toString()}`;
-
-    if (!options?.skipBrowserRedirect) {
-      window.location.assign(url);
-    }
-    return { url, error: null };
+    return authImpl.signInWithGoogle(options);
   },
 
   async refreshSession(): Promise<ApiSession | null> {
-    const { data, error } = await strapiFetch<{ jwt: string }>("/api/auth/refresh-token", {
-      method: "POST",
-    });
-
-    if (error || !data?.jwt) return null;
-    setStrapiToken(data.jwt);
-    return strapiAuth.getSession();
+    return authImpl.getSession();
   },
 
   async signOut(): Promise<void> {
-    setStrapiToken(null);
+    try {
+      const token = getAuthToken();
+      if (token) {
+        await fetch(`${API_BASE}/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {
+      // ignore network issues
+    }
+    setAuthToken(null);
   },
 
   onAuthStateChange(_callback: AuthChangeCallback): { unsubscribe: () => void } {
-    // Strapi doesn't have real-time auth events
-    // The frontend handles this via JWT expiry checks
     return { unsubscribe: () => {} };
   },
 };
 
-// ── Exported API — Strapi only ───────────────────────────────
-
-export const auth = strapiAuth;
+export const auth = authImpl;
