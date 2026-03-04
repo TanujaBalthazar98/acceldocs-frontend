@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +64,10 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   // If workspace already exists (login auto-created it), skip straight to Drive folder setup
   const [workspaceExists, setWorkspaceExists] = useState(false);
 
+  // Guard: once we've saved the folder and moved to discovery, don't let the
+  // useEffect re-check call onComplete() (it would see drive_folder_id is set)
+  const pastOrgCheck = useRef(false);
+
   // Discovery state
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -84,6 +88,9 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   const workspaceName = formatPersonalWorkspaceName(user?.email || null, user?.user_metadata?.full_name || null);
 
   useEffect(() => {
+    // Once we've saved the folder and moved to discovery step, stop re-checking
+    if (pastOrgCheck.current) return;
+
     const checkOrganization = async () => {
       if (!user) return;
       if (profileLoading) {
@@ -117,7 +124,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     };
 
     checkOrganization();
-  }, [user, profileLoading, onComplete]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, profileLoading]);
 
   const handleBack = () => {
     if (step > 1) {
@@ -210,6 +218,10 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         title: "Drive folder saved!",
         description: "Scanning your folder for existing content...",
       });
+
+      // Prevent the org-check useEffect from calling onComplete() now that
+      // drive_folder_id is saved — we want to stay on the discovery step.
+      pastOrgCheck.current = true;
 
       setSavedFolderId(folderId);
       setStep(4);
