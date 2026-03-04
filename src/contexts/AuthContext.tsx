@@ -161,6 +161,38 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return () => unsubscribe();
   }, []);
 
+  // Refresh session when tab becomes visible again (user returns from background)
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (!session?.expires_at) return;
+
+      const expiresAtMs = session.expires_at * 1000;
+      const now = Date.now();
+
+      // If token expired or expires within 5 minutes, refresh immediately
+      if (expiresAtMs - now < 5 * 60 * 1000) {
+        try {
+          const refreshedSession = await ensureFreshSession();
+          if (refreshedSession) {
+            setSession(refreshedSession);
+            setUser(refreshedSession.user ?? null);
+            if (refreshedSession.provider_token) {
+              localStorage.setItem(GOOGLE_TOKEN_KEY, refreshedSession.provider_token);
+              setGoogleAccessToken(refreshedSession.provider_token);
+            }
+            scheduleSessionRefresh(refreshedSession);
+          }
+        } catch (error) {
+          console.error("Visibility refresh failed:", error);
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [session?.expires_at]);
+
   // Listen for OAuth popup messages (for new backend OAuth flow)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -228,16 +260,27 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     refreshTimeoutRef.current = window.setTimeout(async () => {
       // Avoid background tabs hammering the endpoint
       if (document.visibilityState !== "visible") return;
-      
+
       // Prevent concurrent refreshes across tabs using a mutex pattern
       if (isRefreshingRef.current) {
         console.log("Token refresh already in progress, skipping");
         return;
       }
-      
+
       try {
         isRefreshingRef.current = true;
-        await ensureFreshSession();
+        const refreshedSession = await ensureFreshSession();
+        if (refreshedSession) {
+          setSession(refreshedSession);
+          setUser(refreshedSession.user ?? null);
+          // Update Google access token if refreshed
+          if (refreshedSession.provider_token) {
+            localStorage.setItem(GOOGLE_TOKEN_KEY, refreshedSession.provider_token);
+            setGoogleAccessToken(refreshedSession.provider_token);
+          }
+          // Re-schedule for the next refresh cycle
+          scheduleSessionRefresh(refreshedSession);
+        }
       } catch (error) {
         console.error("Token refresh failed:", error);
         // Don't throw - let the session expire naturally

@@ -63,7 +63,7 @@ const authImpl = {
       if (!response.ok) return null;
       const data = await response.json();
 
-      // Backend returns { id, email, name, organization }
+      // Backend returns { id, email, name, role, expires_at }
       const userId = data?.id || data?.user?.id;
       const email = data?.email || data?.user?.email;
       const name = data?.name || data?.user?.displayName || data?.user?.display_name;
@@ -79,6 +79,7 @@ const authImpl = {
           },
         },
         access_token: token,
+        expires_at: data?.expires_at ?? undefined,
       };
     } catch {
       return null;
@@ -136,7 +137,55 @@ const authImpl = {
   },
 
   async refreshSession(): Promise<ApiSession | null> {
-    return authImpl.getSession();
+    const token = getAuthToken();
+    if (!token) return null;
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        // If refresh fails, fall back to validating current session
+        return authImpl.getSession();
+      }
+
+      const data = await response.json();
+      const newToken = data?.access_token;
+      if (!newToken) return authImpl.getSession();
+
+      // Store the new JWT
+      setAuthToken(newToken);
+
+      // Store refreshed Google access token if provided
+      const googleToken = data?.google_access_token;
+      if (googleToken) {
+        localStorage.setItem("google_access_token", googleToken);
+      }
+
+      const user = data?.user;
+      return {
+        user: user
+          ? {
+              id: String(user.id),
+              email: user.email,
+              user_metadata: {
+                full_name: user.name || undefined,
+              },
+            }
+          : null,
+        access_token: newToken,
+        expires_at: data?.expires_at ?? undefined,
+        provider_token: googleToken ?? undefined,
+      };
+    } catch {
+      // Fall back to session validation
+      return authImpl.getSession();
+    }
   },
 
   async signOut(): Promise<void> {

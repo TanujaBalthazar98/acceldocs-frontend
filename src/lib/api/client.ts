@@ -87,7 +87,28 @@ export async function apiFetch<T = unknown>(
         errorBody?.error ||
         `Request failed with status ${response.status}`;
 
-      if (response.status === 401 && token) {
+      if (response.status === 401 && token && retryCount === 0) {
+        // Try to refresh the token before giving up
+        try {
+          const refreshResp = await fetch(`${API_BASE_URL}/auth/refresh`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (refreshResp.ok) {
+            const refreshData = await refreshResp.json();
+            if (refreshData?.access_token) {
+              setAuthToken(refreshData.access_token);
+              // Store refreshed Google token if provided
+              if (refreshData?.google_access_token) {
+                localStorage.setItem("google_access_token", refreshData.google_access_token);
+              }
+              // Retry the original request with the new token
+              return apiFetch<T>(path, options, retryCount + 1);
+            }
+          }
+        } catch {
+          // Refresh failed, proceed to logout
+        }
         localStorage.removeItem(AUTH_TOKEN_KEY);
         window.location.href = "/login";
       }
