@@ -30,7 +30,7 @@ interface DriveItem {
   mimeType: string;
   parentDriveId?: string;
   depth?: number;
-  type?: "project" | "topic" | "document";
+  type?: "project" | "subproject" | "topic" | "document";
   isFolder?: boolean;
 }
 
@@ -242,7 +242,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         items?: DriveItem[];
         needsReauth?: boolean;
         error?: string;
-        summary?: { projects: number; topics: number; documents: number };
+        summary?: { projects: number; subprojects: number; topics: number; documents: number };
       }>("discover-drive-structure", {
         body: { folderId },
         ...(token ? { headers: { "x-google-token": token } } : {}),
@@ -306,12 +306,15 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     const selectedProjects = discoveredFolders.filter(
       (f) => f.type === "project" && selectedFolderIds.has(f.id)
     );
+    const selectedSubprojects = discoveredFolders.filter(
+      (f) => f.type === "subproject" && selectedFolderIds.has(f.id)
+    );
     const selectedTopics = discoveredFolders.filter(
       (f) => f.type === "topic" && selectedFolderIds.has(f.id)
     );
     const docsToImport = discoveredDocs.filter((d) => selectedDocIds.has(d.id));
 
-    if (selectedProjects.length === 0 && selectedTopics.length === 0 && docsToImport.length === 0) {
+    if (selectedProjects.length === 0 && selectedSubprojects.length === 0 && selectedTopics.length === 0 && docsToImport.length === 0) {
       onComplete();
       return;
     }
@@ -319,7 +322,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     setIsImporting(true);
     setImportProgress(0);
 
-    const totalItems = selectedProjects.length + selectedTopics.length + docsToImport.length + 1;
+    const totalItems = selectedProjects.length + selectedSubprojects.length + selectedTopics.length + docsToImport.length + 1;
     let processed = 0;
 
     // Maps Drive folder ID → created acceldocs project/topic ID
@@ -356,7 +359,41 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         setImportProgress(Math.round((processed / totalItems) * 100));
       }
 
-      // 2. Create topics from level-2+ folders (sorted by depth so parents come first)
+      // 2. Create sub-projects from level-2 folders (projects with parent_id)
+      for (const folder of selectedSubprojects) {
+        const parentDriveId = folder.parentDriveId || "";
+        const parentProjectId = driveToProjectId[parentDriveId] || findProjectForItem(parentDriveId);
+
+        if (parentProjectId) {
+          try {
+            const { data: projRes } = await invokeFunction<{
+              ok?: boolean;
+              project?: { id?: string | number };
+              projectId?: string;
+              versionId?: string;
+            }>("create-project", {
+              body: {
+                name: folder.name,
+                organizationId,
+                parentId: parentProjectId,
+                driveFolderId: folder.id,
+                driveParentId: parentDriveId,
+              },
+            });
+            const pid = String(projRes?.project?.id || projRes?.projectId || "");
+            if (pid) {
+              driveToProjectId[folder.id] = pid;
+              driveToVersionId[folder.id] = projRes?.versionId || "";
+            }
+          } catch (err) {
+            console.error(`Failed to create sub-project "${folder.name}":`, err);
+          }
+        }
+        processed++;
+        setImportProgress(Math.round((processed / totalItems) * 100));
+      }
+
+      // 3. Create topics from level-3+ folders (sorted by depth so parents come first)
       const sortedTopics = [...selectedTopics].sort((a, b) => (a.depth || 0) - (b.depth || 0));
       for (const folder of sortedTopics) {
         // Find which project this topic belongs to by walking up the hierarchy
@@ -467,6 +504,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       toast({
         title: "Import complete!",
         description: `Created ${projectCount} project${projectCount !== 1 ? "s" : ""}` +
+          (selectedSubprojects.length > 0 ? `, ${selectedSubprojects.length} sub-project${selectedSubprojects.length !== 1 ? "s" : ""}` : "") +
           (selectedTopics.length > 0 ? `, ${selectedTopics.length} topic${selectedTopics.length !== 1 ? "s" : ""}` : "") +
           (docsToImport.length > 0 ? `, ${docsToImport.length} document${docsToImport.length !== 1 ? "s" : ""}` : "") +
           ".",
@@ -726,7 +764,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               <h2 className="text-2xl font-bold mb-2 text-center">We found content in your Drive</h2>
               <p className="text-muted-foreground mb-6 text-center text-sm">
                 Select which items to import. Level 1 folders become <strong>projects</strong>,
-                deeper folders become <strong>topics</strong>, and Google Docs become <strong>documents</strong>.
+                level 2 folders become <strong>sub-projects</strong>, deeper folders become <strong>topics</strong>,
+                and Google Docs become <strong>documents</strong>.
               </p>
               </>
               )}
@@ -753,10 +792,12 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
                         const typeLabel =
                           item.type === "project" ? "Project" :
+                          item.type === "subproject" ? "Sub-project" :
                           item.type === "topic" ? "Topic" :
                           "Doc";
                         const typeBadgeColor =
                           item.type === "project" ? "bg-primary/10 text-primary" :
+                          item.type === "subproject" ? "bg-green-500/10 text-green-600" :
                           item.type === "topic" ? "bg-amber-500/10 text-amber-600" :
                           "bg-blue-500/10 text-blue-600";
 
