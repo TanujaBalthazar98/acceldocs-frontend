@@ -28,6 +28,10 @@ interface DriveItem {
   id: string;
   name: string;
   mimeType: string;
+  parentDriveId?: string;
+  depth?: number;
+  type?: "project" | "topic" | "document";
+  isFolder?: boolean;
 }
 
 const APP_NAME = "Docspeare";
@@ -223,24 +227,28 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     }
   };
 
+  // All discovered items in a flat list with hierarchy info
+  const [allDiscoveredItems, setAllDiscoveredItems] = useState<DriveItem[]>([]);
+
   const scanDriveFolder = async (folderId: string) => {
     setIsScanning(true);
     setScanError(null);
     try {
       const token = googleAccessToken || localStorage.getItem("google_access_token");
-      console.log("[Onboarding] Scanning folder:", folderId, "token present:", !!token);
+      console.log("[Onboarding] Scanning folder recursively:", folderId);
 
       const { data, error } = await invokeFunction<{
         ok?: boolean;
-        files?: DriveItem[];
+        items?: DriveItem[];
         needsReauth?: boolean;
         error?: string;
-      }>("google-drive", {
-        body: { action: "list_folder", folderId },
+        summary?: { projects: number; topics: number; documents: number };
+      }>("discover-drive-structure", {
+        body: { folderId },
         ...(token ? { headers: { "x-google-token": token } } : {}),
       });
 
-      console.log("[Onboarding] Scan result:", { data, error: error?.message });
+      console.log("[Onboarding] Discovery result:", { summary: data?.summary, error: error?.message });
 
       if (error) {
         setScanError(error.message || "Failed to scan folder");
@@ -257,12 +265,12 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         return;
       }
 
-      const files = data?.files || [];
-      console.log("[Onboarding] All files:", files.map((f) => ({ name: f.name, mimeType: f.mimeType, id: f.id })));
-      const folders = files.filter((f) => f.mimeType === FOLDER_MIME);
-      // Show all non-folder files (Google Docs, Sheets, uploaded PDFs, etc.)
-      const docs = files.filter((f) => f.mimeType !== FOLDER_MIME);
-      console.log("[Onboarding] Folders:", folders.length, "Files:", docs.length);
+      const items = data?.items || [];
+      setAllDiscoveredItems(items);
+
+      // Split into folders (projects + topics) and documents
+      const folders = items.filter((i) => i.isFolder);
+      const docs = items.filter((i) => !i.isFolder);
 
       setDiscoveredFolders(folders);
       setDiscoveredDocs(docs);
@@ -295,10 +303,15 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
   };
 
   const handleImport = async () => {
-    const foldersToCreate = discoveredFolders.filter((f) => selectedFolderIds.has(f.id));
+    const selectedProjects = discoveredFolders.filter(
+      (f) => f.type === "project" && selectedFolderIds.has(f.id)
+    );
+    const selectedTopics = discoveredFolders.filter(
+      (f) => f.type === "topic" && selectedFolderIds.has(f.id)
+    );
     const docsToImport = discoveredDocs.filter((d) => selectedDocIds.has(d.id));
 
-    if (foldersToCreate.length === 0 && docsToImport.length === 0) {
+    if (selectedProjects.length === 0 && selectedTopics.length === 0 && docsToImport.length === 0) {
       onComplete();
       return;
     }
@@ -306,89 +319,157 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     setIsImporting(true);
     setImportProgress(0);
 
-    const importableDocCount = docsToImport.filter((d) => d.mimeType === DOC_MIME).length;
-    const totalItems = foldersToCreate.length + (importableDocCount > 0 ? 1 + importableDocCount : 0);
+    const totalItems = selectedProjects.length + selectedTopics.length + docsToImport.length + 1;
     let processed = 0;
 
+    // Maps Drive folder ID → created acceldocs project/topic ID
+    const driveToProjectId: Record<string, string> = {};
+    const driveToVersionId: Record<string, string> = {};
+    const driveToTopicId: Record<string, string> = {};
+
     try {
-      // Create projects from selected folders
-      for (const folder of foldersToCreate) {
+      // 1. Create projects from level-1 folders
+      for (const folder of selectedProjects) {
         try {
-          await invokeFunction("create-project", {
+          const { data: projRes } = await invokeFunction<{
+            ok?: boolean;
+            project?: { id?: string | number };
+            projectId?: string;
+            versionId?: string;
+          }>("create-project", {
             body: {
               name: folder.name,
               organizationId,
-              parentId: null,
               driveFolderId: folder.id,
               driveParentId: driveFolderId.trim(),
-              isPublished: false,
             },
           });
+          const pid = String(projRes?.project?.id || projRes?.projectId || "");
+          if (pid) {
+            driveToProjectId[folder.id] = pid;
+            driveToVersionId[folder.id] = projRes?.versionId || "";
+          }
         } catch (err) {
-          console.error(`Failed to create project for folder "${folder.name}":`, err);
+          console.error(`Failed to create project "${folder.name}":`, err);
         }
         processed++;
         setImportProgress(Math.round((processed / totalItems) * 100));
       }
 
-      // If there are loose docs, create a default project for them
-      // Only Google Docs can be imported as documents; other files are just acknowledged
-      const googleDocs = docsToImport.filter((d) => d.mimeType === DOC_MIME);
-      if (googleDocs.length > 0) {
-        let defaultProjectId: string | null = null;
-        let defaultVersionId: string | null = null;
+      // 2. Create topics from level-2+ folders (sorted by depth so parents come first)
+      const sortedTopics = [...selectedTopics].sort((a, b) => (a.depth || 0) - (b.depth || 0));
+      for (const folder of sortedTopics) {
+        // Find which project this topic belongs to by walking up the hierarchy
+        const parentDriveId = folder.parentDriveId || "";
+        const projectId = driveToProjectId[parentDriveId] || findProjectForItem(parentDriveId);
+        const parentTopicId = driveToTopicId[parentDriveId] || null;
 
+        if (projectId) {
+          try {
+            const { data: topicRes } = await invokeFunction<{
+              ok?: boolean;
+              topic?: { id?: string | number };
+            }>("create-topic", {
+              body: {
+                projectId,
+                name: folder.name,
+                parentId: parentTopicId,
+                driveFolderId: folder.id,
+              },
+            });
+            const tid = String(topicRes?.topic?.id || "");
+            if (tid) {
+              driveToTopicId[folder.id] = tid;
+              // Inherit the project mapping so deeper items can find their project
+              driveToProjectId[folder.id] = projectId;
+              driveToVersionId[folder.id] = driveToVersionId[parentDriveId] || "";
+            }
+          } catch (err) {
+            console.error(`Failed to create topic "${folder.name}":`, err);
+          }
+        }
+        processed++;
+        setImportProgress(Math.round((processed / totalItems) * 100));
+      }
+
+      // Helper: walk up the hierarchy to find the project for a given Drive folder
+      function findProjectForItem(driveId: string): string | null {
+        // Check direct mapping
+        if (driveToProjectId[driveId]) return driveToProjectId[driveId];
+        // Walk up via allDiscoveredItems
+        const item = allDiscoveredItems.find((i) => i.id === driveId);
+        if (item?.parentDriveId) return findProjectForItem(item.parentDriveId);
+        return null;
+      }
+
+      // 3. Import documents — assign to their parent project/topic
+      // Separate root-level docs (orphans) from docs inside folders
+      const rootFolderId = driveFolderId.trim();
+      const orphanDocs = docsToImport.filter((d) => d.parentDriveId === rootFolderId);
+      const nestedDocs = docsToImport.filter((d) => d.parentDriveId !== rootFolderId);
+
+      // Create "General" project for orphan docs at root level
+      let generalProjectId: string | null = null;
+      let generalVersionId: string | null = null;
+      if (orphanDocs.length > 0) {
         try {
           const { data: projRes } = await invokeFunction<{
             ok?: boolean;
+            project?: { id?: string | number };
             projectId?: string;
             versionId?: string;
           }>("create-project", {
             body: {
               name: "General",
               organizationId,
-              parentId: null,
               driveFolderId: null,
-              isPublished: false,
             },
           });
-          defaultProjectId = projRes?.projectId || null;
-          defaultVersionId = projRes?.versionId || null;
+          generalProjectId = String(projRes?.project?.id || projRes?.projectId || "");
+          generalVersionId = projRes?.versionId || "";
         } catch (err) {
-          console.error("Failed to create default project:", err);
+          console.error("Failed to create General project:", err);
+        }
+      }
+      processed++;
+      setImportProgress(Math.round((processed / totalItems) * 100));
+
+      // Import all docs
+      for (const doc of [...orphanDocs, ...nestedDocs]) {
+        const parentDriveId = doc.parentDriveId || rootFolderId;
+        const isOrphan = parentDriveId === rootFolderId;
+
+        const projectId = isOrphan ? generalProjectId : findProjectForItem(parentDriveId);
+        const versionId = isOrphan ? generalVersionId : (driveToVersionId[parentDriveId] || "");
+        const topicId = driveToTopicId[parentDriveId] || null;
+
+        if (projectId) {
+          try {
+            await invokeFunction("create-document", {
+              body: {
+                projectId,
+                projectVersionId: versionId || null,
+                topicId,
+                title: doc.name,
+                googleDocId: doc.id,
+                visibility: "internal",
+              },
+            });
+          } catch (err) {
+            console.error(`Failed to import doc "${doc.name}":`, err);
+          }
         }
         processed++;
         setImportProgress(Math.round((processed / totalItems) * 100));
-
-        // Import Google Docs into the default project
-        if (defaultProjectId) {
-          for (const doc of googleDocs) {
-            try {
-              await invokeFunction("create-document", {
-                body: {
-                  projectId: defaultProjectId,
-                  projectVersionId: defaultVersionId,
-                  topicId: null,
-                  title: doc.name,
-                  googleDocId: doc.id,
-                  isPublished: false,
-                  visibility: "internal",
-                },
-              });
-            } catch (err) {
-              console.error(`Failed to import doc "${doc.name}":`, err);
-            }
-            processed++;
-            setImportProgress(Math.round((processed / totalItems) * 100));
-          }
-        }
       }
 
+      const projectCount = selectedProjects.length + (orphanDocs.length > 0 ? 1 : 0);
       toast({
         title: "Import complete!",
-        description: `Created ${foldersToCreate.length} project${foldersToCreate.length !== 1 ? "s" : ""}${
-          docsToImport.length > 0 ? ` and imported ${docsToImport.length} document${docsToImport.length !== 1 ? "s" : ""}` : ""
-        }.`,
+        description: `Created ${projectCount} project${projectCount !== 1 ? "s" : ""}` +
+          (selectedTopics.length > 0 ? `, ${selectedTopics.length} topic${selectedTopics.length !== 1 ? "s" : ""}` : "") +
+          (docsToImport.length > 0 ? `, ${docsToImport.length} document${docsToImport.length !== 1 ? "s" : ""}` : "") +
+          ".",
       });
 
       onComplete();
@@ -644,71 +725,66 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                 <>
               <h2 className="text-2xl font-bold mb-2 text-center">We found content in your Drive</h2>
               <p className="text-muted-foreground mb-6 text-center text-sm">
-                Select which items to import. Folders become projects, and documents will be linked to your workspace.
+                Select which items to import. Level 1 folders become <strong>projects</strong>,
+                deeper folders become <strong>topics</strong>, and Google Docs become <strong>documents</strong>.
               </p>
               </>
               )}
 
               <div className="space-y-5">
-                {/* Folders → Projects */}
-                {!isScanning && !scanError && discoveredFolders.length > 0 && (
+                {/* Tree view of all discovered items */}
+                {!isScanning && !scanError && allDiscoveredItems.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <Folder className="w-4 h-4 text-primary" />
+                      <FolderOpen className="w-4 h-4 text-primary" />
                       <h3 className="text-sm font-semibold text-foreground">
-                        Folders → Projects ({discoveredFolders.length})
+                        Drive Structure ({allDiscoveredItems.length} items)
                       </h3>
                     </div>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-lg border border-border p-2">
-                      {discoveredFolders.map((folder) => (
-                        <button
-                          key={folder.id}
-                          onClick={() => toggleFolder(folder.id)}
-                          disabled={isImporting}
-                          className="flex items-center gap-2.5 w-full text-left px-2.5 py-2 rounded-md hover:bg-secondary/50 transition-colors"
-                        >
-                          {selectedFolderIds.has(folder.id) ? (
-                            <CheckSquare className="w-4 h-4 text-primary shrink-0" />
-                          ) : (
-                            <Square className="w-4 h-4 text-muted-foreground shrink-0" />
-                          )}
-                          <Folder className="w-4 h-4 text-amber-500 shrink-0" />
-                          <span className="text-sm truncate">{folder.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                    <div className="space-y-0.5 max-h-80 overflow-y-auto rounded-lg border border-border p-2">
+                      {allDiscoveredItems.map((item) => {
+                        const depth = item.depth || 0;
+                        const isSelected = item.isFolder
+                          ? selectedFolderIds.has(item.id)
+                          : selectedDocIds.has(item.id);
+                        const toggle = item.isFolder
+                          ? () => toggleFolder(item.id)
+                          : () => toggleDoc(item.id);
 
-                {/* Files at root level */}
-                {!isScanning && !scanError && discoveredDocs.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <FileText className="w-4 h-4 text-blue-500" />
-                      <h3 className="text-sm font-semibold text-foreground">
-                        Files at root ({discoveredDocs.length})
-                      </h3>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Google Docs will be imported into a <strong>"General"</strong> project. Other file types are shown for reference.
-                    </p>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-lg border border-border p-2">
-                      {discoveredDocs.map((doc) => (
-                        <button
-                          key={doc.id}
-                          onClick={() => toggleDoc(doc.id)}
-                          disabled={isImporting}
-                          className="flex items-center gap-2.5 w-full text-left px-2.5 py-2 rounded-md hover:bg-secondary/50 transition-colors"
-                        >
-                          {selectedDocIds.has(doc.id) ? (
-                            <CheckSquare className="w-4 h-4 text-primary shrink-0" />
-                          ) : (
-                            <Square className="w-4 h-4 text-muted-foreground shrink-0" />
-                          )}
-                          <FileText className="w-4 h-4 text-blue-500 shrink-0" />
-                          <span className="text-sm truncate">{doc.name}</span>
-                        </button>
-                      ))}
+                        const typeLabel =
+                          item.type === "project" ? "Project" :
+                          item.type === "topic" ? "Topic" :
+                          "Doc";
+                        const typeBadgeColor =
+                          item.type === "project" ? "bg-primary/10 text-primary" :
+                          item.type === "topic" ? "bg-amber-500/10 text-amber-600" :
+                          "bg-blue-500/10 text-blue-600";
+
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={toggle}
+                            disabled={isImporting}
+                            className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 rounded-md hover:bg-secondary/50 transition-colors"
+                            style={{ paddingLeft: `${12 + depth * 20}px` }}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-3.5 h-3.5 text-primary shrink-0" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            )}
+                            {item.isFolder ? (
+                              <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            ) : (
+                              <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                            )}
+                            <span className="text-sm truncate flex-1">{item.name}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${typeBadgeColor} shrink-0`}>
+                              {typeLabel}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
