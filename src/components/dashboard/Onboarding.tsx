@@ -33,6 +33,13 @@ interface DriveItem {
 const APP_NAME = "Docspeare";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const DOC_MIME = "application/vnd.google-apps.document";
+const GOOGLE_APP_MIMES = new Set([
+  "application/vnd.google-apps.document",
+  "application/vnd.google-apps.spreadsheet",
+  "application/vnd.google-apps.presentation",
+  "application/vnd.google-apps.form",
+  "application/vnd.google-apps.drawing",
+]);
 
 const formatPersonalWorkspaceName = (email?: string | null, fullName?: string | null) => {
   const base = fullName?.trim() || email?.split("@")[0] || "Personal";
@@ -253,8 +260,9 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       const files = data?.files || [];
       console.log("[Onboarding] All files:", files.map((f) => ({ name: f.name, mimeType: f.mimeType, id: f.id })));
       const folders = files.filter((f) => f.mimeType === FOLDER_MIME);
-      const docs = files.filter((f) => f.mimeType === DOC_MIME);
-      console.log("[Onboarding] Folders:", folders.length, "Docs:", docs.length);
+      // Show all non-folder files (Google Docs, Sheets, uploaded PDFs, etc.)
+      const docs = files.filter((f) => f.mimeType !== FOLDER_MIME);
+      console.log("[Onboarding] Folders:", folders.length, "Files:", docs.length);
 
       setDiscoveredFolders(folders);
       setDiscoveredDocs(docs);
@@ -298,7 +306,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     setIsImporting(true);
     setImportProgress(0);
 
-    const totalItems = foldersToCreate.length + (docsToImport.length > 0 ? 1 + docsToImport.length : 0);
+    const importableDocCount = docsToImport.filter((d) => d.mimeType === DOC_MIME).length;
+    const totalItems = foldersToCreate.length + (importableDocCount > 0 ? 1 + importableDocCount : 0);
     let processed = 0;
 
     try {
@@ -323,7 +332,9 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       }
 
       // If there are loose docs, create a default project for them
-      if (docsToImport.length > 0) {
+      // Only Google Docs can be imported as documents; other files are just acknowledged
+      const googleDocs = docsToImport.filter((d) => d.mimeType === DOC_MIME);
+      if (googleDocs.length > 0) {
         let defaultProjectId: string | null = null;
         let defaultVersionId: string | null = null;
 
@@ -349,9 +360,9 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         processed++;
         setImportProgress(Math.round((processed / totalItems) * 100));
 
-        // Import docs into the default project
+        // Import Google Docs into the default project
         if (defaultProjectId) {
-          for (const doc of docsToImport) {
+          for (const doc of googleDocs) {
             try {
               await invokeFunction("create-document", {
                 body: {
@@ -669,17 +680,17 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                   </div>
                 )}
 
-                {/* Documents → Pages (need default project) */}
+                {/* Files at root level */}
                 {!isScanning && !scanError && discoveredDocs.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <FileText className="w-4 h-4 text-blue-500" />
                       <h3 className="text-sm font-semibold text-foreground">
-                        Documents ({discoveredDocs.length})
+                        Files at root ({discoveredDocs.length})
                       </h3>
                     </div>
                     <p className="text-xs text-muted-foreground mb-2">
-                      These documents are at the root level. A <strong>"General"</strong> project will be created for them.
+                      Google Docs will be imported into a <strong>"General"</strong> project. Other file types are shown for reference.
                     </p>
                     <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-lg border border-border p-2">
                       {discoveredDocs.map((doc) => (
