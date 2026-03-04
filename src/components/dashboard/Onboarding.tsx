@@ -251,8 +251,10 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       }
 
       const files = data?.files || [];
+      console.log("[Onboarding] All files:", files.map((f) => ({ name: f.name, mimeType: f.mimeType, id: f.id })));
       const folders = files.filter((f) => f.mimeType === FOLDER_MIME);
       const docs = files.filter((f) => f.mimeType === DOC_MIME);
+      console.log("[Onboarding] Folders:", folders.length, "Docs:", docs.length);
 
       setDiscoveredFolders(folders);
       setDiscoveredDocs(docs);
