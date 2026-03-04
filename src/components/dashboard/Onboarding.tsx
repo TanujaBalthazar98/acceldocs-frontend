@@ -55,12 +55,14 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
   // Discovery state
   const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [discoveredFolders, setDiscoveredFolders] = useState<DriveItem[]>([]);
   const [discoveredDocs, setDiscoveredDocs] = useState<DriveItem[]>([]);
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [savedFolderId, setSavedFolderId] = useState<string | null>(null);
 
   const workspaceDomain = (() => {
     const email = user?.email?.toLowerCase().trim();
@@ -198,8 +200,10 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
         description: "Scanning your folder for existing content...",
       });
 
-      // Now scan the folder
-      await scanDriveFolder(folderId);
+      setSavedFolderId(folderId);
+      setStep(4);
+      // Trigger scan after moving to step 4
+      scanDriveFolder(folderId);
     } catch (error: any) {
       console.error("Error saving Drive folder:", error);
       toast({
@@ -214,24 +218,35 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
 
   const scanDriveFolder = async (folderId: string) => {
     setIsScanning(true);
+    setScanError(null);
     try {
       const token = googleAccessToken || localStorage.getItem("google_access_token");
+      console.log("[Onboarding] Scanning folder:", folderId, "token present:", !!token);
+
       const { data, error } = await invokeFunction<{
         ok?: boolean;
         files?: DriveItem[];
         needsReauth?: boolean;
+        error?: string;
       }>("google-drive", {
         body: { action: "list_folder", folderId },
         ...(token ? { headers: { "x-google-token": token } } : {}),
       });
 
-      if (error || data?.needsReauth) {
-        // Can't scan — skip to dashboard, sync will handle it later
-        toast({
-          title: "Drive access needed",
-          description: "We couldn't scan your folder right now. You can sync from the dashboard later.",
-        });
-        onComplete();
+      console.log("[Onboarding] Scan result:", { data, error: error?.message });
+
+      if (error) {
+        setScanError(error.message || "Failed to scan folder");
+        return;
+      }
+
+      if (data?.needsReauth) {
+        setScanError("Google Drive access token expired. Please re-authenticate from the dashboard.");
+        return;
+      }
+
+      if (data?.ok === false && data?.error) {
+        setScanError(data.error);
         return;
       }
 
@@ -239,27 +254,13 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       const folders = files.filter((f) => f.mimeType === FOLDER_MIME);
       const docs = files.filter((f) => f.mimeType === DOC_MIME);
 
-      if (folders.length === 0 && docs.length === 0) {
-        toast({
-          title: "Folder is empty",
-          description: "No subfolders or documents found. You can add content from the dashboard.",
-        });
-        onComplete();
-        return;
-      }
-
       setDiscoveredFolders(folders);
       setDiscoveredDocs(docs);
       setSelectedFolderIds(new Set(folders.map((f) => f.id)));
       setSelectedDocIds(new Set(docs.map((d) => d.id)));
-      setStep(4);
     } catch (err: any) {
-      console.error("Error scanning Drive folder:", err);
-      toast({
-        title: "Scan failed",
-        description: "Couldn't read your Drive folder. You can sync from the dashboard later.",
-      });
-      onComplete();
+      console.error("[Onboarding] Scan error:", err);
+      setScanError(err.message || "Failed to scan Drive folder");
     } finally {
       setIsScanning(false);
     }
@@ -578,14 +579,66 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <FolderOpen className="w-8 h-8 text-primary" />
               </div>
+
+              {/* Scanning state */}
+              {isScanning && (
+                <div className="text-center py-8">
+                  <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-4" />
+                  <h2 className="text-xl font-bold mb-2">Scanning your Drive folder...</h2>
+                  <p className="text-muted-foreground text-sm">Looking for subfolders and documents</p>
+                </div>
+              )}
+
+              {/* Scan error */}
+              {!isScanning && scanError && (
+                <div className="text-center py-4">
+                  <h2 className="text-xl font-bold mb-2">Couldn't scan your folder</h2>
+                  <p className="text-destructive text-sm mb-4">{scanError}</p>
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant="hero"
+                      size="lg"
+                      onClick={() => savedFolderId && scanDriveFolder(savedFolderId)}
+                      className="w-full gap-2"
+                    >
+                      <Search className="w-4 h-4" />
+                      Retry Scan
+                    </Button>
+                    <Button variant="outline" size="lg" onClick={onComplete} className="w-full gap-2">
+                      Skip — continue to dashboard
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Empty folder */}
+              {!isScanning && !scanError && discoveredFolders.length === 0 && discoveredDocs.length === 0 && (
+                <div className="text-center py-4">
+                  <h2 className="text-xl font-bold mb-2">Folder is empty</h2>
+                  <p className="text-muted-foreground text-sm mb-4">
+                    No subfolders or documents found yet. You can add content from the dashboard.
+                  </p>
+                  <Button variant="hero" size="lg" onClick={onComplete} className="w-full gap-2">
+                    Continue to Dashboard
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+
+              {/* Found content */}
+              {!isScanning && !scanError && (discoveredFolders.length > 0 || discoveredDocs.length > 0) && (
+                <>
               <h2 className="text-2xl font-bold mb-2 text-center">We found content in your Drive</h2>
               <p className="text-muted-foreground mb-6 text-center text-sm">
                 Select which items to import. Folders become projects, and documents will be linked to your workspace.
               </p>
+              </>
+              )}
 
               <div className="space-y-5">
                 {/* Folders → Projects */}
-                {discoveredFolders.length > 0 && (
+                {!isScanning && !scanError && discoveredFolders.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <Folder className="w-4 h-4 text-primary" />
@@ -615,7 +668,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                 )}
 
                 {/* Documents → Pages (need default project) */}
-                {discoveredDocs.length > 0 && (
+                {!isScanning && !scanError && discoveredDocs.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <FileText className="w-4 h-4 text-blue-500" />
@@ -647,8 +700,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                   </div>
                 )}
 
-                {/* Progress bar */}
-                {isImporting && (
+                {/* Progress bar (only during import) */}
+                {!isScanning && !scanError && isImporting && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Importing...</span>
@@ -663,7 +716,8 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                   </div>
                 )}
 
-                {/* Actions */}
+                {/* Actions — only show when we have results */}
+                {!isScanning && !scanError && (discoveredFolders.length > 0 || discoveredDocs.length > 0) && (
                 <div className="flex flex-col gap-2 pt-2">
                   <Button
                     variant="hero"
@@ -695,6 +749,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
                     <ArrowRight className="w-4 h-4" />
                   </Button>
                 </div>
+                )}
               </div>
             </div>
           )}
