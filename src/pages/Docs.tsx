@@ -417,30 +417,31 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [githubPagesUrl, setGithubPagesUrl] = useState<string | null>(null);
 
-  // Redirect to GitHub Pages if configured
+  // Redirect unauthenticated visitors to the public Zensical/GitHub Pages site.
+  // Authenticated users (internal team) stay on the AccelDocs viewer.
   useEffect(() => {
     const checkGitHubRedirect = async () => {
       if (!currentOrg?.id) return;
-      
+      // Never redirect internal team members — they use the AccelDocs viewer.
+      if (user || isInternalView) return;
+
       try {
-        const { API_BASE_URL } = await import("@/lib/api/client");
-        const response = await fetch(`${API_BASE_URL}/github/settings/${currentOrg.id}`);
-        const data = await response.json();
-        if (data.ok && data.connected && data.pagesUrl) {
-          const currentPath = location.pathname;
-          const redirectUrl = data.pagesUrl + currentPath;
-          window.location.href = redirectUrl;
+        const { apiFetch } = await import("@/lib/api/client");
+        const { data } = await apiFetch<{ ok: boolean; connected: boolean; pagesUrl?: string }>(
+          `/api/github/settings/${currentOrg.id}`
+        );
+        if (data?.ok && data.connected && data.pagesUrl) {
+          window.location.href = data.pagesUrl;
         }
-      } catch (error) {
-        // Silently fail - stay on current page
-        console.log("GitHub redirect check failed:", error);
+      } catch {
+        // Silently fail — stay on AccelDocs viewer
       }
     };
 
-    if (currentOrg?.id && !isCustomDomain) {
+    if (currentOrg?.id && !isCustomDomain && !authLoading) {
       checkGitHubRedirect();
     }
-  }, [currentOrg?.id, isCustomDomain, location.pathname]);
+  }, [currentOrg?.id, isCustomDomain, user, authLoading, isInternalView]);
   
   // On custom domains, URL structure shifts: org is implicit from domain
   // Standard: /docs/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug
