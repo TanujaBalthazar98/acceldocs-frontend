@@ -240,15 +240,15 @@ const Dashboard = () => {
   const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
   const [parentProjectForCreate, setParentProjectForCreate] = useState<Project | null>(null);
   const [parentTopicForCreate, setParentTopicForCreate] = useState<Topic | null>(null);
-  const [githubPagesUrl, setGithubPagesUrl] = useState<string | null>(null);
+  const [githubInfo, setGithubInfo] = useState<{ connected: boolean; pagesUrl?: string | null } | null>(null);
 
   useEffect(() => {
     if (!organizationId) return;
     apiFetch<{ ok: boolean; connected: boolean; pagesUrl?: string }>(
       `/api/github/settings/${organizationId}`
     ).then(({ data }) => {
-      if (data?.ok && data.connected && data.pagesUrl) {
-        setGithubPagesUrl(data.pagesUrl);
+      if (data?.ok) {
+        setGithubInfo({ connected: data.connected, pagesUrl: data.pagesUrl });
       }
     }).catch(() => {/* silently ignore */});
   }, [organizationId]);
@@ -513,18 +513,33 @@ const Dashboard = () => {
                       <BookOpen className="w-4 h-4" />
                       <span className="hidden lg:inline">View Docs</span>
                     </Button>
-                    {githubPagesUrl && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 h-8 px-2 sm:px-3"
-                        onClick={() => window.open(githubPagesUrl, "_blank")}
-                        title="Open the published external site (GitHub Pages / Zensical)"
-                      >
-                        <Globe className="w-4 h-4" />
-                        <span className="hidden lg:inline">External Site</span>
-                        <ExternalLink className="w-3 h-3 opacity-60" />
-                      </Button>
+                    {githubInfo && (
+                      githubInfo.pagesUrl ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 h-8 px-2 sm:px-3"
+                          onClick={() => window.open(githubInfo.pagesUrl!, "_blank")}
+                          title="Open the published external site (GitHub Pages / Zensical)"
+                        >
+                          <Globe className="w-4 h-4" />
+                          <span className="hidden lg:inline">External Site</span>
+                          <ExternalLink className="w-3 h-3 opacity-60" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 h-8 px-2 sm:px-3 text-muted-foreground"
+                          onClick={() => setShowGeneralSettings(true)}
+                          title={githubInfo.connected ? "Create a GitHub repo to publish externally" : "Connect GitHub to publish your docs publicly"}
+                        >
+                          <Globe className="w-4 h-4" />
+                          <span className="hidden lg:inline">
+                            {githubInfo.connected ? "Create Repo" : "Setup Publishing"}
+                          </span>
+                        </Button>
+                      )
                     )}
                   </>
                 )}
