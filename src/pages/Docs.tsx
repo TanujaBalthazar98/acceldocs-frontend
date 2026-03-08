@@ -1078,8 +1078,9 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       }
 
       // Build project query scoped to the target organization (internal view)
+      // No is_published filter — internal viewers see all projects including drafts.
       let projectsData: Project[] = [];
-      const publishedFilter = "&filters[is_published][$eq]=true";
+      const publishedFilter = "";
       const fetchProjects = async () => {
         const urls = [
           `/api/projects?filters[organization][id][$eq]=${encodeURIComponent(targetOrgId)}${publishedFilter}&populate[parent][fields][0]=id&populate[organization][fields][0]=id&pagination[limit]=1000&sort=name:asc`,
