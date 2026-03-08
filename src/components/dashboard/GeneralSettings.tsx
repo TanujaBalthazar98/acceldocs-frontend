@@ -800,7 +800,7 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
     if (!organizationId) return;
     setPublishing(true);
     try {
-      const { data, error } = await apiFetch<{ ok: boolean; error?: string; pagesUrl?: string; published?: number; skipped?: number; errors?: number }>(
+      const { data, error } = await apiFetch<{ ok: boolean; error?: string; pagesUrl?: string; published?: number; skipped?: number; errors?: number; pushed?: boolean; pushWarning?: string }>(
         "/publish/mkdocs",
         { method: "POST", body: JSON.stringify({ organizationId }) }
       );
@@ -808,11 +808,15 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
         toast({ title: "Publish failed", description: error?.message || data?.error, variant: "destructive" });
       } else {
         const detail = [
-          data.published ? `${data.published} published` : null,
+          data.published ? `${data.published} doc${data.published !== 1 ? "s" : ""} committed` : null,
+          data.pushed ? "pushed to GitHub" : null,
           data.skipped ? `${data.skipped} skipped` : null,
           data.errors ? `${data.errors} errors` : null,
         ].filter(Boolean).join(", ");
-        toast({ title: "Docs published!", description: detail || (data.pagesUrl ? `Live at ${data.pagesUrl}` : "Done") });
+        toast({ title: "Published via Zensical", description: detail || "Done" });
+        if (data.pushWarning) {
+          toast({ title: "Note", description: data.pushWarning, variant: "default" });
+        }
         await loadSettings();
       }
     } catch (e: any) {
@@ -1000,7 +1004,7 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
                 ) : (
                   <RefreshCw className="w-4 h-4 mr-2" />
                 )}
-                {publishing ? "Publishing…" : "Publish to GitHub Pages"}
+                {publishing ? "Publishing…" : "Publish via Zensical"}
               </Button>
               {settings.lastPublishedAt && (
                 <p className="text-xs text-muted-foreground">
