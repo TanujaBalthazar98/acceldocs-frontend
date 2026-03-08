@@ -306,9 +306,9 @@ export const useDashboardData = () => {
         setRootFolderId(org.drive_folder_id);
       }
       setNeedsDriveAccess(!org?.drive_folder_id);
-      if (org?.slug || org?.domain) {
-        setOrganizationSlug(org.slug || org.domain);
-      }
+      // Always set a slug — fall back to org name or ID so View Docs buttons appear
+      const slug = org?.slug || org?.domain || org?.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || String(orgId);
+      setOrganizationSlug(slug);
       setOrgMcpEnabled(org?.mcp_enabled ?? false);
       setOrgHasApiSpec(!!(org?.openapi_spec_json || org?.openapi_spec_url));
       setOrganizationName(org?.name || "");
