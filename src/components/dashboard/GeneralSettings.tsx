@@ -5,11 +5,18 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { invokeFunction } from "@/lib/api/functions";
-import { API_BASE_URL } from "@/lib/api/client";
+import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Github, ExternalLink, RefreshCw, Globe, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Github, ExternalLink, RefreshCw, Globe, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Link2Off } from "lucide-react";
 
 interface GeneralSettingsProps {
   onBack: () => void;
@@ -481,65 +488,311 @@ interface GitHubSettings {
   lastPublishedAt?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Connect GitHub Dialog — guided PAT flow
+// ---------------------------------------------------------------------------
+
+interface ConnectGitHubDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  organizationId: number;
+  onConnected: () => void;
+}
+
+function ConnectGitHubDialog({
+  open,
+  onOpenChange,
+  organizationId,
+  onConnected,
+}: ConnectGitHubDialogProps) {
+  const { toast } = useToast();
+  const [token, setToken] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const PAT_URL =
+    "https://github.com/settings/tokens/new?scopes=repo&description=AccelDocs+Publishing";
+
+  const handleConnect = async () => {
+    const trimmed = token.trim();
+    if (!trimmed) {
+      setError("Please paste your GitHub token.");
+      return;
+    }
+    setError(null);
+    setConnecting(true);
+    try {
+      const { data, error: fetchErr } = await apiFetch<{ ok: boolean; error?: string; username?: string }>("/api/github/connect", {
+        method: "POST",
+        body: JSON.stringify({ organizationId, token: trimmed }),
+      });
+      if (fetchErr) {
+        setError(fetchErr.message || "Connection failed. Please try again.");
+        return;
+      }
+      if (!data?.ok) {
+        setError(data?.error || "Connection failed. Please try again.");
+        return;
+      }
+      toast({ title: "GitHub connected", description: `Connected as @${data.username}` });
+      setToken("");
+      onOpenChange(false);
+      onConnected();
+    } catch (e: any) {
+      setError(e?.message || "Unexpected error. Please try again.");
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Github className="w-5 h-5" />
+            Connect GitHub Account
+          </DialogTitle>
+          <DialogDescription>
+            Use a Personal Access Token (PAT) to securely connect your GitHub account.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 pt-1">
+          {/* Step 1 */}
+          <div className="rounded-lg bg-muted/50 border border-border/60 p-4 space-y-2">
+            <p className="text-sm font-medium text-foreground">Step 1 — Create a token on GitHub</p>
+            <p className="text-xs text-muted-foreground">
+              We need a token with the <code className="bg-muted px-1 rounded text-xs">repo</code> scope so
+              we can create and push to repositories on your behalf.
+            </p>
+            <a
+              href={PAT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:underline"
+            >
+              Open GitHub → Create token <ExternalLink className="w-3 h-3" />
+            </a>
+            <p className="text-xs text-muted-foreground">
+              On the GitHub page, scroll down and click{" "}
+              <strong className="text-foreground">"Generate token"</strong>. Then copy the token — it
+              starts with <code className="bg-muted px-1 rounded">ghp_</code>.
+            </p>
+          </div>
+
+          {/* Step 2 */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Step 2 — Paste your token here</p>
+            <div className="relative">
+              <Input
+                type={showToken ? "text" : "password"}
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                value={token}
+                onChange={(e) => {
+                  setToken(e.target.value);
+                  setError(null);
+                }}
+                className="pr-10 font-mono text-sm"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowToken((v) => !v)}
+                aria-label={showToken ? "Hide token" : "Show token"}
+              >
+                {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Your token is encrypted and stored securely. We never display it again after saving.
+            </p>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-sm text-destructive">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={connecting}>
+              Cancel
+            </Button>
+            <Button onClick={handleConnect} disabled={connecting || !token.trim()}>
+              {connecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Github className="w-4 h-4 mr-2" />}
+              {connecting ? "Connecting…" : "Connect"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Create Repo Dialog
+// ---------------------------------------------------------------------------
+
+interface CreateRepoDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  organizationId: number;
+  defaultRepoName: string;
+  onCreated: () => void;
+}
+
+function CreateRepoDialog({
+  open,
+  onOpenChange,
+  organizationId,
+  defaultRepoName,
+  onCreated,
+}: CreateRepoDialogProps) {
+  const { toast } = useToast();
+  const [repoName, setRepoName] = useState(defaultRepoName);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Sync default when parent provides a new value
+  useEffect(() => {
+    setRepoName(defaultRepoName);
+  }, [defaultRepoName]);
+
+  const handleCreate = async () => {
+    const name = repoName.trim();
+    if (!name) {
+      setError("Repository name is required.");
+      return;
+    }
+    setError(null);
+    setCreating(true);
+    try {
+      const { data, error: fetchErr } = await apiFetch<{
+        ok: boolean;
+        error?: string;
+        repo?: { fullName: string; htmlUrl: string };
+        pagesUrl?: string;
+      }>("/api/github/create-repo", {
+        method: "POST",
+        body: JSON.stringify({ organizationId, repoName: name, private: isPrivate }),
+      });
+      if (fetchErr) {
+        setError(fetchErr.message || "Failed to create repository.");
+        return;
+      }
+      if (!data?.ok) {
+        setError(data?.error || "Failed to create repository.");
+        return;
+      }
+      toast({
+        title: "Repository created",
+        description: `${data.repo?.fullName} — GitHub Pages will be live shortly`,
+      });
+      onOpenChange(false);
+      onCreated();
+    } catch (e: any) {
+      setError(e?.message || "Unexpected error.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create Documentation Repository</DialogTitle>
+          <DialogDescription>
+            We'll create a GitHub repository and enable GitHub Pages for your docs.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-1">
+          <div className="space-y-1.5">
+            <Label htmlFor="repo-name">Repository name</Label>
+            <Input
+              id="repo-name"
+              value={repoName}
+              onChange={(e) => {
+                setRepoName(e.target.value);
+                setError(null);
+              }}
+              placeholder="my-org-docs"
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              The repo will be created under your GitHub account.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 p-3">
+            <div>
+              <p className="text-sm font-medium">Private repository</p>
+              <p className="text-xs text-muted-foreground">GitHub Pages still works on public repos</p>
+            </div>
+            <Switch checked={isPrivate} onCheckedChange={setIsPrivate} />
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-sm text-destructive">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={creating}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={creating || !repoName.trim()}>
+              {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {creating ? "Creating…" : "Create Repository"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main GitHubSettingsTab
+// ---------------------------------------------------------------------------
+
 function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [connecting, setConnecting] = useState(false);
-  const [creating, setCreating] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [settings, setSettings] = useState<GitHubSettings | null>(null);
   const [customDomain, setCustomDomain] = useState("");
   const [domainVerifying, setDomainVerifying] = useState(false);
 
+  const [showConnectDialog, setShowConnectDialog] = useState(false);
+  const [showCreateRepoDialog, setShowCreateRepoDialog] = useState(false);
+
   useEffect(() => {
-    if (organizationId) {
-      loadSettings();
-    }
+    if (organizationId) loadSettings();
   }, [organizationId]);
 
   const loadSettings = async () => {
     if (!organizationId) return;
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/github/settings/${organizationId}`);
-      const data = await response.json();
-      if (data.ok) {
+      const { data } = await apiFetch<GitHubSettings & { ok: boolean }>(`/api/github/settings/${organizationId}`);
+      if (data?.ok) {
         setSettings(data);
         setCustomDomain(data.customDomain || "");
       }
-    } catch (error) {
-      console.error("Failed to load GitHub settings:", error);
+    } catch (err) {
+      console.error("Failed to load GitHub settings:", err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleConnectGitHub = async () => {
-    if (!organizationId) return;
-    setConnecting(true);
-    window.location.href = `${API_BASE_URL}/auth/github/authorize?organizationId=${organizationId}`;
-  };
-
-  const handleCreateRepo = async () => {
-    if (!organizationId) return;
-    setCreating(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/github/create-repo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId }),
-      });
-      const data = await response.json();
-      if (data.ok) {
-        toast({ title: "Repository created", description: `Created ${data.repo.fullName}` });
-        await loadSettings();
-      } else {
-        toast({ title: "Failed", description: data.error, variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setCreating(false);
     }
   };
 
@@ -547,166 +800,262 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
     if (!organizationId) return;
     setPublishing(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/publish/mkdocs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId }),
-      });
-      const data = await response.json();
-      if (data.ok) {
-        toast({ title: "Published!", description: `Docs published to ${data.pagesUrl}` });
-        await loadSettings();
+      const { data, error } = await apiFetch<{ ok: boolean; error?: string; pagesUrl?: string; published?: number; skipped?: number; errors?: number }>(
+        "/publish/mkdocs",
+        { method: "POST", body: JSON.stringify({ organizationId }) }
+      );
+      if (error || !data?.ok) {
+        toast({ title: "Publish failed", description: error?.message || data?.error, variant: "destructive" });
       } else {
-        toast({ title: "Publish failed", description: data.error, variant: "destructive" });
+        const detail = [
+          data.published ? `${data.published} published` : null,
+          data.skipped ? `${data.skipped} skipped` : null,
+          data.errors ? `${data.errors} errors` : null,
+        ].filter(Boolean).join(", ");
+        toast({ title: "Docs published!", description: detail || (data.pagesUrl ? `Live at ${data.pagesUrl}` : "Done") });
+        await loadSettings();
       }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setPublishing(false);
     }
   };
 
   const handleSetCustomDomain = async () => {
-    if (!organizationId || !customDomain) return;
+    if (!organizationId || !customDomain.trim()) return;
     setDomainVerifying(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/github/custom-domain`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId, domain: customDomain }),
-      });
-      const data = await response.json();
-      if (data.ok) {
-        toast({ title: "Custom domain set", description: "Verify DNS configuration" });
-        await loadSettings();
+      const { data, error } = await apiFetch<{ ok: boolean; error?: string; cname?: string }>(
+        "/api/github/custom-domain",
+        { method: "POST", body: JSON.stringify({ organizationId, domain: customDomain.trim() }) }
+      );
+      if (error || !data?.ok) {
+        toast({ title: "Failed", description: error?.message || data?.error, variant: "destructive" });
       } else {
-        toast({ title: "Failed", description: data.error, variant: "destructive" });
+        toast({
+          title: "Custom domain saved",
+          description: `Add a CNAME record: ${customDomain} → ${data.cname}`,
+        });
+        await loadSettings();
       }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setDomainVerifying(false);
     }
   };
 
-  if (loading) {
-    return <div className="text-sm text-muted-foreground">Loading...</div>;
-  }
+  const handleDisconnect = async () => {
+    if (!organizationId) return;
+    if (!confirm("Disconnect GitHub? This will remove the stored token but won't delete the repository.")) return;
+    setDisconnecting(true);
+    try {
+      const { data, error } = await apiFetch<{ ok: boolean; error?: string }>(
+        "/api/github/disconnect",
+        { method: "DELETE", body: JSON.stringify({ organizationId }) }
+      );
+      if (error || !data?.ok) {
+        toast({ title: "Failed", description: error?.message || data?.error, variant: "destructive" });
+      } else {
+        toast({ title: "GitHub disconnected" });
+        await loadSettings();
+      }
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setDisconnecting(false);
+    }
+  };
 
-  if (!settings?.connected) {
+  if (loading) {
     return (
-      <div className="rounded-lg border border-border/60 bg-card/50 p-6 text-center">
-        <Github className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-        <h3 className="text-lg font-medium mb-2">Connect GitHub</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Connect your GitHub account to publish documentation to GitHub Pages.
-        </p>
-        <Button onClick={handleConnectGitHub} disabled={connecting}>
-          <Github className="w-4 h-4 mr-2" />
-          {connecting ? "Connecting..." : "Connect GitHub"}
-        </Button>
+      <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading GitHub settings…
       </div>
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="rounded-lg border border-border/60 bg-card/50 p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Github className="w-5 h-5" />
-            <div>
-              <p className="font-medium">Connected as @{settings.username}</p>
-              <p className="text-xs text-muted-foreground">
-                {settings.repoFullName || "No repository created"}
-              </p>
-            </div>
+  // ---- Not connected ----
+  if (!settings?.connected) {
+    return (
+      <>
+        <ConnectGitHubDialog
+          open={showConnectDialog}
+          onOpenChange={setShowConnectDialog}
+          organizationId={organizationId!}
+          onConnected={loadSettings}
+        />
+        <div className="rounded-lg border border-border/60 bg-card/50 p-8 text-center space-y-4">
+          <div className="flex items-center justify-center w-14 h-14 rounded-full bg-muted mx-auto">
+            <Github className="w-7 h-7 text-muted-foreground" />
           </div>
-          <CheckCircle className="w-5 h-5 text-green-500" />
-        </div>
-      </div>
-
-      {!settings.repoName ? (
-        <div className="rounded-lg border border-border/60 bg-card/50 p-4">
-          <h4 className="font-medium mb-2">Create Documentation Repository</h4>
-          <p className="text-sm text-muted-foreground mb-4">
-            We'll create a new repository for your documentation and enable GitHub Pages.
-          </p>
-          <Button onClick={handleCreateRepo} disabled={creating}>
-            {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-            {creating ? "Creating..." : "Create Repository"}
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Publish to GitHub Pages</h3>
+            <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+              Connect a GitHub account using a Personal Access Token and we'll host your docs on GitHub Pages — for free.
+            </p>
+          </div>
+          <Button onClick={() => setShowConnectDialog(true)}>
+            <Github className="w-4 h-4 mr-2" />
+            Connect GitHub
           </Button>
+          <p className="text-xs text-muted-foreground">
+            Requires a token with the <code className="bg-muted px-1 rounded">repo</code> scope.
+          </p>
         </div>
-      ) : (
-        <>
-          <div className="rounded-lg border border-border/60 bg-card/50 p-4">
-            <div className="flex items-center justify-between mb-4">
+      </>
+    );
+  }
+
+  // ---- Connected ----
+  const safeSlug = (settings.username || "docs").toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  const defaultRepoName = `${safeSlug}-docs`;
+
+  return (
+    <>
+      <CreateRepoDialog
+        open={showCreateRepoDialog}
+        onOpenChange={setShowCreateRepoDialog}
+        organizationId={organizationId!}
+        defaultRepoName={settings.repoName || defaultRepoName}
+        onCreated={loadSettings}
+      />
+
+      <div className="space-y-5">
+        {/* Connection status */}
+        <div className="rounded-lg border border-border/60 bg-card/50 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted">
+                <Github className="w-5 h-5" />
+              </div>
               <div>
-                <h4 className="font-medium">Published Site</h4>
-                <p className="text-sm text-muted-foreground">
-                  {settings.pagesUrl || "Not published yet"}
+                <p className="text-sm font-medium text-foreground">
+                  @{settings.username}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {settings.repoFullName
+                    ? `github.com/${settings.repoFullName}`
+                    : "No repository created yet"}
                 </p>
               </div>
-              {settings.pagesUrl && (
-                <a
-                  href={settings.pagesUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-500 hover:underline flex items-center gap-1"
-                >
-                  View <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
             </div>
-            <Button onClick={handlePublish} disabled={publishing}>
-              {publishing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-              {publishing ? "Publishing..." : "Publish to GitHub Pages"}
-            </Button>
-            {settings.lastPublishedAt && (
-              <p className="text-xs text-muted-foreground mt-2">
-                Last published: {new Date(settings.lastPublishedAt).toLocaleString()}
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-border/60 bg-card/50 p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Globe className="w-4 h-4" />
-              <h4 className="font-medium">Custom Domain</h4>
-            </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Use your own domain for the published documentation.
-            </p>
-            <div className="flex gap-2">
-              <Input
-                placeholder="docs.yourcompany.com"
-                value={customDomain}
-                onChange={(e) => setCustomDomain(e.target.value)}
-              />
-              <Button onClick={handleSetCustomDomain} disabled={domainVerifying || !customDomain}>
-                {domainVerifying ? "Setting..." : "Set Domain"}
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
+                <CheckCircle className="w-3 h-3" /> Connected
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                title="Disconnect GitHub"
+              >
+                {disconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2Off className="w-4 h-4" />}
               </Button>
             </div>
-            {settings.customDomain && (
-              <div className="mt-3 flex items-center gap-2 text-sm">
-                {settings.domainVerified ? (
-                  <>
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                    <span className="text-green-600">{settings.customDomain} verified</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="w-4 h-4 text-amber-500" />
-                    <span className="text-amber-600">
-                      {settings.customDomain} - Add CNAME record pointing to your GitHub Pages domain
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
           </div>
-        </>
-      )}
-    </div>
+        </div>
+
+        {/* Create repo */}
+        {!settings.repoName ? (
+          <div className="rounded-lg border border-border/60 bg-card/50 p-5 space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold text-foreground">Create Documentation Repository</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                We'll create a GitHub repo and enable GitHub Pages so your docs have a public URL.
+              </p>
+            </div>
+            <Button onClick={() => setShowCreateRepoDialog(true)}>
+              Create Repository
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* Publish */}
+            <div className="rounded-lg border border-border/60 bg-card/50 p-5 space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground">Published Site</h4>
+                  {settings.pagesUrl ? (
+                    <a
+                      href={settings.pagesUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-0.5"
+                    >
+                      {settings.pagesUrl} <ExternalLink className="w-3 h-3" />
+                    </a>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-0.5">Not published yet</p>
+                  )}
+                </div>
+              </div>
+              <Button onClick={handlePublish} disabled={publishing}>
+                {publishing ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                )}
+                {publishing ? "Publishing…" : "Publish to GitHub Pages"}
+              </Button>
+              {settings.lastPublishedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Last published: {new Date(settings.lastPublishedAt).toLocaleString()}
+                </p>
+              )}
+            </div>
+
+            {/* Custom domain */}
+            <div className="rounded-lg border border-border/60 bg-card/50 p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-muted-foreground" />
+                <h4 className="text-sm font-semibold text-foreground">Custom Domain</h4>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Point your own domain at the GitHub Pages site. Enter it below, then add a{" "}
+                <strong>CNAME</strong> DNS record at your registrar.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="docs.yourcompany.com"
+                  value={customDomain}
+                  onChange={(e) => setCustomDomain(e.target.value)}
+                />
+                <Button
+                  onClick={handleSetCustomDomain}
+                  disabled={domainVerifying || !customDomain.trim()}
+                  variant="secondary"
+                >
+                  {domainVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Set"}
+                </Button>
+              </div>
+              {settings.customDomain && (
+                <div className="flex items-start gap-2 text-xs rounded-md border p-3">
+                  {settings.domainVerified ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                      <span className="text-green-700">{settings.customDomain} is verified</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                      <span className="text-amber-700">
+                        <strong>{settings.customDomain}</strong> — DNS not yet verified.{" "}
+                        Add a CNAME record pointing to{" "}
+                        <code className="bg-muted px-1 rounded">{settings.username?.toLowerCase()}.github.io</code>
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
