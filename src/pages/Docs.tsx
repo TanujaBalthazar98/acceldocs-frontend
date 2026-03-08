@@ -14,6 +14,7 @@ import {
   Minimize2,
   WifiOff,
   AlertTriangle,
+  ExternalLink,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -416,25 +417,30 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [isImplicitOrgPath, setIsImplicitOrgPath] = useState(false);
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [githubPagesUrl, setGithubPagesUrl] = useState<string | null>(null);
+  const [githubSettingsChecked, setGithubSettingsChecked] = useState(false);
 
-  // Redirect unauthenticated visitors to the public Zensical/GitHub Pages site.
-  // Authenticated users (internal team) stay on the AccelDocs viewer.
+  // Fetch GitHub Pages URL and redirect unauthenticated visitors to the public Zensical site.
+  // Authenticated users (internal team) stay on the AccelDocs viewer but get the pagesUrl
+  // stored in state so the header can show an "External Site" link.
   useEffect(() => {
     const checkGitHubRedirect = async () => {
       if (!currentOrg?.id) return;
-      // Never redirect internal team members — they use the AccelDocs viewer.
-      if (user || isInternalView) return;
-
       try {
         const { apiFetch } = await import("@/lib/api/client");
         const { data } = await apiFetch<{ ok: boolean; connected: boolean; pagesUrl?: string }>(
           `/api/github/settings/${currentOrg.id}`
         );
         if (data?.ok && data.connected && data.pagesUrl) {
-          window.location.href = data.pagesUrl;
+          setGithubPagesUrl(data.pagesUrl);
+          // Only redirect unauthenticated visitors on the public docs route.
+          if (!user && !isInternalView) {
+            window.location.href = data.pagesUrl;
+          }
         }
       } catch {
         // Silently fail — stay on AccelDocs viewer
+      } finally {
+        setGithubSettingsChecked(true);
       }
     };
 
@@ -1614,23 +1620,40 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    navigate(getOrgPathPrefixForBase("/docs", currentOrg));
-                  }}
-                >
-                  Public Docs
-                </Button>
-              ) : !isInternalView && user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    if (currentOrg) {
-                      navigate(getOrgPathPrefixForBase("/internal", currentOrg));
+                    if (githubPagesUrl) {
+                      window.open(githubPagesUrl, "_blank");
+                    } else {
+                      navigate(getOrgPathPrefixForBase("/docs", currentOrg));
                     }
                   }}
                 >
-                  Internal Docs
+                  {githubPagesUrl ? "External Site" : "Public Docs"}
                 </Button>
+              ) : !isInternalView && user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (currentOrg) {
+                        navigate(getOrgPathPrefixForBase("/internal", currentOrg));
+                      }
+                    }}
+                  >
+                    Internal Docs
+                  </Button>
+                  {githubPagesUrl && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => window.open(githubPagesUrl, "_blank")}
+                    >
+                      External Site
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </Button>
+                  )}
+                </>
               ) : null}
               {user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
                 <Link to="/dashboard">
@@ -1666,6 +1689,24 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
             <div className="max-w-5xl mx-auto px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
               <WifiOff className="h-3.5 w-3.5" />
               You’re offline. Showing the most recent content available.
+            </div>
+          </div>
+        )}
+
+        {/* Nudge org members to set up GitHub Pages when not yet configured */}
+        {!isInternalView && user && isOrgUser && githubSettingsChecked && !githubPagesUrl && (
+          <div className="border-b border-border bg-blue-50/60 dark:bg-blue-950/30">
+            <div className="max-w-5xl mx-auto px-4 py-2 text-sm text-blue-800 dark:text-blue-200 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 shrink-0" />
+                <span>
+                  External visitors can’t reach this page yet.{" "}
+                  <Link to="/dashboard" className="font-medium underline underline-offset-2 hover:no-underline">
+                    Connect GitHub in Settings
+                  </Link>{" "}
+                  to publish your docs to a public site via Zensical.
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -1856,26 +1897,45 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 size="sm"
                 className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
                 onClick={() => {
-                  navigate(getOrgPathPrefixForBase("/docs", currentOrg));
-                }}
-              >
-                <Globe className="h-4 w-4" />
-                <span className="hidden sm:inline">Public Docs</span>
-              </Button>
-            ) : !isInternalView && user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
-                onClick={() => {
-                  if (currentOrg) {
-                    navigate(getOrgPathPrefixForBase("/internal", currentOrg));
+                  if (githubPagesUrl) {
+                    window.open(githubPagesUrl, "_blank");
+                  } else {
+                    navigate(getOrgPathPrefixForBase("/docs", currentOrg));
                   }
                 }}
               >
-                <Lock className="h-4 w-4" />
-                <span className="hidden sm:inline">Internal Docs</span>
+                <Globe className="h-4 w-4" />
+                <span className="hidden sm:inline">{githubPagesUrl ? "External Site" : "Public Docs"}</span>
+                {githubPagesUrl && <ExternalLink className="h-3 w-3 opacity-60" />}
               </Button>
+            ) : !isInternalView && user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
+                  onClick={() => {
+                    if (currentOrg) {
+                      navigate(getOrgPathPrefixForBase("/internal", currentOrg));
+                    }
+                  }}
+                >
+                  <Lock className="h-4 w-4" />
+                  <span className="hidden sm:inline">Internal Docs</span>
+                </Button>
+                {githubPagesUrl && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
+                    onClick={() => window.open(githubPagesUrl, "_blank")}
+                  >
+                    <Globe className="h-4 w-4" />
+                    <span className="hidden sm:inline">External Site</span>
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Button>
+                )}
+              </>
             ) : null}
 
             {/* Mobile menu trigger */}
@@ -1983,6 +2043,22 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           <div className="max-w-5xl mx-auto px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
             <WifiOff className="h-3.5 w-3.5" />
             You’re offline. Showing the most recent content available.
+          </div>
+        </div>
+      )}
+
+      {/* Nudge org members to set up GitHub Pages when not yet configured */}
+      {!isInternalView && user && isOrgUser && githubSettingsChecked && !githubPagesUrl && (
+        <div className="border-b border-border bg-blue-50/60 dark:bg-blue-950/30">
+          <div className="max-w-5xl mx-auto px-4 py-2 text-sm text-blue-800 dark:text-blue-200 flex items-center gap-2">
+            <Globe className="h-4 w-4 shrink-0" />
+            <span>
+              External visitors can’t reach this page yet.{" "}
+              <Link to="/dashboard" className="font-medium underline underline-offset-2 hover:no-underline">
+                Connect GitHub in Settings
+              </Link>{" "}
+              to publish your docs to a public site via Zensical.
+            </span>
           </div>
         </div>
       )}
