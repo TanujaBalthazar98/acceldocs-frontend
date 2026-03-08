@@ -76,6 +76,7 @@ import { AssignProjectDialog } from "@/components/dashboard/AssignProjectDialog"
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { useDriveSync } from "@/hooks/useDriveSync";
 import { useDashboardActions } from "@/hooks/useDashboardActions";
+import { apiFetch } from "@/lib/api/client";
 
 import { Project, ProjectVersion, Topic, Document, VisibilityLevel } from "@/types/dashboard";
 import { mapDocumentFromStrapi } from "@/lib/dataMappers";
@@ -239,6 +240,18 @@ const Dashboard = () => {
   const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
   const [parentProjectForCreate, setParentProjectForCreate] = useState<Project | null>(null);
   const [parentTopicForCreate, setParentTopicForCreate] = useState<Topic | null>(null);
+  const [githubPagesUrl, setGithubPagesUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!organizationId) return;
+    apiFetch<{ ok: boolean; connected: boolean; pagesUrl?: string }>(
+      `/api/github/settings/${organizationId}`
+    ).then(({ data }) => {
+      if (data?.ok && data.connected && data.pagesUrl) {
+        setGithubPagesUrl(data.pagesUrl);
+      }
+    }).catch(() => {/* silently ignore */});
+  }, [organizationId]);
 
   // Deep-link handling
   const [deepLinkHandled, setDeepLinkHandled] = useState(false);
@@ -500,6 +513,19 @@ const Dashboard = () => {
                       <BookOpen className="w-4 h-4" />
                       <span className="hidden lg:inline">View Docs</span>
                     </Button>
+                    {githubPagesUrl && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 h-8 px-2 sm:px-3"
+                        onClick={() => window.open(githubPagesUrl, "_blank")}
+                        title="Open the published external site (GitHub Pages / Zensical)"
+                      >
+                        <Globe className="w-4 h-4" />
+                        <span className="hidden lg:inline">External Site</span>
+                        <ExternalLink className="w-3 h-3 opacity-60" />
+                      </Button>
+                    )}
                   </>
                 )}
                 <Button
