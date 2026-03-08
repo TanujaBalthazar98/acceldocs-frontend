@@ -324,6 +324,7 @@ const Dashboard = () => {
           setSelectedDocument(null);
         }}
         onDocumentUpdate={actions.handleDocumentUpdate}
+        userRole={appRole || "viewer"}
       />
     );
   }

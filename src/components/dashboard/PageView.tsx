@@ -38,6 +38,8 @@ import { VideoEmbed } from "@/components/docs/VideoEmbed";
 type VisibilityLevel = "internal" | "external" | "public";
 const GOOGLE_TOKEN_KEY = "google_access_token";
 
+type DocStatus = "draft" | "review" | "approved" | "rejected";
+
 interface DocumentData {
   id: string;
   title: string;
@@ -47,6 +49,7 @@ interface DocumentData {
   google_modified_at: string | null;
   created_at: string;
   visibility: VisibilityLevel;
+  status?: DocStatus;
   is_published: boolean;
   owner_id: string | null;
   owner_name?: string;
@@ -58,10 +61,18 @@ interface DocumentData {
   video_title?: string | null;
 }
 
+const statusConfig: Record<DocStatus, { label: string; color: string; bg: string }> = {
+  draft: { label: "Draft", color: "text-slate-500", bg: "bg-slate-100" },
+  review: { label: "In Review", color: "text-amber-600", bg: "bg-amber-50" },
+  approved: { label: "Approved", color: "text-green-600", bg: "bg-green-50" },
+  rejected: { label: "Changes Requested", color: "text-red-600", bg: "bg-red-50" },
+};
+
 interface PageViewProps {
   document: DocumentData;
   onBack: () => void;
   onDocumentUpdate?: () => void;
+  userRole?: string; // owner | admin | editor | reviewer | viewer
 }
 
 const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: string; color: string }> = {
@@ -70,10 +81,12 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
   public: { icon: Globe, label: "Public", color: "text-green-400" },
 };
 
-export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) => {
+export const PageView = ({ document, onBack, onDocumentUpdate, userRole }: PageViewProps) => {
   const [shareOpen, setShareOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isStatusChanging, setIsStatusChanging] = useState(false);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
+  const [docStatus, setDocStatus] = useState<DocStatus>(document.status || "draft");
   const [videoUrl, setVideoUrl] = useState<string | null>(document.video_url ?? null);
   const [videoTitle, setVideoTitle] = useState<string | null>(document.video_title ?? null);
   // Use content_html or fall back to published_content_html
@@ -193,6 +206,30 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
     }
   };
 
+  const canReview = userRole === "owner" || userRole === "admin" || userRole === "reviewer";
+  const canEdit = userRole === "owner" || userRole === "admin" || userRole === "editor";
+
+  const changeStatus = async (newStatus: DocStatus) => {
+    setIsStatusChanging(true);
+    try {
+      const { error } = await invokeFunction("update-document", {
+        body: { id: document.id, status: newStatus, is_published: newStatus === "approved" },
+      });
+      if (error) throw error;
+      setDocStatus(newStatus);
+      toast({
+        title: newStatus === "review" ? "Submitted for review" :
+               newStatus === "approved" ? "Document approved" :
+               newStatus === "rejected" ? "Changes requested" : "Status updated",
+      });
+      onDocumentUpdate?.();
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "Failed to update status", variant: "destructive" });
+    } finally {
+      setIsStatusChanging(false);
+    }
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "Unknown";
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -259,6 +296,61 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
               <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="hidden md:inline">Open in Drive</span>
             </Button>
+            {/* Status badge */}
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusConfig[docStatus]?.bg} ${statusConfig[docStatus]?.color}`}>
+              {statusConfig[docStatus]?.label || "Draft"}
+            </span>
+
+            {/* Workflow actions */}
+            {docStatus === "draft" && canEdit && (
+              <Button
+                variant="default"
+                size="sm"
+                className="gap-1.5 text-xs sm:text-sm"
+                disabled={isStatusChanging}
+                onClick={() => changeStatus("review")}
+              >
+                {isStatusChanging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                Submit for Review
+              </Button>
+            )}
+            {docStatus === "rejected" && canEdit && (
+              <Button
+                variant="default"
+                size="sm"
+                className="gap-1.5 text-xs sm:text-sm"
+                disabled={isStatusChanging}
+                onClick={() => changeStatus("review")}
+              >
+                {isStatusChanging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Resubmit for Review
+              </Button>
+            )}
+            {docStatus === "review" && canReview && (
+              <>
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="gap-1.5 text-xs sm:text-sm bg-green-600 hover:bg-green-700"
+                  disabled={isStatusChanging}
+                  onClick={() => changeStatus("approved")}
+                >
+                  {isStatusChanging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                  Approve
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs sm:text-sm text-red-600 border-red-200 hover:bg-red-50"
+                  disabled={isStatusChanging}
+                  onClick={() => changeStatus("rejected")}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Request Changes
+                </Button>
+              </>
+            )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9">
@@ -266,10 +358,6 @@ export const PageView = ({ document, onBack, onDocumentUpdate }: PageViewProps) 
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem className="gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Mark as Verified
-                </DropdownMenuItem>
                 <DropdownMenuItem className="gap-2">
                   <User className="w-4 h-4" />
                   Change Owner
