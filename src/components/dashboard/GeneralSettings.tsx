@@ -809,7 +809,7 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
       } catch (_) {
         // ignore localStorage errors
       }
-      const { data, error } = await apiFetch<{ ok: boolean; error?: string; pagesUrl?: string; published?: number; skipped?: number; errors?: number; pushed?: boolean; pushWarning?: string; contentFetched?: number }>(
+      const { data, error } = await apiFetch<{ ok: boolean; error?: string; pagesUrl?: string; published?: number; skipped?: number; errors?: number; pushed?: boolean; pushWarning?: string; contentFetched?: number; totalDocsFound?: number; hasGoogleToken?: boolean; docDetails?: Array<{id: number; title: string; status: string}> }>(
         "/publish/mkdocs",
         { method: "POST", body: JSON.stringify({ organizationId }), headers: publishHeaders }
       );
@@ -817,13 +817,26 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
         toast({ title: "Publish failed", description: error?.message || data?.error, variant: "destructive" });
       } else {
         const detail = [
-          data.published ? `${data.published} doc${data.published !== 1 ? "s" : ""} committed` : null,
+          `Found ${data.totalDocsFound ?? 0} docs`,
+          data.published ? `${data.published} committed` : "0 committed",
           data.contentFetched ? `${data.contentFetched} fetched from Drive` : null,
           data.pushed ? "pushed to GitHub" : null,
           data.skipped ? `${data.skipped} skipped` : null,
           data.errors ? `${data.errors} errors` : null,
+          data.hasGoogleToken ? "has Drive token" : "no Drive token",
         ].filter(Boolean).join(", ");
-        toast({ title: "Published via Zensical", description: detail || "Done" });
+        toast({ title: "Published via Zensical", description: detail });
+        // Show per-doc details if any were skipped or errored
+        if (data.docDetails && data.docDetails.length > 0 && (data.skipped || data.errors)) {
+          const docInfo = data.docDetails
+            .filter((d: {status: string}) => d.status !== "published")
+            .slice(0, 5)
+            .map((d: {title: string; status: string}) => `${d.title}: ${d.status}`)
+            .join("; ");
+          if (docInfo) {
+            toast({ title: "Doc details", description: docInfo, variant: "default" });
+          }
+        }
         if (data.pushWarning) {
           toast({ title: "Note", description: data.pushWarning, variant: "default" });
         }
