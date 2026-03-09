@@ -445,8 +445,16 @@ export const useDashboardData = () => {
             projectRows.map((project: any) => String(project?.drive_folder_id || "")).filter(Boolean),
           );
 
+          // Also skip folders whose name already matches an existing project — prevents
+          // creating duplicate projects for Drive folders that were already imported manually.
+          const existingByName = new Set(
+            projectRows.map((project: any) => (project?.name || "").toLowerCase().trim()).filter(Boolean),
+          );
+
           const missingFolders = rootFolders.filter(
-            (folder) => !existingByDriveFolder.has(String(folder.id)),
+            (folder) =>
+              !existingByDriveFolder.has(String(folder.id)) &&
+              !existingByName.has((folder.name || "").toLowerCase().trim()),
           );
 
           if (missingFolders.length > 0) {
