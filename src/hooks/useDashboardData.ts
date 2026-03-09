@@ -433,6 +433,7 @@ export const useDashboardData = () => {
       setProjects(dedupedProjects);
 
       const projectIds = dedupedProjects.map((p) => p.id);
+      console.debug("[fetchData] projects loaded", { count: dedupedProjects.length, projectIds });
       if (projectIds.length === 0) {
         setProjectVersions([]);
         setTopics([]);
@@ -465,6 +466,7 @@ export const useDashboardData = () => {
         documents?: any[];
         error?: string;
       }>("list-documents", { body: { projectIds } });
+      console.debug("[fetchData] list-documents", { projectIds, ok: docRes?.ok, count: docRes?.documents?.length, error: docRes?.error || docError });
       if (docError || !docRes?.ok) {
         throw docError || new Error(docRes?.error || "Failed to load documents");
       }
