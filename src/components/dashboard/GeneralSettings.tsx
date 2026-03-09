@@ -801,8 +801,9 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
     setPublishing(true);
     try {
       const publishHeaders: Record<string, string> = {};
-      if (googleAccessToken) {
-        publishHeaders["x-google-token"] = googleAccessToken;
+      const gToken = googleAccessToken || localStorage.getItem("google_access_token");
+      if (gToken) {
+        publishHeaders["x-google-token"] = gToken;
       }
       const { data, error } = await apiFetch<{ ok: boolean; error?: string; pagesUrl?: string; published?: number; skipped?: number; errors?: number; pushed?: boolean; pushWarning?: string; contentFetched?: number }>(
         "/publish/mkdocs",
