@@ -244,6 +244,23 @@ export const useDriveSync = ({
         arr.push(project);
         projectsByNameParent.set(nameKey, arr);
       }
+      // Pre-fetch all existing documents once so we can look up by google_doc_id
+      // without relying on the REST endpoint which doesn't support that filter.
+      const existingDocsByGoogleId = new Map<string, any>();
+      const existingProjectIds = projects.map((p) => p.id).filter(Boolean);
+      if (existingProjectIds.length > 0) {
+        try {
+          const { data: preloadRes } = await invokeFunction<{ ok?: boolean; documents?: any[] }>(
+            "list-documents", { body: { projectIds: existingProjectIds } }
+          );
+          for (const d of preloadRes?.documents || []) {
+            if (d.google_doc_id) existingDocsByGoogleId.set(d.google_doc_id, d);
+          }
+        } catch {
+          // non-fatal — we'll just create instead of update for any unresolved docs
+        }
+      }
+
       let syncedProjects = 0;
       let syncedTopics = 0;
       let syncedDocs = 0;
@@ -517,45 +534,27 @@ export const useDriveSync = ({
         const docs = projectResult.files.filter((item) => item.mimeType === docMimeType);
 
         for (const doc of docs) {
-          const { data: docRows } = await list("documents", {
-            filters: { google_doc_id: doc.id },
-            limit: 50,
-          });
-          let existingDocs: any[] = Array.isArray(docRows) ? docRows : [];
-          let existingDoc: any = existingDocs[0] || null;
-
-          if (existingDocs.length > 1) {
-            existingDoc =
-              existingDocs.find((row) => row?.attributes?.is_published) ||
-              existingDocs.sort((a, b) => {
-                const aUpdated = Date.parse(a?.attributes?.updatedAt || a?.updatedAt || "") || 0;
-                const bUpdated = Date.parse(b?.attributes?.updatedAt || b?.updatedAt || "") || 0;
-                return bUpdated - aUpdated;
-              })[0];
-
-            for (const dup of existingDocs) {
-              if (!existingDoc || dup?.id === existingDoc?.id) continue;
-              await invokeFunction("delete-document", { body: { documentId: dup.id } });
-            }
-          }
+          const existingDoc = existingDocsByGoogleId.get(doc.id) ?? null;
 
           let docRecordId: string | null = null;
 
           if (existingDoc) {
-            docRecordId = String((existingDoc as any).id);
-            const payload = {
+            docRecordId = String(existingDoc.id);
+            const payload: Record<string, any> = {
               title: doc.name,
               google_modified_at: doc.modifiedTime,
-              ...((defaultVersionId && !(existingDoc as any)?.attributes?.project_version?.data?.id)
-                ? { project_version: defaultVersionId }
-                : {}),
-              ...((topicId && !(existingDoc as any)?.attributes?.topic?.data?.id)
-                ? { topic: topicId }
-                : {}),
             };
+            // Fix orphaned docs: set project_id if currently unassigned
+            if (!existingDoc.project_id && projectId) payload.project_id = projectId;
+            // Set version if not already assigned
+            if (defaultVersionId && !existingDoc.project_version_id) payload.project_version_id = defaultVersionId;
+            // Set topic if not already assigned
+            if (topicId && !existingDoc.topic_id) payload.topic_id = topicId;
             await invokeFunction("update-document", {
-              body: { documentId: docRecordId, data: payload as any },
+              body: { documentId: docRecordId, data: payload },
             });
+            // Keep the map up to date for any subsequent lookups
+            existingDocsByGoogleId.set(doc.id, { ...existingDoc, project_id: existingDoc.project_id ?? projectId });
           } else {
             const { data: created, error: docError } = await invokeFunction<{
               ok?: boolean;
@@ -634,12 +633,17 @@ export const useDriveSync = ({
 
           if (generalProjectId) {
             for (const doc of rootDocs) {
-              const { data: docRows } = await list("documents", {
-                filters: { google_doc_id: doc.id },
-                limit: 1,
-              });
-              const existing = Array.isArray(docRows) ? docRows[0] : null;
-              if (existing) continue; // already imported
+              const existing = existingDocsByGoogleId.get(doc.id) ?? null;
+              if (existing) {
+                // Fix orphaned root doc: assign to General project if unassigned
+                if (!existing.project_id && generalProjectId) {
+                  await invokeFunction("update-document", {
+                    body: { documentId: String(existing.id), data: { project_id: generalProjectId, project_version_id: generalVersionId || null } },
+                  });
+                  existingDocsByGoogleId.set(doc.id, { ...existing, project_id: generalProjectId });
+                }
+                continue;
+              }
 
               const { data: created, error: docError } = await invokeFunction<{
                 ok?: boolean;
