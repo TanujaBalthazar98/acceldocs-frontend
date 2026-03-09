@@ -109,9 +109,11 @@ export const useDashboardData = () => {
     return (canEdit as any) === true;
   };
 
-  // Scoped data
+  // Scoped data — include docs that match the selected version OR have no version assigned
   const scopedDocuments = selectedVersion
-    ? documents.filter((doc) => doc.project_version_id === selectedVersion.id)
+    ? documents.filter(
+        (doc) => doc.project_version_id === selectedVersion.id || !doc.project_version_id
+      )
     : documents;
 
   const scopedTopics = selectedVersion
