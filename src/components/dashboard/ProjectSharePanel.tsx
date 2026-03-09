@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Trash2, UserPlus } from "lucide-react";
-import { invokeFunction } from "@/lib/api/client";
+import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 
 interface Member {
