@@ -467,31 +467,51 @@ export const useDashboardData = () => {
         .filter((p) => p.name.trim().length > 0);
 
       const normalizeName = (value: string) => value.trim().toLowerCase();
-      const uniqueByDrive = new Map<string, Project>();
-      const uniqueByNameParent = new Map<string, Project>();
+      const rawToCanonicalProjectId = new Map<string, string>();
+      const groupedByDrive = new Map<string, Project[]>();
+      const groupedByNameParent = new Map<string, Project[]>();
+
       for (const project of mappedProjects) {
         if (project.drive_folder_id) {
-          const existing = uniqueByDrive.get(project.drive_folder_id);
-          if (!existing || (!existing.parent_id && project.parent_id)) {
-            uniqueByDrive.set(project.drive_folder_id, project);
-          }
+          const grouped = groupedByDrive.get(project.drive_folder_id) ?? [];
+          grouped.push(project);
+          groupedByDrive.set(project.drive_folder_id, grouped);
           continue;
         }
         const key = `${project.parent_id || "root"}::${normalizeName(project.name)}`;
-        if (!uniqueByNameParent.has(key)) {
-          uniqueByNameParent.set(key, project);
+        const grouped = groupedByNameParent.get(key) ?? [];
+        grouped.push(project);
+        groupedByNameParent.set(key, grouped);
+      }
+
+      const dedupedProjects: Project[] = [];
+      for (const grouped of groupedByDrive.values()) {
+        const canonical = grouped.find((project) => !!project.parent_id) ?? grouped[0];
+        dedupedProjects.push(canonical);
+        for (const project of grouped) {
+          rawToCanonicalProjectId.set(project.id, canonical.id);
+        }
+      }
+      for (const grouped of groupedByNameParent.values()) {
+        const canonical = grouped[0];
+        dedupedProjects.push(canonical);
+        for (const project of grouped) {
+          rawToCanonicalProjectId.set(project.id, canonical.id);
         }
       }
 
-      const dedupedProjects = [
-        ...uniqueByDrive.values(),
-        ...uniqueByNameParent.values(),
-      ].filter((p, idx, arr) => arr.findIndex((other) => other.id === p.id) === idx);
+      const uniqueProjectIdsForFetch = Array.from(new Set(mappedProjects.map((project) => project.id)));
+      const uniqueDedupedProjects = dedupedProjects.filter(
+        (project, idx, arr) => arr.findIndex((other) => other.id === project.id) === idx
+      );
 
-      setProjects(dedupedProjects);
+      setProjects(uniqueDedupedProjects);
 
-      const projectIds = dedupedProjects.map((p) => p.id);
-      console.debug("[fetchData] projects loaded", { count: dedupedProjects.length, projectIds });
+      const projectIds = uniqueProjectIdsForFetch;
+      console.debug("[fetchData] projects loaded", {
+        count: uniqueDedupedProjects.length,
+        projectIds,
+      });
       if (projectIds.length === 0) {
         setProjectVersions([]);
         setTopics([]);
@@ -507,7 +527,11 @@ export const useDashboardData = () => {
       if (versionError || !versionRes?.ok) {
         throw versionError || new Error(versionRes?.error || "Failed to load versions");
       }
-      setProjectVersions((versionRes.versions || []).map(mapVersionFromStrapi));
+      const mappedVersions = (versionRes.versions || []).map(mapVersionFromStrapi).map((version) => ({
+        ...version,
+        project_id: rawToCanonicalProjectId.get(version.project_id) ?? version.project_id,
+      }));
+      setProjectVersions(mappedVersions);
 
       const { data: topicRes, error: topicError } = await invokeFunction<{
         ok?: boolean;
@@ -517,7 +541,11 @@ export const useDashboardData = () => {
       if (topicError || !topicRes?.ok) {
         throw topicError || new Error(topicRes?.error || "Failed to load topics");
       }
-      setTopics((topicRes.topics || []).map(mapTopicFromStrapi));
+      const mappedTopics = (topicRes.topics || []).map(mapTopicFromStrapi).map((topic) => ({
+        ...topic,
+        project_id: rawToCanonicalProjectId.get(topic.project_id) ?? topic.project_id,
+      }));
+      setTopics(mappedTopics);
 
       const { data: docRes, error: docError } = await invokeFunction<{
         ok?: boolean;
@@ -532,13 +560,16 @@ export const useDashboardData = () => {
       const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       // Build lookup maps: name → id, slug → id, slugified-name → id
       const projectIdByKey = new Map<string, string>();
-      for (const project of dedupedProjects) {
+      for (const project of uniqueDedupedProjects) {
         projectIdByKey.set(normalizeProjectName(project.name), project.id);
         if (project.slug) projectIdByKey.set(project.slug.toLowerCase(), project.id);
         projectIdByKey.set(slugify(project.name), project.id);
       }
       const mappedDocs = (docRes.documents || []).map((row: any) => {
         const mapped = mapDocumentFromStrapi(row);
+        if (mapped.project_id) {
+          mapped.project_id = rawToCanonicalProjectId.get(mapped.project_id) ?? mapped.project_id;
+        }
         if (!mapped.project_id) {
           const attrs = row?.attributes || row || {};
           const inferredProjectName = attrs.project_name || attrs.project || "";

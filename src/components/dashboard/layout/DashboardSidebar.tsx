@@ -431,7 +431,12 @@ export function DashboardSidebar({
                               <Button 
                                 variant="ghost" 
                                 className="flex-1 min-w-0 justify-start h-8 px-3 text-sm text-muted-foreground hover:text-foreground"
-                                onClick={() => setSelectedProject(p)}
+                                onClick={() => {
+                                  setSelectedProject(p);
+                                  setSelectedTopic(null);
+                                  setSelectedPage(null);
+                                  setSelectedDocument(null);
+                                }}
                               >
                                 <Folder className="w-4 h-4 mr-2" />
                                 <span className="truncate">{p.name}</span>
