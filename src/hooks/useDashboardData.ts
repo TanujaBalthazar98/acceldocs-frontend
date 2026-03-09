@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -138,6 +138,22 @@ export const useDashboardData = () => {
   const selectedProjectIds = selectedProject ? getDescendantProjectIds(selectedProject.id) : null;
   const unassignedDocuments = documents.filter((doc) => !doc.project_id);
 
+  // Build a set of project slugs/names for the selected project tree (for legacy matching)
+  const selectedProjectSlugs = useMemo(() => {
+    if (!selectedProjectIds) return null;
+    const slugs = new Set<string>();
+    for (const project of projects) {
+      if (selectedProjectIds.has(project.id)) {
+        if (project.slug) slugs.add(project.slug.toLowerCase());
+        if (project.name) {
+          slugs.add(project.name.toLowerCase());
+          slugs.add(project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
+        }
+      }
+    }
+    return slugs;
+  }, [selectedProjectIds, projects]);
+
   // Filtered data
   const filteredDocuments = scopedDocuments.filter((doc) => {
     if (searchQuery.trim()) {
@@ -145,7 +161,14 @@ export const useDashboardData = () => {
       if (!doc.title.toLowerCase().includes(query)) return false;
     }
     if (selectedTopic) return doc.topic_id === selectedTopic.id;
-    if (selectedProject) return !!selectedProjectIds?.has(doc.project_id);
+    if (selectedProject) {
+      // Primary: match by FK project_id
+      if (doc.project_id && selectedProjectIds?.has(doc.project_id)) return true;
+      // Fallback: match by legacy string project field (slug/name)
+      const legacyProject = (doc as any).project;
+      if (legacyProject && selectedProjectSlugs?.has(String(legacyProject).toLowerCase())) return true;
+      return false;
+    }
     return true;
   });
 
@@ -471,21 +494,34 @@ export const useDashboardData = () => {
         throw docError || new Error(docRes?.error || "Failed to load documents");
       }
       const normalizeProjectName = (value?: string | null) => (value || "").trim().toLowerCase();
-      const projectIdByName = new Map(
-        dedupedProjects.map((project) => [normalizeProjectName(project.name), project.id]),
-      );
+      const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      // Build lookup maps: name → id, slug → id, slugified-name → id
+      const projectIdByKey = new Map<string, string>();
+      for (const project of dedupedProjects) {
+        projectIdByKey.set(normalizeProjectName(project.name), project.id);
+        if (project.slug) projectIdByKey.set(project.slug.toLowerCase(), project.id);
+        projectIdByKey.set(slugify(project.name), project.id);
+      }
       const mappedDocs = (docRes.documents || []).map((row: any) => {
         const mapped = mapDocumentFromStrapi(row);
         if (!mapped.project_id) {
           const attrs = row?.attributes || row || {};
           const inferredProjectName = attrs.project_name || attrs.project || "";
-          const inferredProjectId = projectIdByName.get(normalizeProjectName(inferredProjectName));
+          const normalized = normalizeProjectName(inferredProjectName);
+          const inferredProjectId = projectIdByKey.get(normalized) || projectIdByKey.get(slugify(inferredProjectName));
           if (inferredProjectId) {
             mapped.project_id = inferredProjectId;
           }
         }
         return mapped;
       });
+      // Debug: log docs with and without project_id
+      const withPid = mappedDocs.filter((d: Document) => !!d.project_id);
+      const withoutPid = mappedDocs.filter((d: Document) => !d.project_id);
+      if (withoutPid.length > 0) {
+        console.warn("[fetchData] docs without project_id:", withoutPid.map((d: Document) => ({ id: d.id, title: d.title, project_id: d.project_id })));
+      }
+      console.debug("[fetchData] docs mapped", { total: mappedDocs.length, withProjectId: withPid.length, withoutProjectId: withoutPid.length });
       const docByKey = new Map<string, Document>();
       for (const doc of mappedDocs) {
         const key = doc.google_doc_id ? `gdoc:${doc.google_doc_id}` : `id:${doc.id}`;

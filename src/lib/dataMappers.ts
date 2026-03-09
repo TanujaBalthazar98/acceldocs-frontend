@@ -126,5 +126,7 @@ export const mapDocumentFromStrapi = (item: any): Document => {
     published_content_id: attrs.published_content_id ?? null,
     video_url: attrs.video_url ?? null,
     video_title: attrs.video_title ?? null,
-  };
+    // Legacy string project field — used as fallback for matching when project_id is null
+    project: typeof attrs.project === "string" ? attrs.project : null,
+  } as any;
 };
