@@ -419,12 +419,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [githubPagesUrl, setGithubPagesUrl] = useState<string | null>(null);
   const [githubSettingsChecked, setGithubSettingsChecked] = useState(false);
 
-  // Fetch GitHub Pages URL and redirect unauthenticated visitors to the public Zensical site.
-  // Authenticated users (internal team) stay on the AccelDocs viewer but get the pagesUrl
-  // stored in state so the header can show an "External Site" link.
+  // /docs/:org routing:
+  //   - unauthenticated          → redirect to GitHub Pages (Zensical public site)
+  //   - authenticated org member → redirect to /internal/:org (their full view)
+  //   - authenticated external   → stay on /docs/:org (shows only invited projects)
   useEffect(() => {
-    const checkGitHubRedirect = async () => {
-      if (!currentOrg?.id) return;
+    const checkDocsAccess = async () => {
+      if (!currentOrg?.id || isInternalView || isCustomDomain || authLoading) return;
       try {
         const { apiFetch } = await import("@/lib/api/client");
         const { data } = await apiFetch<{ ok: boolean; connected: boolean; pagesUrl?: string }>(
@@ -432,21 +433,20 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         );
         if (data?.ok && data.connected && data.pagesUrl) {
           setGithubPagesUrl(data.pagesUrl);
-          // Only redirect unauthenticated visitors on the public docs route.
-          if (!user && !isInternalView) {
+          // Unauthenticated → always go to the public Zensical site
+          if (!user) {
             window.location.href = data.pagesUrl;
+            return;
           }
         }
       } catch {
-        // Silently fail — stay on AccelDocs viewer
+        // Silently fail
       } finally {
         setGithubSettingsChecked(true);
       }
     };
 
-    if (currentOrg?.id && !isCustomDomain && !authLoading) {
-      checkGitHubRedirect();
-    }
+    checkDocsAccess();
   }, [currentOrg?.id, isCustomDomain, user, authLoading, isInternalView]);
   
   // On custom domains, URL structure shifts: org is implicit from domain
@@ -1029,15 +1029,29 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         return;
       }
 
-      // Public view: use server-side public endpoint to avoid relation filter validation.
+      // /docs view: authenticated org members → redirect to /internal
+      if (!isInternalView && currentUser && userBelongsToTargetOrg) {
+        const slug = targetOrg?.slug || orgSlug;
+        if (slug) {
+          window.location.replace(`/internal/${slug}`);
+          return;
+        }
+      }
+
+      // /docs view: choose the right data source
+      //   - unauthenticated  → public-content (visibility=public only)
+      //   - external invited → external-content (visibility=external, project_member)
       if (!isInternalView) {
+        const endpoint = currentUser
+          ? `/api/external-content?organizationId=${encodeURIComponent(targetOrgId)}`
+          : `/api/public-content?organizationId=${encodeURIComponent(targetOrgId)}`;
         const { data: publicContent, error: publicError } = await strapiFetch<{
           ok?: boolean;
           projects?: any[];
           versions?: any[];
           topics?: any[];
           documents?: any[];
-        }>(`/api/public-content?organizationId=${encodeURIComponent(targetOrgId)}`);
+        }>(endpoint);
         if (publicError || !publicContent?.ok) {
           console.error("Error fetching public content:", publicError || publicContent);
           setContentError("We couldn’t load the public docs. Please try again.");

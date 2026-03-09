@@ -485,61 +485,43 @@ const Dashboard = () => {
                 </Button>
                 {organizationSlug && (
                   <>
+                    {/* Internal docs viewer */}
                     <Button
                       variant="outline"
                       size="sm"
                       className="gap-1.5 h-8 px-2 sm:px-3"
-                      onClick={() => {
-                        const url = automationInternalDocsBase
-                          ? `${automationInternalDocsBase}/${organizationSlug}`
-                          : `/internal/${organizationSlug}`;
-                        window.open(url, "_blank");
-                      }}
+                      onClick={() => window.open(`/internal/${organizationSlug}`, "_blank")}
+                      title="Open the internal docs viewer"
                     >
                       <Lock className="w-4 h-4" />
-                      <span className="hidden lg:inline">Internal Docs</span>
+                      <span className="hidden lg:inline">Docs</span>
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 h-8 px-2 sm:px-3"
-                      onClick={() => {
-                        const url = automationPublicDocsBase
-                          ? `${automationPublicDocsBase}/${organizationSlug}`
-                          : `/docs/${organizationSlug}`;
-                        window.open(url, "_blank");
-                      }}
-                    >
-                      <BookOpen className="w-4 h-4" />
-                      <span className="hidden lg:inline">View Docs</span>
-                    </Button>
-                    {githubInfo && (
-                      githubInfo.pagesUrl ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 h-8 px-2 sm:px-3"
-                          onClick={() => window.open(githubInfo.pagesUrl!, "_blank")}
-                          title="Open the published external site (GitHub Pages / Zensical)"
-                        >
-                          <Globe className="w-4 h-4" />
-                          <span className="hidden lg:inline">External Site</span>
-                          <ExternalLink className="w-3 h-3 opacity-60" />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 h-8 px-2 sm:px-3 text-muted-foreground"
-                          onClick={() => setShowGeneralSettings(true)}
-                          title={githubInfo.connected ? "Create a GitHub repo to publish externally" : "Connect GitHub to publish your docs publicly"}
-                        >
-                          <Globe className="w-4 h-4" />
-                          <span className="hidden lg:inline">
-                            {githubInfo.connected ? "Create Repo" : "Setup Publishing"}
-                          </span>
-                        </Button>
-                      )
+                    {/* Published public site — only shown once GitHub Pages is live */}
+                    {githubInfo?.pagesUrl && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 h-8 px-2 sm:px-3"
+                        onClick={() => window.open(githubInfo.pagesUrl!, "_blank")}
+                        title="Open the public site on GitHub Pages"
+                      >
+                        <Globe className="w-4 h-4" />
+                        <span className="hidden lg:inline">Published Site</span>
+                        <ExternalLink className="w-3 h-3 opacity-60" />
+                      </Button>
+                    )}
+                    {/* Share — for external projects, lets org members invite guests */}
+                    {selectedProject?.visibility === "external" && (isOrgOwner || appRole === "admin" || appRole === "editor") && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 h-8 px-2 sm:px-3"
+                        onClick={() => setShareOpen(true)}
+                        title="Invite external users to this project"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        <span className="hidden lg:inline">Share</span>
+                      </Button>
                     )}
                   </>
                 )}
