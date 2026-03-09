@@ -461,43 +461,77 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
       let generalProjectId: string | null = null;
       let generalVersionId: string | null = null;
       if (orphanDocs.length > 0) {
+        // First check if a "General" project already exists (avoids duplicates on re-runs)
         try {
-          const { data: projRes } = await invokeFunction<{
+          const { data: listRes } = await invokeFunction<{
             ok?: boolean;
-            project?: { id?: string | number };
-            projectId?: string;
-            versionId?: string;
-          }>("create-project", {
-            body: {
-              name: "General",
-              organizationId,
-              driveFolderId: null,
-            },
-          });
-          generalProjectId = String(projRes?.project?.id || projRes?.projectId || "");
-          generalVersionId = projRes?.versionId || "";
-        } catch (err) {
-          console.error("Failed to create General project:", err);
+            projects?: Array<{ id?: string | number; name?: string; drive_folder_id?: string | null; default_version?: { id?: string | number } }>;
+          }>("list-projects", { body: { organizationId } });
+          const existing = listRes?.projects?.find(
+            (p) => p.name?.toLowerCase() === "general" && !p.drive_folder_id
+          );
+          if (existing?.id) {
+            generalProjectId = String(existing.id);
+            generalVersionId = String(existing.default_version?.id || "");
+          }
+        } catch {
+          // ignore — will try to create below
+        }
+
+        if (!generalProjectId) {
+          try {
+            const { data: projRes } = await invokeFunction<{
+              ok?: boolean;
+              project?: { id?: string | number };
+              projectId?: string | number;
+              versionId?: string | number;
+            }>("create-project", {
+              body: {
+                name: "General",
+                organizationId,
+                driveFolderId: null,
+              },
+            });
+            const rawId = projRes?.project?.id || projRes?.projectId;
+            if (rawId) {
+              generalProjectId = String(rawId);
+              generalVersionId = String(projRes?.versionId || "");
+            } else {
+              console.error("Failed to create General project: no ID in response", projRes);
+            }
+          } catch (err) {
+            console.error("Failed to create General project:", err);
+          }
         }
       }
       processed++;
       setImportProgress(Math.round((processed / totalItems) * 100));
 
+      // Fallback: if General project is unavailable, use any project we already created
+      const fallbackProjectId = generalProjectId ?? Object.values(driveToProjectId)[0] ?? null;
+      const fallbackVersionId = generalVersionId ?? Object.values(driveToVersionId)[0] ?? "";
+
+      let skippedDocs = 0;
       // Import all docs
       for (const doc of [...orphanDocs, ...nestedDocs]) {
         const parentDriveId = doc.parentDriveId || rootFolderId;
         const isOrphan = parentDriveId === rootFolderId;
 
-        const projectId = isOrphan ? generalProjectId : findProjectForItem(parentDriveId);
-        const versionId = isOrphan ? generalVersionId : (driveToVersionId[parentDriveId] || "");
+        // For nested docs, walk up hierarchy; if that fails, fall back to General/first project
+        const resolvedProjectId = isOrphan
+          ? generalProjectId
+          : (findProjectForItem(parentDriveId) ?? fallbackProjectId);
+        const resolvedVersionId = isOrphan
+          ? generalVersionId
+          : (driveToVersionId[parentDriveId] || fallbackVersionId || "");
         const topicId = driveToTopicId[parentDriveId] || null;
 
-        if (projectId) {
+        if (resolvedProjectId) {
           try {
             await invokeFunction("create-document", {
               body: {
-                projectId,
-                projectVersionId: versionId || null,
+                projectId: resolvedProjectId,
+                projectVersionId: resolvedVersionId || null,
                 topicId,
                 title: doc.name,
                 googleDocId: doc.id,
@@ -507,19 +541,24 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
           } catch (err) {
             console.error(`Failed to import doc "${doc.name}":`, err);
           }
+        } else {
+          skippedDocs++;
+          console.warn(`Could not find project for doc "${doc.name}" (parentDriveId: ${parentDriveId}) — skipped`);
         }
         processed++;
         setImportProgress(Math.round((processed / totalItems) * 100));
       }
 
       const projectCount = selectedProjects.length + (orphanDocs.length > 0 ? 1 : 0);
+      const importedDocs = docsToImport.length - skippedDocs;
       toast({
-        title: "Import complete!",
+        title: skippedDocs > 0 ? "Import complete (with warnings)" : "Import complete!",
         description: `Created ${projectCount} project${projectCount !== 1 ? "s" : ""}` +
           (selectedSubprojects.length > 0 ? `, ${selectedSubprojects.length} sub-project${selectedSubprojects.length !== 1 ? "s" : ""}` : "") +
           (selectedTopics.length > 0 ? `, ${selectedTopics.length} topic${selectedTopics.length !== 1 ? "s" : ""}` : "") +
-          (docsToImport.length > 0 ? `, ${docsToImport.length} document${docsToImport.length !== 1 ? "s" : ""}` : "") +
-          ".",
+          (importedDocs > 0 ? `, ${importedDocs} document${importedDocs !== 1 ? "s" : ""}` : "") +
+          (skippedDocs > 0 ? `. ${skippedDocs} doc${skippedDocs !== 1 ? "s" : ""} skipped (no project found).` : "."),
+        variant: skippedDocs > 0 ? "destructive" : undefined,
       });
 
       onComplete();
