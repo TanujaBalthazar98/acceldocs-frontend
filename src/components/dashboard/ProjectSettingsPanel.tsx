@@ -89,8 +89,12 @@ export const ProjectSettingsPanel = ({
   }, [open, projectId, toast]);
 
   const handleSave = async () => {
-    setSaving(true);
     if (!projectId) return;
+    setSaving(true);
+    const trimmedName = name.trim();
+    const trimmedSlug =
+      slug.trim() ||
+      trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const { data, error } = await invokeFunction<{
       ok?: boolean;
       project?: any;
@@ -99,8 +103,8 @@ export const ProjectSettingsPanel = ({
       body: {
         projectId,
         data: {
-          name: name.trim(),
-          slug: slug.trim() || null,
+          name: trimmedName,
+          slug: trimmedSlug || null,
           visibility,
           is_published: isPublished,
           show_version_switcher: showVersionSwitcher,
