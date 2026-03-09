@@ -109,17 +109,6 @@ export const useDashboardData = () => {
     return (canEdit as any) === true;
   };
 
-  // Scoped data — include docs that match the selected version OR have no version assigned
-  const scopedDocuments = selectedVersion
-    ? documents.filter(
-        (doc) => doc.project_version_id === selectedVersion.id || !doc.project_version_id
-      )
-    : documents;
-
-  const scopedTopics = selectedVersion
-    ? topics.filter((topic) => topic.project_version_id === selectedVersion.id)
-    : topics;
-
   const getDescendantProjectIds = (projectId: string) => {
     const ids = new Set<string>([projectId]);
     const queue = [projectId];
@@ -137,6 +126,52 @@ export const useDashboardData = () => {
 
   const selectedProjectIds = selectedProject ? getDescendantProjectIds(selectedProject.id) : null;
   const unassignedDocuments = documents.filter((doc) => !doc.project_id);
+
+  const versionIdentity = (version: {
+    id?: string;
+    slug?: string;
+    name?: string;
+    semver_major?: number;
+    semver_minor?: number;
+    semver_patch?: number;
+  } | null | undefined): string => {
+    if (!version) return "";
+    const major = Number(version.semver_major ?? 0);
+    const minor = Number(version.semver_minor ?? 0);
+    const patch = Number(version.semver_patch ?? 0);
+    if (major || minor || patch) return `semver:${major}.${minor}.${patch}`;
+    if (version.slug) return `slug:${version.slug.toLowerCase()}`;
+    if (version.name) return `name:${version.name.toLowerCase()}`;
+    return version.id ? `id:${version.id}` : "";
+  };
+
+  const versionIdentityById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const version of projectVersions) {
+      map.set(version.id, versionIdentity(version));
+    }
+    return map;
+  }, [projectVersions]);
+
+  const selectedVersionIdentity = selectedVersion ? versionIdentity(selectedVersion) : null;
+
+  const matchesSelectedVersion = (entityVersionId?: string | null): boolean => {
+    if (!selectedVersion) return true;
+    if (!entityVersionId) return true;
+    if (entityVersionId === selectedVersion.id) return true;
+    if (!selectedVersionIdentity) return false;
+    const entityIdentity = versionIdentityById.get(entityVersionId);
+    return !!entityIdentity && entityIdentity === selectedVersionIdentity;
+  };
+
+  // Scoped data — include records for the selected version identity (semver/slug), not only exact ID.
+  const scopedDocuments = selectedVersion
+    ? documents.filter((doc) => matchesSelectedVersion(doc.project_version_id))
+    : documents;
+
+  const scopedTopics = selectedVersion
+    ? topics.filter((topic) => matchesSelectedVersion(topic.project_version_id))
+    : topics;
 
   // Build a set of project slugs/names for the selected project tree (for legacy matching)
   const selectedProjectSlugs = useMemo(() => {
