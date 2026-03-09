@@ -596,6 +596,81 @@ export const useDriveSync = ({
         }
       }
 
+      // Sync docs sitting directly at the root Drive folder (not inside any subfolder)
+      const rootResult = await listFolder(effectiveRootFolderId);
+      if (rootResult.files) {
+        const rootDocs = rootResult.files.filter((item) => item.mimeType === docMimeType);
+        if (rootDocs.length > 0) {
+          // Find or create a "General" project for root-level docs
+          let generalProjectId: string | null = null;
+          let generalVersionId: string | null = null;
+
+          const existingGeneral = projects.find(
+            (p) => p.name.toLowerCase() === "general" && !p.parent_id
+          );
+          if (existingGeneral) {
+            generalProjectId = existingGeneral.id;
+            generalVersionId = versionIdByProjectId.get(existingGeneral.id) ?? null;
+            if (!generalVersionId) {
+              generalVersionId = await ensureDefaultVersionForProject(generalProjectId, false);
+              versionIdByProjectId.set(generalProjectId, generalVersionId ?? null);
+            }
+          } else {
+            const { data: projRes } = await invokeFunction<{
+              ok?: boolean;
+              project?: { id?: string | number };
+              projectId?: string;
+              versionId?: string;
+            }>("create-project", {
+              body: { name: "General", organizationId, driveFolderId: null },
+            });
+            const newId = String(projRes?.project?.id || projRes?.projectId || "");
+            if (newId) {
+              generalProjectId = newId;
+              generalVersionId = projRes?.versionId || null;
+              syncedProjects++;
+            }
+          }
+
+          if (generalProjectId) {
+            for (const doc of rootDocs) {
+              const { data: docRows } = await list("documents", {
+                filters: { google_doc_id: doc.id },
+                limit: 1,
+              });
+              const existing = Array.isArray(docRows) ? docRows[0] : null;
+              if (existing) continue; // already imported
+
+              const { data: created, error: docError } = await invokeFunction<{
+                ok?: boolean;
+                documentId?: string;
+                error?: string;
+              }>("create-document", {
+                body: {
+                  title: doc.name,
+                  googleDocId: doc.id,
+                  projectId: generalProjectId,
+                  projectVersionId: generalVersionId,
+                  topicId: null,
+                  isPublished: false,
+                  visibility: "internal",
+                },
+              });
+              if (!docError && created?.ok) {
+                syncedDocs++;
+                if (created.documentId && doc.id) {
+                  const token = getGoogleToken();
+                  await invokeFunction("google-drive", {
+                    body: { action: "sync_doc_content", documentId: created.documentId, googleDocId: doc.id },
+                    ...(token ? { headers: { "x-google-token": token } } : {}),
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
       toast({
         title: "Sync complete",
         description: `Synced ${syncedProjects} new projects, ${syncedTopics} topics, and ${syncedDocs} documents.`,
