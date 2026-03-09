@@ -946,11 +946,17 @@ const Dashboard = () => {
                                 </div>
                               ) : selectedProject ? (
                                 <div className="flex flex-col items-center gap-3">
-                                  <span>Select a topic to view pages.</span>
-                                  <Button size="sm" variant="outline" onClick={() => setAddTopicOpen(true)}>
-                                    <Plus className="w-4 h-4 mr-1" />
-                                    Add Topic
-                                  </Button>
+                                  <span>No pages in this project yet.</span>
+                                  <div className="flex flex-col sm:flex-row gap-2">
+                                    <Button size="sm" onClick={() => setAddPageOpen(true)}>
+                                      <Plus className="w-4 h-4 mr-1" />
+                                      Add Page
+                                    </Button>
+                                    <Button size="sm" variant="outline" onClick={driveSync.handleSyncFromDrive}>
+                                      <RefreshCw className="w-4 h-4 mr-1" />
+                                      Sync Drive
+                                    </Button>
+                                  </div>
                                 </div>
                               ) : (
                                 "Select a project to view pages."
