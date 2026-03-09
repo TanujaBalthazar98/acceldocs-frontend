@@ -161,7 +161,9 @@ export const useDashboardData = () => {
     if (entityVersionId === selectedVersion.id) return true;
     if (!selectedVersionIdentity) return false;
     const entityIdentity = versionIdentityById.get(entityVersionId);
-    return !!entityIdentity && entityIdentity === selectedVersionIdentity;
+    // Fail open when version metadata is missing/stale to avoid hiding docs.
+    if (!entityIdentity) return true;
+    return entityIdentity === selectedVersionIdentity;
   };
 
   // Scoped data — include records for the selected version identity (semver/slug), not only exact ID.
@@ -190,7 +192,7 @@ export const useDashboardData = () => {
   }, [selectedProjectIds, projects]);
 
   // Filtered data
-  const filteredDocuments = scopedDocuments.filter((doc) => {
+  const filteredDocumentsPrimary = scopedDocuments.filter((doc) => {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       if (!doc.title.toLowerCase().includes(query)) return false;
@@ -206,6 +208,28 @@ export const useDashboardData = () => {
     }
     return true;
   });
+
+  const filteredDocumentsFallback = documents.filter((doc) => {
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      if (!doc.title.toLowerCase().includes(query)) return false;
+    }
+    if (selectedTopic) return doc.topic_id === selectedTopic.id;
+    if (selectedProject) {
+      if (doc.project_id && selectedProjectIds?.has(doc.project_id)) return true;
+      const legacyProject = (doc as any).project;
+      if (legacyProject && selectedProjectSlugs?.has(String(legacyProject).toLowerCase())) return true;
+      return false;
+    }
+    return true;
+  });
+
+  const filteredDocuments =
+    selectedVersion &&
+    filteredDocumentsPrimary.length === 0 &&
+    filteredDocumentsFallback.length > 0
+      ? filteredDocumentsFallback
+      : filteredDocumentsPrimary;
 
   const visibleDocuments = filteredDocuments.slice(0, visiblePagesCount);
   const hasMorePages = visiblePagesCount < filteredDocuments.length;
