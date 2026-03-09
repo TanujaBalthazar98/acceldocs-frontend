@@ -74,6 +74,9 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const [heroDescription, setHeroDescription] = useState("");
   const [showSearch, setShowSearch] = useState(true);
   const [showFeatured, setShowFeatured] = useState(true);
+  const [analyticsPropertyId, setAnalyticsPropertyId] = useState("");
+  const [copyright, setCopyright] = useState("");
+  const [socialLinks, setSocialLinks] = useState("");
   const [showDriveId, setShowDriveId] = useState(false);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [autoReconnectDrive, setAutoReconnectDrive] = useState(true);
@@ -123,6 +126,9 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           hero_description?: string;
           show_search_on_landing?: boolean;
           show_featured_projects?: boolean;
+          analytics_property_id?: string;
+          copyright?: string;
+          custom_links?: string;
           members?: any[];
           error?: string;
         }>("get-organization");
@@ -148,6 +154,17 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         setHeroDescription(org.hero_description || "");
         setShowSearch(org.show_search_on_landing ?? true);
         setShowFeatured(org.show_featured_projects ?? true);
+        setAnalyticsPropertyId(org.analytics_property_id || "");
+        setCopyright(org.copyright || "");
+        // Render custom_links as pretty JSON if it looks like social links
+        if (org.custom_links) {
+          try {
+            const parsed = JSON.parse(org.custom_links);
+            setSocialLinks(JSON.stringify(parsed, null, 2));
+          } catch {
+            setSocialLinks(org.custom_links);
+          }
+        }
 
         const mapped = Array.isArray(orgRes.members)
           ? orgRes.members.map((member: any) => ({
@@ -214,6 +231,9 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
       hero_description: heroDescription.trim() || null,
       show_search_on_landing: showSearch,
       show_featured_projects: showFeatured,
+      analytics_property_id: analyticsPropertyId.trim() || null,
+      copyright: copyright.trim() || null,
+      custom_links: socialLinks.trim() || null,
     };
 
     const attempts = [
@@ -285,10 +305,11 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           <div className="text-sm text-muted-foreground">Loading...</div>
         ) : (
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-7">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="brand">Branding</TabsTrigger>
               <TabsTrigger value="landing">Landing</TabsTrigger>
+              <TabsTrigger value="docs">Docs Site</TabsTrigger>
               <TabsTrigger value="drive">Drive</TabsTrigger>
               <TabsTrigger value="github">GitHub</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
@@ -393,6 +414,60 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                   <div className="text-xs text-muted-foreground">Highlight featured projects on landing</div>
                 </div>
                 <Switch checked={showFeatured} onCheckedChange={setShowFeatured} />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="docs" className="mt-6 space-y-5">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-1">Published Docs Site</h3>
+                <p className="text-xs text-muted-foreground">
+                  These settings are written into <code className="bg-muted px-1 rounded">zensical.toml</code> when you publish. Changes take effect on next publish.
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="org-analytics">Google Analytics Property ID</Label>
+                <Input
+                  id="org-analytics"
+                  value={analyticsPropertyId}
+                  onChange={(e) => setAnalyticsPropertyId(e.target.value)}
+                  placeholder="G-XXXXXXXXXX"
+                />
+                <p className="text-xs text-muted-foreground">Enables Google Analytics on your published docs site.</p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="org-copyright">Copyright Notice</Label>
+                <Input
+                  id="org-copyright"
+                  value={copyright}
+                  onChange={(e) => setCopyright(e.target.value)}
+                  placeholder="© 2026 Your Name"
+                />
+                <p className="text-xs text-muted-foreground">Shown in the site footer.</p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="org-social">Social Links</Label>
+                <Textarea
+                  id="org-social"
+                  value={socialLinks}
+                  onChange={(e) => setSocialLinks(e.target.value)}
+                  rows={6}
+                  placeholder={`[\n  {\n    "link": "https://github.com/you",\n    "icon": "fontawesome/brands/github",\n    "name": "GitHub"\n  }\n]`}
+                  className="font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  JSON array of social links. Each item: <code className="bg-muted px-1 rounded">{"{ link, icon, name }"}</code>.
+                  Icons use <a href="https://fontawesome.com/icons" target="_blank" rel="noopener noreferrer" className="underline">FontAwesome</a> names like <code className="bg-muted px-1 rounded">fontawesome/brands/github</code>.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border/60 bg-muted/40 p-4">
+                <p className="text-xs font-medium text-foreground mb-1">About themes</p>
+                <p className="text-xs text-muted-foreground">
+                  Zensical uses the Material for MkDocs theme — there is no theme switcher. You control the look via <strong>Primary Color</strong> (Branding tab), fonts, and custom CSS. Colors must be Material color names (e.g. <code className="bg-muted px-1 rounded">indigo</code>, <code className="bg-muted px-1 rounded">teal</code>, <code className="bg-muted px-1 rounded">deep-orange</code>) or left blank for the default.
+                </p>
               </div>
             </TabsContent>
 
