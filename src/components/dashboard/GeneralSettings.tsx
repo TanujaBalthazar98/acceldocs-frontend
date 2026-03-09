@@ -800,15 +800,20 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
     if (!organizationId) return;
     setPublishing(true);
     try {
-      const { data, error } = await apiFetch<{ ok: boolean; error?: string; pagesUrl?: string; published?: number; skipped?: number; errors?: number; pushed?: boolean; pushWarning?: string }>(
+      const publishHeaders: Record<string, string> = {};
+      if (googleAccessToken) {
+        publishHeaders["x-google-token"] = googleAccessToken;
+      }
+      const { data, error } = await apiFetch<{ ok: boolean; error?: string; pagesUrl?: string; published?: number; skipped?: number; errors?: number; pushed?: boolean; pushWarning?: string; contentFetched?: number }>(
         "/publish/mkdocs",
-        { method: "POST", body: JSON.stringify({ organizationId }) }
+        { method: "POST", body: JSON.stringify({ organizationId }), headers: publishHeaders }
       );
       if (error || !data?.ok) {
         toast({ title: "Publish failed", description: error?.message || data?.error, variant: "destructive" });
       } else {
         const detail = [
           data.published ? `${data.published} doc${data.published !== 1 ? "s" : ""} committed` : null,
+          data.contentFetched ? `${data.contentFetched} fetched from Drive` : null,
           data.pushed ? "pushed to GitHub" : null,
           data.skipped ? `${data.skipped} skipped` : null,
           data.errors ? `${data.errors} errors` : null,
