@@ -539,6 +539,10 @@ export const useDashboardData = () => {
 
       setProjects(uniqueDedupedProjects);
 
+      // Use only deduplicated project IDs for versions/topics to avoid showing duplicate
+      // v1.0 entries from projects that were created multiple times by the auto-bootstrap.
+      // Use all IDs for documents so nothing gets lost if docs are on a non-canonical project.
+      const dedupedProjectIds = uniqueDedupedProjects.map((p) => p.id);
       const projectIds = uniqueProjectIdsForFetch;
       console.debug("[fetchData] projects loaded", {
         count: uniqueDedupedProjects.length,
@@ -555,7 +559,7 @@ export const useDashboardData = () => {
         ok?: boolean;
         versions?: any[];
         error?: string;
-      }>("list-project-versions", { body: { projectIds } });
+      }>("list-project-versions", { body: { projectIds: dedupedProjectIds } });
       if (versionError || !versionRes?.ok) {
         throw versionError || new Error(versionRes?.error || "Failed to load versions");
       }
@@ -569,7 +573,7 @@ export const useDashboardData = () => {
         ok?: boolean;
         topics?: any[];
         error?: string;
-      }>("list-topics", { body: { projectIds } });
+      }>("list-topics", { body: { projectIds: dedupedProjectIds } });
       if (topicError || !topicRes?.ok) {
         throw topicError || new Error(topicRes?.error || "Failed to load topics");
       }
