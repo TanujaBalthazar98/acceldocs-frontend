@@ -53,6 +53,7 @@ export interface Document {
     created_at: string;
     updated_at: string;
     visibility: VisibilityLevel;
+    status?: "draft" | "review" | "approved" | "rejected";
     is_published: boolean;
     owner_id: string | null;
     owner_name?: string;

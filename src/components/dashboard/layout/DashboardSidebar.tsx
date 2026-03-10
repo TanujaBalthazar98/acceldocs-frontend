@@ -22,6 +22,7 @@ import {
   Code as CodeIcon,
   HelpCircle,
   Trash2,
+  ClipboardCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -123,6 +124,10 @@ interface DashboardSidebarProps {
   navigate: (path: string) => void;
   fetchData: () => void;
   currentPath: string;
+
+  showApprovalsPanel: boolean;
+  setShowApprovalsPanel: (open: boolean) => void;
+  pendingReviewCount: number;
 }
 
 interface NavItemProps {
@@ -238,7 +243,10 @@ export function DashboardSidebar({
   permissions,
   navigate,
   fetchData,
-  currentPath
+  currentPath,
+  showApprovalsPanel,
+  setShowApprovalsPanel,
+  pendingReviewCount,
 }: DashboardSidebarProps) {
   
   const subProjects = projects.filter(p => p.parent_id === selectedProject?.id);
@@ -338,6 +346,15 @@ export function DashboardSidebar({
                 icon={BookOpen}
                 label="Documentation"
                 collapsed={sidebarCollapsed}
+              />
+
+              <NavItem
+                icon={ClipboardCheck}
+                label="Approvals"
+                active={showApprovalsPanel}
+                collapsed={sidebarCollapsed}
+                onClick={() => setShowApprovalsPanel(true)}
+                badge={pendingReviewCount > 0 ? String(pendingReviewCount) : undefined}
               />
               
               {selectedProject && (

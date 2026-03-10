@@ -66,6 +66,7 @@ import { Onboarding } from "@/components/dashboard/Onboarding";
 import { DashboardLoading } from "@/components/dashboard/DashboardLoading";
 import { TopicsSection } from "@/components/dashboard/TopicsSection";
 import { AuditLogPanel } from "@/components/dashboard/AuditLogPanel";
+import { ApprovalsPanel } from "@/components/dashboard/ApprovalsPanel";
 import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { DriveStatusIndicator } from "@/components/dashboard/DriveStatusIndicator";
@@ -77,6 +78,7 @@ import { useDashboardData } from "@/hooks/useDashboardData";
 import { useDriveSync } from "@/hooks/useDriveSync";
 import { useDashboardActions } from "@/hooks/useDashboardActions";
 import { apiFetch } from "@/lib/api/client";
+import { invokeFunction } from "@/lib/api/functions";
 
 import { Project, ProjectVersion, Topic, Document, VisibilityLevel } from "@/types/dashboard";
 import { mapDocumentFromStrapi } from "@/lib/dataMappers";
@@ -229,6 +231,8 @@ const Dashboard = () => {
   const [topicSettingsOpen, setTopicSettingsOpen] = useState(false);
   const [settingsTopic, setSettingsTopic] = useState<Topic | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
+  const [showApprovalsPanel, setShowApprovalsPanel] = useState(false);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
   // API, MCP, Integrations panels removed — not part of Google Docs + MkDocs + Git architecture
   const [showAPISettings, setShowAPISettings] = useState(false);
   const [showMCPSettings, setShowMCPSettings] = useState(false);
@@ -251,6 +255,21 @@ const Dashboard = () => {
         setGithubInfo({ connected: data.connected, pagesUrl: data.pagesUrl });
       }
     }).catch(() => {/* silently ignore */});
+  }, [organizationId]);
+
+  const fetchPendingReviewCount = async () => {
+    try {
+      const { data } = await invokeFunction("approvals-count", { body: {} });
+      if (data?.ok && typeof data.count === "number") {
+        setPendingReviewCount(data.count);
+      }
+    } catch {
+      // silently ignore
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingReviewCount();
   }, [organizationId]);
 
   // Deep-link handling
@@ -327,6 +346,25 @@ const Dashboard = () => {
     );
   }
 
+  // Approvals panel
+  if (showApprovalsPanel) {
+    return (
+      <ApprovalsPanel
+        userRole={appRole || "viewer"}
+        onClose={() => setShowApprovalsPanel(false)}
+        onOpenDocument={(docId, _docTitle) => {
+          setShowApprovalsPanel(false);
+          const doc = documents.find((d) => String(d.id) === String(docId));
+          if (doc) {
+            setSelectedDocument(doc);
+            setSelectedPage(doc.id);
+          }
+        }}
+        onCountChange={setPendingReviewCount}
+      />
+    );
+  }
+
   // Page view
   if (selectedPage && selectedDocument) {
     return (
@@ -335,8 +373,12 @@ const Dashboard = () => {
         onBack={() => {
           setSelectedPage(null);
           setSelectedDocument(null);
+          fetchPendingReviewCount();
         }}
-        onDocumentUpdate={actions.handleDocumentUpdate}
+        onDocumentUpdate={() => {
+          actions.handleDocumentUpdate();
+          fetchPendingReviewCount();
+        }}
         userRole={appRole || "viewer"}
       />
     );
@@ -415,6 +457,9 @@ const Dashboard = () => {
           navigate={navigate}
           fetchData={fetchData}
           currentPath={location.pathname}
+          showApprovalsPanel={showApprovalsPanel}
+          setShowApprovalsPanel={setShowApprovalsPanel}
+          pendingReviewCount={pendingReviewCount}
         />
 
         {/* Main Content */}
@@ -1094,42 +1139,59 @@ const Dashboard = () => {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3 hidden sm:table-cell">
-                                  {(() => {
-                                    const hasUnpublishedChanges =
-                                      !doc.is_published &&
-                                      doc.published_content_html &&
-                                      doc.content_html !== doc.published_content_html;
+                                  <div className="flex flex-col gap-1.5">
+                                    {(() => {
+                                      const hasUnpublishedChanges =
+                                        !doc.is_published &&
+                                        doc.published_content_html &&
+                                        doc.content_html !== doc.published_content_html;
 
-                                    if (doc.is_published) {
-                                      return (
-                                        <div className="flex items-center gap-2">
-                                          <Circle className="w-2 h-2 bg-green-500 rounded-full" />
-                                          <span className="text-sm text-green-600">Published</span>
-                                        </div>
-                                      );
-                                    } else if (hasUnpublishedChanges) {
-                                      return (
-                                        <div className="flex items-center gap-2">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-7 px-2 text-xs gap-1.5 border-amber-500/50 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600"
-                                            onClick={(e) => actions.handleRepublishPage(e, doc.id)}
-                                          >
-                                            <RefreshCw className="w-3 h-3" />
-                                            Republish
-                                          </Button>
-                                        </div>
-                                      );
-                                    } else {
-                                      return (
-                                        <div className="flex items-center gap-2">
-                                          <Circle className="w-2 h-2 bg-muted-foreground rounded-full" />
-                                          <span className="text-sm text-muted-foreground">Draft</span>
-                                        </div>
-                                      );
-                                    }
-                                  })()}
+                                      if (doc.is_published) {
+                                        return (
+                                          <div className="flex items-center gap-2">
+                                            <Circle className="w-2 h-2 bg-green-500 rounded-full" />
+                                            <span className="text-sm text-green-600">Published</span>
+                                          </div>
+                                        );
+                                      } else if (hasUnpublishedChanges) {
+                                        return (
+                                          <div className="flex items-center gap-2">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-7 px-2 text-xs gap-1.5 border-amber-500/50 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600"
+                                              onClick={(e) => actions.handleRepublishPage(e, doc.id)}
+                                            >
+                                              <RefreshCw className="w-3 h-3" />
+                                              Republish
+                                            </Button>
+                                          </div>
+                                        );
+                                      } else {
+                                        return (
+                                          <div className="flex items-center gap-2">
+                                            <Circle className="w-2 h-2 bg-muted-foreground rounded-full" />
+                                            <span className="text-sm text-muted-foreground">Draft</span>
+                                          </div>
+                                        );
+                                      }
+                                    })()}
+                                    {doc.status === "review" && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600 border border-amber-200 w-fit">
+                                        In Review
+                                      </span>
+                                    )}
+                                    {doc.status === "approved" && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-600 border border-green-200 w-fit">
+                                        Approved
+                                      </span>
+                                    )}
+                                    {doc.status === "rejected" && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-600 border border-red-200 w-fit">
+                                        Changes Requested
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="px-4 py-3 hidden md:table-cell">
                                   <div className="flex items-center gap-2">
