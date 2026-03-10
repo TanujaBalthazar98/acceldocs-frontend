@@ -888,6 +888,8 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
         "/publish/mkdocs",
         { method: "POST", body: JSON.stringify({ organizationId }), headers: publishHeaders }
       );
+      // Log full response for debugging
+      console.log("[Publish] Full response:", JSON.stringify(data, null, 2));
       if (error || !data?.ok) {
         toast({ title: "Publish failed", description: error?.message || data?.error, variant: "destructive" });
       } else {
@@ -913,7 +915,19 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
           }
         }
         if (data.pushWarning) {
-          toast({ title: "Note", description: data.pushWarning, variant: "default" });
+          toast({ title: "Publish Warning", description: data.pushWarning, variant: "destructive" });
+        }
+        // Show debug info so we can diagnose build issues
+        const dbg = (data as any)?._debug;
+        if (dbg) {
+          const mdCount = dbg.mdFiles?.length ?? 0;
+          const hasToml = !!dbg.zensicalToml;
+          const lastCommit = dbg.gitLog?.[0] ?? "none";
+          console.log("[Publish] Debug:", dbg);
+          toast({
+            title: "Build Debug",
+            description: `${mdCount} md files, toml: ${hasToml ? "yes" : "no"}, last commit: ${lastCommit}`,
+          });
         }
         await loadSettings();
       }
