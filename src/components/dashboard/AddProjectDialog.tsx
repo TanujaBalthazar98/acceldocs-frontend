@@ -410,15 +410,13 @@ export const AddProjectDialog = ({
           });
           
           const { data, error } = await invokeFunction("discover-drive-structure", {
-            body: {
-              folderId: selectedDriveFolder.id,
-              accessToken: googleAccessToken,
-            },
+            body: { folderId: selectedDriveFolder.id },
+            headers: { "x-google-token": googleAccessToken },
           });
 
           if (!error && data) {
             // Check if anything found
-            const hasItems = data.subprojects.length > 0 || data.documents.length > 0 || data.topics.length > 0;
+            const hasItems = (data.subprojects?.length ?? 0) > 0 || (data.documents?.length ?? 0) > 0;
             if (hasItems) {
               discoveryResult = data;
               console.log("Discovery found items:", data);

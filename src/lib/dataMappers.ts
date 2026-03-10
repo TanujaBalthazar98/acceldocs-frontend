@@ -31,6 +31,7 @@ export const mapProjectFromStrapi = (item: any, orgId: string): Project => {
     parent_id: normalizedParent,
     organization_id: orgId,
     show_version_switcher: attrs.show_version_switcher ?? true,
+    require_approval: attrs.require_approval ?? true,
   };
 };
 
