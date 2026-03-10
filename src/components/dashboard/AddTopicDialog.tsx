@@ -301,10 +301,12 @@ export const AddTopicDialog = ({
                   folderId: currentDriveFolderId,
                   accessToken: googleAccessToken,
                 },
+                headers: { "x-google-token": googleAccessToken || "" },
               });
 
-              if (response.error) {
-                errors.push({ type: "document", name: item.name, error: response.error.message || "Failed to convert markdown" });
+              if (response.error || !response.data?.ok) {
+                const errMsg = response.error?.message || response.data?.error || "Failed to convert markdown";
+                errors.push({ type: "document", name: item.name, error: errMsg });
                 continue;
               }
 

@@ -128,10 +128,11 @@ export const AddPageDialog = ({
           folderId: parentFolderId,
           accessToken: googleAccessToken,
         },
+        headers: { "x-google-token": googleAccessToken || "" },
       });
 
-      if (response.error) {
-        throw new Error(response.error.message || "Failed to convert markdown");
+      if (response.error || !response.data?.ok) {
+        throw new Error(response.error?.message || response.data?.error || "Failed to convert markdown");
       }
 
       const { documentId } = response.data;
