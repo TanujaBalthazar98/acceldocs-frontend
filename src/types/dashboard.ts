@@ -17,6 +17,7 @@ export interface Project {
     openapi_spec_json?: any;
     openapi_spec_url?: string | null;
     show_version_switcher?: boolean;
+    require_approval?: boolean;
 }
 
 export interface ProjectVersion {

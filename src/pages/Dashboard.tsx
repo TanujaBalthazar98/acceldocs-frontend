@@ -367,6 +367,9 @@ const Dashboard = () => {
 
   // Page view
   if (selectedPage && selectedDocument) {
+    const docProject = selectedDocument.project_id
+      ? projects.find((p) => p.id === selectedDocument.project_id)
+      : null;
     return (
       <PageView
         document={selectedDocument}
@@ -380,6 +383,7 @@ const Dashboard = () => {
           fetchPendingReviewCount();
         }}
         userRole={appRole || "viewer"}
+        requireApproval={docProject?.require_approval ?? true}
       />
     );
   }

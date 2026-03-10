@@ -73,6 +73,7 @@ interface PageViewProps {
   onBack: () => void;
   onDocumentUpdate?: () => void;
   userRole?: string; // owner | admin | editor | reviewer | viewer
+  requireApproval?: boolean; // if false, skip review and publish directly
 }
 
 const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: string; color: string }> = {
@@ -81,7 +82,7 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
   public: { icon: Globe, label: "Public", color: "text-green-400" },
 };
 
-export const PageView = ({ document, onBack, onDocumentUpdate, userRole }: PageViewProps) => {
+export const PageView = ({ document, onBack, onDocumentUpdate, userRole, requireApproval = true }: PageViewProps) => {
   const [shareOpen, setShareOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isStatusChanging, setIsStatusChanging] = useState(false);
@@ -302,7 +303,20 @@ export const PageView = ({ document, onBack, onDocumentUpdate, userRole }: PageV
             </span>
 
             {/* Workflow actions */}
-            {docStatus === "draft" && canEdit && (
+            {!requireApproval && canEdit && (docStatus === "draft" || docStatus === "rejected") && (
+              /* No-approval mode: publish directly */
+              <Button
+                variant="default"
+                size="sm"
+                className="gap-1.5 text-xs sm:text-sm bg-green-600 hover:bg-green-700"
+                disabled={isStatusChanging}
+                onClick={() => changeStatus("approved")}
+              >
+                {isStatusChanging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                Publish
+              </Button>
+            )}
+            {requireApproval && docStatus === "draft" && canEdit && (
               <Button
                 variant="default"
                 size="sm"
@@ -314,7 +328,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate, userRole }: PageV
                 Submit for Review
               </Button>
             )}
-            {docStatus === "rejected" && canEdit && (
+            {requireApproval && docStatus === "rejected" && canEdit && (
               <Button
                 variant="default"
                 size="sm"
@@ -326,7 +340,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate, userRole }: PageV
                 Resubmit for Review
               </Button>
             )}
-            {docStatus === "review" && canReview && (
+            {requireApproval && docStatus === "review" && canReview && (
               <>
                 <Button
                   variant="default"

@@ -50,6 +50,7 @@ export const ProjectSettingsPanel = ({
   const [visibility, setVisibility] = useState<VisibilityLevel>("internal");
   const [isPublished, setIsPublished] = useState(false);
   const [showVersionSwitcher, setShowVersionSwitcher] = useState(true);
+  const [requireApproval, setRequireApproval] = useState(true);
   const [driveFolderId, setDriveFolderId] = useState("");
   const [showDriveId, setShowDriveId] = useState(false);
   const [activeTab, setActiveTab] = useState<"basics" | "publishing" | "drive">("basics");
@@ -74,6 +75,7 @@ export const ProjectSettingsPanel = ({
         setVisibility(attrs.visibility || "internal");
         setIsPublished(!!attrs.is_published);
         setShowVersionSwitcher(attrs.show_version_switcher ?? true);
+        setRequireApproval(attrs.require_approval ?? true);
         setDriveFolderId(attrs.drive_folder_id || "");
       } catch (err: any) {
         toast({
@@ -108,6 +110,7 @@ export const ProjectSettingsPanel = ({
           visibility,
           is_published: isPublished,
           show_version_switcher: showVersionSwitcher,
+          require_approval: requireApproval,
           drive_folder_id: driveFolderId.trim() || null,
         },
       },
@@ -225,6 +228,16 @@ export const ProjectSettingsPanel = ({
                           <div className="text-xs text-muted-foreground">Enable version selector in docs</div>
                         </div>
                         <Switch checked={showVersionSwitcher} onCheckedChange={setShowVersionSwitcher} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label>Require Approval</Label>
+                          <div className="text-xs text-muted-foreground">
+                            When off, documents can be published directly without a review step.
+                            Ideal for solo users or teams that don't need a review workflow.
+                          </div>
+                        </div>
+                        <Switch checked={requireApproval} onCheckedChange={setRequireApproval} />
                       </div>
                     </div>
                   </TabsContent>
