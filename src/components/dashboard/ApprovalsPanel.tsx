@@ -19,6 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+
+const GOOGLE_TOKEN_KEY = "google_access_token";
 import { formatDistanceToNow } from "date-fns";
 
 type DocStatus = "draft" | "review" | "approved" | "rejected";
@@ -93,6 +96,8 @@ function TimeAgo({ dateStr }: { dateStr: string | null }) {
 
 export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChange }: ApprovalsPanelProps) {
   const { toast } = useToast();
+  const { googleAccessToken } = useAuth();
+  const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
   const canReview = userRole === "owner" || userRole === "admin" || userRole === "reviewer";
 
   const [activeTab, setActiveTab] = useState("pending");
@@ -139,8 +144,10 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
   const handleAction = async (docId: string, action: "approve" | "reject", comment?: string) => {
     setActioning(docId);
     try {
+      const token = getGoogleToken();
       const { data, error } = await invokeFunction("approvals-action", {
         body: { document_id: Number(docId), action, comment: comment || null },
+        ...(token ? { headers: { "x-google-token": token } } : {}),
       });
       if (error || !data?.ok) throw new Error(data?.error || error || "Action failed");
       toast({
