@@ -903,15 +903,15 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
           data.hasGoogleToken ? "has Drive token" : "no Drive token",
         ].filter(Boolean).join(", ");
         toast({ title: "Published via Zensical", description: detail });
-        // Show per-doc details if any were skipped or errored
-        if (data.docDetails && data.docDetails.length > 0 && (data.skipped || data.errors)) {
-          const docInfo = data.docDetails
+        // Always show per-doc details so user can see what happened to each doc
+        if (data.docDetails && data.docDetails.length > 0) {
+          const notPublished = data.docDetails
             .filter((d: {status: string}) => d.status !== "published")
-            .slice(0, 5)
+            .slice(0, 8)
             .map((d: {title: string; status: string}) => `${d.title}: ${d.status}`)
-            .join("; ");
-          if (docInfo) {
-            toast({ title: "Doc details", description: docInfo, variant: "default" });
+            .join("\n");
+          if (notPublished) {
+            toast({ title: `${data.docDetails.filter((d: {status: string}) => d.status !== "published").length} docs not published`, description: notPublished, variant: "destructive" });
           }
         }
         if (data.pushWarning) {
