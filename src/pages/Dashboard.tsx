@@ -1,1543 +1,626 @@
-import { useState, useEffect } from "react";
+/**
+ * AccelDocs Dashboard — clean architecture rebuild.
+ */
+
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useToast } from "@/hooks/use-toast";
+
+import { orgApi, sectionsApi, pagesApi, driveApi, buildSectionTree } from "@/api";
+import type { Section, Page } from "@/api/types";
+
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import {
-  FileText,
-  Plus,
-  ChevronRight,
-  Folder,
-  User,
-  Clock,
-  Circle,
-  MoreHorizontal,
-  RefreshCw,
-  ExternalLink,
-  Trash2,
-  Send,
-  CheckCircle,
-  Lock,
-  Eye,
-  Globe,
-  BookOpen,
-  Upload,
-  Bot,
-  ArrowRight,
-  UserPlus,
-  CheckSquare,
-  Square,
-  XCircle,
-  X,
-  Loader2,
-  Settings,
-} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { PageView } from "@/components/dashboard/PageView";
-import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
-import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
-import { AddPageDialog } from "@/components/dashboard/AddPageDialog";
-import { AddProjectDialog } from "@/components/dashboard/AddProjectDialog";
-import { AddTopicDialog } from "@/components/dashboard/AddTopicDialog";
-import { ProjectSettingsPanel } from "@/components/dashboard/ProjectSettingsPanel";
-import { PageSettingsDialog } from "@/components/dashboard/PageSettingsDialog";
-import { ImportMarkdownDialog } from "@/components/dashboard/ImportMarkdownDialog";
-import { DriveDiscoveryDialog, DiscoveryResult } from "@/components/dashboard/DriveDiscoveryDialog";
-import { DashboardSidebar } from "@/components/dashboard/layout/DashboardSidebar";
-import { TopicSettingsDialog } from "@/components/dashboard/TopicSettingsDialog";
-import { GeneralSettings } from "@/components/dashboard/GeneralSettings";
-import { Onboarding } from "@/components/dashboard/Onboarding";
-import { DashboardLoading } from "@/components/dashboard/DashboardLoading";
-import { TopicsSection } from "@/components/dashboard/TopicsSection";
-import { AuditLogPanel } from "@/components/dashboard/AuditLogPanel";
-import { ApprovalsPanel } from "@/components/dashboard/ApprovalsPanel";
-import { DocAssistantChat } from "@/components/dashboard/DocAssistantChat";
-import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
-import { DriveStatusIndicator } from "@/components/dashboard/DriveStatusIndicator";
-import { DriveReauthListener } from "@/components/dashboard/DriveReauthListener";
-import { DRIVE_INTEGRATION_ENABLED } from "@/lib/featureFlags";
-import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
-import { AssignProjectDialog } from "@/components/dashboard/AssignProjectDialog";
-import { useDashboardData } from "@/hooks/useDashboardData";
-import { useDriveSync } from "@/hooks/useDriveSync";
-import { useDashboardActions } from "@/hooks/useDashboardActions";
-import { apiFetch } from "@/lib/api/client";
-import { invokeFunction } from "@/lib/api/functions";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  BookOpen,
+  ChevronRight,
+  ChevronDown,
+  ExternalLink,
+  FileText,
+  FolderOpen,
+  Globe,
+  Loader2,
+  LogOut,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Settings,
+  Trash2,
+  ArrowUpFromLine,
+  Wifi,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { API_BASE_URL } from "@/api/client";
 
-import { Project, ProjectVersion, Topic, Document, VisibilityLevel } from "@/types/dashboard";
-import { mapDocumentFromStrapi } from "@/lib/dataMappers";
+// ---------------------------------------------------------------------------
+// AddPageDialog
+// ---------------------------------------------------------------------------
 
-const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: string; color: string }> = {
-  internal: { icon: Lock, label: "Internal", color: "text-muted-foreground" },
-  external: { icon: Eye, label: "External", color: "text-blue-400" },
-  public: { icon: Globe, label: "Public", color: "text-green-400" },
-};
+function AddPageDialog({ sectionId, onClose }: { sectionId: number | null; onClose: () => void }) {
+  const [docId, setDocId] = useState("");
+  const [title, setTitle] = useState("");
+  const { toast } = useToast();
+  const qc = useQueryClient();
 
-const Dashboard = () => {
-  const automationDocsBase =
-    (import.meta.env.VITE_AUTOMATION_DOCS_URL as string | undefined)?.replace(/\/$/, "") ||
-    null;
-  const automationPublicDocsBase =
-    (import.meta.env.VITE_AUTOMATION_PUBLIC_DOCS_URL as string | undefined)?.replace(/\/$/, "") ||
-    automationDocsBase;
-  const automationInternalDocsBase =
-    (import.meta.env.VITE_AUTOMATION_INTERNAL_DOCS_URL as string | undefined)?.replace(/\/$/, "") ||
-    null;
-  const data = useDashboardData();
-  const {
-    user,
-    signOut,
-    googleAccessToken,
-    navigate,
-    location,
-    toast,
-    projects,
-    setProjects,
-    projectVersions,
-    setProjectVersions,
-    topics,
-    documents,
-    setDocuments,
-    selectedProject,
-    setSelectedProject,
-    selectedVersion,
-    setSelectedVersion,
-    selectedTopic,
-    setSelectedTopic,
-    selectedDocument,
-    setSelectedDocument,
-    selectedPage,
-    setSelectedPage,
-    expandedProjects,
-    setExpandedProjects,
-    organizationId,
-    organizationSlug,
-    organizationName,
-    appRole,
-    rootFolderId,
-    setRootFolderId,
-    isLoading,
-    needsOnboarding,
-    setNeedsOnboarding,
-    needsDriveAccess,
-    setNeedsDriveAccess,
-    searchQuery,
-    setSearchQuery,
-    visiblePagesCount,
-    setVisiblePagesCount,
-    subProjectsExpanded,
-    setSubProjectsExpanded,
-    topicsExpanded,
-    setTopicsExpanded,
-    permissions,
-    isOrgOwner,
-    approvedOrgId,
-    approvedOrgName,
-    switchToApprovedWorkspace,
-    projectStepDone,
-    canCreateProject,
-    canProjectCreateRole,
-    scopedDocuments,
-    scopedTopics,
-    unassignedDocuments,
-    filteredDocuments,
-    visibleDocuments,
-    hasMorePages,
-    filteredProjects,
-    filteredTopics,
-    selectedProjectVersions,
-    resolveDefaultVersion,
-    canPublishForProject,
-    buildProjectOptions,
-    getAssignableTopics,
-    ensureDefaultVersionForProject,
-    fetchData,
-    logAction,
-    logUnauthorizedAttempt,
-  } = data;
-
-  const driveSync = useDriveSync({
-    rootFolderId,
-    organizationId,
-    organizationName,
-    appRole,
-    projects,
-    projectVersions,
-    topics,
-    toast,
-    setNeedsDriveAccess,
-    fetchData,
-    resolveDefaultVersion,
-    ensureDefaultVersionForProject,
+  const create = useMutation({
+    mutationFn: () =>
+      pagesApi.create({ google_doc_id: docId.trim(), section_id: sectionId, title: title.trim() || undefined }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      toast({ title: "Page added" });
+      onClose();
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
-
-  const actions = useDashboardActions({
-    user,
-    googleAccessToken,
-    toast,
-    projects,
-    documents,
-    setDocuments,
-    selectedProject,
-    setSelectedProject,
-    selectedTopic,
-    setSelectedTopic,
-    selectedDocument,
-    setSelectedDocument,
-    selectedPage,
-    setSelectedPage,
-    permissions,
-    isOrgOwner,
-    appRole,
-    logAction,
-    logUnauthorizedAttempt,
-    canPublishForProject,
-    fetchData,
-    trashFile: driveSync.trashFile,
-    resolveDefaultVersion,
-    getAssignableTopics,
-    ensureDefaultVersionForProject,
-    navigate,
-    signOut,
-  });
-
-  // Dialog state
-  const [shareOpen, setShareOpen] = useState(false);
-  const [addPageOpen, setAddPageOpen] = useState(false);
-  const [importMarkdownOpen, setImportMarkdownOpen] = useState(false);
-  const [discoveryOpen, setDiscoveryOpen] = useState(false);
-  const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
-  const [discoveryProjectId, setDiscoveryProjectId] = useState<string | null>(null);
-  const [discoveryVersionId, setDiscoveryVersionId] = useState<string | null>(null);
-  const [addProjectOpen, setAddProjectOpen] = useState(false);
-  const [addTopicOpen, setAddTopicOpen] = useState(false);
-  const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
-  const [pageSettingsOpen, setPageSettingsOpen] = useState(false);
-  const [pageSettingsTarget, setPageSettingsTarget] = useState<Pick<Document, "id" | "title" | "project_id" | "google_doc_id"> | null>(null);
-  const [topicSettingsOpen, setTopicSettingsOpen] = useState(false);
-  const [settingsTopic, setSettingsTopic] = useState<Topic | null>(null);
-  const [showGeneralSettings, setShowGeneralSettings] = useState(false);
-  const [showApprovalsPanel, setShowApprovalsPanel] = useState(false);
-  const [pendingReviewCount, setPendingReviewCount] = useState(0);
-  // API, MCP, Integrations panels removed — not part of Google Docs + MkDocs + Git architecture
-  const [showAPISettings, setShowAPISettings] = useState(false);
-  const [showMCPSettings, setShowMCPSettings] = useState(false);
-  const [showIntegrations, setShowIntegrations] = useState(false);
-  const [auditLogOpen, setAuditLogOpen] = useState(false);
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
-  const [parentProjectForCreate, setParentProjectForCreate] = useState<Project | null>(null);
-  const [parentTopicForCreate, setParentTopicForCreate] = useState<Topic | null>(null);
-  const [githubInfo, setGithubInfo] = useState<{ connected: boolean; pagesUrl?: string | null } | null>(null);
-
-  useEffect(() => {
-    if (!organizationId) return;
-    apiFetch<{ ok: boolean; connected: boolean; pagesUrl?: string }>(
-      `/api/github/settings/${organizationId}`
-    ).then(({ data }) => {
-      if (data?.ok) {
-        setGithubInfo({ connected: data.connected, pagesUrl: data.pagesUrl });
-      }
-    }).catch(() => {/* silently ignore */});
-  }, [organizationId]);
-
-  const fetchPendingReviewCount = async () => {
-    try {
-      const { data } = await invokeFunction("approvals-count", { body: {} });
-      if (data?.ok && typeof data.count === "number") {
-        setPendingReviewCount(data.count);
-      }
-    } catch {
-      // silently ignore
-    }
-  };
-
-  useEffect(() => {
-    fetchPendingReviewCount();
-  }, [organizationId]);
-
-  // Deep-link handling
-  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
-  useEffect(() => {
-    if (deepLinkHandled) return;
-    const params = new URLSearchParams(location.search);
-    const wantsIntegrations = params.get("integrations") === "1";
-    const requestedProjectId = params.get("project");
-    if (!wantsIntegrations) {
-      setDeepLinkHandled(true);
-      return;
-    }
-    setShowIntegrations(true);
-    setShowMCPSettings(false);
-    setShowAPISettings(false);
-    setShowGeneralSettings(false);
-    if (requestedProjectId) {
-      if (projects.length === 0) return;
-      const project = projects.find((p) => p.id === requestedProjectId) || null;
-      if (project) {
-        setSelectedProject(project);
-        setSelectedTopic(null);
-        setExpandedProjects((prev) => new Set([...prev, project.id]));
-      }
-    }
-    navigate("/dashboard", { replace: true });
-    setDeepLinkHandled(true);
-  }, [deepLinkHandled, location.search, navigate, projects]);
-
-  const handleConnectDrive = async () => {
-    setShowGeneralSettings(true);
-  };
-
-  const createProjectDisabledTitle = !canProjectCreateRole
-    ? "You must be an owner, admin, or editor to create a project"
-    : "Create your first project";
-  const showGettingStarted = !!organizationId && !projectStepDone;
-
-  // Assign project helpers
-  const assignProjectOptions = buildProjectOptions();
-  const assignProjectVersionId = actions.assignProjectId
-    ? resolveDefaultVersion(actions.assignProjectId)?.id ?? null
-    : null;
-  const assignableTopics = getAssignableTopics(actions.assignProjectId || null, assignProjectVersionId);
-
-  // Loading state
-  if (isLoading) {
-    return <DashboardLoading />;
-  }
-
-  // Onboarding
-  if (needsOnboarding) {
-    return (
-      <Onboarding
-        onComplete={() => {
-          setNeedsOnboarding(false);
-          fetchData();
-        }}
-        organizationId={organizationId}
-      />
-    );
-  }
-
-  // General settings
-  if (showGeneralSettings) {
-    return (
-      <GeneralSettings
-        onBack={() => {
-          setShowGeneralSettings(false);
-          fetchData();
-        }}
-      />
-    );
-  }
-
-  // Approvals panel
-  if (showApprovalsPanel) {
-    return (
-      <ApprovalsPanel
-        userRole={appRole || "viewer"}
-        onClose={() => setShowApprovalsPanel(false)}
-        onOpenDocument={(docId, _docTitle) => {
-          setShowApprovalsPanel(false);
-          const doc = documents.find((d) => String(d.id) === String(docId));
-          if (doc) {
-            setSelectedDocument(doc);
-            setSelectedPage(doc.id);
-          }
-        }}
-        onCountChange={setPendingReviewCount}
-      />
-    );
-  }
-
-  // Page view
-  if (selectedPage && selectedDocument) {
-    const docProject = selectedDocument.project_id
-      ? projects.find((p) => p.id === selectedDocument.project_id)
-      : null;
-    return (
-      <PageView
-        document={selectedDocument}
-        onBack={() => {
-          setSelectedPage(null);
-          setSelectedDocument(null);
-          fetchPendingReviewCount();
-        }}
-        onDocumentUpdate={() => {
-          actions.handleDocumentUpdate();
-          fetchPendingReviewCount();
-        }}
-        userRole={appRole || "viewer"}
-        requireApproval={docProject?.require_approval ?? true}
-      />
-    );
-  }
 
   return (
-    <TooltipProvider>
-      <DriveReauthListener />
-      <div className="min-h-screen bg-background flex w-full">
-        <DashboardSidebar
-          sidebarCollapsed={sidebarCollapsed}
-          setSidebarCollapsed={setSidebarCollapsed}
-          mobileSidebarOpen={mobileSidebarOpen}
-          setMobileSidebarOpen={setMobileSidebarOpen}
-          user={user}
-          organizationSlug={organizationSlug}
-          organizationName={organizationName}
-          appRole={appRole}
-          isOrgOwner={isOrgOwner}
-          projects={projects}
-          filteredProjects={filteredProjects}
-          selectedProject={selectedProject}
-          setSelectedProject={setSelectedProject}
-          setExpandedProjects={setExpandedProjects}
-          subProjectsExpanded={subProjectsExpanded}
-          setSubProjectsExpanded={setSubProjectsExpanded}
-          filteredTopics={filteredTopics}
-          scopedDocuments={scopedDocuments}
-          scopedTopics={scopedTopics}
-          selectedTopic={selectedTopic}
-          setSelectedTopic={setSelectedTopic}
-          selectedPage={selectedPage}
-          setSelectedPage={setSelectedPage}
-          setSelectedDocument={setSelectedDocument}
-          selectedVersion={selectedVersion}
-          setSelectedVersion={setSelectedVersion}
-          projectVersions={projectVersions}
-          topicsExpanded={topicsExpanded}
-          setTopicsExpanded={setTopicsExpanded}
-          driveIntegrationEnabled={DRIVE_INTEGRATION_ENABLED}
-          needsDriveAccess={needsDriveAccess}
-          rootFolderId={rootFolderId}
-          isConnectingDrive={false}
-          isSyncing={driveSync.isSyncing}
-          handleConnectDrive={handleConnectDrive}
-          handleSyncFromDrive={driveSync.handleSyncFromDrive}
-          setAddProjectOpen={setAddProjectOpen}
-          setAddTopicOpen={setAddTopicOpen}
-          setParentTopicForCreate={setParentTopicForCreate}
-          setAddPageOpen={setAddPageOpen}
-          onUploadFile={driveSync.handleUploadFile}
-          setShowAPISettings={setShowAPISettings}
-          setShowMCPSettings={setShowMCPSettings}
-          setShowIntegrations={setShowIntegrations}
-          setShowGeneralSettings={setShowGeneralSettings}
-          setProjectSettingsOpen={setProjectSettingsOpen}
-          setShareOpen={setShareOpen}
-          setTopicSettingsOpen={setTopicSettingsOpen}
-          setSettingsTopic={setSettingsTopic}
-          setPageSettingsOpen={setPageSettingsOpen}
-          setPageSettingsTarget={setPageSettingsTarget}
-          setInviteMemberOpen={setInviteMemberOpen}
-          setShowAIAssistant={setShowAIAssistant}
-          setAuditLogOpen={setAuditLogOpen}
-          setDeleteDialogOpen={actions.setDeleteDialogOpen}
-          setItemToDelete={actions.setItemToDelete}
-          setSearchQuery={setSearchQuery}
-          signOut={signOut}
-          permissions={{
-            canCreateProject: canCreateProject,
-            canDeleteProject: permissions.canDeleteProject,
-            canManageTeam: permissions.canInviteMembers || permissions.canManageMembers || false,
-            canViewAuditLogs: permissions.canViewAuditLogs,
-            canEditProject: permissions.canEditProjectSettings || permissions.canEdit || false,
-          }}
-          navigate={navigate}
-          fetchData={fetchData}
-          currentPath={location.pathname}
-          showApprovalsPanel={showApprovalsPanel}
-          setShowApprovalsPanel={setShowApprovalsPanel}
-          pendingReviewCount={pendingReviewCount}
-        />
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base">Add page from Google Docs</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-1">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Google Doc ID or URL</Label>
+            <Input
+              placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+              value={docId}
+              onChange={(e) => setDocId(e.target.value)}
+              autoFocus
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              From the URL: docs.google.com/document/d/<span className="font-semibold text-foreground/70">ID</span>/edit
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custom title</Label>
+            <Input
+              placeholder="Leave blank to use the Google Doc title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={!docId.trim() || create.isPending} onClick={() => create.mutate()}>
+            {create.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+            Add page
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-        {/* Main Content */}
-        {(
-          <main
-            className={cn(
-              "flex-1 flex flex-col pt-14 lg:pt-0 min-w-0 transition-all duration-300",
-              sidebarCollapsed ? "lg:ml-16" : "lg:ml-64"
-            )}
+// ---------------------------------------------------------------------------
+// ScanDriveDialog
+// ---------------------------------------------------------------------------
+
+function ScanDriveDialog({ onClose }: { onClose: () => void }) {
+  const [folderId, setFolderId] = useState("");
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const scan = useMutation({
+    mutationFn: () => driveApi.scan(folderId.trim()),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["sections"] });
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      toast({
+        title: "Import complete",
+        description: `${result.sections_created} sections and ${result.pages_created} pages from "${result.folder_name}"`,
+      });
+      onClose();
+    },
+    onError: (err: Error) => toast({ title: "Import failed", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base">Import from Google Drive</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Folder ID</Label>
+            <Input
+              placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+              value={folderId}
+              onChange={(e) => setFolderId(e.target.value)}
+              autoFocus
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              From: drive.google.com/drive/folders/<span className="font-semibold text-foreground/70">ID</span>
+            </p>
+          </div>
+          <div className="rounded-lg bg-muted/60 border px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+            Sub-folders become sections. Google Docs become pages. Content is pulled when you sync.
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={!folderId.trim() || scan.isPending} onClick={() => scan.mutate()}>
+            {scan.isPending
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              : <FolderOpen className="h-3.5 w-3.5 mr-1.5" />}
+            Import folder
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SectionNode (sidebar)
+// ---------------------------------------------------------------------------
+
+function SectionNode({
+  section, pages, selectedPageId, onSelectPage, depth,
+}: {
+  section: Section;
+  pages: Page[];
+  selectedPageId: number | null;
+  onSelectPage: (id: number) => void;
+  depth: number;
+}) {
+  const [open, setOpen] = useState(true);
+  const sectionPages = pages.filter((p) => p.section_id === section.id);
+
+  return (
+    <div className={cn(depth > 0 && "ml-3 border-l border-border/50")}>
+      <button
+        onClick={() => setOpen(!open)}
+        className={cn(
+          "flex items-center w-full gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-colors",
+          depth > 0 ? "px-2" : "px-2",
+          "text-muted-foreground/70 hover:text-foreground hover:bg-accent/50",
+          "tracking-wide uppercase"
+        )}
+      >
+        {open
+          ? <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
+          : <ChevronRight className="h-3 w-3 shrink-0 opacity-50" />
+        }
+        <span className="truncate">{section.name}</span>
+        {section.is_published && <Globe className="h-2.5 w-2.5 ml-auto shrink-0 text-emerald-500" />}
+      </button>
+
+      {open && (
+        <>
+          {sectionPages.map((page) => (
+            <button
+              key={page.id}
+              onClick={() => onSelectPage(page.id)}
+              className={cn(
+                "flex items-center w-full gap-2 py-1.5 pl-6 pr-2 rounded-md text-sm transition-all",
+                selectedPageId === page.id
+                  ? "bg-primary/8 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
+              )}
+            >
+              <FileText className="h-3.5 w-3.5 shrink-0 opacity-60" />
+              <span className="truncate flex-1 text-left leading-snug">{page.title}</span>
+              {page.is_published && <Globe className="h-2.5 w-2.5 shrink-0 text-emerald-500 opacity-70" />}
+            </button>
+          ))}
+          {(section.children ?? []).map((child) => (
+            <SectionNode
+              key={child.id}
+              section={child}
+              pages={pages}
+              selectedPageId={selectedPageId}
+              onSelectPage={onSelectPage}
+              depth={depth + 1}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+
+export default function Dashboard() {
+  const { signOut } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const [selectedPageId, setSelectedPageId] = useState<number | null>(null);
+  const [showAddPage, setShowAddPage] = useState(false);
+  const [addPageSectionId, setAddPageSectionId] = useState<number | null>(null);
+  const [showScanDrive, setShowScanDrive] = useState(false);
+
+  const { data: org, isLoading: orgLoading } = useQuery({ queryKey: ["org"], queryFn: orgApi.get });
+  const { data: sectionsData } = useQuery({ queryKey: ["sections"], queryFn: sectionsApi.list, enabled: !!org });
+  const { data: pagesData } = useQuery({ queryKey: ["pages"], queryFn: () => pagesApi.list(), enabled: !!org });
+  const { data: driveStatus } = useQuery({ queryKey: ["drive-status"], queryFn: driveApi.status, enabled: !!org });
+  const { data: selectedPageFull } = useQuery({
+    queryKey: ["page", selectedPageId],
+    queryFn: () => pagesApi.get(selectedPageId!),
+    enabled: selectedPageId !== null,
+  });
+
+  const sections = sectionsData?.sections ?? [];
+  const pages = pagesData?.pages ?? [];
+  const sectionTree = buildSectionTree(sections);
+  const selectedPage = selectedPageFull ?? (pages.find((p) => p.id === selectedPageId) ?? null);
+
+  const syncAll = useMutation({
+    mutationFn: driveApi.syncAll,
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      toast({ title: `Synced ${result.synced} page(s)` });
+    },
+    onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
+  });
+
+  const syncPage = useMutation({
+    mutationFn: (id: number) => pagesApi.sync(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      qc.invalidateQueries({ queryKey: ["page", selectedPageId] });
+      toast({ title: "Synced" });
+    },
+  });
+
+  const publishPage = useMutation({
+    mutationFn: (id: number) => pagesApi.publish(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      qc.invalidateQueries({ queryKey: ["page", selectedPageId] });
+      toast({ title: "Published" });
+    },
+  });
+
+  const unpublishPage = useMutation({
+    mutationFn: (id: number) => pagesApi.unpublish(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      qc.invalidateQueries({ queryKey: ["page", selectedPageId] });
+      toast({ title: "Unpublished" });
+    },
+  });
+
+  const deletePage = useMutation({
+    mutationFn: (id: number) => pagesApi.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      setSelectedPageId(null);
+      toast({ title: "Page deleted" });
+    },
+  });
+
+  if (orgLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Loading workspace…</span>
+        </div>
+      </div>
+    );
+  }
+
+  const orgSlug = org?.slug ?? String(org?.id ?? "");
+  const publicDocsUrl = `${API_BASE_URL}/docs/${orgSlug}`;
+  const orgInitials = org?.name?.slice(0, 2).toUpperCase() ?? "AC";
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+
+      {/* ── Sidebar ───────────────────────────────────────────────── */}
+      <aside className="w-[248px] shrink-0 flex flex-col border-r bg-[#F9F8F6] dark:bg-muted/20 overflow-hidden">
+
+        {/* Org header */}
+        <div className="flex items-center gap-2.5 px-3 py-3 border-b bg-background">
+          {org?.logo_url ? (
+            <img src={org.logo_url} alt="" className="w-7 h-7 rounded-lg object-contain flex-shrink-0" />
+          ) : (
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
+              style={{ background: org?.primary_color ?? "#6366f1" }}
+            >
+              {orgInitials}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm leading-tight truncate">{org?.name}</p>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-accent">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={() => window.open(publicDocsUrl, "_blank")}>
+                <Globe className="h-3.5 w-3.5 mr-2 opacity-60" /> Public docs
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Settings className="h-3.5 w-3.5 mr-2 opacity-60" /> Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive" onClick={signOut}>
+                <LogOut className="h-3.5 w-3.5 mr-2" /> Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Nav */}
+        <div className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+          <div className="flex items-center justify-between px-2 mb-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
+              Content
+            </span>
+            <button
+              onClick={() => { setAddPageSectionId(null); setShowAddPage(true); }}
+              className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
+              title="Add page"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {sectionTree.length === 0 && pages.filter((p) => !p.section_id).length === 0 ? (
+            <div className="px-2 py-4 text-center">
+              <p className="text-xs text-muted-foreground/60">No content yet</p>
+            </div>
+          ) : (
+            <>
+              {pages.filter((p) => !p.section_id).map((page) => (
+                <button
+                  key={page.id}
+                  onClick={() => setSelectedPageId(page.id)}
+                  className={cn(
+                    "flex items-center w-full gap-2 py-1.5 px-2 rounded-md text-sm transition-all",
+                    selectedPageId === page.id
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
+                  )}
+                >
+                  <FileText className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                  <span className="truncate flex-1 text-left">{page.title}</span>
+                  {page.is_published && <Globe className="h-2.5 w-2.5 shrink-0 text-emerald-500" />}
+                </button>
+              ))}
+              {sectionTree.map((section) => (
+                <SectionNode
+                  key={section.id}
+                  section={section}
+                  pages={pages}
+                  selectedPageId={selectedPageId}
+                  onSelectPage={(id) => setSelectedPageId(id)}
+                  depth={0}
+                />
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* Sidebar footer */}
+        <div className="border-t px-2 py-2 space-y-0.5">
+          <button
+            onClick={() => setShowScanDrive(true)}
+            className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
           >
-            {/* Header */}
-            <header className="h-auto min-h-14 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between px-3 py-2 sm:px-4 lg:px-6 gap-2">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <span className="font-medium text-foreground text-sm truncate">
-                  {organizationName || "Workspace"}
-                </span>
-                {selectedProject && (
-                  <>
-                    <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
-                    <span className="text-muted-foreground text-sm truncate">{selectedProject?.name}</span>
-                  </>
-                )}
-                {selectedTopic?.name && (
-                  <>
-                    <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0 hidden sm:block" />
-                    <span className="text-muted-foreground text-sm truncate hidden sm:block">
-                      {selectedTopic.name}
+            <FolderOpen className="h-3.5 w-3.5 opacity-60" />
+            Import from Drive
+          </button>
+          <button
+            disabled={syncAll.isPending}
+            onClick={() => syncAll.mutate()}
+            className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40"
+          >
+            {syncAll.isPending
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin opacity-60" />
+              : <RefreshCw className="h-3.5 w-3.5 opacity-60" />
+            }
+            Sync all pages
+          </button>
+          {driveStatus?.connected && (
+            <div className="flex items-center gap-1.5 px-2 py-1">
+              <Wifi className="h-3 w-3 text-emerald-500" />
+              <span className="text-[11px] text-muted-foreground/60">Drive connected</span>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* ── Main ──────────────────────────────────────────────────── */}
+      <main className="flex-1 overflow-hidden flex flex-col min-w-0 bg-background">
+        {selectedPage ? (
+          <>
+            {/* Toolbar */}
+            <header className="flex items-center gap-3 px-6 py-2.5 border-b shrink-0 bg-background/80 backdrop-blur-sm">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="font-semibold text-sm truncate leading-snug">{selectedPage.title}</h1>
+                  <Badge
+                    variant={selectedPage.is_published ? "default" : "secondary"}
+                    className={cn(
+                      "text-[10px] px-1.5 py-0 h-[18px] font-semibold rounded",
+                      selectedPage.is_published
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-200 hover:bg-emerald-500/10"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {selectedPage.is_published ? "Published" : "Draft"}
+                  </Badge>
+                  {selectedPage.last_synced_at && (
+                    <span className="text-[11px] text-muted-foreground/50 hidden sm:block">
+                      Synced {new Date(selectedPage.last_synced_at).toLocaleDateString()}
                     </span>
-                  </>
-                )}
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
-                <DriveStatusIndicator onStatusChange={(connected) => setNeedsDriveAccess(!connected)} />
-                {rootFolderId && (
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                {selectedPage.is_published && (
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="gap-1.5 h-8 px-2 sm:px-3"
-                    onClick={driveSync.handleSyncFromDrive}
-                    disabled={driveSync.isSyncing}
+                    className="h-7 text-xs gap-1.5 text-muted-foreground"
+                    onClick={() => window.open(`${publicDocsUrl}/${selectedPage.slug}`, "_blank")}
                   >
-                    <RefreshCw className={`w-4 h-4 ${driveSync.isSyncing ? "animate-spin" : ""}`} />
-                    <span className="hidden sm:inline">{driveSync.isSyncing ? "Syncing..." : "Sync Drive"}</span>
-                  </Button>
-                )}
-                {organizationId && (
-                  <NotificationCenter organizationId={organizationId} onWorkspaceChange={() => fetchData()} />
-                )}
-                {(isOrgOwner || appRole === "admin") && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 h-8 px-2 sm:px-3"
-                    onClick={() => setInviteMemberOpen(true)}
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    <span className="hidden sm:inline">Invite</span>
+                    <ExternalLink className="h-3 w-3" /> View live
                   </Button>
                 )}
                 <Button
-                  variant={showAIAssistant ? "secondary" : "outline"}
+                  variant="ghost"
                   size="sm"
-                  className="gap-1.5 h-8 px-2 sm:px-3"
-                  onClick={() => setShowAIAssistant(!showAIAssistant)}
+                  className="h-7 text-xs gap-1.5 text-muted-foreground"
+                  disabled={syncPage.isPending}
+                  onClick={() => syncPage.mutate(selectedPage.id)}
                 >
-                  <Bot className="w-4 h-4" />
-                  <span className="hidden md:inline">AI Assistant</span>
+                  {syncPage.isPending
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <RefreshCw className="h-3 w-3" />
+                  }
+                  Sync
                 </Button>
-                {organizationSlug && (
-                  <>
-                    {/* Internal docs viewer */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 h-8 px-2 sm:px-3"
-                      onClick={() => window.open(`/internal/${organizationSlug}`, "_blank")}
-                      title="Open the internal docs viewer"
-                    >
-                      <Lock className="w-4 h-4" />
-                      <span className="hidden lg:inline">Docs</span>
+
+                {selectedPage.is_published ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={unpublishPage.isPending}
+                    onClick={() => unpublishPage.mutate(selectedPage.id)}
+                  >
+                    Unpublish
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs gap-1.5"
+                    disabled={publishPage.isPending || !selectedPage.html_content}
+                    onClick={() => publishPage.mutate(selectedPage.id)}
+                  >
+                    {publishPage.isPending
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <ArrowUpFromLine className="h-3 w-3" />
+                    }
+                    Publish
+                  </Button>
+                )}
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <MoreHorizontal className="h-3.5 w-3.5" />
                     </Button>
-                    {/* Published public site — only shown once GitHub Pages is live */}
-                    {githubInfo?.pagesUrl && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 h-8 px-2 sm:px-3"
-                        onClick={() => window.open(githubInfo.pagesUrl!, "_blank")}
-                        title="Open the public site on GitHub Pages"
-                      >
-                        <Globe className="w-4 h-4" />
-                        <span className="hidden lg:inline">Published Site</span>
-                        <ExternalLink className="w-3 h-3 opacity-60" />
-                      </Button>
-                    )}
-                    {/* Share — for external projects, lets org members invite guests */}
-                    {selectedProject?.visibility === "external" && (isOrgOwner || appRole === "admin" || appRole === "editor") && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 h-8 px-2 sm:px-3"
-                        onClick={() => setShareOpen(true)}
-                        title="Invite external users to this project"
-                      >
-                        <UserPlus className="w-4 h-4" />
-                        <span className="hidden lg:inline">Share</span>
-                      </Button>
-                    )}
-                  </>
-                )}
-                <Button
-                  variant="hero"
-                  size="sm"
-                  className="gap-1.5 h-8 px-2 sm:px-3"
-                  onClick={() => setAddPageOpen(true)}
-                  disabled={!selectedTopic}
-                  title={!selectedTopic ? "Select a topic first" : "Add page"}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Add Page</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 h-8 px-2 sm:px-3"
-                  onClick={() => setImportMarkdownOpen(true)}
-                  disabled={!selectedProject}
-                  title={!selectedProject ? "Select a project first" : "Import Markdown files"}
-                >
-                  <Upload className="w-4 h-4" />
-                  <span className="hidden sm:inline">Import</span>
-                </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem
+                      onClick={() => window.open(`https://docs.google.com/document/d/${selectedPage.google_doc_id}/edit`, "_blank")}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 mr-2 opacity-60" /> Open in Google Docs
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => deletePage.mutate(selectedPage.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete page
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </header>
 
             {/* Content */}
-            <div className="flex-1 flex overflow-hidden">
-              <div className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto overflow-x-hidden">
-                {/* Workspace switch banner */}
-                {approvedOrgId && (
-                  <div className="mb-6 p-4 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
-                        <CheckCircle className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">
-                          You've been approved to join {approvedOrgName}!
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Switch to your team's workspace to collaborate with your colleagues.
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="hero"
-                      size="sm"
-                      onClick={async () => {
-                        const switched = await switchToApprovedWorkspace();
-                        if (switched) await fetchData();
-                      }}
-                      className="gap-2"
-                    >
-                      <ArrowRight className="w-4 h-4" />
-                      Switch Workspace
-                    </Button>
-                  </div>
-                )}
-
-                {showGettingStarted && (
-                  <div className="mb-6 rounded-xl border border-border bg-card/50 p-4 sm:p-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <div>
-                        <h2 className="text-base sm:text-lg font-semibold">Getting started</h2>
-                        <p className="text-sm text-muted-foreground">
-                          Complete these steps to publish from Google Drive.
-                        </p>
-                      </div>
-                      <Badge variant="secondary" className="w-fit">
-                        Setup
-                      </Badge>
-                    </div>
-                    <div className="mt-4 grid gap-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          {projectStepDone ? (
-                            <CheckCircle className="w-5 h-5 text-green-500" />
-                          ) : (
-                            <Circle className="w-5 h-5 text-muted-foreground" />
-                          )}
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">Create your first project</p>
-                            <p className="text-xs text-muted-foreground">
-                              Organize docs into a project with topics and pages.
-                            </p>
-                          </div>
-                        </div>
-                        {projectStepDone ? (
-                          <Badge variant="secondary" className="w-fit">
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setParentProjectForCreate(null);
-                              setAddProjectOpen(true);
-                            }}
-                            disabled={!canCreateProject}
-                            title={!canCreateProject ? createProjectDisabledTitle : "Create a project"}
-                          >
-                            Create Project
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        {needsDriveAccess ? (
-                          <Circle className="w-5 h-5 text-muted-foreground" />
-                        ) : (
-                          <CheckCircle className="w-5 h-5 text-green-500" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">Connect Google Drive</p>
-                          <p className="text-xs text-muted-foreground">
-                            Authorize Drive access so Docspeare can sync and publish your docs.
-                          </p>
-                        </div>
-                      </div>
-                      {needsDriveAccess ? (
-                        <Button size="sm" onClick={handleConnectDrive}>
-                          Connect Drive
-                        </Button>
-                      ) : (
-                        <Badge variant="secondary" className="w-fit">
-                          Ready
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Stats */}
-                {(() => {
-                  const publishedCount = filteredDocuments.filter((d) => d.is_published).length;
-                  const draftCount = filteredDocuments.filter(
-                    (d) => !d.is_published && !d.published_content_html
-                  ).length;
-                  const pendingRepublishCount = filteredDocuments.filter(
-                    (d) =>
-                      d.is_published &&
-                      d.content_html &&
-                      d.published_content_html &&
-                      d.content_html !== d.published_content_html
-                  ).length;
-
-                  const sevenDaysAgo = new Date();
-                  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-                  const recentlyUpdated = filteredDocuments.filter((d) => {
-                    if (!d.google_modified_at) return false;
-                    return new Date(d.google_modified_at) > sevenDaysAgo;
-                  }).length;
-
-                  const readyToPublish = filteredDocuments.filter(
-                    (d) => !d.is_published && d.content_html
-                  ).length;
-
-                  const publishRate =
-                    filteredDocuments.length > 0
-                      ? Math.round((publishedCount / filteredDocuments.length) * 100)
-                      : 0;
-
-                  return (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 mb-4 sm:mb-6">
-                      <div className="p-3 sm:p-4 rounded-xl glass">
-                        <div className="flex items-baseline justify-between gap-1">
-                          <p className="text-xl sm:text-2xl font-bold text-foreground">
-                            {filteredDocuments.length}
-                          </p>
-                          <span className="text-[10px] sm:text-xs text-muted-foreground">
-                            {projects.length} proj
-                          </span>
-                        </div>
-                        <p className="text-xs sm:text-sm text-muted-foreground">Total Pages</p>
-                      </div>
-                      <div className="p-3 sm:p-4 rounded-xl glass">
-                        <div className="flex items-baseline justify-between gap-1">
-                          <p className="text-xl sm:text-2xl font-bold text-state-active">{publishedCount}</p>
-                          <span className="text-[10px] sm:text-xs text-state-active">{publishRate}%</span>
-                        </div>
-                        <p className="text-xs sm:text-sm text-muted-foreground">Published</p>
-                      </div>
-                      <div className="p-3 sm:p-4 rounded-xl glass hidden sm:block">
-                        <div className="flex items-baseline justify-between gap-1">
-                          <p className="text-xl sm:text-2xl font-bold text-blue-500">{recentlyUpdated}</p>
-                          <span className="text-[10px] sm:text-xs text-muted-foreground">7 days</span>
-                        </div>
-                        <p className="text-xs sm:text-sm text-muted-foreground">Recently Updated</p>
-                      </div>
-                      <div className="p-3 sm:p-4 rounded-xl glass">
-                        <div className="flex items-baseline justify-between gap-1">
-                          <p className="text-xl sm:text-2xl font-bold text-amber-500">
-                            {pendingRepublishCount}
-                          </p>
-                          {pendingRepublishCount > 0 && <RefreshCw className="w-3 h-3 text-amber-500" />}
-                        </div>
-                        <p className="text-xs sm:text-sm text-muted-foreground">Pending</p>
-                      </div>
-                      <div className="p-3 sm:p-4 rounded-xl glass hidden lg:block">
-                        <div className="flex items-baseline justify-between gap-1">
-                          <p className="text-xl sm:text-2xl font-bold text-primary">{readyToPublish}</p>
-                          {readyToPublish > 0 && <Send className="w-3 h-3 text-primary" />}
-                        </div>
-                        <p className="text-xs sm:text-sm text-muted-foreground">Ready to Publish</p>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <AnalyticsPanel
-                  projectId={selectedProject?.id || null}
-                  documentId={selectedDocument?.id || null}
-                  className="mb-4 sm:mb-6"
+            <div className="flex-1 overflow-y-auto">
+              {selectedPage.html_content ? (
+                <div
+                  className="prose prose-sm prose-neutral max-w-3xl mx-auto px-10 py-10"
+                  dangerouslySetInnerHTML={{ __html: selectedPage.html_content }}
                 />
-
-                {unassignedDocuments.length > 0 && (
-                  <div className="mb-4 sm:mb-6 rounded-xl border border-amber-300/40 bg-amber-50/60 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-amber-900">Unassigned pages</h3>
-                        <p className="text-xs text-amber-800">
-                          These pages aren't linked to a project yet. Assign them so they appear in project
-                          navigation.
-                        </p>
-                      </div>
-                      <Badge variant="secondary" className="bg-amber-100 text-amber-900">
-                        {unassignedDocuments.length}
-                      </Badge>
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {unassignedDocuments.map((doc) => (
-                        <div
-                          key={doc.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white/70 px-3 py-2 text-sm"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <FileText className="w-4 h-4 text-amber-700" />
-                            <span className="truncate">{doc.title || "Untitled"}</span>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              actions.setAssignTargetDoc(doc);
-                              actions.setAssignProjectId("");
-                              actions.setAssignTopicId("");
-                              actions.setAssignProjectOpen(true);
-                            }}
-                          >
-                            Assign
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
+                  <div className="w-12 h-12 rounded-xl bg-muted/60 flex items-center justify-center">
+                    <BookOpen className="h-5 w-5 opacity-40" />
                   </div>
-                )}
-
-                <TopicsSection
-                  selectedProject={selectedProject}
-                  selectedTopic={selectedTopic}
-                  scopedTopics={scopedTopics}
-                  scopedDocuments={scopedDocuments}
-                  onSelectTopic={(topic) => setSelectedTopic(topic)}
-                  onAddTopic={() => {
-                    setParentTopicForCreate(null);
-                    setAddTopicOpen(true);
-                  }}
-                  onAddSubtopic={(parentTopic) => {
-                    setParentTopicForCreate(parentTopic);
-                    setAddTopicOpen(true);
-                  }}
-                  onDeleteTopic={(topic) => {
-                    actions.setItemToDelete({ type: "topic", id: topic.id, name: topic.name });
-                    actions.setDeleteDialogOpen(true);
-                  }}
-                />
-
-                {/* Pages Table */}
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 sm:mb-4">
-                    <h2 className="text-base sm:text-lg font-semibold">Recent Pages</h2>
-                    {actions.selectedDocIds.size > 0 && (
-                      <div className="flex items-center gap-1.5 sm:gap-2 bg-primary/10 px-2 sm:px-3 py-1.5 rounded-lg animate-in slide-in-from-right-2 overflow-x-auto">
-                        <span className="text-sm font-medium text-primary">
-                          {actions.selectedDocIds.size} selected
-                        </span>
-                        {actions.bulkProgress && (
-                          <span className="text-xs text-muted-foreground">
-                            {actions.bulkProgress.mode === "publish" && "Publishing"}
-                            {actions.bulkProgress.mode === "unpublish" && "Unpublishing"}
-                            {actions.bulkProgress.mode === "delete" && "Deleting"}{" "}
-                            {actions.bulkProgress.processed}/{actions.bulkProgress.total}
-                            {actions.bulkProgress.failed > 0 && ` • ${actions.bulkProgress.failed} failed`}
-                          </span>
-                        )}
-                        <div className="h-4 w-px bg-border" />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1.5 text-green-600 hover:text-green-700 hover:bg-green-500/10"
-                          onClick={actions.handleBulkPublish}
-                          disabled={actions.isBulkPublishing}
-                        >
-                          {actions.isBulkPublishing ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Send className="w-3 h-3" />
-                          )}
-                          Publish
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
-                          onClick={actions.handleBulkUnpublish}
-                          disabled={actions.isBulkUnpublishing}
-                        >
-                          {actions.isBulkUnpublishing ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <XCircle className="w-3 h-3" />
-                          )}
-                          Unpublish
-                        </Button>
-                        {permissions.canDeleteDocument && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => actions.setBulkDeleteDialogOpen(true)}
-                            disabled={actions.isBulkDeleting}
-                          >
-                            {actions.isBulkDeleting ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-3 h-3" />
-                            )}
-                            Delete
-                          </Button>
-                        )}
-                        {actions.lastBulkFailures?.docIds?.length ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
-                            onClick={actions.retryBulkFailures}
-                            disabled={actions.isBulkPublishing || actions.isBulkUnpublishing || actions.isBulkDeleting}
-                          >
-                            <RefreshCw className="w-3 h-3" />
-                            Retry failed
-                          </Button>
-                        ) : null}
-                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={actions.clearSelection}>
-                          <X className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    )}
+                  <div className="text-center">
+                    <p className="text-sm font-medium">No content yet</p>
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">Sync this page to pull content from Google Docs</p>
                   </div>
-                  <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
-                    <table className="w-full min-w-[400px]">
-                      <thead>
-                        <tr className="bg-secondary/50">
-                          <th className="w-8 sm:w-10 px-2 sm:px-4 py-2 sm:py-3">
-                            <button
-                              onClick={() => actions.handleSelectAll(visibleDocuments)}
-                              className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-                              title={
-                                actions.selectedDocIds.size === visibleDocuments.length
-                                  ? "Deselect all"
-                                  : "Select all"
-                              }
-                            >
-                              {actions.selectedDocIds.size === visibleDocuments.length &&
-                              visibleDocuments.length > 0 ? (
-                                <CheckSquare className="w-4 h-4 text-primary" />
-                              ) : actions.selectedDocIds.size > 0 ? (
-                                <div className="w-4 h-4 border-2 border-primary rounded bg-primary/20" />
-                              ) : (
-                                <Square className="w-4 h-4" />
-                              )}
-                            </button>
-                          </th>
-                          <th className="text-left px-2 sm:px-4 py-2 sm:py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            Page
-                          </th>
-                          <th className="text-left px-2 sm:px-4 py-2 sm:py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden sm:table-cell">
-                            Status
-                          </th>
-                          <th className="text-left px-2 sm:px-4 py-2 sm:py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden md:table-cell">
-                            Owner
-                          </th>
-                          <th className="text-left px-2 sm:px-4 py-2 sm:py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden lg:table-cell">
-                            Modified
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {visibleDocuments.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={5}
-                              className="px-3 sm:px-4 py-6 sm:py-8 text-center text-sm text-muted-foreground"
-                            >
-                              {selectedTopic ? (
-                                <div className="flex flex-col items-center gap-3">
-                                  <span>No pages in this topic yet.</span>
-                                  <div className="flex flex-col sm:flex-row gap-2">
-                                    <Button size="sm" onClick={() => setAddPageOpen(true)}>
-                                      <Plus className="w-4 h-4 mr-1" />
-                                      Add Page
-                                    </Button>
-                                    <Button size="sm" variant="outline" onClick={() => setImportMarkdownOpen(true)}>
-                                      <Upload className="w-4 h-4 mr-1" />
-                                      Import
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : selectedProject ? (
-                                <div className="flex flex-col items-center gap-3">
-                                  <span>No pages in this project yet.</span>
-                                  <div className="flex flex-col sm:flex-row gap-2">
-                                    <Button size="sm" onClick={() => setAddPageOpen(true)}>
-                                      <Plus className="w-4 h-4 mr-1" />
-                                      Add Page
-                                    </Button>
-                                    <Button size="sm" variant="outline" onClick={driveSync.handleSyncFromDrive}>
-                                      <RefreshCw className="w-4 h-4 mr-1" />
-                                      Sync Drive
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                "Select a project to view pages."
-                              )}
-                            </td>
-                          </tr>
-                        ) : (
-                          visibleDocuments.map((doc) => {
-                            const VisIcon = visibilityConfig[doc.visibility || "internal"].icon;
-                            return (
-                              <tr
-                                key={doc.id}
-                                className={cn(
-                                  "hover:bg-secondary/30 transition-colors cursor-pointer group",
-                                  actions.selectedDocIds.has(doc.id) && "bg-primary/5"
-                                )}
-                                onClick={() => {
-                                  if (!doc.project_id) {
-                                    actions.setAssignTargetDoc(doc);
-                                    actions.setAssignProjectId("");
-                                    actions.setAssignTopicId("");
-                                    actions.setAssignProjectOpen(true);
-                                    return;
-                                  }
-                                  const docProject =
-                                    projects.find((p) => p.id === doc.project_id) || null;
-                                  if (
-                                    docProject &&
-                                    (!selectedProject || selectedProject.id !== docProject.id)
-                                  ) {
-                                    setSelectedProject(docProject);
-                                    setSelectedTopic(null);
-                                  }
-                                  setSelectedDocument(doc);
-                                  setSelectedPage(doc.id);
-                                  const docTopic = topics.find((t) => t.id === doc.topic_id);
-                                  if (docTopic) setSelectedTopic(docTopic);
-                                }}
-                              >
-                                <td className="w-8 sm:w-10 px-2 sm:px-4 py-2 sm:py-3">
-                                  <button
-                                    onClick={(e) => actions.handleSelectDoc(doc.id, e)}
-                                    className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-                                  >
-                                    {actions.selectedDocIds.has(doc.id) ? (
-                                      <CheckSquare className="w-4 h-4 text-primary" />
-                                    ) : (
-                                      <Square className="w-4 h-4" />
-                                    )}
-                                  </button>
-                                </td>
-                                <td className="px-2 sm:px-4 py-2 sm:py-3">
-                                  <div className="flex items-center gap-2 sm:gap-3">
-                                    <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-                                    <div className="flex-1 min-w-0">
-                                      <span className="text-xs sm:text-sm font-medium text-foreground line-clamp-1">
-                                        {doc.title || "Untitled Page"}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      {doc.is_published ? (
-                                        <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                                      ) : null}
-                                      <VisIcon
-                                        className={`w-3 h-3 ${visibilityConfig[doc.visibility || "internal"].color}`}
-                                      />
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <button
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="p-1.5 rounded-md hover:bg-secondary transition-all text-muted-foreground"
-                                            title="Page options"
-                                          >
-                                            <MoreHorizontal className="w-4 h-4" />
-                                          </button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-48">
-                                          <DropdownMenuItem
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              actions.setAssignTargetDoc(doc);
-                                              actions.setAssignProjectId("");
-                                              actions.setAssignTopicId("");
-                                              actions.setAssignProjectOpen(true);
-                                            }}
-                                          >
-                                            <Folder className="w-4 h-4 mr-2" />
-                                            {doc.project_id ? "Move to Project" : "Assign Project"}
-                                          </DropdownMenuItem>
-                                          <DropdownMenuSeparator />
-                                          {permissions.canPublish && (
-                                            <DropdownMenuItem
-                                              onClick={(e) => {
-                                                actions.handleTogglePublishPage(e, doc.id, doc.is_published);
-                                              }}
-                                            >
-                                              {doc.is_published ? (
-                                                <>
-                                                  <XCircle className="w-4 h-4 mr-2" />
-                                                  Unpublish
-                                                </>
-                                              ) : (
-                                                <>
-                                                  <Send className="w-4 h-4 mr-2" />
-                                                  Publish
-                                                </>
-                                              )}
-                                            </DropdownMenuItem>
-                                          )}
-                                          <DropdownMenuItem
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setPageSettingsTarget(doc);
-                                              setPageSettingsOpen(true);
-                                            }}
-                                          >
-                                            <Settings className="w-4 h-4 mr-2" />
-                                            Settings
-                                          </DropdownMenuItem>
-                                          <DropdownMenuSeparator />
-                                          <DropdownMenuItem
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              actions.handleOpenInDrive(doc.google_doc_id);
-                                            }}
-                                          >
-                                            <ExternalLink className="w-4 h-4 mr-2" />
-                                            Open in Google Docs
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 hidden sm:table-cell">
-                                  <div className="flex flex-col gap-1.5">
-                                    {(() => {
-                                      const hasUnpublishedChanges =
-                                        !doc.is_published &&
-                                        doc.published_content_html &&
-                                        doc.content_html !== doc.published_content_html;
-
-                                      if (doc.is_published) {
-                                        return (
-                                          <div className="flex items-center gap-2">
-                                            <Circle className="w-2 h-2 bg-green-500 rounded-full" />
-                                            <span className="text-sm text-green-600">Published</span>
-                                          </div>
-                                        );
-                                      } else if (hasUnpublishedChanges) {
-                                        return (
-                                          <div className="flex items-center gap-2">
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="h-7 px-2 text-xs gap-1.5 border-amber-500/50 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600"
-                                              onClick={(e) => actions.handleRepublishPage(e, doc.id)}
-                                            >
-                                              <RefreshCw className="w-3 h-3" />
-                                              Republish
-                                            </Button>
-                                          </div>
-                                        );
-                                      } else {
-                                        return (
-                                          <div className="flex items-center gap-2">
-                                            <Circle className="w-2 h-2 bg-muted-foreground rounded-full" />
-                                            <span className="text-sm text-muted-foreground">Draft</span>
-                                          </div>
-                                        );
-                                      }
-                                    })()}
-                                    {doc.status === "review" && (
-                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600 border border-amber-200 w-fit">
-                                        In Review
-                                      </span>
-                                    )}
-                                    {doc.status === "approved" && (
-                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-600 border border-green-200 w-fit">
-                                        Approved
-                                      </span>
-                                    )}
-                                    {doc.status === "rejected" && (
-                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-600 border border-red-200 w-fit">
-                                        Changes Requested
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 hidden md:table-cell">
-                                  <div className="flex items-center gap-2">
-                                    <User className="w-3 h-3 text-muted-foreground" />
-                                    <span className="text-sm text-muted-foreground">
-                                      {doc.owner_name || "\u2014"}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 hidden lg:table-cell">
-                                  <div className="flex items-center gap-2">
-                                    <Clock className="w-3 h-3 text-muted-foreground" />
-                                    <span className="text-sm text-muted-foreground">
-                                      {doc.google_modified_at
-                                        ? new Date(doc.google_modified_at).toLocaleDateString()
-                                        : "\u2014"}
-                                    </span>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                    {hasMorePages && (
-                      <div className="p-4 border-t border-border flex justify-center">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setVisiblePagesCount((prev) => prev + 10)}
-                          className="gap-2"
-                        >
-                          Load More
-                          <span className="text-muted-foreground">
-                            ({visiblePagesCount} of {filteredDocuments.length})
-                          </span>
-                        </Button>
-                      </div>
-                    )}
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1.5 mt-1"
+                    disabled={syncPage.isPending}
+                    onClick={() => syncPage.mutate(selectedPage.id)}
+                  >
+                    {syncPage.isPending
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <RefreshCw className="h-3.5 w-3.5" />
+                    }
+                    Sync from Google Docs
+                  </Button>
                 </div>
-              </div>
-
-              {/* AI Assistant Panel */}
-              <DocAssistantChat
-                open={showAIAssistant}
-                onOpenChange={setShowAIAssistant}
-                currentProject={
-                  selectedProject?.name ? { id: selectedProject.id, name: selectedProject.name } : null
-                }
-                currentTopic={
-                  selectedTopic?.name ? { id: selectedTopic.id, name: selectedTopic.name } : null
-                }
-                onRefresh={fetchData}
-                googleToken={driveSync.getGoogleToken()}
+              )}
+            </div>
+          </>
+        ) : (
+          /* Empty state */
+          <div className="flex flex-col items-center justify-center flex-1 gap-5 px-8">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center"
+              style={{ background: `${org?.primary_color ?? "#6366f1"}15` }}
+            >
+              <BookOpen
+                className="h-7 w-7"
+                style={{ color: org?.primary_color ?? "#6366f1" }}
               />
             </div>
-          </main>
+            <div className="text-center max-w-sm">
+              <h2 className="font-semibold text-base tracking-tight">
+                Welcome to {org?.name ?? "AccelDocs"}
+              </h2>
+              <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
+                Select a page from the sidebar, or get started by importing your Google Drive folder.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => setShowScanDrive(true)}>
+                <FolderOpen className="h-3.5 w-3.5" /> Import from Drive
+              </Button>
+              <Button size="sm" className="h-8 text-xs gap-1.5" onClick={() => { setAddPageSectionId(null); setShowAddPage(true); }}>
+                <Plus className="h-3.5 w-3.5" /> Add page
+              </Button>
+            </div>
+          </div>
         )}
+      </main>
 
-        <ProjectSharePanel
-          open={shareOpen}
-          onOpenChange={setShareOpen}
-          projectId={selectedProject?.id || ""}
-          projectName={selectedProject?.name || ""}
-          projectSlug={selectedProject?.slug}
-          organizationSlug={organizationSlug}
-          projectVersionSlug={selectedVersion?.slug || null}
-        />
-
-        <AddPageDialog
-          open={addPageOpen}
-          onOpenChange={setAddPageOpen}
-          projectId={selectedProject?.id}
-          projectName={selectedProject?.name}
-          projectVersionId={selectedVersion?.id || null}
-          topicId={selectedTopic?.id}
-          topicName={selectedTopic?.name}
-          parentFolderId={selectedTopic?.drive_folder_id || selectedProject?.drive_folder_id || null}
-          organizationId={organizationId}
-          onCreated={() => fetchData()}
-        />
-
-        <ImportMarkdownDialog
-          open={importMarkdownOpen}
-          onOpenChange={setImportMarkdownOpen}
-          projectId={selectedProject?.id || ""}
-          projectVersionId={selectedVersion?.id || ""}
-          driveFolderId={selectedProject?.drive_folder_id || ""}
-          organizationId={organizationId || ""}
-          rootFolderId={rootFolderId || ""}
-          onImportComplete={() => fetchData()}
-        />
-
-        <AddProjectDialog
-          open={addProjectOpen}
-          onOpenChange={(open) => {
-            setAddProjectOpen(open);
-            if (!open) setParentProjectForCreate(null);
-          }}
-          rootFolderId={rootFolderId}
-          driveParentFolderId={parentProjectForCreate?.drive_folder_id ?? null}
-          organizationId={organizationId || undefined}
-          parentProjectId={parentProjectForCreate?.id}
-          parentProjectName={parentProjectForCreate?.name}
-          onOpenSettings={() => setShowGeneralSettings(true)}
-          onCreated={(result) => {
-            if (result?.id) {
-              setProjects((prev) => {
-                if (prev.some((p) => p.id === result.id)) return prev;
-                const newProject: Project = {
-                  id: result.id,
-                  name: result.name,
-                  slug: null,
-                  drive_folder_id: null,
-                  visibility: "internal",
-                  is_published: false,
-                  parent_id: parentProjectForCreate?.id ?? null,
-                  organization_id: organizationId || "",
-                  show_version_switcher: true,
-                };
-                return [newProject, ...prev];
-              });
-
-              if (result.versionId) {
-                setProjectVersions((prev) => {
-                  if (prev.some((v) => v.id === result.versionId)) return prev;
-                  return [
-                    {
-                      id: result.versionId,
-                      project_id: result.id,
-                      name: "v1.0",
-                      slug: "v1.0",
-                      is_default: true,
-                      is_published: false,
-                      semver_major: 1,
-                      semver_minor: 0,
-                      semver_patch: 0,
-                    },
-                    ...prev,
-                  ];
-                });
-              }
-            }
-
-            fetchData();
-            setParentProjectForCreate(null);
-
-            if (result && "discoveryResult" in result && result.discoveryResult) {
-              setDiscoveryResult(result.discoveryResult);
-              setDiscoveryProjectId(result.id);
-              setDiscoveryVersionId(result.versionId || null);
-              setDiscoveryOpen(true);
-            }
-          }}
-        />
-
-        {discoveryResult && discoveryProjectId && (
-          <DriveDiscoveryDialog
-            open={discoveryOpen}
-            onOpenChange={setDiscoveryOpen}
-            projectId={discoveryProjectId}
-            projectVersionId={discoveryVersionId}
-            discoveryResult={discoveryResult}
-            onImportComplete={() => fetchData()}
-            onCancel={() => setDiscoveryOpen(false)}
-          />
-        )}
-
-        <AddTopicDialog
-          open={addTopicOpen}
-          onOpenChange={(open) => {
-            setAddTopicOpen(open);
-            if (!open) setParentTopicForCreate(null);
-          }}
-          projectName={selectedProject?.name || null}
-          projectId={selectedProject?.id || null}
-          projectVersionId={selectedVersion?.id || null}
-          projectFolderId={selectedProject?.drive_folder_id || null}
-          parentTopic={
-            parentTopicForCreate
-              ? {
-                  id: parentTopicForCreate.id,
-                  name: parentTopicForCreate.name,
-                  drive_folder_id: parentTopicForCreate.drive_folder_id,
-                }
-              : null
-          }
-          organizationId={organizationId}
-          onCreated={() => {
-            fetchData();
-            setParentTopicForCreate(null);
-          }}
-        />
-
-        <ProjectSettingsPanel
-          open={projectSettingsOpen}
-          onOpenChange={setProjectSettingsOpen}
-          projectId={selectedProject?.id || null}
-          projectName={selectedProject?.name || null}
-          onUpdate={() => fetchData()}
-        />
-
-        <AssignProjectDialog
-          open={actions.assignProjectOpen}
-          onOpenChange={(open) => {
-            actions.setAssignProjectOpen(open);
-            if (!open) {
-              actions.setAssignTargetDoc(null);
-              actions.setAssignProjectId("");
-              actions.setAssignTopicId("");
-            }
-          }}
-          assignProjectId={actions.assignProjectId}
-          onProjectChange={(value) => {
-            actions.setAssignProjectId(value);
-            actions.setAssignTopicId("");
-          }}
-          assignTopicId={actions.assignTopicId}
-          onTopicChange={(value) => actions.setAssignTopicId(value)}
-          projectOptions={assignProjectOptions}
-          assignableTopics={assignableTopics}
-          isAssigning={actions.isAssigningProject}
-          onAssign={actions.handleAssignProject}
-        />
-
-        <PageSettingsDialog
-          open={pageSettingsOpen}
-          onOpenChange={(open) => {
-            setPageSettingsOpen(open);
-            if (!open) setPageSettingsTarget(null);
-          }}
-          documentId={pageSettingsTarget?.id || null}
-          documentTitle={pageSettingsTarget?.title || null}
-          projectId={pageSettingsTarget?.project_id || null}
-          googleDocId={pageSettingsTarget?.google_doc_id || null}
-          onUpdate={() => fetchData()}
-          onDelete={async (docId) => {
-            const result = await actions.handleDeleteDocument(docId);
-            if (result !== false) {
-              if (selectedPage === docId) setSelectedPage(null);
-              if (selectedDocument?.id === docId) setSelectedDocument(null);
-              setPageSettingsTarget(null);
-            }
-            return result;
-          }}
-        />
-
-        <TopicSettingsDialog
-          open={topicSettingsOpen}
-          onOpenChange={setTopicSettingsOpen}
-          topicId={settingsTopic?.id || null}
-          topicName={settingsTopic?.name || null}
-          projectId={settingsTopic?.project_id || null}
-          organizationId={organizationId}
-          onUpdate={() => fetchData()}
-        />
-
-        <AlertDialog
-          open={actions.deleteDialogOpen}
-          onOpenChange={(open) => {
-            actions.setDeleteDialogOpen(open);
-            if (!open) actions.setForceDeleteAvailable(false);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete {actions.itemToDelete?.type}?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete "{actions.itemToDelete?.name}"?
-                {actions.itemToDelete?.type === "project" &&
-                  " This will also delete all topics and pages within it."}
-                {actions.itemToDelete?.type === "topic" && " This will also delete all pages within it."}
-                {actions.forceDeleteAvailable
-                  ? " Note: Drive files could not be deleted (they contain content not created by this app). Use 'Force Delete' to remove only from the app."
-                  : " The corresponding files will be moved to Google Drive trash (recoverable for 30 days)."}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              {actions.forceDeleteAvailable && (
-                <AlertDialogAction
-                  onClick={() => actions.confirmDelete(true)}
-                  className="bg-orange-600 text-white hover:bg-orange-700"
-                >
-                  Force Delete (App Only)
-                </AlertDialogAction>
-              )}
-              <AlertDialogAction
-                onClick={() => actions.confirmDelete(false)}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Bulk Delete Confirmation Dialog */}
-        <AlertDialog open={actions.bulkDeleteDialogOpen} onOpenChange={actions.setBulkDeleteDialogOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                Delete {actions.selectedDocIds.size} page{actions.selectedDocIds.size > 1 ? "s" : ""}?
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete the selected pages? The corresponding files will be moved to
-                Google Drive trash (recoverable for 30 days).
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={actions.handleBulkDelete}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                disabled={actions.isBulkDeleting}
-              >
-                {actions.isBulkDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {permissions.canViewAuditLogs && selectedProject && (
-          <AuditLogPanel open={auditLogOpen} onOpenChange={setAuditLogOpen} projectId={selectedProject.id} />
-        )}
-
-        {organizationId && (
-          <InviteMemberDialog
-            open={inviteMemberOpen}
-            onOpenChange={setInviteMemberOpen}
-            organizationId={organizationId}
-            organizationName={organizationName}
-          />
-        )}
-      </div>
-    </TooltipProvider>
+      {showAddPage && <AddPageDialog sectionId={addPageSectionId} onClose={() => setShowAddPage(false)} />}
+      {showScanDrive && <ScanDriveDialog onClose={() => setShowScanDrive(false)} />}
+    </div>
   );
-};
-
-export default Dashboard;
+}
