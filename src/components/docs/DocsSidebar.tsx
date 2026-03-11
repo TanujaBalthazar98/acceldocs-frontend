@@ -50,17 +50,75 @@ export function DocsSidebar({
 }: DocsSidebarProps) {
   const searchLower = searchQuery.toLowerCase();
 
-  const projectTopics = selectedProject
+  const versionIdentity = (version: {
+    id?: string;
+    slug?: string;
+    name?: string;
+    semver_major?: number;
+    semver_minor?: number;
+    semver_patch?: number;
+  } | null | undefined): string => {
+    if (!version) return "";
+    const major = Number(version.semver_major ?? 0);
+    const minor = Number(version.semver_minor ?? 0);
+    const patch = Number(version.semver_patch ?? 0);
+    if (major || minor || patch) return `semver:${major}.${minor}.${patch}`;
+    if (version.slug) return `slug:${version.slug.toLowerCase()}`;
+    if (version.name) return `name:${version.name.toLowerCase()}`;
+    return version.id ? `id:${version.id}` : "";
+  };
+
+  const visibleVersionIdentity = useMemo(() => versionIdentity(visibleVersion), [visibleVersion]);
+  const versionIdentityById = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!selectedProject) return map;
+    const versions = getProjectVersions(selectedProject.id);
+    for (const version of versions) {
+      map.set(version.id, versionIdentity(version));
+    }
+    return map;
+  }, [selectedProject, getProjectVersions]);
+
+  const matchesVisibleVersion = (entityVersionId?: string | null): boolean => {
+    if (!visibleVersion) return true;
+    if (!entityVersionId) return true;
+    if (entityVersionId === visibleVersion.id) return true;
+    if (!visibleVersionIdentity) return false;
+    const entityIdentity = versionIdentityById.get(entityVersionId);
+    // Fail open when version metadata is missing/stale to avoid hiding pages.
+    if (!entityIdentity) return true;
+    return entityIdentity === visibleVersionIdentity;
+  };
+
+  const projectTopicsPrimary = selectedProject
     ? topics.filter(
-        (t) => t.project_id === selectedProject.id && (!visibleVersion || t.project_version_id === visibleVersion.id)
+        (t) => t.project_id === selectedProject.id && matchesVisibleVersion(t.project_version_id)
       )
     : [];
 
-  const projectDocuments = selectedProject
+  const projectTopicsFallback = selectedProject
+    ? topics.filter((t) => t.project_id === selectedProject.id)
+    : [];
+
+  const projectTopics =
+    visibleVersion && projectTopicsPrimary.length === 0 && projectTopicsFallback.length > 0
+      ? projectTopicsFallback
+      : projectTopicsPrimary;
+
+  const projectDocumentsPrimary = selectedProject
     ? documents.filter(
-        (d) => d.project_id === selectedProject.id && (!visibleVersion || d.project_version_id === visibleVersion.id)
+        (d) => d.project_id === selectedProject.id && matchesVisibleVersion(d.project_version_id)
       )
     : [];
+
+  const projectDocumentsFallback = selectedProject
+    ? documents.filter((d) => d.project_id === selectedProject.id)
+    : [];
+
+  const projectDocuments =
+    visibleVersion && projectDocumentsPrimary.length === 0 && projectDocumentsFallback.length > 0
+      ? projectDocumentsFallback
+      : projectDocumentsPrimary;
 
   const filteredDocuments = projectDocuments.filter((d) => !searchQuery || d.title.toLowerCase().includes(searchLower));
 

@@ -600,6 +600,45 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const getVersionById = (versionId?: string | null) =>
     versionId ? projectVersions.find(v => v.id === versionId) ?? null : null;
 
+  const versionIdentity = (version: {
+    id?: string;
+    slug?: string;
+    name?: string;
+    semver_major?: number;
+    semver_minor?: number;
+    semver_patch?: number;
+  } | null | undefined): string => {
+    if (!version) return "";
+    const major = Number(version.semver_major ?? 0);
+    const minor = Number(version.semver_minor ?? 0);
+    const patch = Number(version.semver_patch ?? 0);
+    if (major || minor || patch) return `semver:${major}.${minor}.${patch}`;
+    if (version.slug) return `slug:${version.slug.toLowerCase()}`;
+    if (version.name) return `name:${version.name.toLowerCase()}`;
+    return version.id ? `id:${version.id}` : "";
+  };
+
+  const versionIdentityById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const version of projectVersions) {
+      map.set(version.id, versionIdentity(version));
+    }
+    return map;
+  }, [projectVersions]);
+
+  const selectedVersionIdentity = selectedVersion ? versionIdentity(selectedVersion) : null;
+
+  const matchesSelectedVersion = (entityVersionId?: string | null): boolean => {
+    if (!selectedVersion) return true;
+    if (!entityVersionId) return true;
+    if (entityVersionId === selectedVersion.id) return true;
+    if (!selectedVersionIdentity) return false;
+    const entityIdentity = versionIdentityById.get(entityVersionId);
+    // Fail open when version metadata is missing/stale to avoid hiding pages.
+    if (!entityIdentity) return true;
+    return entityIdentity === selectedVersionIdentity;
+  };
+
   // Check for custom domain on mount
   useEffect(() => {
     const checkCustomDomain = async () => {
@@ -742,10 +781,10 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     let currentId: string | null = selectedProject.id;
     while (currentId) {
       const hasDocs = documents.some(
-        (doc) => doc.project_id === currentId && doc.project_version_id === selectedVersion.id
+        (doc) => doc.project_id === currentId && matchesSelectedVersion(doc.project_version_id)
       );
       const hasTopics = topics.some(
-        (topic) => topic.project_id === currentId && topic.project_version_id === selectedVersion.id
+        (topic) => topic.project_id === currentId && matchesSelectedVersion(topic.project_version_id)
       );
       if (hasDocs || hasTopics) return true;
       
@@ -754,7 +793,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
     
     return false;
-  }, [selectedProject, selectedVersion, versionSlug, documents, topics, projects, isInternalView]);
+  }, [selectedProject, selectedVersion, versionSlug, documents, topics, projects, isInternalView, selectedVersionIdentity, versionIdentityById]);
 
   const showVersionSwitcher = useMemo(() => {
     if (!selectedProject) return false;
@@ -769,10 +808,22 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
   const visibleVersion = shouldUseVersion ? selectedVersion : null;
 
+  const visibleVersionIdentity = visibleVersion ? versionIdentity(visibleVersion) : null;
+  const matchesVisibleVersion = (entityVersionId?: string | null): boolean => {
+    if (!visibleVersion) return true;
+    if (!entityVersionId) return true;
+    if (entityVersionId === visibleVersion.id) return true;
+    if (!visibleVersionIdentity) return false;
+    const entityIdentity = versionIdentityById.get(entityVersionId);
+    // Fail open when version metadata is missing/stale to avoid hiding pages.
+    if (!entityIdentity) return true;
+    return entityIdentity === visibleVersionIdentity;
+  };
+
   // Helper to get the first available document for a project (considering display order)
   const getFirstDocumentForProject = (projectId: string) => {
     const projectDocs = documents.filter(
-      d => d.project_id === projectId && (!visibleVersion || d.project_version_id === visibleVersion.id)
+      (d) => d.project_id === projectId && matchesVisibleVersion(d.project_version_id)
     );
     if (projectDocs.length === 0) return null;
     
@@ -799,7 +850,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         (t) =>
           t.slug === topicSlugValue &&
           t.project_id === project.id &&
-          (!visibleVersion || t.project_version_id === visibleVersion.id)
+          matchesVisibleVersion(t.project_version_id)
       );
       if (!topic) {
         return { doc: undefined, topicDocNeedsRedirect: false };
@@ -808,7 +859,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         (d) =>
           d.slug === pageSlugValue &&
           d.topic_id === topic.id &&
-          (!visibleVersion || d.project_version_id === visibleVersion.id)
+          matchesVisibleVersion(d.project_version_id)
       );
       return { doc, topicDocNeedsRedirect: false };
     }
@@ -817,7 +868,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       (d) =>
         d.slug === pageSlugValue &&
         d.project_id === project.id &&
-        (!visibleVersion || d.project_version_id === visibleVersion.id) &&
+        matchesVisibleVersion(d.project_version_id) &&
         !d.topic_id
     );
     if (projectLevelDoc) {
@@ -828,7 +879,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       (d) =>
         d.slug === pageSlugValue &&
         d.project_id === project.id &&
-        (!visibleVersion || d.project_version_id === visibleVersion.id)
+        matchesVisibleVersion(d.project_version_id)
     );
     return { doc: topicDoc, topicDocNeedsRedirect: !!topicDoc?.topic_id };
   };
@@ -1463,10 +1514,10 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     () =>
       selectedProject
         ? documents.filter(
-            (d) => d.project_id === selectedProject.id && (!visibleVersion || d.project_version_id === visibleVersion.id)
+            (d) => d.project_id === selectedProject.id && matchesVisibleVersion(d.project_version_id)
           )
         : [],
-    [selectedProject, documents, visibleVersion]
+    [selectedProject, documents, visibleVersion, visibleVersionIdentity, versionIdentityById]
   );
 
   const sidebarContent = (
