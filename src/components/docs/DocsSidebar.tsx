@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { VersionSwitcher } from "@/components/docs/VersionSwitcher";
 import { cn } from "@/lib/utils";
 import type { Document, Project, ProjectVersion, Topic } from "@/components/docs/types";
 
@@ -13,7 +12,6 @@ interface DocsSidebarProps {
   loading: boolean;
   selectedProject: Project | null;
   selectedDocument: Document | null;
-  showVersionSwitcher: boolean;
   visibleVersion: ProjectVersion | null;
   projects: Project[];
   topics: Topic[];
@@ -22,7 +20,6 @@ interface DocsSidebarProps {
   expandedTopics: Set<string>;
   setExpandedTopics: Dispatch<SetStateAction<Set<string>>>;
   onSelectDocument: (doc: Document) => void;
-  onSelectProjectVersion: (version: ProjectVersion) => void;
   getProjectVersions: (projectId: string) => ProjectVersion[];
   isOrgUser: boolean;
   onCollapse: () => void;
@@ -33,7 +30,6 @@ export function DocsSidebar({
   loading,
   selectedProject,
   selectedDocument,
-  showVersionSwitcher,
   visibleVersion,
   projects,
   topics,
@@ -42,7 +38,6 @@ export function DocsSidebar({
   expandedTopics,
   setExpandedTopics,
   onSelectDocument,
-  onSelectProjectVersion,
   getProjectVersions,
   isOrgUser,
   onCollapse,
@@ -248,14 +243,6 @@ export function DocsSidebar({
           <span className="text-sm font-medium text-muted-foreground truncate">
             {selectedProject?.name || "Documentation"}
           </span>
-          {showVersionSwitcher && selectedProject && (
-            <VersionSwitcher
-              currentVersion={visibleVersion}
-              versions={getProjectVersions(selectedProject.id)}
-              onVersionSelect={onSelectProjectVersion}
-              className="justify-start -ml-2"
-            />
-          )}
         </div>
         <Button variant="ghost" size="icon" className="h-7 w-7 hidden lg:flex" onClick={onCollapse}>
           <PanelLeftClose className="h-4 w-4" />

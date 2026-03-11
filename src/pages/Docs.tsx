@@ -812,18 +812,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     return false;
   }, [selectedProject, selectedVersion, versionSlug, documents, topics, projects, isInternalView, selectedVersionIdentity, versionIdentityById, hasMultipleVersions]);
 
-  const showVersionSwitcher = useMemo(() => {
-    if (!selectedProject) return false;
-    if (!hasMultipleVersions && !versionSlug) return false;
-    let currentId: string | null = selectedProject.id;
-    while (currentId) {
-      const p = projects.find(proj => proj.id === currentId);
-      if (p?.show_version_switcher) return true;
-      currentId = p?.parent_id || null;
-    }
-    return false;
-  }, [selectedProject, projects, hasMultipleVersions, versionSlug]);
-
   const visibleVersion = shouldUseVersion ? selectedVersion : null;
 
   const visibleVersionIdentity = visibleVersion ? versionIdentity(visibleVersion) : null;
@@ -1606,7 +1594,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       loading={loading}
       selectedProject={selectedProject}
       selectedDocument={selectedDocument}
-      showVersionSwitcher={showVersionSwitcher}
       visibleVersion={visibleVersion}
       projects={projects}
       topics={topics}
@@ -1615,12 +1602,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       expandedTopics={expandedTopics}
       setExpandedTopics={setExpandedTopics}
       onSelectDocument={selectDocument}
-      onSelectProjectVersion={(v) => {
-        if (selectedProject && currentOrg) {
-          navigate(buildProjectUrl(selectedProject, v));
-          setMobileMenuOpen(false);
-        }
-      }}
       getProjectVersions={getProjectVersions}
       isOrgUser={isOrgUser}
       onCollapse={() => setSidebarCollapsed(true)}
