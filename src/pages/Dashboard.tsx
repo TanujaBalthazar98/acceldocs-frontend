@@ -203,6 +203,8 @@ const Dashboard = () => {
     selectedPage,
     setSelectedPage,
     permissions,
+    isOrgOwner,
+    appRole,
     logAction,
     logUnauthorizedAttempt,
     canPublishForProject,

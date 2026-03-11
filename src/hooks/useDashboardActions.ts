@@ -20,6 +20,8 @@ interface UseDashboardActionsOptions {
   selectedPage: string | null;
   setSelectedPage: React.Dispatch<React.SetStateAction<string | null>>;
   permissions: any;
+  isOrgOwner?: boolean;
+  appRole?: string | null;
   logAction: (action: string, type: string, id: string, projectId: string, meta?: any) => Promise<void>;
   logUnauthorizedAttempt: (action: string, type: string, id: string, projectId: string, permission: string) => Promise<void>;
   canPublishForProject: (projectId: string) => Promise<boolean>;
@@ -48,6 +50,8 @@ export const useDashboardActions = ({
   selectedPage,
   setSelectedPage,
   permissions,
+  isOrgOwner = false,
+  appRole = null,
   logAction,
   logUnauthorizedAttempt,
   canPublishForProject,
@@ -461,8 +465,11 @@ export const useDashboardActions = ({
     }
   };
 
+  const _canPublishGlobally = () =>
+    permissions.canPublish || isOrgOwner || appRole === "owner" || appRole === "admin" || appRole === "editor";
+
   const runBulkPublish = async (docIds: string[]) => {
-    if (!permissions.canPublish) {
+    if (!_canPublishGlobally()) {
       toast({ title: "Permission Denied", description: "You don't have permission to publish pages.", variant: "destructive" });
       return;
     }
@@ -585,7 +592,7 @@ export const useDashboardActions = ({
   };
 
   const runBulkUnpublish = async (docIds: string[]) => {
-    if (!permissions.canPublish) {
+    if (!_canPublishGlobally()) {
       toast({ title: "Permission Denied", description: "You don't have permission to unpublish pages.", variant: "destructive" });
       return;
     }
