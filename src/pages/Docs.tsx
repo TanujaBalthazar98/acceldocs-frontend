@@ -610,6 +610,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const getVersionById = (versionId?: string | null) =>
     versionId ? projectVersions.find(v => v.id === versionId) ?? null : null;
 
+  const selectedProjectVersions = useMemo(
+    () => (selectedProject ? getProjectVersions(selectedProject.id) : []),
+    [selectedProject, projectVersions, projects, isInternalView]
+  );
+  const hasMultipleVersions = selectedProjectVersions.length > 1;
+
   const versionIdentity = (version: {
     id?: string;
     slug?: string;
@@ -786,6 +792,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     if (!selectedProject || !selectedVersion) return false;
     if (versionSlug) return true;
     if (!isInternalView) return false;
+    if (!hasMultipleVersions) return false;
     
     // Internal view: check project and its ancestors for documents/topics in this version
     let currentId: string | null = selectedProject.id;
@@ -803,10 +810,11 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
     
     return false;
-  }, [selectedProject, selectedVersion, versionSlug, documents, topics, projects, isInternalView, selectedVersionIdentity, versionIdentityById]);
+  }, [selectedProject, selectedVersion, versionSlug, documents, topics, projects, isInternalView, selectedVersionIdentity, versionIdentityById, hasMultipleVersions]);
 
   const showVersionSwitcher = useMemo(() => {
     if (!selectedProject) return false;
+    if (!hasMultipleVersions && !versionSlug) return false;
     let currentId: string | null = selectedProject.id;
     while (currentId) {
       const p = projects.find(proj => proj.id === currentId);
@@ -814,7 +822,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       currentId = p?.parent_id || null;
     }
     return false;
-  }, [selectedProject, projects]);
+  }, [selectedProject, projects, hasMultipleVersions, versionSlug]);
 
   const visibleVersion = shouldUseVersion ? selectedVersion : null;
 
@@ -1938,21 +1946,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
               return null;
             })()}
           </div>
-
-          {/* Version Switcher (Desktop) */}
-          {showVersionSwitcher && (
-            <div className="hidden md:flex items-center px-1">
-              <VersionSwitcher 
-                currentVersion={visibleVersion}
-                versions={getProjectVersions(selectedProject!.id)}
-                onVersionSelect={(v) => {
-                  if (currentOrg) {
-                    navigate(buildProjectUrl(selectedProject, v));
-                  }
-                }}
-              />
-            </div>
-          )}
 
           {/* Center: Search + Ask AI */}
           <div className="hidden sm:flex items-center gap-2 flex-1 max-w-xs md:max-w-md mx-2 md:mx-4">
