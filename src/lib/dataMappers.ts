@@ -119,6 +119,7 @@ export const mapDocumentFromStrapi = (item: any): Document => {
     updated_at: attrs.updatedAt || attrs.updated_at || "",
     visibility: attrs.visibility ?? "internal",
     is_published: !!attrs.is_published,
+    status: attrs.status ?? "draft",
     owner_id: ownerIdRaw ? String(ownerIdRaw) : null,
     owner_name: owner.full_name || owner.email || owner.username || undefined,
     content_html: attrs.content_html ?? null,
