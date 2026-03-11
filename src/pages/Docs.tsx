@@ -275,29 +275,39 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     };
   };
 
-  const dedupeProjects = (rows: Project[]) => {
+  const buildProjectCanonicalization = (rows: Project[]) => {
     const normalizeName = (value: string) => value.trim().toLowerCase();
-    const byDrive = new Map<string, Project>();
-    const byNameParent = new Map<string, Project>();
+    const groupedByNameParent = new Map<string, Project[]>();
+    const rawToCanonicalId = new Map<string, string>();
 
     for (const project of rows) {
-      if (project.drive_folder_id) {
-        const existing = byDrive.get(project.drive_folder_id);
-        if (!existing || (!existing.parent_id && project.parent_id)) {
-          byDrive.set(project.drive_folder_id, project);
-        }
-        continue;
-      }
       const key = `${project.parent_id || "root"}::${normalizeName(project.name)}`;
-      if (!byNameParent.has(key)) {
-        byNameParent.set(key, project);
+      const grouped = groupedByNameParent.get(key) ?? [];
+      grouped.push(project);
+      groupedByNameParent.set(key, grouped);
+    }
+
+    const canonicalProjects: Project[] = [];
+    for (const grouped of groupedByNameParent.values()) {
+      // Prefer entries with Drive linkage, then child-linked rows, then first row.
+      const canonical =
+        grouped.find((project) => !!project.drive_folder_id) ??
+        grouped.find((project) => !!project.parent_id) ??
+        grouped[0];
+      canonicalProjects.push(canonical);
+      for (const project of grouped) {
+        rawToCanonicalId.set(project.id, canonical.id);
       }
     }
 
-    return [...byDrive.values(), ...byNameParent.values()].filter(
-      (p, idx, arr) => arr.findIndex((other) => other.id === p.id) === idx
+    const projects = canonicalProjects.filter(
+      (project, idx, arr) => arr.findIndex((other) => other.id === project.id) === idx
     );
+
+    return { projects, rawToCanonicalId };
   };
+
+  const dedupeProjects = (rows: Project[]) => buildProjectCanonicalization(rows).projects;
 
   const getDocumentDedupeKey = (doc: Document) => {
     const version = doc.project_version_id || "none";
@@ -1114,11 +1124,28 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           return;
         }
 
-        const publicProjects = dedupeProjects((publicContent.projects || []).map(mapProject));
+        const publicProjectRows = (publicContent.projects || []).map(mapProject);
+        const { projects: publicProjects, rawToCanonicalId } =
+          buildProjectCanonicalization(publicProjectRows);
+        const remapProjectId = (projectId: string) => rawToCanonicalId.get(projectId) ?? projectId;
+
         setProjects(publicProjects);
-        setProjectVersions((publicContent.versions || []).map(mapVersion));
-        setTopics((publicContent.topics || []).map(mapTopic));
-        const docs = (publicContent.documents || []).map(mapDocument);
+        setProjectVersions(
+          (publicContent.versions || []).map(mapVersion).map((version) => ({
+            ...version,
+            project_id: remapProjectId(version.project_id),
+          }))
+        );
+        setTopics(
+          (publicContent.topics || []).map(mapTopic).map((topic) => ({
+            ...topic,
+            project_id: remapProjectId(topic.project_id),
+          }))
+        );
+        const docs = (publicContent.documents || []).map(mapDocument).map((doc) => ({
+          ...doc,
+          project_id: remapProjectId(doc.project_id),
+        }));
         const docByKey = new Map<string, Document>();
         for (const doc of docs) {
           const key = getDocumentDedupeKey(doc);
@@ -1171,11 +1198,9 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
       try {
         const data = await fetchProjects();
-        projectsData = dedupeProjects(
-          (data?.data || [])
-            .map(mapProject)
-            .filter((project) => !project.organization_id || project.organization_id === targetOrgId)
-        );
+        projectsData = (data?.data || [])
+          .map(mapProject)
+          .filter((project) => !project.organization_id || project.organization_id === targetOrgId);
       } catch (error) {
         console.error("Error fetching projects:", error);
         setContentError("We couldn’t load projects for this workspace. Please try again.");
@@ -1183,7 +1208,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
       if (projectsData.length > 0) {
         // Filter projects based on visibility and user authentication
-        const filteredProjects = dedupeProjects(projectsData.filter(project => {
+        const filteredProjectRows = projectsData.filter(project => {
           // PUBLIC projects: visible to everyone (no auth required)
           if (project.visibility === "public") return true;
           
@@ -1201,12 +1226,15 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           }
           
           return false;
-        }));
+        });
+
+        const { projects: filteredProjects, rawToCanonicalId } =
+          buildProjectCanonicalization(filteredProjectRows);
+        const projectIds = Array.from(new Set(filteredProjectRows.map((project) => project.id)));
         
         setProjects(filteredProjects);
-        const projectIds = filteredProjects.map(p => p.id);
-        await fetchProjectVersions(projectIds);
-        await fetchTopicsAndDocuments(projectIds, userOrgId, currentUser?.id || null);
+        await fetchProjectVersions(projectIds, rawToCanonicalId);
+        await fetchTopicsAndDocuments(projectIds, userOrgId, currentUser?.id || null, rawToCanonicalId);
       } else {
         setProjects([]);
       }
@@ -1221,8 +1249,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const isInvalidKeyError = (error: ApiError | null) =>
     !!error && error.status === 400 && typeof error.message === "string" && error.message.includes("Invalid key");
 
-  const fetchProjectVersions = async (projectIds: string[]) => {
+  const fetchProjectVersions = async (
+    projectIds: string[],
+    rawToCanonicalProjectId?: Map<string, string>
+  ) => {
     if (projectIds.length === 0) return;
+    const remapProjectId = (projectId: string) =>
+      rawToCanonicalProjectId?.get(projectId) ?? projectId;
 
     if (useClientSideFilters) {
       const { data: fallbackData } = await strapiFetch<{ data: any[] }>(
@@ -1232,7 +1265,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         .map(mapVersion)
         .filter((row) => projectIds.includes(row.project_id));
       if (fallbackRows.length > 0) {
-        setProjectVersions(fallbackRows);
+        setProjectVersions(
+          fallbackRows.map((version) => ({
+            ...version,
+            project_id: remapProjectId(version.project_id),
+          }))
+        );
       }
       return;
     }
@@ -1251,7 +1289,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
     const rows = (data?.data || []).map(mapVersion);
     if (rows.length > 0) {
-      setProjectVersions(rows);
+      setProjectVersions(
+        rows.map((version) => ({
+          ...version,
+          project_id: remapProjectId(version.project_id),
+        }))
+      );
       return;
     }
 
@@ -1264,13 +1307,25 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         .map(mapVersion)
         .filter((row) => projectIds.includes(row.project_id));
       if (fallbackRows.length > 0) {
-        setProjectVersions(fallbackRows);
+        setProjectVersions(
+          fallbackRows.map((version) => ({
+            ...version,
+            project_id: remapProjectId(version.project_id),
+          }))
+        );
       }
     }
   };
 
-  const fetchTopicsAndDocuments = async (projectIds: string[], userOrgId: string | null, userId: string | null) => {
+  const fetchTopicsAndDocuments = async (
+    projectIds: string[],
+    userOrgId: string | null,
+    userId: string | null,
+    rawToCanonicalProjectId?: Map<string, string>
+  ) => {
     if (projectIds.length === 0) return;
+    const remapProjectId = (projectId: string) =>
+      rawToCanonicalProjectId?.get(projectId) ?? projectId;
 
     if (useClientSideFilters) {
       const { data: fallbackTopics } = await strapiFetch<{ data: any[] }>(
@@ -1283,7 +1338,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         if (orderA !== orderB) return orderA - orderB;
         return a.name.localeCompare(b.name);
       });
-      setTopics(topics);
+      setTopics(
+        topics.map((topic) => ({
+          ...topic,
+          project_id: remapProjectId(topic.project_id),
+        }))
+      );
 
       const { data: fallbackDocs } = await strapiFetch<{ data: any[] }>(
         `/api/documents?populate[project][fields][0]=id&populate[project_version][fields][0]=id&populate[topic][fields][0]=id&populate[owner][fields][0]=id&pagination[limit]=1000&sort=display_order:asc`
@@ -1301,20 +1361,24 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       if (docs.length > 0) {
         const docByKey = new Map<string, Document>();
         for (const doc of docs) {
-          const key = doc.google_doc_id ? `gdoc:${doc.google_doc_id}` : `id:${doc.id}`;
+          const canonicalDoc = {
+            ...doc,
+            project_id: remapProjectId(doc.project_id),
+          };
+          const key = canonicalDoc.google_doc_id ? `gdoc:${canonicalDoc.google_doc_id}` : `id:${canonicalDoc.id}`;
           const existing = docByKey.get(key);
           if (!existing) {
-            docByKey.set(key, doc);
+            docByKey.set(key, canonicalDoc);
             continue;
           }
-          if (!existing.is_published && doc.is_published) {
-            docByKey.set(key, doc);
+          if (!existing.is_published && canonicalDoc.is_published) {
+            docByKey.set(key, canonicalDoc);
             continue;
           }
           const existingUpdated = Date.parse(existing.updated_at || "") || 0;
-          const currentUpdated = Date.parse(doc.updated_at || "") || 0;
+          const currentUpdated = Date.parse(canonicalDoc.updated_at || "") || 0;
           if (currentUpdated > existingUpdated) {
-            docByKey.set(key, doc);
+            docByKey.set(key, canonicalDoc);
           }
         }
         const dedupedDocs = Array.from(docByKey.values()).sort((a, b) => {
@@ -1352,7 +1416,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       if (orderA !== orderB) return orderA - orderB;
       return a.name.localeCompare(b.name);
     });
-    setTopics(topics);
+    setTopics(
+      topics.map((topic) => ({
+        ...topic,
+        project_id: remapProjectId(topic.project_id),
+      }))
+    );
 
     const publishedFilter = !isInternalView
       ? "&filters[$or][0][is_published][$eq]=true&filters[$or][1][published_content_html][$notNull]=true"
@@ -1387,20 +1456,24 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     if (docs.length > 0) {
       const docByKey = new Map<string, Document>();
       for (const doc of docs) {
-        const key = getDocumentDedupeKey(doc);
+        const canonicalDoc = {
+          ...doc,
+          project_id: remapProjectId(doc.project_id),
+        };
+        const key = getDocumentDedupeKey(canonicalDoc);
         const existing = docByKey.get(key);
         if (!existing) {
-          docByKey.set(key, doc);
+          docByKey.set(key, canonicalDoc);
           continue;
         }
-        if (!existing.is_published && doc.is_published) {
-          docByKey.set(key, doc);
+        if (!existing.is_published && canonicalDoc.is_published) {
+          docByKey.set(key, canonicalDoc);
           continue;
         }
         const existingUpdated = Date.parse(existing.updated_at || "") || 0;
-        const currentUpdated = Date.parse(doc.updated_at || "") || 0;
+        const currentUpdated = Date.parse(canonicalDoc.updated_at || "") || 0;
         if (currentUpdated > existingUpdated) {
-          docByKey.set(key, doc);
+          docByKey.set(key, canonicalDoc);
         }
       }
       const dedupedDocs = Array.from(docByKey.values()).sort((a, b) => {
