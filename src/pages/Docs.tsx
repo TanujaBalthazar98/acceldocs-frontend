@@ -550,7 +550,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     };
   }, []);
 
-  const selectedRootProject = useMemo(() => {
+  const activeProduct = useMemo(() => {
     if (!selectedProject) return null;
     return selectedProject.parent_id
       ? projects.find((p) => p.id === selectedProject.parent_id) ?? selectedProject
@@ -558,9 +558,9 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   }, [selectedProject, projects]);
 
   const subProjects = useMemo(() => {
-    if (!selectedRootProject) return [];
-    return projects.filter((p) => p.parent_id === selectedRootProject.id);
-  }, [projects, selectedRootProject]);
+    if (!activeProduct) return [];
+    return projects.filter((p) => p.parent_id === activeProduct.id);
+  }, [projects, activeProduct]);
 
   const hasSubProjects = subProjects.length > 0;
 
@@ -943,21 +943,37 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       const currentUser = session?.user;
       
       let userOrgId: string | null = null;
+      let userOrgSlug: string | null = null;
+      let userOrgDomain: string | null = null;
       let userProjectMemberships: string[] = [];
       
       if (currentUser) {
-        const { data, error } = await invokeFunction<{
-          organizationId?: string | number;
-          organization?: { id?: string | number };
-          id?: string | number;
-        }>("ensure-workspace", { body: {} });
-        const resolvedOrgId =
-          data?.organizationId ??
-          data?.organization?.id ??
-          data?.id ??
-          null;
-        if (!error && resolvedOrgId) {
-          userOrgId = String(resolvedOrgId);
+        // Primary source of truth for membership in clean-arch backend.
+        const { data: orgData, error: orgError } = await strapiFetch<any>("/api/org");
+        if (!orgError && orgData) {
+          const resolvedOrg = orgData?.data ?? orgData;
+          if (resolvedOrg?.id != null) userOrgId = String(resolvedOrg.id);
+          if (typeof resolvedOrg?.slug === "string") userOrgSlug = resolvedOrg.slug;
+          if (typeof resolvedOrg?.domain === "string") userOrgDomain = resolvedOrg.domain;
+        }
+
+        // Backward-compatible fallback for older deployments.
+        if (!userOrgId) {
+          const { data, error } = await invokeFunction<{
+            organizationId?: string | number;
+            organization?: { id?: string | number; slug?: string; domain?: string };
+            id?: string | number;
+          }>("ensure-workspace", { body: {} });
+          const resolvedOrgId =
+            data?.organizationId ??
+            data?.organization?.id ??
+            data?.id ??
+            null;
+          if (!error && resolvedOrgId) {
+            userOrgId = String(resolvedOrgId);
+            userOrgSlug = data?.organization?.slug ?? userOrgSlug;
+            userOrgDomain = data?.organization?.domain ?? userOrgDomain;
+          }
         }
 
         const { data: membershipData } = await strapiFetch<{ data: any[] }>(
@@ -1062,7 +1078,21 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       }
       
       // Set isOrgUser based on whether user belongs to the target organization
-      const userBelongsToTargetOrg = currentUser && userOrgId && targetOrgId && userOrgId === targetOrgId;
+      const idsMatch = !!(currentUser && userOrgId && targetOrgId && userOrgId === targetOrgId);
+      const slugsMatch = !!(
+        currentUser &&
+        userOrgSlug &&
+        targetOrg?.slug &&
+        userOrgSlug.toLowerCase() === targetOrg.slug.toLowerCase()
+      );
+      const domainsMatch = !!(
+        currentUser &&
+        userOrgDomain &&
+        targetOrg?.domain &&
+        normalizeHostname(userOrgDomain) === normalizeHostname(targetOrg.domain)
+      );
+      const fallbackOwnOrgInternal = !!(isInternalView && currentUser && userOrgId && !targetOrgId);
+      const userBelongsToTargetOrg = idsMatch || slugsMatch || domainsMatch || fallbackOwnOrgInternal;
       setIsOrgUser(!!userBelongsToTargetOrg);
 
       if (isInternalView && !userBelongsToTargetOrg) {
@@ -1589,6 +1619,14 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     [selectedProject, documents, visibleVersion, visibleVersionIdentity, versionIdentityById]
   );
 
+  const effectiveDocVisibility: VisibilityLevel =
+    selectedDocument?.visibility || selectedProject?.visibility || "public";
+  const showMinimalPublicMeta =
+    !isInternalView &&
+    !isOrgUser &&
+    selectedProject?.visibility === "public" &&
+    effectiveDocVisibility === "public";
+
   const sidebarContent = (
     <DocsSidebar
       loading={loading}
@@ -2066,11 +2104,11 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         </div>
         </header>
 
-        {/* Sub-Project Tabs Bar - Only show if there are sub-projects */}
-        {hasSubProjects ? (
+        {/* Product row + optional sub-project tabs */}
+        {activeProduct ? (
           <div className="border-b border-border bg-card">
             <div className="flex items-center justify-between">
-              {/* Left: Sub-project tabs */}
+              {/* Left: Product label + optional sub-project tabs */}
               <div className="flex items-center gap-0 overflow-x-auto pl-3">
                 {loading ? (
                   <div className="flex gap-2 py-2">
@@ -2080,24 +2118,27 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   </div>
                 ) : (
                   <>
-                    {/* Sub-project tabs only (root project is shown in header) */}
-                    {subProjects.map((project) => (
-                      <button
-                        key={project.id}
-                        onClick={() => selectProject(project)}
-                        className={cn(
-                          "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
-                          selectedProject?.id === project.id
-                            ? "text-foreground"
-                            : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                        )}
-                        style={selectedProject?.id === project.id ? {
-                          borderColor: currentOrg?.primary_color || 'hsl(var(--primary))'
-                        } : undefined}
-                      >
-                        {project.name}
-                      </button>
-                    ))}
+                    <span className="px-3 py-3 text-sm font-semibold whitespace-nowrap text-foreground">
+                      {activeProduct.name}
+                    </span>
+                    {hasSubProjects &&
+                      subProjects.map((project) => (
+                        <button
+                          key={project.id}
+                          onClick={() => selectProject(project)}
+                          className={cn(
+                            "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
+                            selectedProject?.id === project.id
+                              ? "text-foreground"
+                              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                          )}
+                          style={selectedProject?.id === project.id ? {
+                            borderColor: currentOrg?.primary_color || 'hsl(var(--primary))'
+                          } : undefined}
+                        >
+                          {project.name}
+                        </button>
+                      ))}
                   </>
                 )}
               </div>
@@ -2213,7 +2254,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
               <Skeleton className="h-96 w-full" />
             </div>
           ) : selectedDocument ? (
-            <div className="flex">
+            <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_16rem]">
               {/* Article content */}
               <article className={cn(
                 "flex-1 px-4 py-6 sm:px-6 lg:p-8 transition-all duration-300 min-w-0 overflow-x-hidden",
@@ -2266,7 +2307,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 </div>
 
                 {/* Meta - show different info based on project visibility */}
-                {selectedProject?.visibility === "public" ? (
+                {showMinimalPublicMeta ? (
                   /* Public docs: minimal metadata, no internal info */
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
                     <CopyLinkButton className="ml-auto" />
@@ -2276,7 +2317,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
                     <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
                     <Badge variant="outline" className="text-xs">
-                      {visibilityConfig[selectedProject?.visibility || selectedDocument.visibility].label}
+                      {visibilityConfig[effectiveDocVisibility].label}
                     </Badge>
                     {isOrgUser && selectedDocument.is_published && (
                       <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-800 dark:text-green-400">
@@ -2333,12 +2374,14 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 })()}
               </article>
 
-              {/* Right sidebar - Table of Contents (hide in full width mode) */}
-              {!isFullWidth && (
-                <aside className="hidden lg:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4">
-                  <TableOfContents html={resolvedDocumentHtml} />
-                </aside>
-              )}
+              {/* Right sidebar - Table of Contents */}
+              <aside className="hidden md:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4 border-l border-border/60 bg-background/30">
+                <TableOfContents
+                  key={selectedDocument.id}
+                  html={resolvedDocumentHtml}
+                  contentContainerSelector=".docs-content"
+                />
+              </aside>
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-center p-8">

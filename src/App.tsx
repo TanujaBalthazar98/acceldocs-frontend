@@ -21,6 +21,8 @@ import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import PagePreview from "./pages/PagePreview";
 import Docs from "./pages/Docs";
+import DocsRedirect from "./pages/DocsRedirect";
+import InternalDocsRedirect from "./pages/InternalDocsRedirect";
 import APIDocs from "./pages/APIDocs";
 import MCPDocs from "./pages/MCPDocs";
 import Privacy from "./pages/Privacy";
@@ -95,21 +97,27 @@ const App = () => (
                       }
                     />
 
-                    {/* Public documentation routes - slug-based URLs with redirect support */}
+                    {/* Public documentation routes */}
                     <Route path="/docs" element={<Docs />} />
-                    <Route path="/docs/:orgSlug" element={<Docs />} />
-                    <Route path="/docs/:orgSlug/:projectSlug" element={<Docs />} />
-                    <Route path="/docs/:orgSlug/:projectSlug/:pageSlug" element={<Docs />} />
-                    <Route path="/docs/:orgSlug/:projectSlug/:topicSlug/:pageSlug" element={<Docs />} />
-                    <Route path="/docs/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug" element={<Docs />} />
+                    <Route path="/docs/:orgSlug/*" element={<DocsRedirect />} />
 
-                    {/* Internal documentation routes - domain-restricted */}
-                    <Route path="/internal" element={<Docs mode="internal" />} />
-                    <Route path="/internal/:orgSlug" element={<Docs mode="internal" />} />
-                    <Route path="/internal/:orgSlug/:projectSlug" element={<Docs mode="internal" />} />
-                    <Route path="/internal/:orgSlug/:projectSlug/:pageSlug" element={<Docs mode="internal" />} />
-                    <Route path="/internal/:orgSlug/:projectSlug/:topicSlug/:pageSlug" element={<Docs mode="internal" />} />
-                    <Route path="/internal/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug" element={<Docs mode="internal" />} />
+                    {/* Internal docs routes map to the authenticated workspace directly. */}
+                    <Route
+                      path="/internal"
+                      element={
+                        <ProtectedRoute>
+                          <InternalDocsRedirect />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/internal/:orgSlug/*"
+                      element={
+                        <ProtectedRoute>
+                          <InternalDocsRedirect />
+                        </ProtectedRoute>
+                      }
+                    />
 
                     {/* Standalone API documentation routes */}
                     <Route path="/api/:orgSlug" element={<APIDocs />} />

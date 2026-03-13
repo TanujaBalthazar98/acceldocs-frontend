@@ -21,7 +21,7 @@ export const pagesApi = {
   get: (id: number): Promise<Page> =>
     fetchOrThrow<Page>("/api/pages/" + id),
 
-  update: (id: number, data: Partial<Pick<Page, "section_id" | "title" | "display_order">>): Promise<Page> =>
+  update: (id: number, data: Partial<Pick<Page, "section_id" | "title" | "slug" | "visibility_override" | "display_order">>): Promise<Page> =>
     fetchOrThrow<Page>("/api/pages/" + id, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -38,4 +38,7 @@ export const pagesApi = {
 
   unpublish: (id: number): Promise<{ ok: boolean }> =>
     fetchOrThrow<{ ok: boolean }>("/api/pages/" + id + "/unpublish", { method: "POST" }),
+
+  duplicate: (id: number): Promise<Page> =>
+    fetchOrThrow<Page>("/api/pages/" + id + "/duplicate", { method: "POST" }),
 };

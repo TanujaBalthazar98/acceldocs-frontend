@@ -18,6 +18,10 @@ interface Organization {
 
 const API_URL = API_BASE_URL;
 
+function getOAuthRedirectUri(): string {
+  return `${window.location.origin}/auth/callback`;
+}
+
 function normalizeOrganization(raw: any): Organization | null {
   if (!raw) return null;
   const id = Number(raw.id ?? raw.organization_id);
@@ -172,8 +176,9 @@ export default function SignUp() {
       const { signup_token } = await response.json();
 
       // Get OAuth URL with signup token in state
+      const redirectUri = getOAuthRedirectUri();
       const loginResponse = await fetch(
-        `${API_URL}/auth/login?state=${encodeURIComponent(signup_token)}`
+        `${API_URL}/auth/login?state=${encodeURIComponent(signup_token)}&redirect_uri=${encodeURIComponent(redirectUri)}`
       );
       if (!loginResponse.ok) throw new Error("Failed to get OAuth URL");
       const { url } = await loginResponse.json();
@@ -250,7 +255,10 @@ export default function SignUp() {
       }
 
       const { signup_token } = await response.json();
-      const loginResponse = await fetch(`${API_URL}/auth/login?state=${encodeURIComponent(signup_token)}`);
+      const redirectUri = getOAuthRedirectUri();
+      const loginResponse = await fetch(
+        `${API_URL}/auth/login?state=${encodeURIComponent(signup_token)}&redirect_uri=${encodeURIComponent(redirectUri)}`
+      );
       if (!loginResponse.ok) throw new Error("Failed to get OAuth URL");
       const { url } = await loginResponse.json();
       window.location.href = url;

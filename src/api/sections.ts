@@ -8,6 +8,8 @@ export const sectionsApi = {
   create: (data: {
     name: string;
     parent_id?: number | null;
+    section_type?: "section" | "tab";
+    visibility?: "public" | "internal" | "external";
     drive_folder_id?: string | null;
     display_order?: number;
   }): Promise<Section> =>
@@ -16,7 +18,7 @@ export const sectionsApi = {
       body: JSON.stringify(data),
     }),
 
-  update: (id: number, data: Partial<Pick<Section, "name" | "parent_id" | "drive_folder_id" | "display_order" | "is_published">>): Promise<Section> =>
+  update: (id: number, data: Partial<Pick<Section, "name" | "parent_id" | "section_type" | "visibility" | "drive_folder_id" | "display_order" | "is_published">>): Promise<Section> =>
     fetchOrThrow<Section>("/api/sections/" + id, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -29,7 +31,9 @@ export const sectionsApi = {
 /** Build a nested tree from a flat section list. */
 export function buildSectionTree(sections: Section[]): Section[] {
   const map = new Map<number, Section>();
-  sections.forEach((s) => map.set(s.id, { ...s, children: [], pages: [] }));
+  sections.forEach((s) =>
+    map.set(s.id, { ...s, section_type: s.section_type ?? "section", children: [], pages: [] }),
+  );
 
   const roots: Section[] = [];
   sections.forEach((s) => {

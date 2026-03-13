@@ -6,8 +6,25 @@
 const PRODUCTION_API_URL = "https://web-production-6a023.up.railway.app";
 const API_URL = import.meta.env.VITE_AUTH_URL || import.meta.env.VITE_API_URL
   || (import.meta.env.PROD ? PRODUCTION_API_URL : 'http://localhost:8000');
+const AUTH_REDIRECT_BASE = (import.meta.env.VITE_AUTH_REDIRECT_BASE as string | undefined)?.trim();
 const TOKEN_KEY = 'acceldocs_auth_token';
 const USER_KEY = 'acceldocs_user';
+const OAUTH_REDIRECT_URI_KEY = 'acceldocs_oauth_redirect_uri';
+
+function getOAuthRedirectUri(): string {
+  const isPreviewHost = window.location.host.startsWith("id-preview--");
+  let base = AUTH_REDIRECT_BASE || "";
+
+  if (!base && isPreviewHost) {
+    base = "https://docspeare.com";
+  }
+  if (!base) {
+    base = window.location.origin;
+  }
+
+  const normalized = base.endsWith("/") ? base.slice(0, -1) : base;
+  return `${normalized}/auth/callback`;
+}
 
 export interface User {
   id: number;
@@ -79,7 +96,7 @@ export function isAuthenticated(): boolean {
  * Initiate Google OAuth flow
  */
 export async function signInWithGoogle(): Promise<void> {
-  const redirectUri = `${window.location.origin}/auth/callback`;
+  const redirectUri = getOAuthRedirectUri();
   const response = await fetch(
     `${API_URL}/auth/login?redirect_uri=${encodeURIComponent(redirectUri)}`,
     { method: "GET" }
@@ -91,6 +108,20 @@ export async function signInWithGoogle(): Promise<void> {
   if (!payload?.url) {
     throw new Error("OAuth URL missing from backend response");
   }
+  const redirectFromBackend = typeof payload?.redirect_uri === "string" ? payload.redirect_uri : null;
+  if (redirectFromBackend) {
+    localStorage.setItem(OAUTH_REDIRECT_URI_KEY, redirectFromBackend);
+  } else {
+    try {
+      const oauthUrl = new URL(payload.url);
+      const resolved = oauthUrl.searchParams.get("redirect_uri");
+      if (resolved) {
+        localStorage.setItem(OAUTH_REDIRECT_URI_KEY, resolved);
+      }
+    } catch {
+      // Ignore parse errors; fallback will use computed redirect URI.
+    }
+  }
   window.location.href = payload.url;
 }
 
@@ -98,7 +129,7 @@ export async function signInWithGoogle(): Promise<void> {
  * Exchange Google OAuth code for JWT token
  */
 export async function handleGoogleCallback(code: string): Promise<User & { strapi_jwt?: string }> {
-  const redirectUri = `${window.location.origin}/auth/callback`;
+  const redirectUri = localStorage.getItem(OAUTH_REDIRECT_URI_KEY) || getOAuthRedirectUri();
   const response = await fetch(`${API_URL}/auth/callback?api=1&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`, {
     method: 'GET',
     headers: {
@@ -108,6 +139,7 @@ export async function handleGoogleCallback(code: string): Promise<User & { strap
   });
 
   if (!response.ok) {
+    localStorage.removeItem(OAUTH_REDIRECT_URI_KEY);
     let errorMsg = 'Authentication failed';
     try {
       const error = await response.json();
@@ -134,6 +166,7 @@ export async function handleGoogleCallback(code: string): Promise<User & { strap
   // Store token and user
   setToken(data.access_token);
   setStoredUser(data.user);
+  localStorage.removeItem(OAUTH_REDIRECT_URI_KEY);
 
   // Store Google access token for Drive operations
   if (data.google_access_token) {
@@ -198,6 +231,7 @@ export async function signOut(): Promise<void> {
 
   // Clear local storage
   removeToken();
+  localStorage.removeItem(OAUTH_REDIRECT_URI_KEY);
 
   // Redirect to home
   window.location.href = '/';

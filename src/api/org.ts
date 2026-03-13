@@ -5,7 +5,7 @@ export const orgApi = {
   get: (): Promise<Org> =>
     fetchOrThrow<Org>("/api/org"),
 
-  update: (data: Partial<Pick<Org, "name" | "logo_url" | "primary_color" | "tagline">>): Promise<Org> =>
+  update: (data: Partial<Pick<Org, "name" | "logo_url" | "primary_color" | "tagline" | "hierarchy_mode">>): Promise<Org> =>
     fetchOrThrow<Org>("/api/org", {
       method: "PATCH",
       body: JSON.stringify(data),

@@ -44,6 +44,22 @@ export function DocsSidebar({
   showDashboardLink,
 }: DocsSidebarProps) {
   const searchLower = searchQuery.toLowerCase();
+  const visibilityBadgeConfig: Record<"internal" | "external", string> = {
+    internal: "text-[9px] px-1.5 py-0 h-4 text-violet-700 border-violet-300 bg-violet-50 dark:bg-violet-950 dark:border-violet-800 dark:text-violet-300",
+    external: "text-[9px] px-1.5 py-0 h-4 text-sky-700 border-sky-300 bg-sky-50 dark:bg-sky-950 dark:border-sky-800 dark:text-sky-300",
+  };
+
+  const renderVisibilityBadge = (doc: Document) => {
+    if (!isOrgUser) return null;
+    if (doc.visibility === "public") return null;
+    const label = doc.visibility === "internal" ? "Internal" : "External";
+    const badgeClass = visibilityBadgeConfig[doc.visibility];
+    return (
+      <Badge variant="outline" className={badgeClass}>
+        {label}
+      </Badge>
+    );
+  };
 
   const versionIdentity = (version: {
     id?: string;
@@ -136,19 +152,18 @@ export function DocsSidebar({
       .filter((d) => !d.topic_id)
       .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
 
-  const isInvisibleTopic = (topic: Topic) => {
+  const isRootWrapperTopic = (topic: Topic) => {
     if (!selectedProject) return false;
     if (topic.parent_id) return false;
-    const rootTopics = projectTopics.filter((t) => !t.parent_id);
-    const nameMatch = topic.name.toLowerCase().trim() === selectedProject.name.toLowerCase().trim();
-    return nameMatch && rootTopics.length === 1;
+    return topic.name.toLowerCase().trim() === selectedProject.name.toLowerCase().trim();
   };
 
-  const getInvisibleTopicDocuments = () => {
-    const invisibleTopics = projectTopics.filter(isInvisibleTopic);
-    if (invisibleTopics.length === 0) return [];
+  const rootWrapperTopicIds = new Set(projectTopics.filter(isRootWrapperTopic).map((t) => t.id));
+
+  const getWrapperTopicDocuments = () => {
+    if (rootWrapperTopicIds.size === 0) return [];
     return filteredDocuments
-      .filter((d) => invisibleTopics.some((t) => t.id === d.topic_id))
+      .filter((d) => !!d.topic_id && rootWrapperTopicIds.has(d.topic_id))
       .sort((a, b) => ((a as any).display_order ?? 0) - ((b as any).display_order ?? 0));
   };
 
@@ -168,8 +183,6 @@ export function DocsSidebar({
   };
 
   const renderTopic = (topic: Topic, depth: number = 0) => {
-    if (isInvisibleTopic(topic)) return null;
-
     const topicDocs = getTopicDocuments(topic.id);
     const childTopics = getChildTopics(topic.id);
     const isTopicExpanded = expandedTopics.has(topic.id);
@@ -211,6 +224,7 @@ export function DocsSidebar({
                   )}
                 >
                   <span className={twoLineClampClass}>{doc.title}</span>
+                  {renderVisibilityBadge(doc)}
                   {isOrgUser && !doc.is_published && (
                     <Badge
                       variant="outline"
@@ -228,13 +242,15 @@ export function DocsSidebar({
     );
   };
 
-  const rootTopics = useMemo(
-    () => getRootTopics().filter((t) => !isInvisibleTopic(t)).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
-    [filteredTopics, selectedProject?.id, visibleVersion?.id, searchQuery]
-  );
+  const rootTopics = getRootTopics()
+    .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+    .flatMap((topic) => {
+      if (!rootWrapperTopicIds.has(topic.id)) return [topic];
+      return getChildTopics(topic.id);
+    });
 
-  const invisibleTopicDocs = useMemo(() => getInvisibleTopicDocuments(), [filteredDocuments, selectedProject?.id, visibleVersion?.id]);
-  const projectLevelDocs = useMemo(() => getProjectLevelDocuments(), [filteredDocuments, selectedProject?.id, visibleVersion?.id]);
+  const wrapperTopicDocs = getWrapperTopicDocuments();
+  const projectLevelDocs = getProjectLevelDocuments();
 
   return (
     <div className="flex flex-col h-full">
@@ -258,12 +274,12 @@ export function DocsSidebar({
           </div>
         ) : !selectedProject ? (
           <div className="p-4 text-center text-muted-foreground text-sm">Select a project above</div>
-        ) : rootTopics.length === 0 && projectLevelDocs.length === 0 && invisibleTopicDocs.length === 0 ? (
+        ) : rootTopics.length === 0 && projectLevelDocs.length === 0 && wrapperTopicDocs.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground text-sm">No pages found</div>
         ) : (
           <nav className="py-2 pr-3">
             {rootTopics.map((topic) => renderTopic(topic, 0))}
-            {invisibleTopicDocs.map((doc) => (
+            {wrapperTopicDocs.map((doc) => (
               <button
                 key={doc.id}
                 onClick={() => onSelectDocument(doc)}
@@ -275,6 +291,7 @@ export function DocsSidebar({
               >
                 <FileText className="h-4 w-4 shrink-0 mt-0.5" />
                 <span className={twoLineClampClass}>{doc.title}</span>
+                {renderVisibilityBadge(doc)}
               </button>
             ))}
             {projectLevelDocs.map((doc) => (
@@ -289,6 +306,7 @@ export function DocsSidebar({
               >
                 <FileText className="h-4 w-4 shrink-0 mt-0.5" />
                 <span className={twoLineClampClass}>{doc.title}</span>
+                {renderVisibilityBadge(doc)}
               </button>
             ))}
           </nav>

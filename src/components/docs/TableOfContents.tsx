@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { List } from "lucide-react";
 
@@ -21,109 +21,157 @@ export function TableOfContents({
 }: TableOfContentsProps) {
   const [headings, setHeadings] = useState<TocHeading[]>([]);
   const [activeId, setActiveId] = useState<string>("");
-  const hasAppliedIds = useRef(false);
+  const toSlug = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60);
 
-  // Extract headings from HTML content
+  const normalizeHeadingLevel = (fontSizePx: number): number => {
+    if (fontSizePx >= 36) return 2;
+    if (fontSizePx >= 30) return 3;
+    if (fontSizePx >= 24) return 4;
+    return 5;
+  };
+
+  const parseFontWeight = (value: string): number => {
+    if (!value) return 400;
+    if (value === "bold") return 700;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : 400;
+  };
+
+  // Extract headings from rendered DOM to support Google Docs HTML that lacks h-tags.
   useEffect(() => {
     if (!html) {
       setHeadings([]);
+      setActiveId("");
       return;
     }
 
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, "text/html");
-    
-    // Look for standard heading tags
-    const headingElements = doc.querySelectorAll("h1, h2, h3, h4, h5, h6");
-    
-    const extracted: TocHeading[] = [];
-    headingElements.forEach((el, index) => {
-      const text = el.textContent?.trim() || "";
-      if (text && text.length < 200) { // Skip unreasonably long "headings"
-        const slug = text
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, "")
-          .replace(/\s+/g, "-")
-          .replace(/-+/g, "-")
-          .substring(0, 50);
-        const id = `toc-${index}-${slug}`;
-        extracted.push({
-          id,
-          text,
-          level: parseInt(el.tagName[1]),
-        });
-      }
-    });
-    
-    // If no headings found with standard tags, try to find bold/large text patterns
-    if (extracted.length === 0) {
-      // Look for patterns that might indicate headings
-      const allElements = doc.querySelectorAll("p, div, span");
-      let headingIndex = 0;
-      
-      allElements.forEach((el) => {
-        const text = el.textContent?.trim() || "";
-        // Short text that's direct child content (not nested) could be a heading
-        if (
-          text && 
-          text.length > 0 && 
-          text.length < 100 &&
-          el.children.length === 0 &&
-          !el.closest('li') // Not inside a list
-        ) {
-          // Check if it looks like a heading (short, possibly starts paragraph)
-          const parent = el.parentElement;
-          const isFirstChild = parent && parent.firstElementChild === el;
-          
-          if (isFirstChild || el.tagName === 'P') {
-            // Check if text is styled differently (would have been bold originally)
-            const computedText = text;
-            if (computedText.length < 60 && headingIndex < 20) {
-              // Heuristic: short paragraphs at start of sections might be headings
-              // This is a fallback for poorly structured content
-            }
-          }
-        }
-      });
-    }
-    
-    setHeadings(extracted);
-    hasAppliedIds.current = false;
-  }, [html]);
+    let cancelled = false;
+    let retries = 0;
 
-  // Add IDs to headings in the rendered content
-  useEffect(() => {
-    if (headings.length === 0 || hasAppliedIds.current) return;
-
-    // Wait for DOM to be ready
-    const applyIds = () => {
+    const collectHeadings = () => {
+      if (cancelled) return;
       const container = document.querySelector(contentContainerSelector);
       if (!container) {
-        // Retry after a short delay if container not found
-        setTimeout(applyIds, 100);
+        if (retries < 10) {
+          retries += 1;
+          setTimeout(collectHeadings, 80);
+        }
         return;
       }
 
-      const headingElements = container.querySelectorAll("h1, h2, h3, h4, h5, h6");
-      let appliedCount = 0;
-      
-      headingElements.forEach((el, index) => {
-        const heading = headings[index];
-        if (heading && !el.id) {
-          el.id = heading.id;
-          appliedCount++;
+      const extracted: TocHeading[] = [];
+      const usedIds = new Set<string>();
+      const seenText = new Set<string>();
+
+      const headingNodes = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+      headingNodes.forEach((node, index) => {
+        const text = (node.textContent || "").trim();
+        if (!text || text.length > 180) return;
+        const dedupeKey = `${node.tagName}:${text.toLowerCase()}`;
+        if (seenText.has(dedupeKey)) return;
+        seenText.add(dedupeKey);
+
+        const level = Number(node.tagName.slice(1));
+        const candidateId = node.id || `toc-${index}-${toSlug(text) || "section"}`;
+        let resolvedId = candidateId;
+        let suffix = 2;
+        while (usedIds.has(resolvedId)) {
+          resolvedId = `${candidateId}-${suffix}`;
+          suffix += 1;
         }
+        usedIds.add(resolvedId);
+        if (!node.id) node.id = resolvedId;
+
+        extracted.push({ id: resolvedId, text, level });
       });
-      
-      if (appliedCount > 0) {
-        hasAppliedIds.current = true;
+
+      // Fallback for Google Docs HTML where headings are often styled <p> tags.
+      if (extracted.length === 0) {
+        const candidateNodes = Array.from(container.querySelectorAll("p, div"));
+        candidateNodes.forEach((node, index) => {
+          if (extracted.length >= 30) return;
+          if (node.querySelector("p, div, h1, h2, h3, h4, h5, h6")) return;
+          if (node.closest("li, table, blockquote, pre, code")) return;
+
+          const text = (node.textContent || "").trim();
+          if (!text || text.length < 3 || text.length > 100) return;
+
+          const directStyledChild = node.querySelector(":scope > span, :scope > strong, :scope > b");
+          const nodeStyle = window.getComputedStyle(node as HTMLElement);
+          const childStyle = directStyledChild
+            ? window.getComputedStyle(directStyledChild as HTMLElement)
+            : null;
+          const fontSize = Math.max(
+            Number.parseFloat(nodeStyle.fontSize || "0"),
+            Number.parseFloat(childStyle?.fontSize || "0"),
+          );
+          const fontWeight = Math.max(
+            parseFontWeight(nodeStyle.fontWeight),
+            parseFontWeight(childStyle?.fontWeight || ""),
+          );
+          const shortHeadingText = text.split(/\s+/).length <= 10 && !/[.:;!?]$/.test(text);
+          const next = node.nextElementSibling as HTMLElement | null;
+          const nextTag = next?.tagName?.toLowerCase();
+          const nextLooksLikeContent = !!nextTag && ["p", "ul", "ol", "table", "pre", "div"].includes(nextTag);
+          const genericShortHeading =
+            text.split(/\s+/).length <= 8 &&
+            !/[.!?]$/.test(text) &&
+            !text.includes("http") &&
+            !text.includes("@");
+          const looksLikeHeading =
+            fontSize >= 20 ||
+            fontWeight >= 600 ||
+            (shortHeadingText && nextLooksLikeContent) ||
+            genericShortHeading;
+          if (!looksLikeHeading) return;
+
+          const dedupeKey = `fallback:${text.toLowerCase()}`;
+          if (seenText.has(dedupeKey)) return;
+          seenText.add(dedupeKey);
+
+          const candidateId = node.id || `toc-fallback-${index}-${toSlug(text) || "section"}`;
+          let resolvedId = candidateId;
+          let suffix = 2;
+          while (usedIds.has(resolvedId)) {
+            resolvedId = `${candidateId}-${suffix}`;
+            suffix += 1;
+          }
+          usedIds.add(resolvedId);
+          if (!node.id) node.id = resolvedId;
+
+          extracted.push({
+            id: resolvedId,
+            text,
+            level: normalizeHeadingLevel(fontSize),
+          });
+        });
+      }
+
+      if (!extracted.length && retries < 10) {
+        retries += 1;
+        setTimeout(collectHeadings, 100);
+        return;
+      }
+
+      if (!cancelled) {
+        setHeadings(extracted);
+        setActiveId((prev) => (extracted.some((h) => h.id === prev) ? prev : extracted[0]?.id || ""));
       }
     };
 
-    // Small delay to ensure content is rendered
-    const timeoutId = setTimeout(applyIds, 50);
-    return () => clearTimeout(timeoutId);
-  }, [headings, contentContainerSelector]);
+    const timeoutId = setTimeout(collectHeadings, 40);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [html, contentContainerSelector]);
 
   // Track active heading on scroll
   useEffect(() => {
@@ -170,7 +218,15 @@ export function TableOfContents({
   };
 
   if (headings.length === 0) {
-    return null;
+    return (
+      <nav className={cn("space-y-2", className)}>
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
+          <List className="h-4 w-4" />
+          On this page
+        </div>
+        <p className="text-xs text-muted-foreground/70">No sections detected.</p>
+      </nav>
+    );
   }
 
   // Find the minimum heading level to normalize indentation

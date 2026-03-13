@@ -19,12 +19,8 @@ export default defineConfig(({ mode }) => {
         ignored: ["**/acceldocs-backend/**"],
       },
       proxy: {
-        // OAuth callback — backend handles code exchange and postMessage back to popup opener
-        "/auth/callback": {
-          target: "http://localhost:8000",
-          changeOrigin: true,
-          secure: false,
-        },
+        // IMPORTANT: do not proxy /auth/callback in dev.
+        // Google redirects the browser here and React router must handle the callback page.
         "/auth/google": {
           target: "http://localhost:8000",
           changeOrigin: true,

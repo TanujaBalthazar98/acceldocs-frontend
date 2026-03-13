@@ -4,6 +4,7 @@ export interface Org {
   id: number;
   name: string;
   slug: string | null;
+  hierarchy_mode: "product" | "flat";
   logo_url: string | null;
   primary_color: string | null;
   tagline: string | null;
@@ -30,6 +31,8 @@ export interface Section {
   parent_id: number | null;
   name: string;
   slug: string;
+  section_type: "section" | "tab";
+  visibility?: "public" | "internal" | "external";
   drive_folder_id: string | null;
   display_order: number;
   is_published: boolean;
@@ -48,6 +51,8 @@ export interface Page {
   google_doc_id: string;
   title: string;
   slug: string;
+  slug_locked?: boolean;
+  visibility_override?: "public" | "internal" | "external" | null;
   is_published: boolean;
   status: "draft" | "published";
   display_order: number;
@@ -70,6 +75,19 @@ export interface DriveStatus {
 export interface ScanResult {
   ok: boolean;
   folder_name: string;
+  sections_created: number;
+  pages_created: number;
+  pages_updated: number;
+}
+
+export type ImportTargetType = "product" | "tab" | "section";
+
+export interface LocalImportResult {
+  ok: boolean;
+  target_section_id: number;
+  target_type: ImportTargetType;
+  mode: "files" | "folder";
+  uploaded_files: number;
   sections_created: number;
   pages_created: number;
   pages_updated: number;

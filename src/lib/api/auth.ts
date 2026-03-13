@@ -42,6 +42,7 @@ export type AuthEventType =
 export type AuthChangeCallback = (event: AuthEventType, session: ApiSession | null) => void;
 
 const API_BASE = API_BASE_URL;
+const OAUTH_REDIRECT_URI_KEY = "acceldocs_oauth_redirect_uri";
 
 const authImpl = {
   async getUser(): Promise<CurrentUserResult> {
@@ -119,6 +120,18 @@ const authImpl = {
       const payload = await response.json();
       const url = payload?.url as string | undefined;
       if (!url) return { error: new Error("OAuth URL missing from backend response") };
+      const redirectFromBackend = typeof payload?.redirect_uri === "string" ? payload.redirect_uri : null;
+      if (redirectFromBackend) {
+        localStorage.setItem(OAUTH_REDIRECT_URI_KEY, redirectFromBackend);
+      } else {
+        try {
+          const oauthUrl = new URL(url);
+          const resolved = oauthUrl.searchParams.get("redirect_uri");
+          if (resolved) localStorage.setItem(OAUTH_REDIRECT_URI_KEY, resolved);
+        } catch {
+          // Ignore parse failures; callback flow falls back to computed redirect URI.
+        }
+      }
       if (!options?.skipBrowserRedirect) {
         window.location.assign(url);
       }
@@ -201,6 +214,7 @@ const authImpl = {
       // ignore network issues
     }
     setAuthToken(null);
+    localStorage.removeItem(OAUTH_REDIRECT_URI_KEY);
   },
 
   onAuthStateChange(_callback: AuthChangeCallback): { unsubscribe: () => void } {
