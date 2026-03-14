@@ -8,24 +8,16 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Trash2, UserPlus } from "lucide-react";
-import { invokeFunction } from "@/lib/api/functions";
+import { apiFetch } from "@/lib/api/client";
 import { useToast } from "@/hooks/use-toast";
 
 interface Member {
   id: number;
-  userId: number;
   email: string | null;
   name: string | null;
-  role: string;
+  role: "viewer";
 }
 
 interface ProjectSharePanelProps {
@@ -48,19 +40,34 @@ export const ProjectSharePanel = ({
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("viewer");
   const [inviting, setInviting] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
 
   const load = async () => {
-    if (!projectId) return;
+    if (!projectId) return; // preserved for API compatibility of parent callers
     setLoading(true);
     try {
-      const { data } = await invokeFunction<{ ok: boolean; members: Member[] }>(
-        "list-project-members",
-        { body: { projectId } }
+      const { data, error } = await apiFetch<{
+        ok: boolean;
+        grants: Array<{
+          id: number;
+          email: string;
+          created_by_name?: string | null;
+          is_active: boolean;
+        }>;
+      }>("/api/external-access");
+      if (error || !data?.ok) {
+        toast({ title: "Unable to load access list", description: error?.message, variant: "destructive" });
+        return;
+      }
+      setMembers(
+        (data.grants ?? []).map((grant) => ({
+          id: grant.id,
+          email: grant.email,
+          name: grant.created_by_name ?? null,
+          role: "viewer",
+        }))
       );
-      if (data?.ok) setMembers(data.members ?? []);
     } finally {
       setLoading(false);
     }
@@ -75,23 +82,27 @@ export const ProjectSharePanel = ({
     if (!email.trim()) return;
     setInviting(true);
     try {
-      const { data } = await invokeFunction<{ ok: boolean; status: string; error?: string }>(
-        "invite-to-project",
-        { body: { projectId, email: email.trim(), role } }
-      );
-      if (!data?.ok) {
-        toast({ title: "Invite failed", description: data?.error, variant: "destructive" });
+      const { data, error } = await apiFetch<{
+        ok: boolean;
+        status: "created" | "already_active" | "reactivated";
+        error?: string;
+      }>("/api/external-access", {
+        method: "POST",
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      if (error || !data?.ok) {
+        toast({ title: "Invite failed", description: error?.message || data?.error, variant: "destructive" });
         return;
       }
       const msg =
-        data.status === "added"
-          ? "User added to project."
-          : data.status === "already_member"
-          ? "User is already a member."
-          : `Invite sent to ${email}.`;
+        data.status === "already_active"
+          ? `${email} already has external access.`
+          : data.status === "reactivated"
+            ? `External access restored for ${email}.`
+            : `External access granted to ${email}.`;
       toast({ title: "Done", description: msg });
       setEmail("");
-      load();
+      await load();
     } finally {
       setInviting(false);
     }
@@ -100,12 +111,12 @@ export const ProjectSharePanel = ({
   const handleRemove = async (memberId: number) => {
     setRemovingId(memberId);
     try {
-      const { data } = await invokeFunction<{ ok: boolean; error?: string }>(
-        "remove-project-member",
-        { body: { memberId } }
+      const { data, error } = await apiFetch<{ ok: boolean; error?: string }>(
+        `/api/external-access/${memberId}`,
+        { method: "DELETE" }
       );
-      if (!data?.ok) {
-        toast({ title: "Remove failed", description: data?.error, variant: "destructive" });
+      if (error || !data?.ok) {
+        toast({ title: "Remove failed", description: error?.message || data?.error, variant: "destructive" });
         return;
       }
       setMembers((prev) => prev.filter((m) => m.id !== memberId));
@@ -120,8 +131,7 @@ export const ProjectSharePanel = ({
         <DialogHeader>
           <DialogTitle>Share "{projectName}"</DialogTitle>
           <DialogDescription>
-            Invite people outside your organization to view this project.
-            They'll see only this project when they log in.
+            Invite people outside your organization to view external docs in this workspace.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,15 +144,6 @@ export const ProjectSharePanel = ({
             onKeyDown={(e) => e.key === "Enter" && handleInvite()}
             className="flex-1"
           />
-          <Select value={role} onValueChange={setRole}>
-            <SelectTrigger className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="viewer">Viewer</SelectItem>
-              <SelectItem value="editor">Editor</SelectItem>
-            </SelectContent>
-          </Select>
           <Button onClick={handleInvite} disabled={inviting || !email.trim()} size="sm">
             {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
           </Button>
@@ -169,7 +170,7 @@ export const ProjectSharePanel = ({
                   <p className="text-xs text-muted-foreground truncate">{m.email ?? "—"}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Badge variant="secondary" className="text-xs capitalize">{m.role}</Badge>
+                  <Badge variant="secondary" className="text-xs capitalize">External</Badge>
                   <Button
                     variant="ghost"
                     size="icon"

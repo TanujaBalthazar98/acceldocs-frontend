@@ -52,6 +52,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   BookOpen,
   Circle,
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   ChevronsUpDown,
@@ -60,8 +61,6 @@ import {
   FileText,
   FolderOpen,
   FolderPlus,
-  Globe,
-  Lock,
   GripVertical,
   ListOrdered,
   Loader2,
@@ -74,6 +73,8 @@ import {
   Settings,
   Trash2,
   ArrowUpFromLine,
+  GitBranchPlus,
+  Users,
   Wifi,
 } from "lucide-react";
 import {
@@ -85,6 +86,8 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL, getAuthToken } from "@/api/client";
+import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
+import { TableOfContents } from "@/components/docs/TableOfContents";
 
 type VisibilityLevel = "public" | "internal" | "external";
 type VisibilityFilter = "all" | VisibilityLevel;
@@ -157,12 +160,14 @@ function parseDriveFolderId(input: string): string {
 
 function inferImportTargetType(section: Section): ImportTargetType {
   if (section.parent_id === null) return "product";
+  if ((section.section_type ?? "section") === "version") return "version";
   if ((section.section_type ?? "section") === "tab") return "tab";
   return "section";
 }
 
 function importTargetTypeLabel(type: ImportTargetType): string {
   if (type === "product") return "Product";
+  if (type === "version") return "Version";
   if (type === "tab") return "Tab";
   return "Section";
 }
@@ -948,15 +953,19 @@ function AddSectionDialog({
   parentId,
   allSections,
   hierarchyMode,
+  preferredType,
+  cloneFromSectionId,
   onClose,
 }: {
   parentId?: number | null;
   allSections: Section[];
   hierarchyMode: "product" | "flat";
+  preferredType?: "section" | "tab" | "version";
+  cloneFromSectionId?: number | null;
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
-  const [sectionType, setSectionType] = useState<"section" | "tab">("section");
+  const [sectionType, setSectionType] = useState<"section" | "tab" | "version">(preferredType ?? "section");
   const [visibility, setVisibility] = useState<VisibilityLevel>("public");
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -979,12 +988,21 @@ function AddSectionDialog({
   const parentDepth = getDepth(parentId);
   const isProductMode = hierarchyMode === "product";
   const canCreateTab = isProductMode ? (!isRootCreate && parentDepth === 0) : isRootCreate;
+  const canCreateVersion = isProductMode && !isRootCreate && parentDepth === 0;
+
+  useEffect(() => {
+    setSectionType(preferredType ?? "section");
+  }, [preferredType, parentId]);
 
   useEffect(() => {
     if (!canCreateTab && sectionType === "tab") {
       setSectionType("section");
+      return;
     }
-  }, [canCreateTab, sectionType]);
+    if (!canCreateVersion && sectionType === "version") {
+      setSectionType("section");
+    }
+  }, [canCreateTab, canCreateVersion, sectionType]);
 
   const create = useMutation({
     mutationFn: () =>
@@ -993,13 +1011,16 @@ function AddSectionDialog({
         parent_id: parentId ?? null,
         section_type: isRootCreate ? (isProductMode ? "section" : sectionType) : sectionType,
         visibility,
+        clone_from_section_id: !isRootCreate && sectionType === "version" ? (cloneFromSectionId ?? null) : undefined,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sections"] });
       const createdLabel = isRootCreate
-        ? (isProductMode ? "Product" : sectionType === "tab" ? "Tab" : "Section")
+        ? (isProductMode ? "Product" : sectionType === "tab" ? "Tab" : sectionType === "version" ? "Version" : "Section")
         : sectionType === "tab"
           ? "Tab"
+          : sectionType === "version"
+            ? "Version"
           : "Section";
       toast({ title: `${createdLabel} created` });
       onClose();
@@ -1022,7 +1043,13 @@ function AddSectionDialog({
         <div className="py-1">
           <div className="space-y-3">
             <Input
-              placeholder={isRootCreate ? (isProductMode ? "Product name" : "Section name") : "Section name"}
+              placeholder={
+                isRootCreate
+                  ? (isProductMode ? "Product name" : "Section name")
+                  : sectionType === "version"
+                    ? "Version name (e.g. v1.0)"
+                    : "Section name"
+              }
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
@@ -1037,19 +1064,20 @@ function AddSectionDialog({
             ) : (
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Type</Label>
-                <Select value={sectionType} onValueChange={(v) => setSectionType(v as "section" | "tab")}>
+                <Select value={sectionType} onValueChange={(v) => setSectionType(v as "section" | "tab" | "version")}>
                   <SelectTrigger className="h-8 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="section">Section</SelectItem>
                     {canCreateTab && <SelectItem value="tab">Tab</SelectItem>}
+                    {canCreateVersion && <SelectItem value="version">Version</SelectItem>}
                   </SelectContent>
                 </Select>
-                {!canCreateTab && (
+                {(!canCreateTab || !canCreateVersion) && (
                   <p className="text-[11px] text-muted-foreground">
                     {isProductMode
-                      ? "Tabs are allowed only directly under a product."
+                      ? "Tabs/versions are allowed only directly under a product."
                       : "Tabs are allowed only at the top level in flat mode."}
                   </p>
                 )}
@@ -1428,7 +1456,7 @@ function PageItem({
 
 function SectionNode({
   section, pages, selectedPageId, onSelectPage, depth,
-  onAddPage, onAddSubSection, onImportHere, onRenameSection, onMoveSection, onDeleteSection, onToggleSectionType, onSetSectionVisibility, onRenamePage, onEditPageSlug, onMovePage, onSetPageVisibilityOverride, onDuplicatePage, onUnpublishPage, onRearrangePage, onDeletePage,
+  onAddPage, onAddSubSection, onImportHere, onRenameSection, onMoveSection, onDeleteSection, onChangeSectionType, onSetSectionVisibility, onRenamePage, onEditPageSlug, onMovePage, onSetPageVisibilityOverride, onDuplicatePage, onUnpublishPage, onRearrangePage, onDeletePage,
   activeDragType,
   hierarchyMode,
 }: {
@@ -1443,7 +1471,7 @@ function SectionNode({
   onRenameSection: (section: Section) => void;
   onMoveSection: (section: Section) => void;
   onDeleteSection: (section: Section) => void;
-  onToggleSectionType: (section: Section) => void;
+  onChangeSectionType: (section: Section, sectionType: "section" | "tab" | "version") => void;
   onSetSectionVisibility: (section: Section, visibility: VisibilityLevel) => void;
   onRenamePage: (page: Page) => void;
   onEditPageSlug: (page: Page) => void;
@@ -1481,38 +1509,37 @@ function SectionNode({
 
   const showDropHighlight = isNestOver && activeDragType !== null;
   const isProductMode = hierarchyMode === "product";
-  const isTabEligibleLevel = isProductMode ? depth === 1 : depth === 0;
+  const isTabEligibleLevel = isProductMode ? depth === 1 || depth === 2 : depth === 0;
+  const isVersionEligibleLevel = isProductMode ? depth === 1 : false;
+  const sectionType = section.section_type ?? "section";
   const hierarchyLabel = isProductMode
     ? (
       depth === 0
         ? "Product"
-        : isTabEligibleLevel && section.section_type === "tab"
+        : sectionType === "version"
+          ? "Version"
+          : isTabEligibleLevel && sectionType === "tab"
           ? "Tab"
           : "Section"
     )
     : (
-      isTabEligibleLevel && section.section_type === "tab"
+      isTabEligibleLevel && sectionType === "tab"
         ? "Tab"
         : "Section"
     );
   const hierarchyBadgeClass =
     isProductMode && depth === 0
       ? "bg-sky-500/10 text-sky-700 border-sky-200"
+      : hierarchyLabel === "Version"
+        ? "bg-indigo-500/10 text-indigo-700 border-indigo-200"
       : hierarchyLabel === "Tab"
         ? "bg-violet-500/10 text-violet-700 border-violet-200"
         : "bg-muted text-muted-foreground border-border";
   const currentSectionVisibility = (section.visibility ?? "public") as VisibilityLevel;
-  const showHierarchyBadge = depth === 0 || hierarchyLabel === "Tab";
+  const showHierarchyBadge = depth === 0 || hierarchyLabel === "Tab" || hierarchyLabel === "Version";
   const showSectionVisibilityBadge = currentSectionVisibility !== "public";
-  const canConvertToTab = isTabEligibleLevel;
-  const canConvertType = section.section_type === "tab" || canConvertToTab;
-  const convertLabel = section.section_type === "tab"
-    ? "Convert to section"
-    : canConvertToTab
-      ? "Convert to tab"
-      : isProductMode
-        ? "Convert to tab (only under product)"
-        : "Convert to tab (top-level only)";
+  const canSetTab = sectionType === "tab" || isTabEligibleLevel;
+  const canSetVersion = sectionType === "version" || isVersionEligibleLevel;
 
   return (
     <div
@@ -1588,7 +1615,7 @@ function SectionNode({
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem onClick={() => onAddSubSection(section.id)}>
                 <FolderPlus className="h-3 w-3 mr-2" />
-                {depth === 0 ? "Add section / tab" : "Add sub-section"}
+                {depth === 0 ? "Add section / tab / version" : "Add sub-section"}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onImportHere(section)}>
                 <ArrowUpFromLine className="h-3 w-3 mr-2" />
@@ -1596,14 +1623,30 @@ function SectionNode({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                disabled={!canConvertType}
+                onClick={() => onChangeSectionType(section, "section")}
+              >
+                <ChevronsUpDown className="h-3 w-3 mr-2" />
+                {sectionType === "section" ? "✓ " : ""}Set as section
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!canSetTab}
                 onClick={() => {
-                  if (!canConvertType) return;
-                  onToggleSectionType(section);
+                  if (!canSetTab) return;
+                  onChangeSectionType(section, "tab");
                 }}
               >
                 <ChevronsUpDown className="h-3 w-3 mr-2" />
-                {convertLabel}
+                {sectionType === "tab" ? "✓ " : ""}Set as tab
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!canSetVersion}
+                onClick={() => {
+                  if (!canSetVersion) return;
+                  onChangeSectionType(section, "version");
+                }}
+              >
+                <ChevronsUpDown className="h-3 w-3 mr-2" />
+                {sectionType === "version" ? "✓ " : ""}Set as version
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onRenameSection(section)}>
                 <Pencil className="h-3 w-3 mr-2" /> Rename
@@ -1667,7 +1710,7 @@ function SectionNode({
               onRenameSection={onRenameSection}
               onMoveSection={onMoveSection}
               onDeleteSection={onDeleteSection}
-              onToggleSectionType={onToggleSectionType}
+              onChangeSectionType={onChangeSectionType}
               onSetSectionVisibility={onSetSectionVisibility}
               onRenamePage={onRenamePage}
               onEditPageSlug={onEditPageSlug}
@@ -1685,6 +1728,190 @@ function SectionNode({
   );
 }
 
+function ReaderHierarchy({
+  title,
+  pages,
+  topPages,
+  rootSections,
+  sectionsById,
+  sectionDepthById,
+  hierarchyMode,
+  sensors,
+  onDragStart,
+  onDragEnd,
+  activeDragType,
+  activeDragLabel,
+  hideVersionSections,
+  visibilityFilter,
+  onVisibilityFilterChange,
+  selectedPageId,
+  onSelectPage,
+  onAddPage,
+  onAddSubSection,
+  onImportHere,
+  onRenameSection,
+  onMoveSection,
+  onDeleteSection,
+  onChangeSectionType,
+  onSetSectionVisibility,
+  onRenamePage,
+  onEditPageSlug,
+  onMovePage,
+  onSetPageVisibilityOverride,
+  onDuplicatePage,
+  onUnpublishPage,
+  onRearrangePage,
+  onDeletePage,
+}: {
+  title: string;
+  pages: Page[];
+  topPages: Page[];
+  rootSections: Section[];
+  sectionsById: Map<number, Section>;
+  sectionDepthById: Map<number, number>;
+  hierarchyMode: "product" | "flat";
+  sensors: ReturnType<typeof useSensors>;
+  onDragStart: (event: DragStartEvent) => void;
+  onDragEnd: (event: DragEndEvent) => void;
+  activeDragType: "page" | "section" | null;
+  activeDragLabel: string;
+  hideVersionSections?: boolean;
+  visibilityFilter: VisibilityFilter;
+  onVisibilityFilterChange: (value: VisibilityFilter) => void;
+  selectedPageId: number | null;
+  onSelectPage: (id: number) => void;
+  onAddPage: (sectionId: number) => void;
+  onAddSubSection: (parentId: number) => void;
+  onImportHere: (section: Section) => void;
+  onRenameSection: (section: Section) => void;
+  onMoveSection: (section: Section) => void;
+  onDeleteSection: (section: Section) => void;
+  onChangeSectionType: (section: Section, sectionType: "section" | "tab" | "version") => void;
+  onSetSectionVisibility: (section: Section, visibility: VisibilityLevel) => void;
+  onRenamePage: (page: Page) => void;
+  onEditPageSlug: (page: Page) => void;
+  onMovePage: (page: Page) => void;
+  onSetPageVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
+  onDuplicatePage: (page: Page) => void;
+  onUnpublishPage: (page: Page) => void;
+  onRearrangePage: (page: Page) => void;
+  onDeletePage: (page: Page) => void;
+}) {
+  const filterVisibleSections = useCallback(
+    (sections: Section[]) =>
+      hideVersionSections
+        ? sections.filter((section) => (section.section_type ?? "section") !== "version")
+        : sections,
+    [hideVersionSections],
+  );
+  const sortedTopPages = useMemo(
+    () => [...topPages].sort((a, b) => a.display_order - b.display_order || a.title.localeCompare(b.title)),
+    [topPages],
+  );
+  const sortedRootSections = useMemo(
+    () => [...filterVisibleSections(rootSections)].sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name)),
+    [filterVisibleSections, rootSections],
+  );
+
+  return (
+    <aside className="w-[240px] shrink-0 border-r bg-background/60 overflow-y-auto">
+      <div className="px-4 py-3 border-b bg-background/80">
+        <p className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Hierarchy</p>
+        <p className="text-sm font-semibold truncate mt-1">{title}</p>
+        <Select value={visibilityFilter} onValueChange={(value) => onVisibilityFilterChange(value as VisibilityFilter)}>
+          <SelectTrigger className="mt-2 h-8 text-xs focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0">
+            <SelectValue placeholder="Visibility" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All visibility</SelectItem>
+            <SelectItem value="public">Public only</SelectItem>
+            <SelectItem value="internal">Internal only</SelectItem>
+            <SelectItem value="external">External only</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="px-2 py-2 space-y-0.5">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+        >
+          <SortableContext
+            items={sortedTopPages.map((p) => `page-${p.id}`)}
+            strategy={verticalListSortingStrategy}
+          >
+            {sortedTopPages.map((page) => (
+              <PageItem
+                key={page.id}
+                page={page}
+                visibility={resolveEffectivePageVisibility(page, sectionsById)}
+                showVisibilityBadge={page.visibility_override !== null || resolveEffectivePageVisibility(page, sectionsById) !== "public"}
+                selectedPageId={selectedPageId}
+                onSelect={onSelectPage}
+                onEditTitle={onRenamePage}
+                onEditSlug={onEditPageSlug}
+                onMove={onMovePage}
+                onRearrange={onRearrangePage}
+                onSetVisibilityOverride={onSetPageVisibilityOverride}
+                onDuplicate={onDuplicatePage}
+                onUnpublish={onUnpublishPage}
+                onDelete={onDeletePage}
+              />
+            ))}
+          </SortableContext>
+          <SortableContext
+            items={sortedRootSections.map((s) => `sect-${s.id}`)}
+            strategy={verticalListSortingStrategy}
+          >
+            {sortedRootSections.map((section) => (
+              <SectionNode
+                key={section.id}
+                section={section}
+                pages={pages}
+                selectedPageId={selectedPageId}
+                onSelectPage={onSelectPage}
+                depth={sectionDepthById.get(section.id) ?? 0}
+                activeDragType={activeDragType}
+                hierarchyMode={hierarchyMode}
+                onAddPage={onAddPage}
+                onAddSubSection={onAddSubSection}
+                onImportHere={onImportHere}
+                onRenameSection={onRenameSection}
+                onMoveSection={onMoveSection}
+                onDeleteSection={onDeleteSection}
+                onChangeSectionType={onChangeSectionType}
+                onSetSectionVisibility={onSetSectionVisibility}
+                onRenamePage={onRenamePage}
+                onEditPageSlug={onEditPageSlug}
+                onMovePage={onMovePage}
+                onSetPageVisibilityOverride={onSetPageVisibilityOverride}
+                onDuplicatePage={onDuplicatePage}
+                onUnpublishPage={onUnpublishPage}
+                onRearrangePage={onRearrangePage}
+                onDeletePage={onDeletePage}
+              />
+            ))}
+          </SortableContext>
+          <DragOverlay>
+            {activeDragType && (
+              <div className={cn(
+                "px-2 py-1.5 rounded-md text-xs font-medium shadow-lg border bg-background text-foreground",
+                activeDragType === "section" ? "uppercase tracking-wide text-muted-foreground/70" : "",
+              )}>
+                {activeDragLabel}
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
+        {sortedTopPages.length === 0 && sortedRootSections.length === 0 && (
+          <p className="px-2 py-2 text-xs text-muted-foreground">No sections/pages in this scope.</p>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
@@ -1699,6 +1926,8 @@ export default function Dashboard() {
   const [addPageSectionId, setAddPageSectionId] = useState<number | null>(null);
   const [showAddSection, setShowAddSection] = useState(false);
   const [addSectionParentId, setAddSectionParentId] = useState<number | null>(null);
+  const [addSectionPreferredType, setAddSectionPreferredType] = useState<"section" | "tab" | "version" | undefined>(undefined);
+  const [addSectionCloneFromId, setAddSectionCloneFromId] = useState<number | null>(null);
   const [activeDragType, setActiveDragType] = useState<"page" | "section" | null>(null);
   const [activeDragLabel, setActiveDragLabel] = useState<string>("");
   const [showScanDrive, setShowScanDrive] = useState(false);
@@ -1711,8 +1940,12 @@ export default function Dashboard() {
   const [movingPage, setMovingPage] = useState<Page | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [selectedSidebarProductId, setSelectedSidebarProductId] = useState<number | null>(null);
+  const [selectedSidebarVersionId, setSelectedSidebarVersionId] = useState<number | null>(null);
   const [drivePanelOpen, setDrivePanelOpen] = useState(true);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
+  const [showExternalAccessPanel, setShowExternalAccessPanel] = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
 
   const { data: org, isLoading: orgLoading } = useQuery({ queryKey: ["org"], queryFn: orgApi.get });
@@ -1730,6 +1963,23 @@ export default function Dashboard() {
   const selectedPage = selectedPageFull ?? (pages.find((p) => p.id === selectedPageId) ?? null);
 
   const sectionsById = useMemo(() => new Map(sections.map((s) => [s.id, s])), [sections]);
+  const sectionDepthById = useMemo(() => {
+    const depthMap = new Map<number, number>();
+    const getDepth = (section: Section): number => {
+      const cached = depthMap.get(section.id);
+      if (cached !== undefined) return cached;
+      if (section.parent_id === null) {
+        depthMap.set(section.id, 0);
+        return 0;
+      }
+      const parent = sectionsById.get(section.parent_id);
+      const depth = parent ? getDepth(parent) + 1 : 0;
+      depthMap.set(section.id, depth);
+      return depth;
+    };
+    for (const section of sections) getDepth(section);
+    return depthMap;
+  }, [sections, sectionsById]);
   const pageMatchesVisibilityFilter = useCallback(
     (page: Page) =>
       visibilityFilter === "all" ||
@@ -1763,6 +2013,11 @@ export default function Dashboard() {
       .map((node) => filterNode(node))
       .filter((node): node is Section => node !== null);
   }, [allSectionTree, visibilityFilter, visiblePages]);
+  const isProductHierarchy = (org?.hierarchy_mode ?? "product") !== "flat";
+  const rootProducts = useMemo(
+    () => allSectionTree.map((node) => ({ id: node.id, name: node.name })),
+    [allSectionTree],
+  );
   const childrenByParent = useMemo(() => {
     const map = new Map<number, Section[]>();
     for (const section of sections) {
@@ -1787,22 +2042,135 @@ export default function Dashboard() {
     }
     return path;
   }, [selectedPage?.section_id, sectionsById]);
+  const selectedPageProductId = selectedSectionPath[0]?.id ?? null;
+  const selectedPageVersionId =
+    selectedSectionPath.find((section, idx) => idx > 0 && (section.section_type ?? "section") === "version")?.id ?? null;
 
-  const selectedProduct = selectedSectionPath[0] ?? null;
-  const selectedImportTargetSection = selectedSectionPath[selectedSectionPath.length - 1] ?? null;
+  useEffect(() => {
+    const currentExists =
+      selectedSidebarProductId !== null &&
+      rootProducts.some((product) => product.id === selectedSidebarProductId);
+
+    if (selectedPageProductId && selectedPageProductId !== selectedSidebarProductId) {
+      setSelectedSidebarProductId(selectedPageProductId);
+      return;
+    }
+
+    if (!currentExists) {
+      setSelectedSidebarProductId(rootProducts[0]?.id ?? null);
+    }
+  }, [rootProducts, selectedPageProductId, selectedSidebarProductId]);
+
+  const selectedProduct = useMemo(() => {
+    if (selectedSectionPath[0]) return selectedSectionPath[0];
+    if (selectedSidebarProductId !== null) {
+      return sectionsById.get(selectedSidebarProductId) ?? null;
+    }
+    return null;
+  }, [sectionsById, selectedSectionPath, selectedSidebarProductId]);
+  const productVersionsByProduct = useMemo(() => {
+    const map = new Map<number, Section[]>();
+    for (const section of sections) {
+      if ((section.section_type ?? "section") !== "version") continue;
+      if (section.parent_id === null) continue;
+      const list = map.get(section.parent_id) ?? [];
+      list.push(section);
+      map.set(section.parent_id, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name));
+    }
+    return map;
+  }, [sections]);
+  const productVersions = useMemo(
+    () => (selectedProduct ? productVersionsByProduct.get(selectedProduct.id) ?? [] : []),
+    [productVersionsByProduct, selectedProduct],
+  );
+  const selectedVersion = useMemo(() => {
+    if (!selectedProduct || productVersions.length === 0) return null;
+    const fromPath = selectedSectionPath.find(
+      (section, idx) =>
+        idx > 0 &&
+        (section.section_type ?? "section") === "version" &&
+        section.parent_id === selectedProduct.id,
+    );
+    if (fromPath) return fromPath;
+    if (selectedSidebarVersionId !== null) {
+      const fromSidebar = productVersions.find((section) => section.id === selectedSidebarVersionId);
+      if (fromSidebar) return fromSidebar;
+    }
+    return null;
+  }, [productVersions, selectedProduct, selectedSectionPath, selectedSidebarVersionId]);
+  const selectedImportTargetSection =
+    selectedSectionPath[selectedSectionPath.length - 1] ?? selectedVersion ?? selectedProduct ?? null;
   const selectedTab =
     selectedSectionPath.find((s, idx) => idx > 0 && (s.section_type ?? "section") === "tab") ?? null;
 
   const productTabs = useMemo(() => {
-    if (!selectedProduct) return [] as Section[];
+    const parent = selectedVersion ?? selectedProduct;
+    if (!parent) return [] as Section[];
     return sections
       .filter(
         (s) =>
-          s.parent_id === selectedProduct.id &&
+          s.parent_id === parent.id &&
           (s.section_type ?? "section") === "tab",
       )
       .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name));
-  }, [sections, selectedProduct]);
+  }, [sections, selectedProduct, selectedVersion]);
+  const filteredChildrenByParent = useMemo(() => {
+    const map = new Map<number, Section[]>();
+    const walk = (nodes: Section[]) => {
+      for (const node of nodes) {
+        for (const child of node.children ?? []) {
+          const list = map.get(node.id) ?? [];
+          list.push(child);
+          map.set(node.id, list);
+        }
+        walk(node.children ?? []);
+      }
+    };
+    walk(sectionTree);
+    for (const list of map.values()) {
+      list.sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name));
+    }
+    return map;
+  }, [sectionTree]);
+  const sortedVisibleChildren = useCallback(
+    (parentId: number): Section[] =>
+      [...(filteredChildrenByParent.get(parentId) ?? [])]
+        .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name)),
+    [filteredChildrenByParent],
+  );
+  const pagesBySection = useMemo(() => {
+    const map = new Map<number, Page[]>();
+    for (const page of visiblePages) {
+      if (page.section_id === null) continue;
+      const list = map.get(page.section_id) ?? [];
+      list.push(page);
+      map.set(page.section_id, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.display_order - b.display_order || a.title.localeCompare(b.title));
+    }
+    return map;
+  }, [visiblePages]);
+  const activeHierarchyRoot = selectedTab ?? selectedVersion ?? selectedProduct;
+  const readerHierarchyTopPages = useMemo(() => {
+    if (!activeHierarchyRoot) return [] as Page[];
+    return visiblePages
+      .filter((page) => page.section_id === activeHierarchyRoot.id)
+      .sort((a, b) => a.display_order - b.display_order || a.title.localeCompare(b.title));
+  }, [activeHierarchyRoot, visiblePages]);
+  const readerHierarchySections = useMemo(() => {
+    if (!activeHierarchyRoot) return [] as Section[];
+    if (selectedTab) {
+      return sortedVisibleChildren(selectedTab.id);
+    }
+    const children = sortedVisibleChildren(activeHierarchyRoot.id);
+    const nonTabChildren = children.filter((section) => (section.section_type ?? "section") !== "tab");
+    return nonTabChildren.length > 0 ? nonTabChildren : children;
+  }, [activeHierarchyRoot, selectedTab, sortedVisibleChildren]);
+  const readerHierarchyTitle = selectedTab?.name ?? selectedVersion?.name ?? selectedProduct?.name ?? "Documentation";
 
   const getDescendantSectionIds = useCallback(
     (rootSectionId: number): Set<number> => {
@@ -1830,6 +2198,131 @@ export default function Dashboard() {
     },
     [getDescendantSectionIds, pages],
   );
+  const findFirstPageInProductBase = useCallback(
+    (productId: number): Page | null => {
+      const ids = new Set<number>([productId]);
+      const directChildren = childrenByParent.get(productId) ?? [];
+      for (const child of directChildren) {
+        if ((child.section_type ?? "section") === "version") continue;
+        const descendantIds = getDescendantSectionIds(child.id);
+        for (const id of descendantIds) ids.add(id);
+      }
+      const first = pages
+        .filter((p) => p.section_id !== null && ids.has(p.section_id))
+        .sort((a, b) => a.display_order - b.display_order || a.title.localeCompare(b.title))[0];
+      return first ?? null;
+    },
+    [childrenByParent, getDescendantSectionIds, pages],
+  );
+  useEffect(() => {
+    if (!selectedProduct) {
+      if (selectedSidebarVersionId !== null) setSelectedSidebarVersionId(null);
+      return;
+    }
+    if (productVersions.length === 0) {
+      if (selectedSidebarVersionId !== null) setSelectedSidebarVersionId(null);
+      return;
+    }
+    // Keep the version scope aligned with the currently selected page path.
+    if (selectedSectionPath.length > 0 && selectedSectionPath[0]?.id === selectedProduct.id) {
+      const nextVersionId =
+        selectedPageVersionId && productVersions.some((section) => section.id === selectedPageVersionId)
+          ? selectedPageVersionId
+          : null;
+      if (selectedSidebarVersionId !== nextVersionId) {
+        setSelectedSidebarVersionId(nextVersionId);
+      }
+      return;
+    }
+
+    // No selected page: preserve a valid user-selected version, else stay on base scope.
+    if (selectedSidebarVersionId !== null && !productVersions.some((section) => section.id === selectedSidebarVersionId)) {
+      setSelectedSidebarVersionId(null);
+    }
+  }, [productVersions, selectedPageVersionId, selectedProduct, selectedSectionPath, selectedSidebarVersionId]);
+
+  const displayedSectionTree = useMemo(() => {
+    if (!isProductHierarchy) return sectionTree;
+    if (selectedSidebarProductId === null) return sectionTree;
+    const selectedProductNode = sectionTree.find((root) => root.id === selectedSidebarProductId);
+    if (!selectedProductNode) return [] as Section[];
+    if (!selectedVersion) return [selectedProductNode];
+    const selectedVersionNode = (selectedProductNode.children ?? []).find((child) => child.id === selectedVersion.id);
+    return selectedVersionNode ? [selectedVersionNode] : [];
+  }, [isProductHierarchy, sectionTree, selectedSidebarProductId, selectedVersion]);
+  const adminTreeSections = useMemo(() => {
+    if (!isProductHierarchy) return displayedSectionTree;
+    const selectedRoot = displayedSectionTree[0];
+    if (!selectedRoot) return [] as Section[];
+    if (selectedVersion) return selectedRoot.children ?? [];
+    return selectedRoot.children ?? [];
+  }, [displayedSectionTree, isProductHierarchy, selectedVersion]);
+  const adminRootPages = useMemo(() => {
+    if (!isProductHierarchy || selectedSidebarProductId === null) {
+      return visiblePages.filter((page) => !page.section_id);
+    }
+    if (selectedVersion) return visiblePages.filter((page) => page.section_id === selectedVersion.id);
+    return visiblePages.filter((page) => page.section_id === selectedSidebarProductId);
+  }, [isProductHierarchy, selectedSidebarProductId, selectedVersion, visiblePages]);
+  const adminSectionDepthBase = isProductHierarchy && selectedSidebarProductId !== null ? 1 : 0;
+  const shouldShowAdminTree = !selectedPage;
+
+  const handleSidebarProductSwitch = useCallback(
+    (value: string) => {
+      const productId = Number(value);
+      if (!Number.isFinite(productId)) return;
+      setSelectedSidebarProductId(productId);
+      setSelectedSidebarVersionId(null);
+      const firstPage = findFirstPageInProductBase(productId);
+      setSelectedPageId(firstPage?.id ?? null);
+    },
+    [findFirstPageInProductBase],
+  );
+  const handleSidebarVersionSwitch = useCallback(
+    (value: string) => {
+      if (value === "__base__") {
+        setSelectedSidebarVersionId(null);
+        if (selectedProduct) {
+          const firstBasePage = findFirstPageInProductBase(selectedProduct.id);
+          setSelectedPageId(firstBasePage?.id ?? null);
+        }
+        return;
+      }
+      const versionId = Number(value);
+      if (!Number.isFinite(versionId)) return;
+      setSelectedSidebarVersionId(versionId);
+      const firstPage = findFirstPageInSection(versionId);
+      setSelectedPageId(firstPage?.id ?? null);
+    },
+    [findFirstPageInProductBase, findFirstPageInSection, selectedProduct],
+  );
+  const selectedSidebarProductValue =
+    selectedSidebarProductId !== null
+      ? String(selectedSidebarProductId)
+      : (rootProducts[0] ? String(rootProducts[0].id) : "");
+  const selectedSidebarVersionValue =
+    selectedVersion?.id !== undefined && selectedVersion?.id !== null
+      ? String(selectedVersion.id)
+      : "__base__";
+  const defaultAddPageSectionId =
+    isProductHierarchy
+      ? (selectedVersion?.id ?? selectedProduct?.id ?? null)
+      : null;
+  const canCreateVersionForSelectedProduct = isProductHierarchy && selectedProduct !== null;
+  const openAddVersionDialog = useCallback(() => {
+    if (!canCreateVersionForSelectedProduct || !selectedProduct) {
+      toast({
+        title: "Select a product first",
+        description: "Choose a product from the selector, then create a version.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setAddSectionParentId(selectedProduct.id);
+    setAddSectionPreferredType("version");
+    setAddSectionCloneFromId(selectedVersion?.id ?? selectedProduct.id);
+    setShowAddSection(true);
+  }, [canCreateVersionForSelectedProduct, selectedProduct, toast]);
 
   const openImportDialogForTarget = useCallback((section: Section | null) => {
     if (section) {
@@ -1956,7 +2449,7 @@ export default function Dashboard() {
   });
 
   const updateSectionType = useMutation({
-    mutationFn: ({ id, section_type }: { id: number; section_type: "section" | "tab" }) =>
+    mutationFn: ({ id, section_type }: { id: number; section_type: "section" | "tab" | "version" }) =>
       sectionsApi.update(id, { section_type }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sections"] });
@@ -2124,6 +2617,8 @@ export default function Dashboard() {
 
   const orgSlug = org?.slug ?? String(org?.id ?? "");
   const publicDocsUrl = `${API_BASE_URL}/docs/${orgSlug}`;
+  const internalDocsUrl = `${API_BASE_URL}/internal-docs/${orgSlug}`;
+  const externalDocsUrl = `${API_BASE_URL}/external-docs/${orgSlug}`;
   const bootstrapDocsSession = useCallback(async () => {
     const token = getAuthToken();
     if (!token) return;
@@ -2144,6 +2639,40 @@ export default function Dashboard() {
     },
     [bootstrapDocsSession],
   );
+  const getPagePublishedUrl = useCallback(
+    (page: Page | null | undefined): string | null => {
+      if (!page || !orgSlug) return null;
+      const effectiveVisibility = resolveEffectivePageVisibility(page, sectionsById);
+      const baseUrl =
+        effectiveVisibility === "internal"
+          ? internalDocsUrl
+          : effectiveVisibility === "external"
+            ? externalDocsUrl
+            : publicDocsUrl;
+      return `${baseUrl}/p/${page.id}/${page.slug}`;
+    },
+    [externalDocsUrl, internalDocsUrl, orgSlug, publicDocsUrl, sectionsById],
+  );
+  const selectedPageEffectiveVisibility = selectedPage
+    ? resolveEffectivePageVisibility(selectedPage, sectionsById)
+    : null;
+  const selectedPagePublishedUrl = getPagePublishedUrl(selectedPage);
+  const copyPublishedLink = useCallback(async () => {
+    if (!selectedPagePublishedUrl) return;
+    try {
+      await navigator.clipboard.writeText(selectedPagePublishedUrl);
+      toast({
+        title: "Link copied",
+        description: selectedPagePublishedUrl,
+      });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Clipboard permission denied. Copy the URL from 'View live'.",
+        variant: "destructive",
+      });
+    }
+  }, [selectedPagePublishedUrl, toast]);
 
   if (orgLoading) {
     return (
@@ -2165,308 +2694,576 @@ export default function Dashboard() {
     <div className="flex h-screen overflow-hidden bg-background">
 
       {/* ── Sidebar ───────────────────────────────────────────────── */}
-      <aside className="w-[248px] shrink-0 flex flex-col border-r bg-[#F9F8F6] dark:bg-muted/20 overflow-hidden">
+      <aside
+        className={cn(
+          "shrink-0 flex flex-col border-r bg-[#F9F8F6] dark:bg-muted/20 overflow-hidden transition-[width] duration-200",
+          sidebarCollapsed ? "w-[64px]" : "w-[248px]",
+        )}
+      >
 
         {/* Org header */}
-        <div className="flex items-center gap-2.5 px-3 py-3 border-b bg-background">
-          {org?.logo_url ? (
-            <img src={org.logo_url} alt="" className="w-7 h-7 rounded-lg object-contain flex-shrink-0" />
-          ) : (
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-              style={{ background: org?.primary_color ?? "#6366f1" }}
+        <div className={cn("px-3 py-3 border-b bg-background", sidebarCollapsed ? "space-y-3" : "space-y-2")}>
+          <div className={cn("flex items-center", sidebarCollapsed ? "flex-col gap-2" : "gap-2.5")}>
+            {org?.logo_url ? (
+              <img src={org.logo_url} alt="" className="w-7 h-7 rounded-lg object-contain flex-shrink-0" />
+            ) : (
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
+                style={{ background: org?.primary_color ?? "#6366f1" }}
+              >
+                {orgInitials}
+              </div>
+            )}
+            {!sidebarCollapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-sm leading-tight truncate">{org?.name}</p>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-7 w-7 text-muted-foreground hover:text-foreground",
+                !sidebarCollapsed && "ml-auto",
+              )}
+              onClick={() => setSidebarCollapsed((v) => !v)}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              {orgInitials}
+              {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </Button>
+          </div>
+
+          {!sidebarCollapsed ? (
+            <div className="rounded-md border bg-muted/30 p-0.5 grid grid-cols-3 gap-0.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-1 text-[11px] font-medium text-muted-foreground hover:text-foreground justify-center rounded-sm"
+                onClick={() => void openPublishedDocs(internalDocsUrl)}
+                title="Open internal docs"
+              >
+                Internal
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-1 text-[11px] font-medium text-muted-foreground hover:text-foreground justify-center rounded-sm"
+                onClick={() => void openPublishedDocs(externalDocsUrl)}
+                title="Open external docs"
+              >
+                External
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-1 text-[11px] font-medium text-muted-foreground hover:text-foreground justify-center rounded-sm"
+                onClick={() => void openPublishedDocs(publicDocsUrl)}
+                title="Open public docs"
+              >
+                Public
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 mx-auto text-[10px] text-muted-foreground"
+                onClick={() => void openPublishedDocs(internalDocsUrl)}
+                title="Open internal docs"
+              >
+                I
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 mx-auto text-[10px] text-muted-foreground"
+                onClick={() => void openPublishedDocs(externalDocsUrl)}
+                title="Open external docs"
+              >
+                E
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 mx-auto text-[10px] text-muted-foreground"
+                onClick={() => void openPublishedDocs(publicDocsUrl)}
+                title="Open public docs"
+              >
+                P
+              </Button>
             </div>
           )}
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm leading-tight truncate">{org?.name}</p>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => window.open(`/internal/${orgSlug}`, "_blank")}
-              title="Open internal docs"
-            >
-              <Lock className="h-3.5 w-3.5 mr-1.5 opacity-70" />
-              Internal
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => void openPublishedDocs(publicDocsUrl)}
-              title="Open public docs"
-            >
-              <Globe className="h-3.5 w-3.5 mr-1.5 opacity-70" />
-              Public
-            </Button>
-          </div>
         </div>
 
-        {/* Nav */}
-        <div className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-          <div className="flex items-center justify-between px-2 mb-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
-              Content
-            </span>
-            <div className="flex items-center gap-0.5">
-              <button
-                onClick={() => setShowConfigureTabs(true)}
-                className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
-                title="Configure content hierarchy"
+        {sidebarCollapsed ? (
+          <div className="flex-1 flex flex-col items-center gap-1.5 py-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowConfigureTabs(true)}
+              title="Configure content hierarchy"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setAddSectionParentId(null);
+                setAddSectionPreferredType(undefined);
+                setAddSectionCloneFromId(null);
+                setShowAddSection(true);
+              }}
+              title="New product"
+            >
+              <FolderPlus className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => openImportDialogForTarget(null)}
+              title="Import content"
+            >
+              <ArrowUpFromLine className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => openAddVersionDialog()}
+              disabled={!canCreateVersionForSelectedProduct}
+              title="New version"
+            >
+              <GitBranchPlus className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => { setAddPageSectionId(defaultAddPageSectionId); setShowAddPage(true); }}
+              title="New page"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            <div className="mt-auto flex flex-col items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => syncAll.mutate()}
+                disabled={!driveConnected || syncAll.isPending}
+                title="Sync all pages"
               >
-                <Settings className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => { setAddSectionParentId(null); setShowAddSection(true); }}
-                className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
-                title="New product"
+                {syncAll.isPending
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <RefreshCw className="h-4 w-4" />
+                }
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={handleSignOut}
+                disabled={isSigningOut}
+                title="Log out"
               >
-                <FolderPlus className="h-3.5 w-3.5" />
-              </button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+                {isSigningOut
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <LogOut className="h-4 w-4" />
+                }
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Nav */}
+            <div className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+              <div className="flex items-center justify-between px-2 mb-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
+                  Content
+                </span>
+                <div className="flex items-center gap-0.5">
                   <button
+                    onClick={() => setShowConfigureTabs(true)}
                     className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
-                    title="Import content"
+                    title="Configure content hierarchy"
                   >
-                    <ArrowUpFromLine className="h-3.5 w-3.5" />
+                    <Settings className="h-3.5 w-3.5" />
                   </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem onClick={() => openImportDialogForTarget(null)}>
-                    <FolderOpen className="h-3 w-3 mr-2" />
-                    Import to workspace root
-                  </DropdownMenuItem>
-                  {selectedImportTargetSection && (
-                    <DropdownMenuItem onClick={() => openImportDialogForTarget(selectedImportTargetSection)}>
-                      <ArrowUpFromLine className="h-3 w-3 mr-2" />
-                      Import into "{selectedImportTargetSection.name}"
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <button
-                onClick={() => { setAddPageSectionId(null); setShowAddPage(true); }}
-                className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
-                title="New page"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-          <div className="px-2 mb-2">
-            <Select value={visibilityFilter} onValueChange={(value) => setVisibilityFilter(value as VisibilityFilter)}>
-              <SelectTrigger className="h-7 text-[11px]">
-                <SelectValue placeholder="Visibility" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All visibility</SelectItem>
-                <SelectItem value="public">Public only</SelectItem>
-                <SelectItem value="internal">Internal only</SelectItem>
-                <SelectItem value="external">External only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {sectionTree.length === 0 && visiblePages.filter((p) => !p.section_id).length === 0 ? (
-            <div className="px-2 py-4 text-center">
-              <p className="text-xs text-muted-foreground/60">
-                {visibilityFilter === "all" ? "No content yet" : "No content for this visibility"}
-              </p>
-            </div>
-          ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-            >
-              {/* Unsectioned pages */}
-              <SortableContext
-                items={visiblePages.filter((p) => !p.section_id).map((p) => `page-${p.id}`)}
-                strategy={verticalListSortingStrategy}
-              >
-                {visiblePages.filter((p) => !p.section_id).map((page) => (
-                  <PageItem
-                    key={page.id}
-                    page={page}
-                    visibility={resolveEffectivePageVisibility(page, sectionsById)}
-                    showVisibilityBadge={page.visibility_override !== null || resolveEffectivePageVisibility(page, sectionsById) !== "public"}
-                    selectedPageId={selectedPageId}
-                    onSelect={setSelectedPageId}
-                    onEditTitle={setRenamingPage}
-                    onEditSlug={setEditingPageSlug}
-                    onMove={setMovingPage}
-                    onRearrange={handleRearrangePage}
-                    onSetVisibilityOverride={(p, visibility) =>
-                      updatePageVisibility.mutate({ id: p.id, visibility_override: visibility })
-                    }
-                    onDuplicate={(p) => duplicatePage.mutate(p.id)}
-                    onUnpublish={handleUnpublishPage}
-                    onDelete={handleDeletePage}
-                  />
-                ))}
-              </SortableContext>
-
-              {/* Section tree */}
-              <SortableContext
-                items={sectionTree.map((s) => `sect-${s.id}`)}
-                strategy={verticalListSortingStrategy}
-              >
-                {sectionTree.map((section) => (
-                  <SectionNode
-                    key={section.id}
-                    section={section}
-                    pages={visiblePages}
-                    selectedPageId={selectedPageId}
-                    onSelectPage={setSelectedPageId}
-                    depth={0}
-                    activeDragType={activeDragType}
-                    hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
-                    onAddPage={(sectionId) => { setAddPageSectionId(sectionId); setShowAddPage(true); }}
-                    onAddSubSection={(parentId) => { setAddSectionParentId(parentId); setShowAddSection(true); }}
-                    onImportHere={(section) => openImportDialogForTarget(section)}
-                    onRenameSection={setRenamingSection}
-                    onMoveSection={setMovingSection}
-                    onDeleteSection={(s) => deleteSection.mutate(s.id)}
-                    onToggleSectionType={(s) =>
-                      updateSectionType.mutate({
-                        id: s.id,
-                        section_type: s.section_type === "tab" ? "section" : "tab",
-                      })
-                    }
-                    onSetSectionVisibility={(s, visibility) =>
-                      updateSectionVisibility.mutate({ id: s.id, visibility })
-                    }
-                    onRenamePage={setRenamingPage}
-                    onEditPageSlug={setEditingPageSlug}
-                    onMovePage={setMovingPage}
-                    onSetPageVisibilityOverride={(p, visibility) =>
-                      updatePageVisibility.mutate({ id: p.id, visibility_override: visibility })
-                    }
-                    onDuplicatePage={(p) => duplicatePage.mutate(p.id)}
-                    onUnpublishPage={handleUnpublishPage}
-                    onRearrangePage={handleRearrangePage}
-                    onDeletePage={handleDeletePage}
-                  />
-                ))}
-              </SortableContext>
-
-              {/* Ghost overlay while dragging */}
-              <DragOverlay>
-                {activeDragType && (
-                  <div className={cn(
-                    "px-2 py-1.5 rounded-md text-xs font-medium shadow-lg border bg-background text-foreground",
-                    activeDragType === "section" ? "uppercase tracking-wide text-muted-foreground/70" : "",
-                  )}>
-                    {activeDragLabel}
+                  <button
+                    onClick={() => {
+                      setAddSectionParentId(null);
+                      setAddSectionPreferredType(undefined);
+                      setAddSectionCloneFromId(null);
+                      setShowAddSection(true);
+                    }}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
+                    title="New product"
+                  >
+                    <FolderPlus className="h-3.5 w-3.5" />
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
+                        title="Import content"
+                      >
+                        <ArrowUpFromLine className="h-3.5 w-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem onClick={() => openImportDialogForTarget(null)}>
+                        <FolderOpen className="h-3 w-3 mr-2" />
+                        Import to workspace root
+                      </DropdownMenuItem>
+                      {selectedImportTargetSection && (
+                        <DropdownMenuItem onClick={() => openImportDialogForTarget(selectedImportTargetSection)}>
+                          <ArrowUpFromLine className="h-3 w-3 mr-2" />
+                          Import into "{selectedImportTargetSection.name}"
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <button
+                    onClick={() => openAddVersionDialog()}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
+                    disabled={!canCreateVersionForSelectedProduct}
+                    title="New version"
+                  >
+                    <GitBranchPlus className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => { setAddPageSectionId(defaultAddPageSectionId); setShowAddPage(true); }}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
+                    title="New page"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              {isProductHierarchy && rootProducts.length > 0 && (
+                <div className="px-2 mb-2 flex items-center gap-1">
+                  <div className="flex-1">
+                    <Select value={selectedSidebarProductValue} onValueChange={handleSidebarProductSwitch}>
+                      <SelectTrigger className="h-7 text-[11px] focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0">
+                        <SelectValue placeholder="Choose product" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {rootProducts.map((product) => (
+                          <SelectItem key={product.id} value={String(product.id)}>
+                            {product.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                )}
-              </DragOverlay>
-            </DndContext>
-          )}
-        </div>
-
-        {/* Sidebar footer */}
-        <div className="border-t px-2 py-2 space-y-2 bg-background/30">
-          <div className="rounded-md border bg-background/80">
-            <button
-              type="button"
-              onClick={() => setDrivePanelOpen((v) => !v)}
-              className="w-full flex items-center justify-between px-2 py-2 text-left"
-            >
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Drive</span>
-              <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground/70 transition-transform", drivePanelOpen && "rotate-180")} />
-            </button>
-            {drivePanelOpen && (
-              <div className="px-1 pb-1 space-y-0.5">
-                {!driveConnected && (
-                  <div className="px-1 pb-1">
-                    <button
-                      onClick={handleConnectDrive}
-                      disabled={isConnectingDrive}
-                      className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-                    >
-                      {isConnectingDrive ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
-                      {isConnectingDrive ? "Connecting..." : "Connect Drive"}
-                    </button>
-                    <p className="px-2 pt-1 text-[11px] text-muted-foreground/70">
-                      Required for import, sync, and Google Doc updates.
+                  {selectedProduct && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                          title="Product options"
+                        >
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem onClick={() => setRenamingSection(selectedProduct)}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" />
+                          Rename product
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={openAddVersionDialog} disabled={!canCreateVersionForSelectedProduct}>
+                          <GitBranchPlus className="h-3.5 w-3.5 mr-2" />
+                          New version
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => {
+                            const confirmed = window.confirm(
+                              `Delete product "${selectedProduct.name}"?\n\nIts Drive folder will be moved to trash.`,
+                            );
+                            if (!confirmed) return;
+                            deleteSection.mutate(selectedProduct.id);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-2" />
+                          Delete product
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              )}
+              {isProductHierarchy && selectedProduct && productVersions.length > 0 && (
+                <div className="px-2 mb-2 flex items-center gap-1">
+                  <div className="flex-1">
+                    <Select value={selectedSidebarVersionValue} onValueChange={handleSidebarVersionSwitch}>
+                      <SelectTrigger className="h-7 text-[11px] focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0">
+                        <SelectValue placeholder="Choose version" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__base__">{selectedProduct?.name || "Original"}</SelectItem>
+                        {productVersions.map((version) => (
+                          <SelectItem key={version.id} value={String(version.id)}>
+                            {version.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {selectedVersion && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                          title="Version options"
+                        >
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem onClick={() => setRenamingSection(selectedVersion)}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" />
+                          Rename version
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => {
+                            const confirmed = window.confirm(
+                              `Delete version "${selectedVersion.name}"?\n\nIts Drive folder will be moved to trash.`,
+                            );
+                            if (!confirmed) return;
+                            deleteSection.mutate(selectedVersion.id);
+                            setSelectedSidebarVersionId(null);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-2" />
+                          Delete version
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              )}
+              {shouldShowAdminTree && (
+                adminTreeSections.length === 0 && adminRootPages.length === 0 ? (
+                  <div className="px-2 py-4 text-center">
+                    <p className="text-xs text-muted-foreground/60">
+                      {visibilityFilter === "all" ? "No content yet" : "No content for this visibility"}
                     </p>
                   </div>
-                )}
-                <button
-                  onClick={() => openImportDialogForTarget(null)}
-                  disabled={!driveConnected}
-                  className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  <FolderOpen className="h-3.5 w-3.5 opacity-60" />
-                  Import content
-                </button>
-                <button
-                  disabled={!driveConnected || syncAll.isPending}
-                  onClick={() => syncAll.mutate()}
-                  className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  {syncAll.isPending
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin opacity-60" />
-                    : <RefreshCw className="h-3.5 w-3.5 opacity-60" />
-                  }
-                  Sync all pages
-                </button>
-                <div className="mx-1 mt-1 rounded-md border bg-background/70 px-2 py-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <Wifi className={cn("h-3 w-3", driveConnected ? "text-emerald-500" : "text-muted-foreground/50")} />
-                      <span className="text-[11px] text-muted-foreground/70 truncate">
-                        {driveConnected ? "Drive connected" : "Drive not connected"}
-                      </span>
-                    </div>
-                    {driveConnected && driveStatus?.drive_folder_id && (
-                      <button
-                        onClick={() => window.open(`https://drive.google.com/drive/folders/${driveStatus.drive_folder_id}`, "_blank")}
-                        className="text-[11px] text-muted-foreground/60 hover:text-foreground underline-offset-2 hover:underline shrink-0"
-                        title={`Folder ID: ${driveStatus.drive_folder_id}`}
-                      >
-                        Root folder
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+                ) : (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                  >
+                    {/* Unsectioned pages */}
+                    <SortableContext
+                      items={adminRootPages.map((p) => `page-${p.id}`)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {adminRootPages.map((page) => (
+                        <PageItem
+                          key={page.id}
+                          page={page}
+                          visibility={resolveEffectivePageVisibility(page, sectionsById)}
+                          showVisibilityBadge={page.visibility_override !== null || resolveEffectivePageVisibility(page, sectionsById) !== "public"}
+                          selectedPageId={selectedPageId}
+                          onSelect={setSelectedPageId}
+                          onEditTitle={setRenamingPage}
+                          onEditSlug={setEditingPageSlug}
+                          onMove={setMovingPage}
+                          onRearrange={handleRearrangePage}
+                          onSetVisibilityOverride={(p, visibility) =>
+                            updatePageVisibility.mutate({ id: p.id, visibility_override: visibility })
+                          }
+                          onDuplicate={(p) => duplicatePage.mutate(p.id)}
+                          onUnpublish={handleUnpublishPage}
+                          onDelete={handleDeletePage}
+                        />
+                      ))}
+                    </SortableContext>
 
-          <div className="rounded-md border bg-background/80">
-            <button
-              type="button"
-              onClick={() => setAccountPanelOpen((v) => !v)}
-              className="w-full flex items-center justify-between px-2 py-2 text-left"
-            >
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Account</span>
-              <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground/70 transition-transform", accountPanelOpen && "rotate-180")} />
-            </button>
-            {accountPanelOpen && (
-              <div className="px-1 pb-1 space-y-1">
-                <div className="mx-1 rounded-md border bg-background/70 px-2 py-2">
-                  <p className="text-xs font-medium truncate">{accountName}</p>
-                  {accountEmail && <p className="text-[11px] text-muted-foreground truncate mt-0.5">{accountEmail}</p>}
-                </div>
+                    {/* Section tree */}
+                    <SortableContext
+                      items={adminTreeSections.map((s) => `sect-${s.id}`)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {adminTreeSections.map((section) => (
+                        <SectionNode
+                          key={section.id}
+                          section={section}
+                          pages={visiblePages}
+                          selectedPageId={selectedPageId}
+                          onSelectPage={setSelectedPageId}
+                          depth={adminSectionDepthBase}
+                          activeDragType={activeDragType}
+                          hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
+                          onAddPage={(sectionId) => { setAddPageSectionId(sectionId); setShowAddPage(true); }}
+                          onAddSubSection={(parentId) => {
+                            setAddSectionParentId(parentId);
+                            setAddSectionPreferredType(undefined);
+                            setAddSectionCloneFromId(null);
+                            setShowAddSection(true);
+                          }}
+                          onImportHere={(section) => openImportDialogForTarget(section)}
+                          onRenameSection={setRenamingSection}
+                          onMoveSection={setMovingSection}
+                          onDeleteSection={(s) => deleteSection.mutate(s.id)}
+                          onChangeSectionType={(s, nextType) =>
+                            updateSectionType.mutate({
+                              id: s.id,
+                              section_type: nextType,
+                            })
+                          }
+                          onSetSectionVisibility={(s, visibility) =>
+                            updateSectionVisibility.mutate({ id: s.id, visibility })
+                          }
+                          onRenamePage={setRenamingPage}
+                          onEditPageSlug={setEditingPageSlug}
+                          onMovePage={setMovingPage}
+                          onSetPageVisibilityOverride={(p, visibility) =>
+                            updatePageVisibility.mutate({ id: p.id, visibility_override: visibility })
+                          }
+                          onDuplicatePage={(p) => duplicatePage.mutate(p.id)}
+                          onUnpublishPage={handleUnpublishPage}
+                          onRearrangePage={handleRearrangePage}
+                          onDeletePage={handleDeletePage}
+                        />
+                      ))}
+                    </SortableContext>
+
+                    {/* Ghost overlay while dragging */}
+                    <DragOverlay>
+                      {activeDragType && (
+                        <div className={cn(
+                          "px-2 py-1.5 rounded-md text-xs font-medium shadow-lg border bg-background text-foreground",
+                          activeDragType === "section" ? "uppercase tracking-wide text-muted-foreground/70" : "",
+                        )}>
+                          {activeDragLabel}
+                        </div>
+                      )}
+                    </DragOverlay>
+                  </DndContext>
+                )
+              )}
+            </div>
+
+            {/* Sidebar footer */}
+            <div className="border-t px-2 py-2 space-y-2 bg-background/30">
+              <div className="rounded-md border bg-background/80">
                 <button
-                  onClick={handleSignOut}
-                  disabled={isSigningOut}
-                  className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40"
+                  type="button"
+                  onClick={() => setDrivePanelOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-2 py-2 text-left"
                 >
-                  {isSigningOut ? <Loader2 className="h-3.5 w-3.5 animate-spin opacity-60" /> : <LogOut className="h-3.5 w-3.5 opacity-60" />}
-                  {isSigningOut ? "Signing out..." : "Log out"}
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Drive</span>
+                  <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground/70 transition-transform", drivePanelOpen && "rotate-180")} />
                 </button>
+                {drivePanelOpen && (
+                  <div className="px-1 pb-1 space-y-0.5">
+                    {!driveConnected && (
+                      <div className="px-1 pb-1">
+                        <button
+                          onClick={handleConnectDrive}
+                          disabled={isConnectingDrive}
+                          className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                        >
+                          {isConnectingDrive ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
+                          {isConnectingDrive ? "Connecting..." : "Connect Drive"}
+                        </button>
+                        <p className="px-2 pt-1 text-[11px] text-muted-foreground/70">
+                          Required for import, sync, and Google Doc updates.
+                        </p>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => openImportDialogForTarget(null)}
+                      disabled={!driveConnected}
+                      className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <FolderOpen className="h-3.5 w-3.5 opacity-60" />
+                      Import content
+                    </button>
+                    <button
+                      disabled={!driveConnected || syncAll.isPending}
+                      onClick={() => syncAll.mutate()}
+                      className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      {syncAll.isPending
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin opacity-60" />
+                        : <RefreshCw className="h-3.5 w-3.5 opacity-60" />
+                      }
+                      Sync all pages
+                    </button>
+                    <div className="mx-1 mt-1 rounded-md border bg-background/70 px-2 py-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Wifi className={cn("h-3 w-3", driveConnected ? "text-emerald-500" : "text-muted-foreground/50")} />
+                          <span className="text-[11px] text-muted-foreground/70 truncate">
+                            {driveConnected ? "Drive connected" : "Drive not connected"}
+                          </span>
+                        </div>
+                        {driveConnected && driveStatus?.drive_folder_id && (
+                          <button
+                            onClick={() => window.open(`https://drive.google.com/drive/folders/${driveStatus.drive_folder_id}`, "_blank")}
+                            className="text-[11px] text-muted-foreground/60 hover:text-foreground underline-offset-2 hover:underline shrink-0"
+                            title={`Folder ID: ${driveStatus.drive_folder_id}`}
+                          >
+                            Root folder
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
+
+              <div className="rounded-md border bg-background/80">
+                <button
+                  type="button"
+                  onClick={() => setAccountPanelOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-2 py-2 text-left"
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Account</span>
+                  <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground/70 transition-transform", accountPanelOpen && "rotate-180")} />
+                </button>
+                {accountPanelOpen && (
+                  <div className="px-1 pb-1 space-y-1">
+                    <div className="mx-1 rounded-md border bg-background/70 px-2 py-2">
+                      <p className="text-xs font-medium truncate">{accountName}</p>
+                      {accountEmail && <p className="text-[11px] text-muted-foreground truncate mt-0.5">{accountEmail}</p>}
+                    </div>
+                    <button
+                      onClick={() => setShowExternalAccessPanel(true)}
+                      disabled={!org?.id}
+                      className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <Users className="h-3.5 w-3.5 opacity-60" />
+                      External access
+                    </button>
+                    <button
+                      onClick={handleSignOut}
+                      disabled={isSigningOut}
+                      className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40"
+                    >
+                      {isSigningOut ? <Loader2 className="h-3.5 w-3.5 animate-spin opacity-60" /> : <LogOut className="h-3.5 w-3.5 opacity-60" />}
+                      {isSigningOut ? "Signing out..." : "Log out"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </aside>
 
       {/* ── Main ──────────────────────────────────────────────────── */}
@@ -2509,11 +3306,21 @@ export default function Dashboard() {
                     variant="ghost"
                     size="sm"
                     className="h-7 text-xs gap-1.5 text-muted-foreground"
-                    onClick={() =>
-                      void openPublishedDocs(`${publicDocsUrl}/p/${selectedPage.id}/${selectedPage.slug}`)
-                    }
+                    onClick={() => {
+                      if (selectedPagePublishedUrl) void openPublishedDocs(selectedPagePublishedUrl);
+                    }}
                   >
-                    <ExternalLink className="h-3 w-3" /> View live
+                    <ExternalLink className="h-3 w-3" /> View {selectedPageEffectiveVisibility ?? "live"}
+                  </Button>
+                )}
+                {selectedPage.is_published && selectedPagePublishedUrl && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 text-muted-foreground"
+                    onClick={() => void copyPublishedLink()}
+                  >
+                    <Copy className="h-3 w-3" /> Copy link
                   </Button>
                 )}
                 <Button
@@ -2573,6 +3380,11 @@ export default function Dashboard() {
                     >
                       <ExternalLink className="h-3.5 w-3.5 mr-2 opacity-60" /> Open in Google Docs
                     </DropdownMenuItem>
+                    {selectedPage.is_published && selectedPagePublishedUrl && (
+                      <DropdownMenuItem onClick={() => void copyPublishedLink()}>
+                        <Copy className="h-3.5 w-3.5 mr-2 opacity-60" /> Copy published link
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => setRenamingPage(selectedPage)}>
                       <Pencil className="h-3.5 w-3.5 mr-2" /> Edit Title
@@ -2662,36 +3474,99 @@ export default function Dashboard() {
             )}
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto">
-              {selectedPage.html_content ? (
-                <div
-                  className="prose prose-sm prose-neutral max-w-3xl mx-auto px-10 py-10"
-                  dangerouslySetInnerHTML={{ __html: selectedPage.html_content }}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-                  <div className="w-12 h-12 rounded-xl bg-muted/60 flex items-center justify-center">
-                    <BookOpen className="h-5 w-5 opacity-40" />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-medium">No content yet</p>
-                    <p className="text-xs text-muted-foreground/60 mt-0.5">Sync this page to pull content from Google Docs</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs gap-1.5 mt-1"
-                    disabled={syncPage.isPending}
-                    onClick={() => syncPage.mutate(selectedPage.id)}
-                  >
-                    {syncPage.isPending
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <RefreshCw className="h-3.5 w-3.5" />
-                    }
-                    Sync from Google Docs
-                  </Button>
+            <div className="flex-1 min-h-0 flex">
+              <ReaderHierarchy
+                title={readerHierarchyTitle}
+                pages={visiblePages}
+                topPages={readerHierarchyTopPages}
+                rootSections={readerHierarchySections}
+                sectionsById={sectionsById}
+                sectionDepthById={sectionDepthById}
+                hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
+                sensors={sensors}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                activeDragType={activeDragType}
+                activeDragLabel={activeDragLabel}
+                hideVersionSections={Boolean(selectedProduct && !selectedVersion)}
+                visibilityFilter={visibilityFilter}
+                onVisibilityFilterChange={setVisibilityFilter}
+                selectedPageId={selectedPageId}
+                onSelectPage={setSelectedPageId}
+                onAddPage={(sectionId) => { setAddPageSectionId(sectionId); setShowAddPage(true); }}
+                onAddSubSection={(parentId) => {
+                  setAddSectionParentId(parentId);
+                  setAddSectionPreferredType(undefined);
+                  setAddSectionCloneFromId(null);
+                  setShowAddSection(true);
+                }}
+                onImportHere={(section) => openImportDialogForTarget(section)}
+                onRenameSection={setRenamingSection}
+                onMoveSection={setMovingSection}
+                onDeleteSection={(s) => deleteSection.mutate(s.id)}
+                onChangeSectionType={(s, nextType) =>
+                  updateSectionType.mutate({
+                    id: s.id,
+                    section_type: nextType,
+                  })
+                }
+                onSetSectionVisibility={(s, visibility) =>
+                  updateSectionVisibility.mutate({ id: s.id, visibility })
+                }
+                onRenamePage={setRenamingPage}
+                onEditPageSlug={setEditingPageSlug}
+                onMovePage={setMovingPage}
+                onSetPageVisibilityOverride={(p, visibility) =>
+                  updatePageVisibility.mutate({ id: p.id, visibility_override: visibility })
+                }
+                onDuplicatePage={(p) => duplicatePage.mutate(p.id)}
+                onUnpublishPage={handleUnpublishPage}
+                onRearrangePage={handleRearrangePage}
+                onDeletePage={handleDeletePage}
+              />
+              <div className="flex-1 min-w-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_16rem]">
+                <div className="dashboard-doc-scroll overflow-y-auto">
+                  {selectedPage.html_content ? (
+                    <div
+                      className="dashboard-doc-content prose prose-sm prose-neutral max-w-4xl mx-auto px-8 py-10 xl:px-10"
+                      dangerouslySetInnerHTML={{ __html: selectedPage.html_content }}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
+                      <div className="w-12 h-12 rounded-xl bg-muted/60 flex items-center justify-center">
+                        <BookOpen className="h-5 w-5 opacity-40" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-medium">No content yet</p>
+                        <p className="text-xs text-muted-foreground/60 mt-0.5">Sync this page to pull content from Google Docs</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs gap-1.5 mt-1"
+                        disabled={syncPage.isPending}
+                        onClick={() => syncPage.mutate(selectedPage.id)}
+                      >
+                        {syncPage.isPending
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <RefreshCw className="h-3.5 w-3.5" />
+                        }
+                        Sync from Google Docs
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              )}
+                <aside className="hidden xl:block border-l bg-background/60">
+                  <div className="sticky top-0 h-[calc(100vh-108px)] overflow-y-auto p-4">
+                    <TableOfContents
+                      key={selectedPage.id}
+                      html={selectedPage.html_content}
+                      contentContainerSelector=".dashboard-doc-content"
+                      scrollContainerSelector=".dashboard-doc-scroll"
+                    />
+                  </div>
+                </aside>
+              </div>
             </div>
           </>
         ) : (
@@ -2726,7 +3601,7 @@ export default function Dashboard() {
               >
                 <Settings className="h-3.5 w-3.5" /> Tabs (optional)
               </Button>
-              <Button size="sm" className="h-8 text-xs gap-1.5" onClick={() => { setAddPageSectionId(null); setShowAddPage(true); }}>
+              <Button size="sm" className="h-8 text-xs gap-1.5" onClick={() => { setAddPageSectionId(defaultAddPageSectionId); setShowAddPage(true); }}>
                 <Plus className="h-3.5 w-3.5" /> Add page
               </Button>
             </div>
@@ -2740,7 +3615,14 @@ export default function Dashboard() {
           parentId={addSectionParentId}
           allSections={sections}
           hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
-          onClose={() => { setShowAddSection(false); setAddSectionParentId(null); }}
+          preferredType={addSectionPreferredType}
+          cloneFromSectionId={addSectionCloneFromId}
+          onClose={() => {
+            setShowAddSection(false);
+            setAddSectionParentId(null);
+            setAddSectionPreferredType(undefined);
+            setAddSectionCloneFromId(null);
+          }}
         />
       )}
       {showScanDrive && (
@@ -2760,6 +3642,16 @@ export default function Dashboard() {
           sections={sections}
           hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
           onClose={() => setShowConfigureTabs(false)}
+        />
+      )}
+      {showExternalAccessPanel && org?.id && (
+        <ProjectSharePanel
+          open={showExternalAccessPanel}
+          onOpenChange={setShowExternalAccessPanel}
+          projectId={String(selectedProduct?.id ?? org.id)}
+          projectName={selectedProduct?.name ?? org.name}
+          organizationSlug={org.slug ?? null}
+          projectSlug={selectedProduct?.slug ?? null}
         />
       )}
       {renamingSection && (

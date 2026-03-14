@@ -1545,6 +1545,59 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     }
   };
 
+  const handleVersionSelect = (version: ProjectVersion) => {
+    if (!selectedProject) return;
+
+    setSelectedVersion(version);
+
+    const sortedProjectDocs = documents
+      .filter((doc) => doc.project_id === selectedProject.id)
+      .sort((a, b) => {
+        const orderA = a.display_order ?? Number.MAX_SAFE_INTEGER;
+        const orderB = b.display_order ?? Number.MAX_SAFE_INTEGER;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.title.localeCompare(b.title);
+      });
+
+    const currentTopicId = selectedDocument?.topic_id ?? null;
+    const currentSlug = selectedDocument?.slug ?? null;
+    const matchesTargetVersion = (doc: Document) =>
+      doc.project_version_id === version.id || !doc.project_version_id;
+
+    let nextDoc: Document | null = null;
+
+    if (currentSlug) {
+      nextDoc =
+        sortedProjectDocs.find(
+          (doc) =>
+            matchesTargetVersion(doc) &&
+            doc.slug === currentSlug &&
+            doc.topic_id === currentTopicId
+        ) ??
+        sortedProjectDocs.find(
+          (doc) =>
+            matchesTargetVersion(doc) &&
+            doc.slug === currentSlug
+        ) ??
+        null;
+    }
+
+    if (!nextDoc) {
+      nextDoc = sortedProjectDocs.find((doc) => matchesTargetVersion(doc)) ?? null;
+    }
+
+    if (nextDoc && currentOrg) {
+      setSelectedDocument(nextDoc);
+      setDocumentContent(nextDoc);
+      navigate(buildDocUrl(nextDoc, selectedProject, currentOrg));
+      return;
+    }
+
+    setSelectedDocument(null);
+    setDocumentHtml(null);
+    navigate(buildProjectUrl(selectedProject, version));
+  };
+
   const toggleTopic = (topicId: string) => {
     setExpandedTopics(prev => {
       const next = new Set(prev);
@@ -2143,9 +2196,19 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 )}
               </div>
           
-          {/* Right: Developer Dropdown */}
-          {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
-            <div className="flex items-center pr-3 lg:pr-6 shrink-0">
+          {/* Right: Version + Developer */}
+          <div className="flex items-center gap-1 pr-3 lg:pr-6 shrink-0">
+            {selectedProject &&
+              (selectedProject.show_version_switcher ?? true) &&
+              hasMultipleVersions && (
+                <VersionSwitcher
+                  currentVersion={visibleVersion ?? selectedVersion}
+                  versions={selectedProjectVersions}
+                  onVersionSelect={handleVersionSelect}
+                />
+              )}
+
+            {(currentOrg?.openapi_spec_json || currentOrg?.openapi_spec_url || currentOrg?.mcp_enabled) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-1 sm:gap-1.5 text-muted-foreground hover:text-foreground px-2 sm:px-3">
@@ -2171,8 +2234,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
         ) : null}

@@ -12,12 +12,14 @@ interface TableOfContentsProps {
   html: string | null;
   className?: string;
   contentContainerSelector?: string;
+  scrollContainerSelector?: string;
 }
 
 export function TableOfContents({ 
   html, 
   className,
-  contentContainerSelector = ".prose, .doc-content, [data-doc-content]"
+  contentContainerSelector = ".prose, .doc-content, [data-doc-content]",
+  scrollContainerSelector,
 }: TableOfContentsProps) {
   const [headings, setHeadings] = useState<TocHeading[]>([]);
   const [activeId, setActiveId] = useState<string>("");
@@ -42,6 +44,29 @@ export function TableOfContents({
     if (value === "bold") return 700;
     const parsed = Number.parseInt(value, 10);
     return Number.isFinite(parsed) ? parsed : 400;
+  };
+
+  const resolveScrollContainer = (): HTMLElement | null => {
+    if (scrollContainerSelector) {
+      const explicit = document.querySelector(scrollContainerSelector);
+      if (explicit instanceof HTMLElement) return explicit;
+    }
+
+    const contentContainer = document.querySelector(contentContainerSelector);
+    let node: HTMLElement | null =
+      contentContainer instanceof HTMLElement ? contentContainer : null;
+
+    while (node && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      const overflowY = style.overflowY;
+      const isScrollable = /(auto|scroll|overlay)/.test(overflowY);
+      if (isScrollable && node.scrollHeight > node.clientHeight + 1) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+
+    return null;
   };
 
   // Extract headings from rendered DOM to support Google Docs HTML that lacks h-tags.
@@ -177,6 +202,7 @@ export function TableOfContents({
   useEffect(() => {
     if (headings.length === 0) return;
 
+    const scrollContainer = resolveScrollContainer();
     const observer = new IntersectionObserver(
       (entries) => {
         // Find the topmost visible heading
@@ -190,7 +216,8 @@ export function TableOfContents({
         }
       },
       { 
-        rootMargin: "-80px 0px -70% 0px",
+        root: scrollContainer,
+        rootMargin: scrollContainer ? "-56px 0px -70% 0px" : "-80px 0px -70% 0px",
         threshold: [0, 0.25, 0.5, 0.75, 1]
       }
     );
@@ -202,17 +229,31 @@ export function TableOfContents({
     });
 
     return () => observer.disconnect();
-  }, [headings]);
+  }, [headings, contentContainerSelector, scrollContainerSelector]);
 
   const scrollToHeading = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
-      const offset = 100;
-      const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
-      window.scrollTo({
-        top: elementPosition - offset,
-        behavior: "smooth",
-      });
+      const scrollContainer = resolveScrollContainer();
+      if (scrollContainer) {
+        const offset = 24;
+        const targetTop =
+          element.getBoundingClientRect().top -
+          scrollContainer.getBoundingClientRect().top +
+          scrollContainer.scrollTop -
+          offset;
+        scrollContainer.scrollTo({
+          top: Math.max(targetTop, 0),
+          behavior: "smooth",
+        });
+      } else {
+        const offset = 100;
+        const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
+        window.scrollTo({
+          top: elementPosition - offset,
+          behavior: "smooth",
+        });
+      }
       setActiveId(id);
     }
   };

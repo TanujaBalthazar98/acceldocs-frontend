@@ -31,7 +31,7 @@ export interface Section {
   parent_id: number | null;
   name: string;
   slug: string;
-  section_type: "section" | "tab";
+  section_type: "section" | "tab" | "version";
   visibility?: "public" | "internal" | "external";
   drive_folder_id: string | null;
   display_order: number;
@@ -80,7 +80,7 @@ export interface ScanResult {
   pages_updated: number;
 }
 
-export type ImportTargetType = "product" | "tab" | "section";
+export type ImportTargetType = "product" | "version" | "tab" | "section";
 
 export interface LocalImportResult {
   ok: boolean;

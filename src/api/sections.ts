@@ -8,10 +8,11 @@ export const sectionsApi = {
   create: (data: {
     name: string;
     parent_id?: number | null;
-    section_type?: "section" | "tab";
+    section_type?: "section" | "tab" | "version";
     visibility?: "public" | "internal" | "external";
     drive_folder_id?: string | null;
     display_order?: number;
+    clone_from_section_id?: number | null;
   }): Promise<Section> =>
     fetchOrThrow<Section>("/api/sections", {
       method: "POST",
