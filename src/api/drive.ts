@@ -1,6 +1,24 @@
 import { API_BASE_URL, fetchOrThrow, getAuthToken } from "./client";
 import type { DriveStatus, ImportTargetType, LocalImportResult, ScanResult, SyncResult } from "./types";
 
+const ORG_ID_KEY = "acceldocs_current_org_id";
+
+function getUploadBaseUrl(): string {
+  if (typeof window === "undefined") return API_BASE_URL;
+  const isLocalHttps =
+    window.location.protocol === "https:" &&
+    /^(http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/.test(API_BASE_URL);
+  return isLocalHttps ? "" : API_BASE_URL;
+}
+
+function getSelectedOrgId(): number | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(ORG_ID_KEY);
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 export const driveApi = {
   status: (): Promise<DriveStatus> =>
     fetchOrThrow<DriveStatus>("/api/drive/status"),
@@ -47,9 +65,15 @@ export const driveApi = {
       body.append("relative_paths_json", JSON.stringify(params.relativePaths));
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/drive/import/local`, {
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    const selectedOrgId = getSelectedOrgId();
+    if (selectedOrgId !== null) {
+      headers["X-Org-Id"] = String(selectedOrgId);
+    }
+
+    const response = await fetch(`${getUploadBaseUrl()}/api/drive/import/local`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers,
       body,
     });
     if (!response.ok) {

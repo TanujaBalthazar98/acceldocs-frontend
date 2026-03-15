@@ -3,11 +3,12 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { signInWithGoogle, isAuthenticated } from '@/lib/auth-new';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -16,10 +17,24 @@ export default function LoginPage() {
     setMounted(true);
   }, []);
 
+  // Stash invite token if present so it survives the OAuth redirect
+  useEffect(() => {
+    const inviteToken = searchParams.get('invite');
+    if (inviteToken) {
+      localStorage.setItem('acceldocs_pending_invite', inviteToken);
+    }
+  }, [searchParams]);
+
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated()) {
-      navigate('/dashboard');
+      const pendingInvite = localStorage.getItem('acceldocs_pending_invite');
+      if (pendingInvite) {
+        // Already logged in — go straight to accept the invite
+        navigate(`/auth/callback?invite=${encodeURIComponent(pendingInvite)}`);
+      } else {
+        navigate('/dashboard');
+      }
     }
   }, [navigate]);
 

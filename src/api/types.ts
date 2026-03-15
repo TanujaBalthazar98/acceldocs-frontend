@@ -9,9 +9,10 @@ export interface Org {
   primary_color: string | null;
   tagline: string | null;
   domain: string | null;
+  custom_docs_domain: string | null;
   drive_folder_id: string | null;
   has_drive_connected: boolean;
-  user_role: "owner" | "admin" | "editor" | "viewer";
+  user_role: "owner" | "admin" | "editor" | "reviewer" | "viewer";
   member_count: number;
   created_at: string;
 }
@@ -21,7 +22,7 @@ export interface OrgMember {
   user_id: number;
   email: string | null;
   name: string | null;
-  role: "owner" | "admin" | "editor" | "viewer";
+  role: "owner" | "admin" | "editor" | "reviewer" | "viewer";
   joined_at: string | null;
 }
 

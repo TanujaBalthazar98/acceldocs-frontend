@@ -6,6 +6,13 @@
 const PRODUCTION_API_URL = "https://web-production-6a023.up.railway.app";
 const API_URL = import.meta.env.VITE_AUTH_URL || import.meta.env.VITE_API_URL
   || (import.meta.env.PROD ? PRODUCTION_API_URL : 'http://localhost:8000');
+
+function getAuthApiUrl(): string {
+  if (typeof window === 'undefined') return API_URL;
+  const isLocalHttps = window.location.protocol === 'https:' && /^(http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/.test(API_URL);
+  // In HTTPS local dev, use Vite same-origin proxy to avoid mixed-content requests.
+  return isLocalHttps ? '' : API_URL;
+}
 const AUTH_REDIRECT_BASE = (import.meta.env.VITE_AUTH_REDIRECT_BASE as string | undefined)?.trim();
 const TOKEN_KEY = 'acceldocs_auth_token';
 const USER_KEY = 'acceldocs_user';
@@ -95,10 +102,13 @@ export function isAuthenticated(): boolean {
 /**
  * Initiate Google OAuth flow
  */
-export async function signInWithGoogle(): Promise<void> {
+export async function signInWithGoogle(orgId?: number): Promise<void> {
   const redirectUri = getOAuthRedirectUri();
+  const orgQuery = Number.isFinite(orgId) && (orgId as number) > 0
+    ? `&org_id=${encodeURIComponent(String(orgId))}`
+    : "";
   const response = await fetch(
-    `${API_URL}/auth/login?redirect_uri=${encodeURIComponent(redirectUri)}`,
+    `${getAuthApiUrl()}/auth/login?redirect_uri=${encodeURIComponent(redirectUri)}${orgQuery}`,
     { method: "GET" }
   );
   if (!response.ok) {
@@ -130,7 +140,7 @@ export async function signInWithGoogle(): Promise<void> {
  */
 export async function handleGoogleCallback(code: string): Promise<User & { strapi_jwt?: string }> {
   const redirectUri = localStorage.getItem(OAUTH_REDIRECT_URI_KEY) || getOAuthRedirectUri();
-  const response = await fetch(`${API_URL}/auth/callback?api=1&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`, {
+  const response = await fetch(`${getAuthApiUrl()}/auth/callback?api=1&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -187,7 +197,7 @@ export async function getCurrentUser(): Promise<User> {
     throw new Error('Not authenticated');
   }
 
-  const response = await fetch(`${API_URL}/auth/me`, {
+  const response = await fetch(`${getAuthApiUrl()}/auth/me`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
@@ -217,7 +227,7 @@ export async function signOut(): Promise<void> {
   // Call backend logout endpoint (optional, for token invalidation)
   if (token) {
     try {
-      await fetch(`${API_URL}/auth/logout`, {
+      await fetch(`${getAuthApiUrl()}/auth/logout`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

@@ -28,7 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { signInWithGoogle as startGoogleOAuth } from "@/lib/auth-new";
 
 import { orgApi, sectionsApi, pagesApi, driveApi, buildSectionTree } from "@/api";
-import type { Section, Page, ImportTargetType } from "@/api/types";
+import type { Org, Section, Page, ImportTargetType } from "@/api/types";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +74,7 @@ import {
   Trash2,
   ArrowUpFromLine,
   GitBranchPlus,
+  UserPlus,
   Users,
   Wifi,
 } from "lucide-react";
@@ -87,6 +88,8 @@ import {
 import { cn } from "@/lib/utils";
 import { API_BASE_URL, getAuthToken } from "@/api/client";
 import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
+import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
+import { WorkspaceSwitcher, setStoredOrgId, getStoredOrgId } from "@/components/dashboard/WorkspaceSwitcher";
 import { TableOfContents } from "@/components/docs/TableOfContents";
 
 type VisibilityLevel = "public" | "internal" | "external";
@@ -248,6 +251,7 @@ function ScanDriveDialog({
   onSuccess,
   rootFolderId,
   driveConnected,
+  canManageDrive,
   target,
   allSections,
 }: {
@@ -255,6 +259,7 @@ function ScanDriveDialog({
   onSuccess: () => void;
   rootFolderId: string | null;
   driveConnected: boolean;
+  canManageDrive: boolean;
   target: DriveImportTarget | null;
   allSections: Section[];
 }) {
@@ -329,8 +334,12 @@ function ScanDriveDialog({
     node.setAttribute("directory", "");
   }, []);
 
+  const rootFolderMissing = !resolvedRootFolderId;
   const parsedDriveFolderId = parseDriveFolderId(driveFolderInput);
-  const canImportDriveFolder = target ? !!parsedDriveFolderId : !!resolvedRootFolderId;
+  const canConfigureRootFolder = !rootFolderMissing || canManageDrive;
+  const canImportDriveFolder = target
+    ? !!parsedDriveFolderId
+    : (rootFolderMissing ? !!parsedDriveFolderId && canConfigureRootFolder : !!resolvedRootFolderId);
   const localImportNeedsTarget = source === "local" && localImportTarget === null;
   const localFilesRequireSectionTarget =
     source === "local" && localMode === "files" && localImportTarget !== null && localImportTarget.type !== "section";
@@ -346,10 +355,13 @@ function ScanDriveDialog({
         }
         return driveApi.scan(parsedDriveFolderId, target.id, target.type);
       }
-      if (!resolvedRootFolderId) {
-        throw new Error("Connect Drive and set a root folder before importing.");
+      if (!canConfigureRootFolder) {
+        throw new Error("Only workspace owner/admin can configure the Drive root folder.");
       }
-      return driveApi.scan(resolvedRootFolderId);
+      if (!resolvedRootFolderId && !parsedDriveFolderId) {
+        throw new Error("Paste a Google Drive folder URL or ID to configure the workspace root.");
+      }
+      return driveApi.scan(resolvedRootFolderId || parsedDriveFolderId);
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["sections"] });
@@ -496,22 +508,34 @@ function ScanDriveDialog({
           {source === "drive" ? (
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {target ? "Drive folder URL or ID" : "Connected root folder"}
+                {target
+                  ? "Drive folder URL or ID"
+                  : rootFolderMissing
+                    ? "Root folder URL or ID"
+                    : "Connected root folder"}
               </Label>
-              {target ? (
+              {target || rootFolderMissing ? (
                 <>
                   <Input
                     value={driveFolderInput}
                     onChange={(e) => setDriveFolderInput(e.target.value)}
                     placeholder="https://drive.google.com/drive/folders/..."
                     className="text-sm"
+                    disabled={rootFolderMissing && !canManageDrive}
                   />
                   {parsedDriveFolderId && parsedDriveFolderId !== driveFolderInput.trim() && (
                     <p className="text-xs text-emerald-600">Folder ID: {parsedDriveFolderId}</p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    The selected Drive folder will be moved under this destination before syncing.
+                    {target
+                      ? "The selected Drive folder will be moved under this destination before syncing."
+                      : "This folder will be saved as the workspace root and imported."}
                   </p>
+                  {rootFolderMissing && !canManageDrive && (
+                    <p className="text-xs text-amber-700">
+                      Root folder can only be configured by workspace owner/admin.
+                    </p>
+                  )}
                 </>
               ) : (
                 <div className="rounded-md border bg-background px-3 py-2 font-mono text-xs text-muted-foreground break-all">
@@ -938,6 +962,88 @@ function ConfigureTabsDialog({
           <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
             {save.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
             Save hierarchy
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkspaceSettingsDialog({
+  org,
+  onClose,
+}: {
+  org: Org;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [workspaceName, setWorkspaceName] = useState(org.name ?? "");
+  const [customDomain, setCustomDomain] = useState(org.custom_docs_domain ?? "");
+
+  const save = useMutation({
+    mutationFn: async () =>
+      orgApi.update({
+        name: workspaceName.trim(),
+        custom_docs_domain: customDomain.trim() || null,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org"] });
+      qc.invalidateQueries({ queryKey: ["org", org.id] });
+      qc.invalidateQueries({ queryKey: ["org-list"] });
+      toast({ title: "Workspace settings saved" });
+      onClose();
+    },
+    onError: (err: Error) =>
+      toast({
+        title: "Update failed",
+        description: err.message,
+        variant: "destructive",
+      }),
+  });
+
+  const canSave = workspaceName.trim().length > 0 && !save.isPending;
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base">Workspace settings</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-1">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Workspace name
+            </Label>
+            <Input
+              value={workspaceName}
+              onChange={(e) => setWorkspaceName(e.target.value)}
+              placeholder="My Workspace"
+              autoFocus
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Custom docs domain
+            </Label>
+            <Input
+              value={customDomain}
+              onChange={(e) => setCustomDomain(e.target.value.toLowerCase())}
+              placeholder="docs.example.com"
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional. Leave empty to use default docs URL.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={() => save.mutate()} disabled={!canSave}>
+            {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1946,17 +2052,28 @@ export default function Dashboard() {
   const [drivePanelOpen, setDrivePanelOpen] = useState(true);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [showExternalAccessPanel, setShowExternalAccessPanel] = useState(false);
+  const [showInviteMember, setShowInviteMember] = useState(false);
+  const [showWorkspaceSettings, setShowWorkspaceSettings] = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
 
-  const { data: org, isLoading: orgLoading } = useQuery({ queryKey: ["org"], queryFn: orgApi.get });
-  const { data: sectionsData } = useQuery({ queryKey: ["sections"], queryFn: sectionsApi.list, enabled: !!org });
-  const { data: pagesData } = useQuery({ queryKey: ["pages"], queryFn: () => pagesApi.list(), enabled: !!org });
-  const { data: driveStatus } = useQuery({ queryKey: ["drive-status"], queryFn: driveApi.status, enabled: !!org });
+  const [currentOrgId, setCurrentOrgId] = useState<number | undefined>(getStoredOrgId() ?? undefined);
+  const { data: org, isLoading: orgLoading } = useQuery({ queryKey: ["org", currentOrgId], queryFn: () => orgApi.get(currentOrgId) });
+  const { data: sectionsData } = useQuery({ queryKey: ["sections", currentOrgId], queryFn: sectionsApi.list, enabled: !!org });
+  const { data: pagesData } = useQuery({ queryKey: ["pages", currentOrgId], queryFn: () => pagesApi.list(), enabled: !!org });
+  const { data: driveStatus } = useQuery({ queryKey: ["drive-status", currentOrgId], queryFn: driveApi.status, enabled: !!org });
   const { data: selectedPageFull } = useQuery({
     queryKey: ["page", selectedPageId],
     queryFn: () => pagesApi.get(selectedPageId!),
     enabled: selectedPageId !== null,
   });
+
+  const handleWorkspaceChange = useCallback((orgId: number) => {
+    setStoredOrgId(orgId);
+    setCurrentOrgId(orgId);
+    // Reset selection state
+    setSelectedProduct(null);
+    setSelectedPageId(null);
+  }, []);
 
   const sections = sectionsData?.sections ?? [];
   const pages = pagesData?.pages ?? [];
@@ -2604,7 +2721,7 @@ export default function Dashboard() {
     if (isConnectingDrive) return;
     setIsConnectingDrive(true);
     try {
-      await startGoogleOAuth();
+      await startGoogleOAuth(currentOrgId ?? org?.id);
     } catch (err) {
       setIsConnectingDrive(false);
       toast({
@@ -2613,7 +2730,7 @@ export default function Dashboard() {
         variant: "destructive",
       });
     }
-  }, [isConnectingDrive, toast]);
+  }, [currentOrgId, isConnectingDrive, org?.id, toast]);
 
   const orgSlug = org?.slug ?? String(org?.id ?? "");
   const publicDocsUrl = `${API_BASE_URL}/docs/${orgSlug}`;
@@ -2635,7 +2752,18 @@ export default function Dashboard() {
   const openPublishedDocs = useCallback(
     async (url: string) => {
       await bootstrapDocsSession();
-      window.open(url, "_blank");
+      let finalUrl = url;
+      // Always append auth_token as a one-time query param fallback.
+      // Cross-origin cookie propagation (SameSite=Lax from fetch POST)
+      // is unreliable across browsers, so the backend will read the token,
+      // bootstrap the HttpOnly cookie, and 307-redirect to strip it.
+      const token = getAuthToken();
+      if (token) {
+        const u = new URL(finalUrl);
+        u.searchParams.set("auth_token", token);
+        finalUrl = u.toString();
+      }
+      window.open(finalUrl, "_blank");
     },
     [bootstrapDocsSession],
   );
@@ -2689,6 +2817,8 @@ export default function Dashboard() {
   const accountName = user?.name?.trim() || user?.email?.split("@")[0] || "Account";
   const accountEmail = user?.email ?? "";
   const driveConnected = !!driveStatus?.connected;
+  const canManageDrive = org?.user_role === "owner" || org?.user_role === "admin";
+  const canManageWorkspace = canManageDrive;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -2715,9 +2845,10 @@ export default function Dashboard() {
               </div>
             )}
             {!sidebarCollapsed && (
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-sm leading-tight truncate">{org?.name}</p>
-              </div>
+              <WorkspaceSwitcher
+                currentOrg={org ? { id: org.id, name: org.name, logo_url: org.logo_url, primary_color: org.primary_color } : null}
+                onWorkspaceChange={handleWorkspaceChange}
+              />
             )}
             <Button
               variant="ghost"
@@ -2850,6 +2981,16 @@ export default function Dashboard() {
               <Plus className="h-4 w-4" />
             </Button>
             <div className="mt-auto flex flex-col items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowInviteMember(true)}
+                disabled={!org?.id}
+                title="Invite members"
+              >
+                <UserPlus className="h-4 w-4" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -3172,18 +3313,40 @@ export default function Dashboard() {
                   <div className="px-1 pb-1 space-y-0.5">
                     {!driveConnected && (
                       <div className="px-1 pb-1">
-                        <button
-                          onClick={handleConnectDrive}
-                          disabled={isConnectingDrive}
-                          className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-                        >
-                          {isConnectingDrive ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
-                          {isConnectingDrive ? "Connecting..." : "Connect Drive"}
-                        </button>
-                        <p className="px-2 pt-1 text-[11px] text-muted-foreground/70">
-                          Required for import, sync, and Google Doc updates.
-                        </p>
+                        {canManageDrive ? (
+                          <>
+                            <button
+                              onClick={handleConnectDrive}
+                              disabled={isConnectingDrive}
+                              className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                            >
+                              {isConnectingDrive ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
+                              {isConnectingDrive ? "Connecting..." : "Connect Drive"}
+                            </button>
+                            <p className="px-2 pt-1 text-[11px] text-muted-foreground/70">
+                              Required for import, sync, and Google Doc updates.
+                            </p>
+                          </>
+                        ) : (
+                          <p className="px-2 pt-1 text-[11px] text-muted-foreground/70">
+                            Drive is managed by workspace owner/admin.
+                          </p>
+                        )}
                       </div>
+                    )}
+                    {driveConnected && !driveStatus?.drive_folder_id && canManageDrive && (
+                      <button
+                        onClick={() => openImportDialogForTarget(null)}
+                        className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-primary hover:bg-primary/10 transition-colors"
+                      >
+                        <FolderOpen className="h-3.5 w-3.5" />
+                        Set root folder
+                      </button>
+                    )}
+                    {driveConnected && !driveStatus?.drive_folder_id && !canManageDrive && (
+                      <p className="px-2 py-1 text-[11px] text-muted-foreground/70">
+                        Workspace root folder is not configured yet. Ask owner/admin to set it.
+                      </p>
                     )}
                     <button
                       onClick={() => openImportDialogForTarget(null)}
@@ -3242,6 +3405,22 @@ export default function Dashboard() {
                       <p className="text-xs font-medium truncate">{accountName}</p>
                       {accountEmail && <p className="text-[11px] text-muted-foreground truncate mt-0.5">{accountEmail}</p>}
                     </div>
+                    <button
+                      onClick={() => setShowWorkspaceSettings(true)}
+                      disabled={!canManageWorkspace}
+                      className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <Settings className="h-3.5 w-3.5 opacity-60" />
+                      Workspace settings
+                    </button>
+                    <button
+                      onClick={() => setShowInviteMember(true)}
+                      disabled={!org?.id}
+                      className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <UserPlus className="h-3.5 w-3.5 opacity-60" />
+                      Invite members
+                    </button>
                     <button
                       onClick={() => setShowExternalAccessPanel(true)}
                       disabled={!org?.id}
@@ -3633,6 +3812,7 @@ export default function Dashboard() {
           }}
           rootFolderId={org?.drive_folder_id ?? driveStatus?.drive_folder_id ?? null}
           driveConnected={driveConnected}
+          canManageDrive={canManageDrive}
           target={scanTarget}
           allSections={sections}
         />
@@ -3652,6 +3832,20 @@ export default function Dashboard() {
           projectName={selectedProduct?.name ?? org.name}
           organizationSlug={org.slug ?? null}
           projectSlug={selectedProduct?.slug ?? null}
+        />
+      )}
+      {showInviteMember && org && (
+        <InviteMemberDialog
+          open={showInviteMember}
+          onOpenChange={setShowInviteMember}
+          organizationName={org.name}
+          organizationDomain={org.domain}
+        />
+      )}
+      {showWorkspaceSettings && org && canManageWorkspace && (
+        <WorkspaceSettingsDialog
+          org={org}
+          onClose={() => setShowWorkspaceSettings(false)}
         />
       )}
       {renamingSection && (

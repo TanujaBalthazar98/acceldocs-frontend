@@ -5,11 +5,19 @@
  */
 
 const AUTH_TOKEN_KEY = "acceldocs_auth_token";
+const ORG_ID_KEY = "acceldocs_current_org_id";
 
 // Backend base URL — Railway in production, localhost in dev
 const PRODUCTION_API_URL = "https://web-production-6a023.up.railway.app";
 export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "")
   || (import.meta.env.PROD ? PRODUCTION_API_URL : "http://localhost:8000");
+
+function getApiFetchBaseUrl(): string {
+  if (typeof window === "undefined") return API_BASE_URL;
+  const isLocalHttps = window.location.protocol === "https:" && /^(http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/.test(API_BASE_URL);
+  // In HTTPS local dev, route API calls via Vite same-origin proxy to avoid mixed-content failures.
+  return isLocalHttps ? "" : API_BASE_URL;
+}
 
 /** @deprecated Use API_BASE_URL */
 export const STRAPI_URL = API_BASE_URL;
@@ -30,6 +38,15 @@ export interface ApiResponse<T = unknown> {
  */
 export function getAuthToken(): string | null {
   return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+function getSelectedOrgId(): number | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(ORG_ID_KEY);
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
 }
 
 /** @deprecated Use getAuthToken() */
@@ -62,7 +79,8 @@ export async function apiFetch<T = unknown>(
   const RETRY_DELAYS = [1000, 2000, 4000];
 
   const token = getAuthToken();
-  const url = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  const apiFetchBaseUrl = getApiFetchBaseUrl();
+  const url = `${apiFetchBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -71,6 +89,12 @@ export async function apiFetch<T = unknown>(
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+  if (path.startsWith("/api/")) {
+    const selectedOrgId = getSelectedOrgId();
+    if (selectedOrgId !== null) {
+      headers["X-Org-Id"] = String(selectedOrgId);
+    }
   }
 
   try {
@@ -83,6 +107,7 @@ export async function apiFetch<T = unknown>(
       const errorBody = await response.json().catch(() => ({}));
       const message =
         errorBody?.error?.message ||
+        errorBody?.detail ||
         errorBody?.message ||
         errorBody?.error ||
         `Request failed with status ${response.status}`;
@@ -90,7 +115,7 @@ export async function apiFetch<T = unknown>(
       if (response.status === 401 && token && retryCount === 0) {
         // Try to refresh the token before giving up
         try {
-          const refreshResp = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          const refreshResp = await fetch(`${apiFetchBaseUrl}/auth/refresh`, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` },
           });

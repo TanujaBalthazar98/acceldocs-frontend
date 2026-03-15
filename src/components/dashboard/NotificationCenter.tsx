@@ -8,10 +8,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bell, Check, UserPlus, FileText, Settings, Info, Building2 } from "lucide-react";
+import { Bell, Check, UserPlus, FileText, Settings, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { Separator } from "@/components/ui/separator";
 
 interface Notification {
@@ -26,7 +25,7 @@ interface Notification {
 
 interface NotificationCenterProps {
   organizationId: string | null;
-  onWorkspaceChange?: () => void;
+  onWorkspaceChange?: (orgId: number) => void;
 }
 
 const iconMap = {
@@ -208,22 +207,7 @@ export const NotificationCenter = ({ organizationId, onWorkspaceChange }: Notifi
           )}
         </div>
 
-        {/* Workspace Switcher Section */}
-        {hasMultipleWorkspaces && onWorkspaceChange && (
-          <>
-            <div className="p-3">
-              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
-                <Building2 className="w-3 h-3" />
-                Switch Workspace
-              </p>
-              <WorkspaceSwitcher
-                currentOrganizationId={organizationId}
-                onWorkspaceChange={onWorkspaceChange}
-              />
-            </div>
-            <Separator />
-          </>
-        )}
+        {/* Workspace switching is now in the sidebar header */}
 
         {/* Notifications List */}
         <ScrollArea className="h-[280px]">
