@@ -85,4 +85,10 @@ export const driveApi = {
 
   syncAll: (): Promise<SyncResult> =>
     fetchOrThrow<SyncResult>("/api/drive/sync", { method: "POST" }),
+
+  ensureDocAccess: (docId: string): Promise<{ ok: boolean; url?: string; error?: string }> =>
+    fetchOrThrow<{ ok: boolean; url?: string; error?: string }>("/api/drive/ensure-doc-access", {
+      method: "POST",
+      body: JSON.stringify({ doc_id: docId }),
+    }),
 };

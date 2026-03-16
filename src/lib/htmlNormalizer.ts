@@ -75,18 +75,22 @@ export function normalizeHtml(html: string): string {
     ALLOWED_ATTR: [
       "href",
       "src",
+      "srcset",
       "alt",
       "title",
       "target",
       "rel",
       "colspan",
       "rowspan",
+      "start",
       "class",
       "id",
       "name",
       "datetime",
       "lang",
       "dir",
+      "open",
+      "data-language",
     ],
     FORBID_ATTR: ["style", "onclick", "onerror", "onload"],
     ALLOW_DATA_ATTR: false,
@@ -323,11 +327,13 @@ function convertGoogleDocsHeadings(html: string, classStyles: CssClassStyles): s
 
   if (!container) return html;
 
-  const elements = container.querySelectorAll("p, span, div");
+  const elements = container.querySelectorAll("p, div");
 
   elements.forEach((el) => {
     const text = el.textContent?.trim() || "";
     if (!text || text.length > 200) return;
+    if (el.closest("li, td, th, pre, code, blockquote")) return;
+    if (el.querySelector("pre, code, table, ul, ol, li")) return;
 
     const fontSize = getDecl(el, classStyles, "font-size");
     const fontWeight = getDecl(el, classStyles, "font-weight");
@@ -411,35 +417,64 @@ function convertGoogleDocsCodeBlocks(html: string, classStyles: CssClassStyles):
  * Removes Google Docs specific inline styles and class names
  */
 function removeGoogleDocsStyles(html: string): string {
-  let cleaned = html;
-  
-  // Remove all inline styles
-  cleaned = cleaned.replace(/\s*style="[^"]*"/gi, '');
-  
-  // Remove Google Docs specific classes
-  cleaned = cleaned.replace(/\s*class="[^"]*"/gi, '');
-  
-  // Remove empty spans
-  cleaned = cleaned.replace(/<span[^>]*>\s*<\/span>/gi, '');
-  
-  // Unwrap unnecessary span wrappers (spans that just wrap text without semantic meaning)
-  cleaned = cleaned.replace(/<span[^>]*>([^<]*)<\/span>/gi, '$1');
-  
-  // Remove Google Docs specific elements
-  cleaned = cleaned.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-  cleaned = cleaned.replace(/<link[^>]*>/gi, '');
-  cleaned = cleaned.replace(/<meta[^>]*>/gi, '');
-  cleaned = cleaned.replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '');
-  
-  // Remove empty paragraphs and divs
-  cleaned = cleaned.replace(/<p[^>]*>\s*(&nbsp;)?\s*<\/p>/gi, '');
-  cleaned = cleaned.replace(/<div[^>]*>\s*<\/div>/gi, '');
-  
-  // Clean up whitespace
-  cleaned = cleaned.replace(/&nbsp;/g, ' ');
-  cleaned = cleaned.replace(/\s{2,}/g, ' ');
-  
-  return cleaned;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const container = doc.body.firstElementChild as HTMLElement | null;
+  if (!container) return html;
+
+  const shouldKeepClass = (className: string) => {
+    const value = className.trim().toLowerCase();
+    if (!value) return false;
+    if (value.startsWith("language-")) return true;
+    if (value.startsWith("hljs")) return true;
+    if (value.startsWith("token")) return true;
+    if (value.startsWith("admonition")) return true;
+    if (value.startsWith("callout")) return true;
+    if (value === "table-wrapper") return true;
+    if (value === "task-list" || value === "task-list-item") return true;
+    return false;
+  };
+
+  container.querySelectorAll("*").forEach((el) => {
+    el.removeAttribute("style");
+    ["onclick", "onerror", "onload"].forEach((name) => el.removeAttribute(name));
+
+    const classAttr = el.getAttribute("class");
+    if (classAttr) {
+      const kept = classAttr
+        .split(/\s+/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .filter(shouldKeepClass);
+      if (kept.length > 0) {
+        el.setAttribute("class", Array.from(new Set(kept)).join(" "));
+      } else {
+        el.removeAttribute("class");
+      }
+    }
+  });
+
+  container.querySelectorAll("style, link, meta, title, script").forEach((el) => el.remove());
+
+  container.querySelectorAll("span").forEach((span) => {
+    if (span.attributes.length > 0) return;
+    if (span.children.length > 0) return;
+    const text = span.textContent || "";
+    if (text.trim()) {
+      span.replaceWith(doc.createTextNode(text));
+    } else {
+      span.remove();
+    }
+  });
+
+  container.querySelectorAll("p, div").forEach((el) => {
+    const content = (el.textContent || "").replace(/\u00a0/g, " ").trim();
+    if (!content && el.children.length === 0) {
+      el.remove();
+    }
+  });
+
+  return container.innerHTML.replace(/&nbsp;/g, " ").replace(/\s{2,}/g, " ").trim();
 }
 
 /**
@@ -452,11 +487,18 @@ function cleanupStructure(html: string): string {
 
   if (!container) return html;
 
+  convertMarkdownHeadingsInParagraphs(container);
+  convertFencedCodeBlocks(container);
+  convertMarkdownListsInParagraphs(container);
+  convertStandaloneCodeParagraphs(container);
+
   // Wrap orphaned <li> elements in <ul> tags
   wrapOrphanedListItems(container);
   
   // Convert lines starting with ">" to blockquotes
   convertBlockquotes(container);
+
+  wrapTablesForMobile(container);
 
   let cleaned = container.innerHTML;
   
@@ -484,6 +526,147 @@ function cleanupStructure(html: string): string {
   cleaned = cleaned.replace(/\s*<br\s*\/?>\s*<\/p>/gi, '</p>');
   
   return cleaned;
+}
+
+function convertMarkdownHeadingsInParagraphs(container: HTMLElement): void {
+  const paragraphs = Array.from(container.querySelectorAll("p"));
+
+  for (const p of paragraphs) {
+    if (p.closest("pre, code, li, blockquote, td, th")) continue;
+    const text = (p.textContent || "").trim();
+    const match = text.match(/^(#{1,6})\s+(.+)$/);
+    if (!match) continue;
+
+    const headingLevel = Math.min(6, match[1].length);
+    const heading = container.ownerDocument.createElement(`h${headingLevel}`);
+    heading.innerHTML = p.innerHTML.replace(/^#{1,6}\s+/, "");
+    p.replaceWith(heading);
+  }
+}
+
+function convertFencedCodeBlocks(container: HTMLElement): void {
+  const paragraphs = Array.from(container.querySelectorAll("p"));
+  const isFence = (text: string) => /^```/.test(text.trim());
+
+  for (let i = 0; i < paragraphs.length; i += 1) {
+    const startParagraph = paragraphs[i];
+    if (startParagraph.closest("pre, code, li, blockquote, td, th")) continue;
+    const startText = (startParagraph.textContent || "").trim();
+    if (!isFence(startText)) continue;
+
+    const language = startText.replace(/^```/, "").trim().toLowerCase();
+    const lines: string[] = [];
+    const toRemove: HTMLParagraphElement[] = [startParagraph];
+    let closed = false;
+
+    for (let j = i + 1; j < paragraphs.length; j += 1) {
+      const current = paragraphs[j];
+      if (current.closest("pre, code, li, blockquote, td, th")) break;
+      const currentText = (current.textContent || "").trim();
+      toRemove.push(current);
+      if (isFence(currentText)) {
+        closed = true;
+        i = j;
+        break;
+      }
+      lines.push((current.textContent || "").replace(/\u00a0/g, " "));
+    }
+
+    if (!closed) continue;
+
+    const pre = container.ownerDocument.createElement("pre");
+    const code = container.ownerDocument.createElement("code");
+    if (language) {
+      code.className = `language-${language}`;
+      pre.setAttribute("data-language", language);
+    }
+    code.textContent = lines.join("\n").replace(/\n+$/g, "");
+    pre.appendChild(code);
+
+    startParagraph.parentNode?.insertBefore(pre, startParagraph);
+    toRemove.forEach((element) => element.remove());
+  }
+}
+
+function convertMarkdownListsInParagraphs(container: HTMLElement): void {
+  const paragraphs = Array.from(container.querySelectorAll("p"));
+
+  const asListItem = (paragraph: HTMLParagraphElement) => {
+    const text = (paragraph.textContent || "").trim();
+    const orderedMatch = text.match(/^(\d+)\.\s+(.+)$/);
+    if (orderedMatch) {
+      return { type: "ol" as const, index: Number(orderedMatch[1]), markerPattern: /^\d+\.\s+/ };
+    }
+    const unorderedMatch = text.match(/^[-*+]\s+(.+)$/);
+    if (unorderedMatch) {
+      return { type: "ul" as const, index: 1, markerPattern: /^[-*+]\s+/ };
+    }
+    return null;
+  };
+
+  for (let i = 0; i < paragraphs.length; i += 1) {
+    const first = paragraphs[i];
+    if (first.closest("pre, code, li, blockquote, td, th")) continue;
+
+    const firstItem = asListItem(first);
+    if (!firstItem) continue;
+
+    const list = container.ownerDocument.createElement(firstItem.type);
+    if (firstItem.type === "ol" && firstItem.index > 1) {
+      list.setAttribute("start", String(firstItem.index));
+    }
+
+    let j = i;
+    while (j < paragraphs.length) {
+      const paragraph = paragraphs[j];
+      if (paragraph.closest("pre, code, li, blockquote, td, th")) break;
+      const item = asListItem(paragraph);
+      if (!item || item.type !== firstItem.type) break;
+
+      const li = container.ownerDocument.createElement("li");
+      li.innerHTML = paragraph.innerHTML.replace(item.markerPattern, "");
+      list.appendChild(li);
+      j += 1;
+    }
+
+    if (!list.children.length) continue;
+
+    first.parentNode?.insertBefore(list, first);
+    for (let k = i; k < j; k += 1) {
+      paragraphs[k].remove();
+    }
+    i = j - 1;
+  }
+}
+
+function convertStandaloneCodeParagraphs(container: HTMLElement): void {
+  const paragraphs = Array.from(container.querySelectorAll("p"));
+  for (const paragraph of paragraphs) {
+    if (paragraph.closest("pre, li, blockquote, td, th")) continue;
+    if (paragraph.children.length !== 1) continue;
+    const child = paragraph.children[0];
+    if (child.tagName !== "CODE") continue;
+    const codeText = child.textContent?.trim();
+    if (!codeText) continue;
+
+    const pre = container.ownerDocument.createElement("pre");
+    const code = container.ownerDocument.createElement("code");
+    code.textContent = codeText;
+    pre.appendChild(code);
+    paragraph.replaceWith(pre);
+  }
+}
+
+function wrapTablesForMobile(container: HTMLElement): void {
+  const tables = Array.from(container.querySelectorAll("table"));
+  for (const table of tables) {
+    const parent = table.parentElement;
+    if (!parent || parent.classList.contains("table-wrapper")) continue;
+    const wrapper = container.ownerDocument.createElement("div");
+    wrapper.className = "table-wrapper";
+    parent.insertBefore(wrapper, table);
+    wrapper.appendChild(table);
+  }
 }
 
 /**

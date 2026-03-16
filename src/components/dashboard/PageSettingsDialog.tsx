@@ -33,6 +33,7 @@ import { list } from "@/lib/api/queries";
 import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import { Link2, ExternalLink, Trash2, FolderInput } from "lucide-react";
+import { openGoogleDocWithAcl } from "@/lib/googleDocsAccess";
 
 interface Topic {
   id: string;
@@ -264,7 +265,7 @@ export const PageSettingsDialog = ({
 
   const handleOpenInDrive = () => {
     if (googleDocId) {
-      window.open(`https://docs.google.com/document/d/${googleDocId}/edit`, '_blank');
+      void openGoogleDocWithAcl(googleDocId);
     }
   };
 

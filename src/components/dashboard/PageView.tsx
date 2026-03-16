@@ -34,6 +34,7 @@ import { ensureFreshSession } from "@/lib/authSession";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
 import { VideoEmbed } from "@/components/docs/VideoEmbed";
+import { openGoogleDocWithAcl } from "@/lib/googleDocsAccess";
 
 type VisibilityLevel = "internal" | "external" | "public";
 const GOOGLE_TOKEN_KEY = "google_access_token";
@@ -292,7 +293,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate, userRole, require
               variant="ghost"
               size="sm"
               className="gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
-              onClick={() => window.open(`https://docs.google.com/document/d/${document.google_doc_id}/edit`, "_blank")}
+              onClick={() => void openGoogleDocWithAcl(document.google_doc_id)}
             >
               <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="hidden md:inline">Open in Drive</span>

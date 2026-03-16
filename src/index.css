@@ -619,6 +619,27 @@
   border: none;
 }
 
+.docs-content pre[data-language] {
+  position: relative;
+  padding-top: 2rem;
+}
+
+.docs-content pre[data-language]::before {
+  content: attr(data-language);
+  position: absolute;
+  top: 0.6rem;
+  right: 0.75rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.7);
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  font-weight: 600;
+}
+
 @media (min-width: 640px) {
   .docs-content pre code {
     font-size: 0.875em;
@@ -823,6 +844,43 @@
   font-size: 0.875em;
   color: hsl(var(--muted-foreground));
   margin-top: 0.75em;
+}
+
+.docs-content details {
+  margin: 1.5em 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  background: hsl(var(--muted) / 0.35);
+  overflow: hidden;
+}
+
+.docs-content summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.9em 1em;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  position: relative;
+}
+
+.docs-content summary::-webkit-details-marker {
+  display: none;
+}
+
+.docs-content summary::after {
+  content: "+";
+  position: absolute;
+  right: 1rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 1rem;
+}
+
+.docs-content details[open] summary::after {
+  content: "-";
+}
+
+.docs-content details > :not(summary) {
+  padding: 0 1em 1em;
 }
 
 /* Definition lists */

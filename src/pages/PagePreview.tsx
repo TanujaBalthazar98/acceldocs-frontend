@@ -16,6 +16,7 @@ import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
 import { ConnectorContextActions } from "@/components/dashboard/ConnectorContextActions";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { openGoogleDocWithAcl } from "@/lib/googleDocsAccess";
 
 type VisibilityLevel = "internal" | "external" | "public";
 
@@ -278,7 +279,7 @@ export default function PagePreview() {
 
   const handleOpenInDrive = () => {
     if (document?.google_doc_id) {
-      window.open(`https://docs.google.com/document/d/${document.google_doc_id}/edit`, "_blank");
+      void openGoogleDocWithAcl(document.google_doc_id);
     }
   };
 

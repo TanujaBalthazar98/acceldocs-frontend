@@ -43,7 +43,26 @@ export function DocsSidebar({
   onCollapse,
   showDashboardLink,
 }: DocsSidebarProps) {
-  const searchLower = searchQuery.toLowerCase();
+  const normalizeSearch = (value: string) =>
+    value
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const stripHtml = (value?: string | null) =>
+    (value || "")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const searchSanitized = searchQuery.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const searchLower = normalizeSearch(searchSanitized);
+  const searchTokens = searchLower.split(" ").filter(Boolean);
   const visibilityBadgeConfig: Record<"internal" | "external", string> = {
     internal: "text-[9px] px-1.5 py-0 h-4 text-violet-700 border-violet-300 bg-violet-50 dark:bg-violet-950 dark:border-violet-800 dark:text-violet-300",
     external: "text-[9px] px-1.5 py-0 h-4 text-sky-700 border-sky-300 bg-sky-50 dark:bg-sky-950 dark:border-sky-800 dark:text-sky-300",
@@ -131,13 +150,44 @@ export function DocsSidebar({
       ? projectDocumentsFallback
       : projectDocumentsPrimary;
 
-  const filteredDocuments = projectDocuments.filter((d) => !searchQuery || d.title.toLowerCase().includes(searchLower));
+  const documentSearchText = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const doc of projectDocuments) {
+      const searchable = [
+        doc.title,
+        doc.slug || "",
+        stripHtml(doc.content_html),
+        stripHtml(doc.published_content_html),
+      ].join(" ");
+      map.set(doc.id, normalizeSearch(searchable));
+    }
+    return map;
+  }, [projectDocuments]);
+
+  const topicSearchText = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const topic of projectTopics) {
+      map.set(topic.id, normalizeSearch(`${topic.name} ${topic.slug || ""}`));
+    }
+    return map;
+  }, [projectTopics]);
+
+  const matchesSearch = (value: string): boolean => {
+    if (!searchTokens.length) return true;
+    return searchTokens.every((token) => value.includes(token));
+  };
+
+  const filteredDocuments = projectDocuments.filter((doc) => {
+    if (!searchTokens.length) return true;
+    const value = documentSearchText.get(doc.id) || "";
+    return matchesSearch(value);
+  });
 
   const filteredTopics = projectTopics.filter(
-    (t) =>
-      !searchQuery ||
-      t.name.toLowerCase().includes(searchLower) ||
-      filteredDocuments.some((d) => d.topic_id === t.id)
+    (topic) =>
+      !searchTokens.length ||
+      matchesSearch(topicSearchText.get(topic.id) || "") ||
+      filteredDocuments.some((doc) => doc.topic_id === topic.id)
   );
 
   const getRootTopics = () => filteredTopics.filter((t) => !t.parent_id);

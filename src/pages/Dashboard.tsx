@@ -89,6 +89,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL, getAuthToken } from "@/api/client";
+import { openGoogleDocWithAcl } from "@/lib/googleDocsAccess";
 import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
 import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
 import { WorkspaceSwitcher, setStoredOrgId, getStoredOrgId } from "@/components/dashboard/WorkspaceSwitcher";
@@ -2819,6 +2820,13 @@ export default function Dashboard() {
       ? (selectedVersion?.id ?? selectedProduct?.id ?? null)
       : null;
   const canCreateVersionForSelectedProduct = isProductHierarchy && selectedProduct !== null;
+  const latestVersionCloneSourceId = useMemo(() => {
+    if (productVersions.length === 0) return null;
+    const latest = [...productVersions].sort(
+      (a, b) => (a.display_order - b.display_order) || (a.id - b.id),
+    ).at(-1);
+    return latest?.id ?? null;
+  }, [productVersions]);
   const notifyPermissionDenied = useCallback(
     (actionLabel: string) => {
       toast({
@@ -2879,9 +2887,9 @@ export default function Dashboard() {
     }
     setAddSectionParentId(selectedProduct.id);
     setAddSectionPreferredType("version");
-    setAddSectionCloneFromId(selectedVersion?.id ?? selectedProduct.id);
+    setAddSectionCloneFromId(latestVersionCloneSourceId ?? selectedProduct.id);
     setShowAddSection(true);
-  }, [canCreateContent, canCreateVersionForSelectedProduct, notifyPermissionDenied, selectedProduct, selectedVersion?.id, toast]);
+  }, [canCreateContent, canCreateVersionForSelectedProduct, latestVersionCloneSourceId, notifyPermissionDenied, selectedProduct, toast]);
 
   const openImportDialogForTarget = useCallback((section: Section | null) => {
     if (!canOpenImportDialog) {
@@ -4186,7 +4194,7 @@ export default function Dashboard() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuItem
-                      onClick={() => window.open(`https://docs.google.com/document/d/${selectedPage.google_doc_id}/edit`, "_blank")}
+                      onClick={() => void openGoogleDocWithAcl(selectedPage.google_doc_id)}
                     >
                       <ExternalLink className="h-3.5 w-3.5 mr-2 opacity-60" /> Open in Google Docs
                     </DropdownMenuItem>

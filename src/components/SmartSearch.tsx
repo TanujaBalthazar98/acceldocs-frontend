@@ -3,6 +3,7 @@ import { Search, Sparkles, FileText, FolderOpen, Loader2, ArrowRight, X, Command
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { searchDocs, type SearchResult } from "@/lib/docSearch";
 import {
   Dialog,
   DialogContent,
@@ -10,15 +11,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-interface SearchResult {
-  id: string;
-  title: string;
-  type: "page" | "topic" | "project";
-  projectName?: string;
-  topicName?: string;
-  snippet?: string;
-}
 
 interface SmartSearchProps {
   placeholder?: string;
@@ -94,71 +86,13 @@ export function SmartSearch({
     }
 
     try {
-      // Sanitize search query to prevent XSS
-      const sanitizedQuery = searchQuery.replace(/<[^>]*>/g, '').trim();
-      if (!sanitizedQuery) {
-        setResults([]);
-        return;
-      }
-
-      const q = sanitizedQuery.toLowerCase();
-      const searchResults: SearchResult[] = [];
-
-    // Search projects
-    projects.forEach((project) => {
-      if (project.name.toLowerCase().includes(q)) {
-        searchResults.push({
-          id: project.id,
-          title: project.name,
-          type: "project",
-        });
-      }
-    });
-
-    // Search topics
-    topics.forEach((topic) => {
-      if (topic.name.toLowerCase().includes(q)) {
-        const project = projects.find((p) => p.id === topic.project_id);
-        searchResults.push({
-          id: topic.id,
-          title: topic.name,
-          type: "topic",
-          projectName: project?.name,
-        });
-      }
-    });
-
-    // Search documents
-    documents.forEach((doc) => {
-      if (doc.title.toLowerCase().includes(q)) {
-        const project = projects.find((p) => p.id === doc.project_id);
-        const topic = doc.topic_id ? topics.find((t) => t.id === doc.topic_id) : null;
-        
-        // Extract snippet from content if available
-        let snippet: string | undefined;
-        if (doc.content_html) {
-          const textContent = doc.content_html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
-          const matchIndex = textContent.toLowerCase().indexOf(q);
-          if (matchIndex > -1) {
-            const start = Math.max(0, matchIndex - 30);
-            const end = Math.min(textContent.length, matchIndex + q.length + 50);
-            snippet = (start > 0 ? "..." : "") + textContent.slice(start, end).trim() + (end < textContent.length ? "..." : "");
-          }
-        }
-        
-        searchResults.push({
-          id: doc.id,
-          title: doc.title,
-          type: "page",
-          projectName: project?.name,
-          topicName: topic?.name,
-          snippet,
-        });
-      }
-    });
-
-      // Limit results
-      setResults(searchResults.slice(0, 10));
+      const searchResults = searchDocs({
+        query: searchQuery,
+        documents,
+        topics,
+        projects,
+      });
+      setResults(searchResults);
       setSelectedIndex(0);
     } catch (error) {
       console.error("Search error:", error);
@@ -187,8 +121,9 @@ export function SmartSearch({
     // Debounce search execution
     debounceTimeoutRef.current = setTimeout(() => {
       try {
+        const sanitizedQuery = query.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
         performSearch(query);
-        onSearch?.(query);
+        onSearch?.(sanitizedQuery);
       } catch (error) {
         console.error("Search error:", error);
         setResults([]);

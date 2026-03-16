@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invokeFunction } from "@/lib/api/functions";
 import { mapDocumentFromStrapi } from "@/lib/dataMappers";
 import { strapiFetch } from "@/lib/api/client";
+import { openGoogleDocWithAcl } from "@/lib/googleDocsAccess";
 import type { Project, Document } from "@/types/dashboard";
 
 interface UseDashboardActionsOptions {
@@ -828,8 +829,8 @@ export const useDashboardActions = ({
   const clearSelection = () => setSelectedDocIds(new Set());
 
   // Open in Drive
-  const handleOpenInDrive = (googleDocId: string) => {
-    window.open(`https://docs.google.com/document/d/${googleDocId}/edit`, "_blank");
+  const handleOpenInDrive = async (googleDocId: string) => {
+    await openGoogleDocWithAcl(googleDocId);
   };
 
   // Share project

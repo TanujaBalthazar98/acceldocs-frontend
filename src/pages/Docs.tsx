@@ -2057,6 +2057,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   if (doc) selectDocument(doc);
                 }
               }}
+              onSearch={setSearchQuery}
             />
           </div>
 
