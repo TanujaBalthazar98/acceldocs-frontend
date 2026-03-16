@@ -4,7 +4,7 @@
  */
 
 // Backend base URL — set VITE_API_URL in production (e.g. Vercel env vars)
-const PRODUCTION_API_URL = "https://web-production-6a023.up.railway.app";
+const PRODUCTION_API_URL = "https://acceldocs-backend.vercel.app";
 const API_URL = import.meta.env.VITE_AUTH_URL || import.meta.env.VITE_API_URL
   || (import.meta.env.PROD ? PRODUCTION_API_URL : 'http://localhost:8000');
 

@@ -12,7 +12,7 @@ const _configuredUrl = (import.meta.env.VITE_API_URL as string | undefined)?.rep
 if (import.meta.env.PROD && !_configuredUrl) {
   console.warn("[AccelDocs] VITE_API_URL is not set — using hardcoded fallback. Set this env var in your deployment.");
 }
-const PRODUCTION_API_URL = "https://web-production-6a023.up.railway.app";
+const PRODUCTION_API_URL = "https://acceldocs-backend.vercel.app";
 export const API_BASE_URL = _configuredUrl
   || (import.meta.env.PROD ? PRODUCTION_API_URL : "http://localhost:8000");
 
