@@ -31,6 +31,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        "/auth/callback-api": {
+          target: "http://localhost:8000",
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/auth\/callback-api/, "/auth/callback"),
+        },
         "/auth/me": {
           target: "http://localhost:8000",
           changeOrigin: true,

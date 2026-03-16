@@ -13,6 +13,14 @@ function getAuthApiUrl(): string {
   // In HTTPS local dev, use Vite same-origin proxy to avoid mixed-content requests.
   return isLocalHttps ? '' : API_URL;
 }
+
+function getAuthCallbackApiUrl(): string {
+  const authApiUrl = getAuthApiUrl();
+  // Keep browser callback route (/auth/callback) owned by React Router.
+  // API callback exchange uses a dedicated proxy path in local HTTPS dev.
+  if (!authApiUrl) return '/auth/callback-api';
+  return `${authApiUrl}/auth/callback`;
+}
 const AUTH_REDIRECT_BASE = (import.meta.env.VITE_AUTH_REDIRECT_BASE as string | undefined)?.trim();
 const TOKEN_KEY = 'acceldocs_auth_token';
 const USER_KEY = 'acceldocs_user';
@@ -140,7 +148,7 @@ export async function signInWithGoogle(orgId?: number): Promise<void> {
  */
 export async function handleGoogleCallback(code: string): Promise<User & { strapi_jwt?: string }> {
   const redirectUri = localStorage.getItem(OAUTH_REDIRECT_URI_KEY) || getOAuthRedirectUri();
-  const response = await fetch(`${getAuthApiUrl()}/auth/callback?api=1&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`, {
+  const response = await fetch(`${getAuthCallbackApiUrl()}?api=1&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',

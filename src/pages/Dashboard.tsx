@@ -51,6 +51,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   BookOpen,
+  BarChart3,
   Circle,
   ChevronLeft,
   ChevronRight,
@@ -73,6 +74,7 @@ import {
   Settings,
   Trash2,
   ArrowUpFromLine,
+  Search,
   GitBranchPlus,
   UserPlus,
   Users,
@@ -95,6 +97,7 @@ import { TableOfContents } from "@/components/docs/TableOfContents";
 type VisibilityLevel = "public" | "internal" | "external";
 type VisibilityFilter = "all" | VisibilityLevel;
 type LocalImportMode = "files" | "folder";
+type DashboardPaneMode = "content" | "analytics";
 
 type DriveImportTarget = {
   id: number;
@@ -274,6 +277,12 @@ function ScanDriveDialog({
   const [localTargetId, setLocalTargetId] = useState<number | null>(target?.id ?? null);
   const filesInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const setFolderInputRef = useCallback((node: HTMLInputElement | null) => {
+    folderInputRef.current = node;
+    if (!node) return;
+    node.setAttribute("webkitdirectory", "");
+    node.setAttribute("directory", "");
+  }, []);
 
   const sectionsById = useMemo(() => new Map(allSections.map((section) => [section.id, section])), [allSections]);
   const destinationOptions = useMemo(() => {
@@ -326,13 +335,6 @@ function ScanDriveDialog({
     setLocalFiles([]);
     setRelativePaths([]);
   }, [target, resolvedRootFolderId, defaultLocalTargetId, destinationOptions]);
-
-  useEffect(() => {
-    const node = folderInputRef.current;
-    if (!node) return;
-    node.setAttribute("webkitdirectory", "");
-    node.setAttribute("directory", "");
-  }, []);
 
   const rootFolderMissing = !resolvedRootFolderId;
   const parsedDriveFolderId = parseDriveFolderId(driveFolderInput);
@@ -609,7 +611,7 @@ function ScanDriveDialog({
                     onChange={(event) => handleFilesSelected(event, "files")}
                   />
                   <input
-                    ref={folderInputRef}
+                    ref={setFolderInputRef}
                     type="file"
                     multiple
                     className="hidden"
@@ -1381,6 +1383,11 @@ function MovePageDialog({ page, allSections, allPages, onClose }: {
 
 function PageActionsMenu({
   page,
+  canManage,
+  canMove,
+  canManageVisibility,
+  canPublish,
+  canDelete,
   onEditTitle,
   onEditSlug,
   onMove,
@@ -1391,6 +1398,11 @@ function PageActionsMenu({
   onDelete,
 }: {
   page: Page;
+  canManage: boolean;
+  canMove: boolean;
+  canManageVisibility: boolean;
+  canPublish: boolean;
+  canDelete: boolean;
   onEditTitle: (page: Page) => void;
   onEditSlug: (page: Page) => void;
   onMove: (page: Page) => void;
@@ -1403,42 +1415,64 @@ function PageActionsMenu({
   const currentOverride = page.visibility_override ?? null;
   return (
     <DropdownMenuContent align="end" className="w-44">
-      <DropdownMenuItem onClick={() => onEditTitle(page)}>
-        <Pencil className="h-3 w-3 mr-2" /> Edit Title
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => onEditSlug(page)}>
-        <Pencil className="h-3 w-3 mr-2" /> Edit URL slug
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => onMove(page)}>
-        <ArrowRightLeft className="h-3 w-3 mr-2" /> Move
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => onRearrange(page)}>
-        <ListOrdered className="h-3 w-3 mr-2" /> Re-arrange
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem onClick={() => onSetVisibilityOverride(page, null)}>
-        {currentOverride === null ? "✓ " : ""}Use section visibility
-      </DropdownMenuItem>
-      {visibilityOptions.map((opt) => (
-        <DropdownMenuItem key={opt.value} onClick={() => onSetVisibilityOverride(page, opt.value)}>
-          {currentOverride === opt.value ? "✓ " : ""}{opt.label}
+      {canManage && (
+        <>
+          <DropdownMenuItem onClick={() => onEditTitle(page)}>
+            <Pencil className="h-3 w-3 mr-2" /> Edit Title
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onEditSlug(page)}>
+            <Pencil className="h-3 w-3 mr-2" /> Edit URL slug
+          </DropdownMenuItem>
+        </>
+      )}
+      {canMove && (
+        <>
+          <DropdownMenuItem onClick={() => onMove(page)}>
+            <ArrowRightLeft className="h-3 w-3 mr-2" /> Move
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onRearrange(page)}>
+            <ListOrdered className="h-3 w-3 mr-2" /> Re-arrange
+          </DropdownMenuItem>
+        </>
+      )}
+      {canManageVisibility && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => onSetVisibilityOverride(page, null)}>
+            {currentOverride === null ? "✓ " : ""}Use section visibility
+          </DropdownMenuItem>
+          {visibilityOptions.map((opt) => (
+            <DropdownMenuItem key={opt.value} onClick={() => onSetVisibilityOverride(page, opt.value)}>
+              {currentOverride === opt.value ? "✓ " : ""}{opt.label}
+            </DropdownMenuItem>
+          ))}
+        </>
+      )}
+      {canManage && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => onDuplicate(page)}>
+            <Copy className="h-3 w-3 mr-2" /> Duplicate
+          </DropdownMenuItem>
+        </>
+      )}
+      {canPublish && (
+        <DropdownMenuItem
+          disabled={!page.is_published}
+          className={cn(!page.is_published && "opacity-50")}
+          onClick={() => onUnpublish(page)}
+        >
+          <Circle className="h-2.5 w-2.5 mr-2 fill-red-500 text-red-500" /> Unpublish
         </DropdownMenuItem>
-      ))}
-      <DropdownMenuSeparator />
-      <DropdownMenuItem onClick={() => onDuplicate(page)}>
-        <Copy className="h-3 w-3 mr-2" /> Duplicate
-      </DropdownMenuItem>
-      <DropdownMenuItem
-        disabled={!page.is_published}
-        className={cn(!page.is_published && "opacity-50")}
-        onClick={() => onUnpublish(page)}
-      >
-        <Circle className="h-2.5 w-2.5 mr-2 fill-red-500 text-red-500" /> Unpublish
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem className="text-destructive" onClick={() => onDelete(page)}>
-        <Trash2 className="h-3 w-3 mr-2" /> Delete
-      </DropdownMenuItem>
+      )}
+      {canDelete && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-destructive" onClick={() => onDelete(page)}>
+            <Trash2 className="h-3 w-3 mr-2" /> Delete
+          </DropdownMenuItem>
+        </>
+      )}
     </DropdownMenuContent>
   );
 }
@@ -1452,6 +1486,11 @@ function PageItem({
   visibility,
   showVisibilityBadge,
   selectedPageId,
+  canManageActions,
+  canMove,
+  canManageVisibility,
+  canPublish,
+  canDelete,
   onSelect,
   onEditTitle,
   onEditSlug,
@@ -1466,6 +1505,11 @@ function PageItem({
   visibility: VisibilityLevel;
   showVisibilityBadge: boolean;
   selectedPageId: number | null;
+  canManageActions: boolean;
+  canMove: boolean;
+  canManageVisibility: boolean;
+  canPublish: boolean;
+  canDelete: boolean;
   onSelect: (id: number) => void;
   onEditTitle: (page: Page) => void;
   onEditSlug: (page: Page) => void;
@@ -1480,6 +1524,8 @@ function PageItem({
     id: `page-${page.id}`,
     data: { type: "page", pageId: page.id, sectionId: page.section_id },
   });
+  const dragListeners = canMove ? listeners : undefined;
+  const dragAttributes = canMove ? attributes : undefined;
 
   return (
     <div
@@ -1488,8 +1534,13 @@ function PageItem({
       className="group relative flex items-center"
     >
       <button
-        {...listeners} {...attributes}
-        className="shrink-0 p-0.5 ml-1 opacity-0 group-hover:opacity-30 hover:!opacity-60 cursor-grab active:cursor-grabbing touch-none"
+        {...dragListeners} {...dragAttributes}
+        className={cn(
+          "shrink-0 p-0.5 ml-1 hover:!opacity-60 touch-none",
+          canMove
+            ? "opacity-0 group-hover:opacity-30 cursor-grab active:cursor-grabbing"
+            : "opacity-0 pointer-events-none",
+        )}
         tabIndex={-1}
       >
         <GripVertical className="h-3 w-3 text-muted-foreground" />
@@ -1531,27 +1582,34 @@ function PageItem({
           </span>
         )}
       </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-accent transition-opacity"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MoreHorizontal className="h-3 w-3 text-muted-foreground" />
-          </button>
-        </DropdownMenuTrigger>
-        <PageActionsMenu
-          page={page}
-          onEditTitle={onEditTitle}
-          onEditSlug={onEditSlug}
-          onMove={onMove}
-          onRearrange={onRearrange}
-          onSetVisibilityOverride={onSetVisibilityOverride}
-          onDuplicate={onDuplicate}
-          onUnpublish={onUnpublish}
-          onDelete={onDelete}
-        />
-      </DropdownMenu>
+      {(canManageActions || canMove || canManageVisibility || canDelete || canPublish) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-accent transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="h-3 w-3 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <PageActionsMenu
+            page={page}
+            canManage={canManageActions}
+            canMove={canMove}
+            canManageVisibility={canManageVisibility}
+            canPublish={canPublish}
+            canDelete={canDelete}
+            onEditTitle={onEditTitle}
+            onEditSlug={onEditSlug}
+            onMove={onMove}
+            onRearrange={onRearrange}
+            onSetVisibilityOverride={onSetVisibilityOverride}
+            onDuplicate={onDuplicate}
+            onUnpublish={onUnpublish}
+            onDelete={onDelete}
+          />
+        </DropdownMenu>
+      )}
     </div>
   );
 }
@@ -1563,6 +1621,12 @@ function PageItem({
 function SectionNode({
   section, pages, selectedPageId, onSelectPage, depth,
   onAddPage, onAddSubSection, onImportHere, onRenameSection, onMoveSection, onDeleteSection, onChangeSectionType, onSetSectionVisibility, onRenamePage, onEditPageSlug, onMovePage, onSetPageVisibilityOverride, onDuplicatePage, onUnpublishPage, onRearrangePage, onDeletePage,
+  canEditContent,
+  canMoveContent,
+  canEditVisibilitySettings,
+  canPublishContent,
+  canDeleteContent,
+  canOpenImportDialog,
   activeDragType,
   hierarchyMode,
 }: {
@@ -1587,6 +1651,12 @@ function SectionNode({
   onUnpublishPage: (page: Page) => void;
   onRearrangePage: (page: Page) => void;
   onDeletePage: (page: Page) => void;
+  canEditContent: boolean;
+  canMoveContent: boolean;
+  canEditVisibilitySettings: boolean;
+  canPublishContent: boolean;
+  canDeleteContent: boolean;
+  canOpenImportDialog: boolean;
   activeDragType: "page" | "section" | null;
   hierarchyMode: "product" | "flat";
 }) {
@@ -1606,6 +1676,8 @@ function SectionNode({
     id: `sect-${section.id}`,
     data: { type: "section", sectionId: section.id, parentId: section.parent_id },
   });
+  const sectionDragListeners = canMoveContent ? sortListeners : undefined;
+  const sectionDragAttributes = canMoveContent ? sortAttrs : undefined;
 
   // Droppable: separate zone on the header to accept drops (page moves + section nesting)
   const { isOver: isNestOver, setNodeRef: setNestRef } = useDroppable({
@@ -1663,8 +1735,13 @@ function SectionNode({
       >
         {/* Drag handle */}
         <button
-          {...sortListeners} {...sortAttrs}
-          className="shrink-0 p-0.5 opacity-0 group-hover:opacity-30 hover:!opacity-60 cursor-grab active:cursor-grabbing touch-none"
+          {...sectionDragListeners} {...sectionDragAttributes}
+          className={cn(
+            "shrink-0 p-0.5 hover:!opacity-60 touch-none",
+            canMoveContent
+              ? "opacity-0 group-hover:opacity-30 cursor-grab active:cursor-grabbing"
+              : "opacity-0 pointer-events-none",
+          )}
           tabIndex={-1}
         >
           <GripVertical className="h-3 w-3 text-muted-foreground" />
@@ -1704,7 +1781,8 @@ function SectionNode({
           )}
         </button>
 
-        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 pr-1 shrink-0 transition-opacity">
+        {canEditContent && (
+          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 pr-1 shrink-0 transition-opacity">
           <button
             onClick={() => onAddPage(section.id)}
             className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
@@ -1723,59 +1801,74 @@ function SectionNode({
                 <FolderPlus className="h-3 w-3 mr-2" />
                 {depth === 0 ? "Add section / tab / version" : "Add sub-section"}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onImportHere(section)}>
-                <ArrowUpFromLine className="h-3 w-3 mr-2" />
-                Import here
-              </DropdownMenuItem>
+              {canOpenImportDialog && (
+                <DropdownMenuItem onClick={() => onImportHere(section)}>
+                  <ArrowUpFromLine className="h-3 w-3 mr-2" />
+                  Import here
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => onChangeSectionType(section, "section")}
-              >
-                <ChevronsUpDown className="h-3 w-3 mr-2" />
-                {sectionType === "section" ? "✓ " : ""}Set as section
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!canSetTab}
-                onClick={() => {
-                  if (!canSetTab) return;
-                  onChangeSectionType(section, "tab");
-                }}
-              >
-                <ChevronsUpDown className="h-3 w-3 mr-2" />
-                {sectionType === "tab" ? "✓ " : ""}Set as tab
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!canSetVersion}
-                onClick={() => {
-                  if (!canSetVersion) return;
-                  onChangeSectionType(section, "version");
-                }}
-              >
-                <ChevronsUpDown className="h-3 w-3 mr-2" />
-                {sectionType === "version" ? "✓ " : ""}Set as version
-              </DropdownMenuItem>
+              {canEditContent && (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => onChangeSectionType(section, "section")}
+                  >
+                    <ChevronsUpDown className="h-3 w-3 mr-2" />
+                    {sectionType === "section" ? "✓ " : ""}Set as section
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!canSetTab}
+                    onClick={() => {
+                      if (!canSetTab) return;
+                      onChangeSectionType(section, "tab");
+                    }}
+                  >
+                    <ChevronsUpDown className="h-3 w-3 mr-2" />
+                    {sectionType === "tab" ? "✓ " : ""}Set as tab
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!canSetVersion}
+                    onClick={() => {
+                      if (!canSetVersion) return;
+                      onChangeSectionType(section, "version");
+                    }}
+                  >
+                    <ChevronsUpDown className="h-3 w-3 mr-2" />
+                    {sectionType === "version" ? "✓ " : ""}Set as version
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuItem onClick={() => onRenameSection(section)}>
                 <Pencil className="h-3 w-3 mr-2" /> Rename
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onMoveSection(section)}>
                 <ChevronsUpDown className="h-3 w-3 mr-2" /> Move to...
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {visibilityOptions.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => onSetSectionVisibility(section, opt.value)}
-                >
-                  {currentSectionVisibility === opt.value ? "✓ " : ""}{opt.label}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive" onClick={() => onDeleteSection(section)}>
-                <Trash2 className="h-3 w-3 mr-2" /> Delete
-              </DropdownMenuItem>
+              {canEditVisibilitySettings && (
+                <>
+                  <DropdownMenuSeparator />
+                  {visibilityOptions.map((opt) => (
+                    <DropdownMenuItem
+                      key={opt.value}
+                      onClick={() => onSetSectionVisibility(section, opt.value)}
+                    >
+                      {currentSectionVisibility === opt.value ? "✓ " : ""}{opt.label}
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              )}
+              {canDeleteContent && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-destructive" onClick={() => onDeleteSection(section)}>
+                    <Trash2 className="h-3 w-3 mr-2" /> Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
+          </div>
+        )}
       </div>
 
       {open && (
@@ -1788,6 +1881,11 @@ function SectionNode({
                 visibility={((page.visibility_override as VisibilityLevel | null) ?? currentSectionVisibility)}
                 showVisibilityBadge={page.visibility_override !== null || currentSectionVisibility !== "public"}
                 selectedPageId={selectedPageId}
+                canManageActions={canEditContent}
+                canMove={canMoveContent}
+                canManageVisibility={canEditVisibilitySettings}
+                canPublish={canPublishContent}
+                canDelete={canDeleteContent}
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
@@ -1826,6 +1924,12 @@ function SectionNode({
               onUnpublishPage={onUnpublishPage}
               onRearrangePage={onRearrangePage}
               onDeletePage={onDeletePage}
+              canEditContent={canEditContent}
+              canMoveContent={canMoveContent}
+              canEditVisibilitySettings={canEditVisibilitySettings}
+              canPublishContent={canPublishContent}
+              canDeleteContent={canDeleteContent}
+              canOpenImportDialog={canOpenImportDialog}
             />
           ))}
         </div>
@@ -1850,6 +1954,8 @@ function ReaderHierarchy({
   hideVersionSections,
   visibilityFilter,
   onVisibilityFilterChange,
+  pageSearchQuery,
+  onPageSearchChange,
   selectedPageId,
   onSelectPage,
   onAddPage,
@@ -1868,6 +1974,12 @@ function ReaderHierarchy({
   onUnpublishPage,
   onRearrangePage,
   onDeletePage,
+  canEditContent,
+  canMoveContent,
+  canEditVisibilitySettings,
+  canPublishContent,
+  canDeleteContent,
+  canOpenImportDialog,
 }: {
   title: string;
   pages: Page[];
@@ -1884,6 +1996,8 @@ function ReaderHierarchy({
   hideVersionSections?: boolean;
   visibilityFilter: VisibilityFilter;
   onVisibilityFilterChange: (value: VisibilityFilter) => void;
+  pageSearchQuery: string;
+  onPageSearchChange: (value: string) => void;
   selectedPageId: number | null;
   onSelectPage: (id: number) => void;
   onAddPage: (sectionId: number) => void;
@@ -1902,6 +2016,12 @@ function ReaderHierarchy({
   onUnpublishPage: (page: Page) => void;
   onRearrangePage: (page: Page) => void;
   onDeletePage: (page: Page) => void;
+  canEditContent: boolean;
+  canMoveContent: boolean;
+  canEditVisibilitySettings: boolean;
+  canPublishContent: boolean;
+  canDeleteContent: boolean;
+  canOpenImportDialog: boolean;
 }) {
   const filterVisibleSections = useCallback(
     (sections: Section[]) =>
@@ -1935,6 +2055,24 @@ function ReaderHierarchy({
             <SelectItem value="external">External only</SelectItem>
           </SelectContent>
         </Select>
+        <div className="relative mt-2">
+          <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none" />
+          <Input
+            value={pageSearchQuery}
+            onChange={(event) => onPageSearchChange(event.target.value)}
+            placeholder="Search pages"
+            className="h-8 text-xs pl-7 pr-10"
+          />
+          {pageSearchQuery && (
+            <button
+              type="button"
+              onClick={() => onPageSearchChange("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground hover:text-foreground"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
       <div className="px-2 py-2 space-y-0.5">
         <DndContext
@@ -1954,6 +2092,11 @@ function ReaderHierarchy({
                 visibility={resolveEffectivePageVisibility(page, sectionsById)}
                 showVisibilityBadge={page.visibility_override !== null || resolveEffectivePageVisibility(page, sectionsById) !== "public"}
                 selectedPageId={selectedPageId}
+                canManageActions={canEditContent}
+                canMove={canMoveContent}
+                canManageVisibility={canEditVisibilitySettings}
+                canPublish={canPublishContent}
+                canDelete={canDeleteContent}
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
@@ -1996,6 +2139,12 @@ function ReaderHierarchy({
                 onUnpublishPage={onUnpublishPage}
                 onRearrangePage={onRearrangePage}
                 onDeletePage={onDeletePage}
+                canEditContent={canEditContent}
+                canMoveContent={canMoveContent}
+                canEditVisibilitySettings={canEditVisibilitySettings}
+                canPublishContent={canPublishContent}
+                canDeleteContent={canDeleteContent}
+                canOpenImportDialog={canOpenImportDialog}
               />
             ))}
           </SortableContext>
@@ -2015,6 +2164,126 @@ function ReaderHierarchy({
         )}
       </div>
     </aside>
+  );
+}
+
+type AnalyticsSnapshot = {
+  totalPages: number;
+  publishedCount: number;
+  draftCount: number;
+  coveragePct: number;
+  publicPublishedCount: number;
+  externalPublishedCount: number;
+  internalPublishedCount: number;
+  outwardReachCount: number;
+  outwardReachPct: number;
+  updatedLast7Days: number;
+  updatedLast30Days: number;
+  freshnessPct: number;
+  stalePublishedCount: number;
+  staleDraftCount: number;
+  syncLagCount: number;
+  syncedLast7Days: number;
+  recentPages: Page[];
+};
+
+function DocumentationImpactPanel({
+  snapshot,
+  onOpenPage,
+}: {
+  snapshot: AnalyticsSnapshot;
+  onOpenPage: (pageId: number) => void;
+}) {
+  return (
+    <section className="rounded-xl border bg-background/85 shadow-sm">
+      <div className="border-b px-4 py-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Documentation impact</h3>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Reader coverage</p>
+            <p className="text-lg font-semibold">
+              {snapshot.publishedCount}/{snapshot.totalPages}
+            </p>
+            <p className="text-[11px] text-muted-foreground">{snapshot.coveragePct}% live</p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Audience reach</p>
+            <p className="text-lg font-semibold">{snapshot.outwardReachCount}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {snapshot.publicPublishedCount} public · {snapshot.externalPublishedCount} external
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Freshness (30d)</p>
+            <p className="text-lg font-semibold">
+              {snapshot.updatedLast30Days}/{snapshot.totalPages}
+            </p>
+            <p className="text-[11px] text-muted-foreground">{snapshot.freshnessPct}% updated recently</p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Publish backlog</p>
+            <p className="text-lg font-semibold">{snapshot.draftCount}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {snapshot.staleDraftCount} older than 14 days
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Internal live docs</p>
+            <p className="text-lg font-semibold">{snapshot.internalPublishedCount}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {snapshot.outwardReachPct}% of live docs are outward-facing
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Stale live docs</p>
+            <p className="text-lg font-semibold">{snapshot.stalePublishedCount}</p>
+            <p className="text-[11px] text-muted-foreground">Not updated in 30 days</p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Sync lag</p>
+            <p className="text-lg font-semibold">{snapshot.syncLagCount}</p>
+            <p className="text-[11px] text-muted-foreground">Live docs changed after last sync</p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Activity (7 days)</p>
+            <p className="text-lg font-semibold">{snapshot.updatedLast7Days}</p>
+            <p className="text-[11px] text-muted-foreground">Synced: {snapshot.syncedLast7Days}</p>
+          </div>
+        </div>
+
+        <div className="border-t pt-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Recently updated</p>
+            <p className="text-[11px] text-muted-foreground">Synced (7d): {snapshot.syncedLast7Days}</p>
+          </div>
+          {snapshot.recentPages.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No pages yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {snapshot.recentPages.map((page) => (
+                <button
+                  key={`analytics-recent-${page.id}`}
+                  type="button"
+                  onClick={() => onOpenPage(page.id)}
+                  className="w-full flex items-center justify-between rounded-md border px-2.5 py-2 text-left hover:bg-accent/50 transition-colors"
+                >
+                  <span className="text-sm truncate pr-2">{page.title}</span>
+                  <span className="text-[11px] text-muted-foreground shrink-0">
+                    {new Date(page.updated_at).toLocaleDateString()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -2055,6 +2324,8 @@ export default function Dashboard() {
   const [showInviteMember, setShowInviteMember] = useState(false);
   const [showWorkspaceSettings, setShowWorkspaceSettings] = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
+  const [pageSearchQuery, setPageSearchQuery] = useState("");
+  const [dashboardPaneMode, setDashboardPaneMode] = useState<DashboardPaneMode>("content");
 
   const [currentOrgId, setCurrentOrgId] = useState<number | undefined>(getStoredOrgId() ?? undefined);
   const { data: org, isLoading: orgLoading } = useQuery({ queryKey: ["org", currentOrgId], queryFn: () => orgApi.get(currentOrgId) });
@@ -2078,6 +2349,23 @@ export default function Dashboard() {
   const sections = sectionsData?.sections ?? [];
   const pages = pagesData?.pages ?? [];
   const selectedPage = selectedPageFull ?? (pages.find((p) => p.id === selectedPageId) ?? null);
+  const hasWorkspaceContent = sections.length > 0 || pages.length > 0;
+  const currentUserRole = org?.user_role ?? "viewer";
+  const canEditContent = currentUserRole === "owner" || currentUserRole === "admin" || currentUserRole === "editor";
+  const canCreateContent = canEditContent;
+  const canDeleteContent = canEditContent;
+  const canMoveContent = canEditContent;
+  const canPublishContent = canEditContent;
+  const canSyncContent = canEditContent;
+  const canEditVisibilitySettings = canEditContent;
+  const canManageStructure = canEditContent;
+  const canManageDrive = currentUserRole === "owner" || currentUserRole === "admin";
+  const canManageWorkspace = canManageDrive;
+  const canInviteMembers = canManageDrive;
+  const canManageExternalAccess = canManageDrive;
+  const canConfigureHierarchy = canManageWorkspace;
+  const canOpenImportDialog = canEditContent;
+  const driveConnected = !!driveStatus?.connected;
 
   const sectionsById = useMemo(() => new Map(sections.map((s) => [s.id, s])), [sections]);
   const sectionDepthById = useMemo(() => {
@@ -2107,11 +2395,33 @@ export default function Dashboard() {
     () => pages.filter(pageMatchesVisibilityFilter),
     [pageMatchesVisibilityFilter, pages],
   );
+  const normalizedPageSearch = useMemo(
+    () => pageSearchQuery.trim().toLowerCase(),
+    [pageSearchQuery],
+  );
+  const pageSearchIndex = useMemo(() => {
+    const index = new Map<number, string>();
+    for (const page of visiblePages) {
+      const parts: string[] = [page.title, page.slug];
+      let cursorSectionId = page.section_id;
+      while (cursorSectionId !== null) {
+        const section = sectionsById.get(cursorSectionId);
+        if (!section) break;
+        parts.push(section.name, section.slug);
+        cursorSectionId = section.parent_id;
+      }
+      index.set(page.id, parts.join(" ").toLowerCase());
+    }
+    return index;
+  }, [sectionsById, visiblePages]);
+  const treeVisiblePages = useMemo(() => {
+    if (!normalizedPageSearch) return visiblePages;
+    return visiblePages.filter((page) => (pageSearchIndex.get(page.id) ?? "").includes(normalizedPageSearch));
+  }, [normalizedPageSearch, pageSearchIndex, visiblePages]);
   const allSectionTree = useMemo(() => buildSectionTree(sections), [sections]);
   const sectionTree = useMemo(() => {
-    if (visibilityFilter === "all") return allSectionTree;
     const sectionIdsWithVisiblePages = new Set(
-      visiblePages.filter((p) => p.section_id !== null).map((p) => p.section_id as number),
+      treeVisiblePages.filter((p) => p.section_id !== null).map((p) => p.section_id as number),
     );
     const filterNode = (node: Section): Section | null => {
       const filteredChildren =
@@ -2119,17 +2429,24 @@ export default function Dashboard() {
           .map((child) => filterNode(child))
           .filter((child): child is Section => child !== null);
       const nodeVisibility = (node.visibility ?? "public") as VisibilityLevel;
-      const keepNode =
+      const matchesVisibility =
+        visibilityFilter === "all" ||
         nodeVisibility === visibilityFilter ||
         sectionIdsWithVisiblePages.has(node.id) ||
         filteredChildren.length > 0;
-      if (!keepNode) return null;
+      const sectionSearchText = `${node.name} ${node.slug}`.toLowerCase();
+      const matchesSearch =
+        !normalizedPageSearch ||
+        sectionSearchText.includes(normalizedPageSearch) ||
+        sectionIdsWithVisiblePages.has(node.id) ||
+        filteredChildren.length > 0;
+      if (!matchesVisibility || !matchesSearch) return null;
       return { ...node, children: filteredChildren };
     };
     return allSectionTree
       .map((node) => filterNode(node))
       .filter((node): node is Section => node !== null);
-  }, [allSectionTree, visibilityFilter, visiblePages]);
+  }, [allSectionTree, normalizedPageSearch, treeVisiblePages, visibilityFilter]);
   const isProductHierarchy = (org?.hierarchy_mode ?? "product") !== "flat";
   const rootProducts = useMemo(
     () => allSectionTree.map((node) => ({ id: node.id, name: node.name })),
@@ -2260,7 +2577,7 @@ export default function Dashboard() {
   );
   const pagesBySection = useMemo(() => {
     const map = new Map<number, Page[]>();
-    for (const page of visiblePages) {
+    for (const page of treeVisiblePages) {
       if (page.section_id === null) continue;
       const list = map.get(page.section_id) ?? [];
       list.push(page);
@@ -2270,14 +2587,14 @@ export default function Dashboard() {
       list.sort((a, b) => a.display_order - b.display_order || a.title.localeCompare(b.title));
     }
     return map;
-  }, [visiblePages]);
+  }, [treeVisiblePages]);
   const activeHierarchyRoot = selectedTab ?? selectedVersion ?? selectedProduct;
   const readerHierarchyTopPages = useMemo(() => {
     if (!activeHierarchyRoot) return [] as Page[];
-    return visiblePages
+    return treeVisiblePages
       .filter((page) => page.section_id === activeHierarchyRoot.id)
       .sort((a, b) => a.display_order - b.display_order || a.title.localeCompare(b.title));
-  }, [activeHierarchyRoot, visiblePages]);
+  }, [activeHierarchyRoot, treeVisiblePages]);
   const readerHierarchySections = useMemo(() => {
     if (!activeHierarchyRoot) return [] as Section[];
     if (selectedTab) {
@@ -2376,13 +2693,89 @@ export default function Dashboard() {
   }, [displayedSectionTree, isProductHierarchy, selectedVersion]);
   const adminRootPages = useMemo(() => {
     if (!isProductHierarchy || selectedSidebarProductId === null) {
-      return visiblePages.filter((page) => !page.section_id);
+      return treeVisiblePages.filter((page) => !page.section_id);
     }
-    if (selectedVersion) return visiblePages.filter((page) => page.section_id === selectedVersion.id);
-    return visiblePages.filter((page) => page.section_id === selectedSidebarProductId);
-  }, [isProductHierarchy, selectedSidebarProductId, selectedVersion, visiblePages]);
+    if (selectedVersion) return treeVisiblePages.filter((page) => page.section_id === selectedVersion.id);
+    return treeVisiblePages.filter((page) => page.section_id === selectedSidebarProductId);
+  }, [isProductHierarchy, selectedSidebarProductId, selectedVersion, treeVisiblePages]);
   const adminSectionDepthBase = isProductHierarchy && selectedSidebarProductId !== null ? 1 : 0;
   const shouldShowAdminTree = !selectedPage;
+  const analyticsSnapshot = useMemo<AnalyticsSnapshot>(() => {
+    const now = Date.now();
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const fourteenDaysAgo = now - 14 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+    const parseDate = (value: string | null | undefined): number => {
+      if (!value) return 0;
+      const timestamp = Date.parse(value);
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    };
+
+    const pageTimestamp = (page: Page): number => {
+      const updated = parseDate(page.updated_at);
+      if (updated > 0) return updated;
+      return parseDate(page.created_at);
+    };
+
+    const isPublished = (page: Page): boolean => page.is_published || page.status === "published";
+    const publishedPages = pages.filter(isPublished);
+    const draftPages = pages.filter((page) => !isPublished(page));
+
+    const publicPublishedCount = publishedPages.filter(
+      (page) => resolveEffectivePageVisibility(page, sectionsById) === "public",
+    ).length;
+    const externalPublishedCount = publishedPages.filter(
+      (page) => resolveEffectivePageVisibility(page, sectionsById) === "external",
+    ).length;
+    const internalPublishedCount = publishedPages.filter(
+      (page) => resolveEffectivePageVisibility(page, sectionsById) === "internal",
+    ).length;
+
+    const outwardReachCount = publicPublishedCount + externalPublishedCount;
+    const updatedLast7Days = pages.filter((page) => pageTimestamp(page) >= sevenDaysAgo).length;
+    const updatedLast30Days = pages.filter((page) => pageTimestamp(page) >= thirtyDaysAgo).length;
+    const stalePublishedCount = publishedPages.filter((page) => pageTimestamp(page) > 0 && pageTimestamp(page) < thirtyDaysAgo).length;
+    const staleDraftCount = draftPages.filter((page) => pageTimestamp(page) > 0 && pageTimestamp(page) < fourteenDaysAgo).length;
+    const syncLagCount = publishedPages.filter((page) => {
+      const updatedAt = pageTimestamp(page);
+      const syncedAt = parseDate(page.last_synced_at);
+      return updatedAt > 0 && syncedAt > 0 && updatedAt > syncedAt;
+    }).length;
+    const syncedLast7Days = pages.filter((page) => parseDate(page.last_synced_at) >= sevenDaysAgo).length;
+
+    const coveragePct = pages.length > 0 ? Math.round((publishedPages.length / pages.length) * 100) : 0;
+    const freshnessPct = pages.length > 0 ? Math.round((updatedLast30Days / pages.length) * 100) : 0;
+    const outwardReachPct = publishedPages.length > 0 ? Math.round((outwardReachCount / publishedPages.length) * 100) : 0;
+
+    const recentPages = [...pages]
+      .sort((a, b) => pageTimestamp(b) - pageTimestamp(a))
+      .slice(0, 5);
+
+    return {
+      totalPages: pages.length,
+      publishedCount: publishedPages.length,
+      draftCount: draftPages.length,
+      coveragePct,
+      publicPublishedCount,
+      externalPublishedCount,
+      internalPublishedCount,
+      outwardReachCount,
+      outwardReachPct,
+      updatedLast7Days,
+      updatedLast30Days,
+      freshnessPct,
+      stalePublishedCount,
+      staleDraftCount,
+      syncLagCount,
+      syncedLast7Days,
+      recentPages,
+    };
+  }, [pages, sectionsById]);
+  const handleSelectPage = useCallback((pageId: number | null) => {
+    setSelectedPageId(pageId);
+    setDashboardPaneMode("content");
+  }, []);
 
   const handleSidebarProductSwitch = useCallback(
     (value: string) => {
@@ -2391,9 +2784,9 @@ export default function Dashboard() {
       setSelectedSidebarProductId(productId);
       setSelectedSidebarVersionId(null);
       const firstPage = findFirstPageInProductBase(productId);
-      setSelectedPageId(firstPage?.id ?? null);
+      handleSelectPage(firstPage?.id ?? null);
     },
-    [findFirstPageInProductBase],
+    [findFirstPageInProductBase, handleSelectPage],
   );
   const handleSidebarVersionSwitch = useCallback(
     (value: string) => {
@@ -2401,7 +2794,7 @@ export default function Dashboard() {
         setSelectedSidebarVersionId(null);
         if (selectedProduct) {
           const firstBasePage = findFirstPageInProductBase(selectedProduct.id);
-          setSelectedPageId(firstBasePage?.id ?? null);
+          handleSelectPage(firstBasePage?.id ?? null);
         }
         return;
       }
@@ -2409,9 +2802,9 @@ export default function Dashboard() {
       if (!Number.isFinite(versionId)) return;
       setSelectedSidebarVersionId(versionId);
       const firstPage = findFirstPageInSection(versionId);
-      setSelectedPageId(firstPage?.id ?? null);
+      handleSelectPage(firstPage?.id ?? null);
     },
-    [findFirstPageInProductBase, findFirstPageInSection, selectedProduct],
+    [findFirstPageInProductBase, findFirstPageInSection, handleSelectPage, selectedProduct],
   );
   const selectedSidebarProductValue =
     selectedSidebarProductId !== null
@@ -2426,7 +2819,56 @@ export default function Dashboard() {
       ? (selectedVersion?.id ?? selectedProduct?.id ?? null)
       : null;
   const canCreateVersionForSelectedProduct = isProductHierarchy && selectedProduct !== null;
+  const notifyPermissionDenied = useCallback(
+    (actionLabel: string) => {
+      toast({
+        title: "Permission denied",
+        description: `Your role (${currentUserRole}) cannot ${actionLabel}.`,
+        variant: "destructive",
+      });
+    },
+    [currentUserRole, toast],
+  );
+  const openConfigureHierarchyDialog = useCallback(() => {
+    if (!canConfigureHierarchy) {
+      notifyPermissionDenied("configure hierarchy");
+      return;
+    }
+    setShowConfigureTabs(true);
+  }, [canConfigureHierarchy, notifyPermissionDenied]);
+  const openAddProductDialog = useCallback(() => {
+    if (!canManageStructure) {
+      notifyPermissionDenied("create products");
+      return;
+    }
+    setAddSectionParentId(null);
+    setAddSectionPreferredType(undefined);
+    setAddSectionCloneFromId(null);
+    setShowAddSection(true);
+  }, [canManageStructure, notifyPermissionDenied]);
+  const openAddSectionDialog = useCallback((parentId: number) => {
+    if (!canManageStructure) {
+      notifyPermissionDenied("create sections");
+      return;
+    }
+    setAddSectionParentId(parentId);
+    setAddSectionPreferredType(undefined);
+    setAddSectionCloneFromId(null);
+    setShowAddSection(true);
+  }, [canManageStructure, notifyPermissionDenied]);
+  const openAddPageDialog = useCallback((sectionId: number | null = defaultAddPageSectionId) => {
+    if (!canCreateContent) {
+      notifyPermissionDenied("create pages");
+      return;
+    }
+    setAddPageSectionId(sectionId);
+    setShowAddPage(true);
+  }, [canCreateContent, defaultAddPageSectionId, notifyPermissionDenied]);
   const openAddVersionDialog = useCallback(() => {
+    if (!canCreateContent) {
+      notifyPermissionDenied("create versions");
+      return;
+    }
     if (!canCreateVersionForSelectedProduct || !selectedProduct) {
       toast({
         title: "Select a product first",
@@ -2439,9 +2881,13 @@ export default function Dashboard() {
     setAddSectionPreferredType("version");
     setAddSectionCloneFromId(selectedVersion?.id ?? selectedProduct.id);
     setShowAddSection(true);
-  }, [canCreateVersionForSelectedProduct, selectedProduct, toast]);
+  }, [canCreateContent, canCreateVersionForSelectedProduct, notifyPermissionDenied, selectedProduct, selectedVersion?.id, toast]);
 
   const openImportDialogForTarget = useCallback((section: Section | null) => {
+    if (!canOpenImportDialog) {
+      notifyPermissionDenied("import content");
+      return;
+    }
     if (section) {
       setScanTarget({
         id: section.id,
@@ -2452,7 +2898,7 @@ export default function Dashboard() {
       setScanTarget(null);
     }
     setShowScanDrive(true);
-  }, []);
+  }, [canOpenImportDialog, notifyPermissionDenied]);
 
   // ── DnD setup ──────────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -2475,6 +2921,7 @@ export default function Dashboard() {
   });
 
   const handleDragStart = useCallback(({ active }: DragStartEvent) => {
+    if (!canMoveContent) return;
     const data = active.data.current as { type: string; pageId?: number; sectionId?: number };
     if (data.type === "page") {
       const page = pagesData?.pages.find((p) => p.id === data.pageId);
@@ -2485,9 +2932,14 @@ export default function Dashboard() {
       setActiveDragType("section");
       setActiveDragLabel(section?.name ?? "Section");
     }
-  }, [pagesData, sectionsData]);
+  }, [canMoveContent, pagesData, sectionsData]);
 
   const handleDragEnd = useCallback(({ active, over }: DragEndEvent) => {
+    if (!canMoveContent) {
+      setActiveDragType(null);
+      setActiveDragLabel("");
+      return;
+    }
     setActiveDragType(null);
     setActiveDragLabel("");
     if (!over || active.id === over.id) return;
@@ -2540,7 +2992,7 @@ export default function Dashboard() {
         dragSection.mutate({ id: sectionId, display_order: overSection.display_order });
       }
     }
-  }, [pagesData, sectionsData, dragPage, dragSection]);
+  }, [canMoveContent, pagesData, sectionsData, dragPage, dragSection]);
   // ──────────────────────────────────────────────────────────────────────────
 
   const createSection = useMutation({
@@ -2678,29 +3130,112 @@ export default function Dashboard() {
     mutationFn: (id: number) => pagesApi.duplicate(id),
     onSuccess: (newPage) => {
       qc.invalidateQueries({ queryKey: ["pages"] });
-      setSelectedPageId(newPage.id);
+      handleSelectPage(newPage.id);
       toast({ title: "Page duplicated", description: "A Google Doc copy was created." });
     },
     onError: (err: Error) => toast({ title: "Duplicate failed", description: err.message, variant: "destructive" }),
   });
 
+  const handleDeleteSection = useCallback((section: Section) => {
+    if (!canDeleteContent) {
+      notifyPermissionDenied("delete sections");
+      return;
+    }
+    const label = section.parent_id === null ? "product" : (section.section_type ?? "section");
+    const confirmed = window.confirm(`Delete ${label} "${section.name}"?\n\nIts Drive folder will be moved to trash.`);
+    if (!confirmed) return;
+    deleteSection.mutate(section.id);
+    if ((section.section_type ?? "section") === "version" && selectedSidebarVersionId === section.id) {
+      setSelectedSidebarVersionId(null);
+    }
+  }, [canDeleteContent, deleteSection, notifyPermissionDenied, selectedSidebarVersionId]);
+
+  const handleSectionTypeChange = useCallback((section: Section, nextType: "section" | "tab" | "version") => {
+    if (!canManageStructure) {
+      notifyPermissionDenied("change section type");
+      return;
+    }
+    updateSectionType.mutate({ id: section.id, section_type: nextType });
+  }, [canManageStructure, notifyPermissionDenied, updateSectionType]);
+
+  const handleSectionVisibilityChange = useCallback((section: Section, visibility: VisibilityLevel) => {
+    if (!canEditVisibilitySettings) {
+      notifyPermissionDenied("change visibility");
+      return;
+    }
+    updateSectionVisibility.mutate({ id: section.id, visibility });
+  }, [canEditVisibilitySettings, notifyPermissionDenied, updateSectionVisibility]);
+
+  const handlePageVisibilityOverride = useCallback((page: Page, visibility: VisibilityLevel | null) => {
+    if (!canEditVisibilitySettings) {
+      notifyPermissionDenied("change visibility");
+      return;
+    }
+    updatePageVisibility.mutate({ id: page.id, visibility_override: visibility });
+  }, [canEditVisibilitySettings, notifyPermissionDenied, updatePageVisibility]);
+
+  const handleDuplicatePage = useCallback((page: Page) => {
+    if (!canCreateContent) {
+      notifyPermissionDenied("duplicate pages");
+      return;
+    }
+    duplicatePage.mutate(page.id);
+  }, [canCreateContent, duplicatePage, notifyPermissionDenied]);
+
+  const handleSyncAllPages = useCallback(() => {
+    if (!canSyncContent) {
+      notifyPermissionDenied("sync pages");
+      return;
+    }
+    if (!driveConnected || syncAll.isPending) return;
+    syncAll.mutate();
+  }, [canSyncContent, driveConnected, notifyPermissionDenied, syncAll]);
+
+  const handleSyncCurrentPage = useCallback((pageId: number) => {
+    if (!canSyncContent) {
+      notifyPermissionDenied("sync pages");
+      return;
+    }
+    syncPage.mutate(pageId);
+  }, [canSyncContent, notifyPermissionDenied, syncPage]);
+
+  const handlePublishCurrentPage = useCallback((page: Page) => {
+    if (!canPublishContent) {
+      notifyPermissionDenied("publish pages");
+      return;
+    }
+    publishPage.mutate(page.id);
+  }, [canPublishContent, notifyPermissionDenied, publishPage]);
+
   const handleRearrangePage = useCallback((page: Page) => {
+    if (!canMoveContent) {
+      notifyPermissionDenied("rearrange pages");
+      return;
+    }
     toast({
       title: "Re-arrange page",
       description: `Drag "${page.title}" using the grip handle to reorder.`,
     });
-  }, [toast]);
+  }, [canMoveContent, notifyPermissionDenied, toast]);
 
   const handleDeletePage = useCallback((page: Page) => {
+    if (!canDeleteContent) {
+      notifyPermissionDenied("delete pages");
+      return;
+    }
     const confirmed = window.confirm(`Delete "${page.title}"?\n\nThis will also move the Google Doc to Drive trash.`);
     if (!confirmed) return;
     deletePage.mutate(page.id);
-  }, [deletePage]);
+  }, [canDeleteContent, deletePage, notifyPermissionDenied]);
 
   const handleUnpublishPage = useCallback((page: Page) => {
+    if (!canPublishContent) {
+      notifyPermissionDenied("unpublish pages");
+      return;
+    }
     if (!page.is_published) return;
     unpublishPage.mutate(page.id);
-  }, [unpublishPage]);
+  }, [canPublishContent, notifyPermissionDenied, unpublishPage]);
 
   const handleSignOut = useCallback(async () => {
     if (isSigningOut) return;
@@ -2816,9 +3351,6 @@ export default function Dashboard() {
   const orgInitials = org?.name?.slice(0, 2).toUpperCase() ?? "AC";
   const accountName = user?.name?.trim() || user?.email?.split("@")[0] || "Account";
   const accountEmail = user?.email ?? "";
-  const driveConnected = !!driveStatus?.connected;
-  const canManageDrive = org?.user_role === "owner" || org?.user_role === "admin";
-  const canManageWorkspace = canManageDrive;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -2932,8 +3464,37 @@ export default function Dashboard() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => setShowConfigureTabs(true)}
+              className={cn(
+                "h-8 w-8 disabled:opacity-40 disabled:pointer-events-none",
+                dashboardPaneMode === "content"
+                  ? "text-primary bg-primary/10 hover:bg-primary/15"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setDashboardPaneMode("content")}
+              title="Content view"
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-8 w-8 disabled:opacity-40 disabled:pointer-events-none",
+                dashboardPaneMode === "analytics"
+                  ? "text-primary bg-primary/10 hover:bg-primary/15"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setDashboardPaneMode("analytics")}
+              title="Analytics view"
+            >
+              <BarChart3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+              onClick={openConfigureHierarchyDialog}
+              disabled={!canConfigureHierarchy}
               title="Configure content hierarchy"
             >
               <Settings className="h-4 w-4" />
@@ -2941,13 +3502,9 @@ export default function Dashboard() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                setAddSectionParentId(null);
-                setAddSectionPreferredType(undefined);
-                setAddSectionCloneFromId(null);
-                setShowAddSection(true);
-              }}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+              onClick={openAddProductDialog}
+              disabled={!canManageStructure}
               title="New product"
             >
               <FolderPlus className="h-4 w-4" />
@@ -2955,8 +3512,9 @@ export default function Dashboard() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
               onClick={() => openImportDialogForTarget(null)}
+              disabled={!canOpenImportDialog}
               title="Import content"
             >
               <ArrowUpFromLine className="h-4 w-4" />
@@ -2964,9 +3522,9 @@ export default function Dashboard() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
               onClick={() => openAddVersionDialog()}
-              disabled={!canCreateVersionForSelectedProduct}
+              disabled={!canCreateContent || !canCreateVersionForSelectedProduct}
               title="New version"
             >
               <GitBranchPlus className="h-4 w-4" />
@@ -2974,8 +3532,9 @@ export default function Dashboard() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => { setAddPageSectionId(defaultAddPageSectionId); setShowAddPage(true); }}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+              onClick={() => openAddPageDialog(defaultAddPageSectionId)}
+              disabled={!canCreateContent}
               title="New page"
             >
               <Plus className="h-4 w-4" />
@@ -2986,7 +3545,7 @@ export default function Dashboard() {
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => setShowInviteMember(true)}
-                disabled={!org?.id}
+                disabled={!org?.id || !canInviteMembers}
                 title="Invite members"
               >
                 <UserPlus className="h-4 w-4" />
@@ -2995,8 +3554,8 @@ export default function Dashboard() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => syncAll.mutate()}
-                disabled={!driveConnected || syncAll.isPending}
+                onClick={handleSyncAllPages}
+                disabled={!driveConnected || !canSyncContent || syncAll.isPending}
                 title="Sync all pages"
               >
                 {syncAll.isPending
@@ -3023,26 +3582,54 @@ export default function Dashboard() {
           <>
             {/* Nav */}
             <div className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+              <div className="px-2 mb-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-1.5">View</p>
+                <div className="grid grid-cols-2 rounded-md border bg-background/80 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setDashboardPaneMode("content")}
+                    className={cn(
+                      "h-7 rounded-sm text-[11px] font-medium transition-colors inline-flex items-center justify-center gap-1.5",
+                      dashboardPaneMode === "content"
+                        ? "bg-primary/10 text-primary shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <FileText className="h-3 w-3" />
+                    Content
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDashboardPaneMode("analytics")}
+                    className={cn(
+                      "h-7 rounded-sm text-[11px] font-medium transition-colors inline-flex items-center justify-center gap-1.5",
+                      dashboardPaneMode === "analytics"
+                        ? "bg-primary/10 text-primary shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <BarChart3 className="h-3 w-3" />
+                    Analytics
+                  </button>
+                </div>
+              </div>
               <div className="flex items-center justify-between px-2 mb-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
                   Content
                 </span>
                 <div className="flex items-center gap-0.5">
                   <button
-                    onClick={() => setShowConfigureTabs(true)}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
+                    onClick={openConfigureHierarchyDialog}
+                    disabled={!canConfigureHierarchy}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
                     title="Configure content hierarchy"
                   >
                     <Settings className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => {
-                      setAddSectionParentId(null);
-                      setAddSectionPreferredType(undefined);
-                      setAddSectionCloneFromId(null);
-                      setShowAddSection(true);
-                    }}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
+                    onClick={openAddProductDialog}
+                    disabled={!canManageStructure}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
                     title="New product"
                   >
                     <FolderPlus className="h-3.5 w-3.5" />
@@ -3050,7 +3637,8 @@ export default function Dashboard() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
+                        className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
+                        disabled={!canOpenImportDialog}
                         title="Import content"
                       >
                         <ArrowUpFromLine className="h-3.5 w-3.5" />
@@ -3072,14 +3660,15 @@ export default function Dashboard() {
                   <button
                     onClick={() => openAddVersionDialog()}
                     className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
-                    disabled={!canCreateVersionForSelectedProduct}
+                    disabled={!canCreateContent || !canCreateVersionForSelectedProduct}
                     title="New version"
                   >
                     <GitBranchPlus className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => { setAddPageSectionId(defaultAddPageSectionId); setShowAddPage(true); }}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
+                    onClick={() => openAddPageDialog(defaultAddPageSectionId)}
+                    disabled={!canCreateContent}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
                     title="New page"
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -3102,7 +3691,7 @@ export default function Dashboard() {
                       </SelectContent>
                     </Select>
                   </div>
-                  {selectedProduct && (
+                  {selectedProduct && canManageStructure && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
@@ -3124,13 +3713,8 @@ export default function Dashboard() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
-                          onClick={() => {
-                            const confirmed = window.confirm(
-                              `Delete product "${selectedProduct.name}"?\n\nIts Drive folder will be moved to trash.`,
-                            );
-                            if (!confirmed) return;
-                            deleteSection.mutate(selectedProduct.id);
-                          }}
+                          disabled={!canDeleteContent}
+                          onClick={() => handleDeleteSection(selectedProduct)}
                         >
                           <Trash2 className="h-3.5 w-3.5 mr-2" />
                           Delete product
@@ -3157,7 +3741,7 @@ export default function Dashboard() {
                       </SelectContent>
                     </Select>
                   </div>
-                  {selectedVersion && (
+                  {selectedVersion && canManageStructure && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
@@ -3175,14 +3759,8 @@ export default function Dashboard() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
-                          onClick={() => {
-                            const confirmed = window.confirm(
-                              `Delete version "${selectedVersion.name}"?\n\nIts Drive folder will be moved to trash.`,
-                            );
-                            if (!confirmed) return;
-                            deleteSection.mutate(selectedVersion.id);
-                            setSelectedSidebarVersionId(null);
-                          }}
+                          disabled={!canDeleteContent}
+                          onClick={() => handleDeleteSection(selectedVersion)}
                         >
                           <Trash2 className="h-3.5 w-3.5 mr-2" />
                           Delete version
@@ -3196,7 +3774,11 @@ export default function Dashboard() {
                 adminTreeSections.length === 0 && adminRootPages.length === 0 ? (
                   <div className="px-2 py-4 text-center">
                     <p className="text-xs text-muted-foreground/60">
-                      {visibilityFilter === "all" ? "No content yet" : "No content for this visibility"}
+                      {normalizedPageSearch
+                        ? "No pages match this search"
+                        : visibilityFilter === "all"
+                          ? "No content yet"
+                          : "No content for this visibility"}
                     </p>
                   </div>
                 ) : (
@@ -3218,15 +3800,18 @@ export default function Dashboard() {
                           visibility={resolveEffectivePageVisibility(page, sectionsById)}
                           showVisibilityBadge={page.visibility_override !== null || resolveEffectivePageVisibility(page, sectionsById) !== "public"}
                           selectedPageId={selectedPageId}
-                          onSelect={setSelectedPageId}
+                          canManageActions={canEditContent}
+                          canMove={canMoveContent}
+                          canManageVisibility={canEditVisibilitySettings}
+                          canPublish={canPublishContent}
+                          canDelete={canDeleteContent}
+                          onSelect={handleSelectPage}
                           onEditTitle={setRenamingPage}
                           onEditSlug={setEditingPageSlug}
                           onMove={setMovingPage}
                           onRearrange={handleRearrangePage}
-                          onSetVisibilityOverride={(p, visibility) =>
-                            updatePageVisibility.mutate({ id: p.id, visibility_override: visibility })
-                          }
-                          onDuplicate={(p) => duplicatePage.mutate(p.id)}
+                          onSetVisibilityOverride={handlePageVisibilityOverride}
+                          onDuplicate={handleDuplicatePage}
                           onUnpublish={handleUnpublishPage}
                           onDelete={handleDeletePage}
                         />
@@ -3242,42 +3827,34 @@ export default function Dashboard() {
                         <SectionNode
                           key={section.id}
                           section={section}
-                          pages={visiblePages}
+                          pages={treeVisiblePages}
                           selectedPageId={selectedPageId}
-                          onSelectPage={setSelectedPageId}
+                          onSelectPage={handleSelectPage}
                           depth={adminSectionDepthBase}
                           activeDragType={activeDragType}
                           hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
-                          onAddPage={(sectionId) => { setAddPageSectionId(sectionId); setShowAddPage(true); }}
-                          onAddSubSection={(parentId) => {
-                            setAddSectionParentId(parentId);
-                            setAddSectionPreferredType(undefined);
-                            setAddSectionCloneFromId(null);
-                            setShowAddSection(true);
-                          }}
+                          onAddPage={(sectionId) => openAddPageDialog(sectionId)}
+                          onAddSubSection={openAddSectionDialog}
                           onImportHere={(section) => openImportDialogForTarget(section)}
                           onRenameSection={setRenamingSection}
                           onMoveSection={setMovingSection}
-                          onDeleteSection={(s) => deleteSection.mutate(s.id)}
-                          onChangeSectionType={(s, nextType) =>
-                            updateSectionType.mutate({
-                              id: s.id,
-                              section_type: nextType,
-                            })
-                          }
-                          onSetSectionVisibility={(s, visibility) =>
-                            updateSectionVisibility.mutate({ id: s.id, visibility })
-                          }
+                          onDeleteSection={handleDeleteSection}
+                          onChangeSectionType={handleSectionTypeChange}
+                          onSetSectionVisibility={handleSectionVisibilityChange}
                           onRenamePage={setRenamingPage}
                           onEditPageSlug={setEditingPageSlug}
                           onMovePage={setMovingPage}
-                          onSetPageVisibilityOverride={(p, visibility) =>
-                            updatePageVisibility.mutate({ id: p.id, visibility_override: visibility })
-                          }
-                          onDuplicatePage={(p) => duplicatePage.mutate(p.id)}
+                          onSetPageVisibilityOverride={handlePageVisibilityOverride}
+                          onDuplicatePage={handleDuplicatePage}
                           onUnpublishPage={handleUnpublishPage}
                           onRearrangePage={handleRearrangePage}
                           onDeletePage={handleDeletePage}
+                          canEditContent={canEditContent}
+                          canMoveContent={canMoveContent}
+                          canEditVisibilitySettings={canEditVisibilitySettings}
+                          canPublishContent={canPublishContent}
+                          canDeleteContent={canDeleteContent}
+                          canOpenImportDialog={canOpenImportDialog}
                         />
                       ))}
                     </SortableContext>
@@ -3295,6 +3872,31 @@ export default function Dashboard() {
                     </DragOverlay>
                   </DndContext>
                 )
+              )}
+              {!shouldShowAdminTree && normalizedPageSearch && (
+                <div className="px-2 pb-2 space-y-1">
+                  {treeVisiblePages.slice(0, 8).map((page) => (
+                    <button
+                      key={`search-result-${page.id}`}
+                      type="button"
+                      onClick={() => handleSelectPage(page.id)}
+                      className={cn(
+                        "w-full text-left text-[11px] rounded-md border px-2 py-1.5 truncate transition-colors",
+                        selectedPageId === page.id
+                          ? "bg-primary/10 border-primary/30 text-primary"
+                          : "hover:bg-accent/60 border-border text-muted-foreground",
+                      )}
+                      title={page.title}
+                    >
+                      {page.title}
+                    </button>
+                  ))}
+                  {treeVisiblePages.length > 8 && (
+                    <p className="px-1 text-[10px] text-muted-foreground/70">
+                      Showing first 8 matches.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -3350,15 +3952,15 @@ export default function Dashboard() {
                     )}
                     <button
                       onClick={() => openImportDialogForTarget(null)}
-                      disabled={!driveConnected}
+                      disabled={!driveConnected || !canOpenImportDialog}
                       className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                     >
                       <FolderOpen className="h-3.5 w-3.5 opacity-60" />
                       Import content
                     </button>
                     <button
-                      disabled={!driveConnected || syncAll.isPending}
-                      onClick={() => syncAll.mutate()}
+                      disabled={!driveConnected || !canSyncContent || syncAll.isPending}
+                      onClick={handleSyncAllPages}
                       className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                     >
                       {syncAll.isPending
@@ -3415,7 +4017,7 @@ export default function Dashboard() {
                     </button>
                     <button
                       onClick={() => setShowInviteMember(true)}
-                      disabled={!org?.id}
+                      disabled={!org?.id || !canInviteMembers}
                       className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                     >
                       <UserPlus className="h-3.5 w-3.5 opacity-60" />
@@ -3423,7 +4025,7 @@ export default function Dashboard() {
                     </button>
                     <button
                       onClick={() => setShowExternalAccessPanel(true)}
-                      disabled={!org?.id}
+                      disabled={!org?.id || !canManageExternalAccess}
                       className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                     >
                       <Users className="h-3.5 w-3.5 opacity-60" />
@@ -3447,7 +4049,36 @@ export default function Dashboard() {
 
       {/* ── Main ──────────────────────────────────────────────────── */}
       <main className="flex-1 overflow-hidden flex flex-col min-w-0 bg-background">
-        {selectedPage ? (
+        {dashboardPaneMode === "analytics" ? (
+          <div className="flex-1 overflow-y-auto px-6 py-8">
+            <div className="max-w-5xl mx-auto space-y-4">
+              <div className="rounded-xl border bg-background/85 shadow-sm px-5 py-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-semibold">Workspace analytics</p>
+                    <h2 className="text-lg font-semibold mt-1">Documentation impact for {org?.name ?? "your workspace"}</h2>
+                    <p className="text-sm text-muted-foreground mt-1">Track coverage, freshness, and publishing momentum in one place.</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => setDashboardPaneMode("content")}
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Back to content
+                  </Button>
+                </div>
+              </div>
+              <DocumentationImpactPanel
+                snapshot={analyticsSnapshot}
+                onOpenPage={(pageId) => {
+                  handleSelectPage(pageId);
+                }}
+              />
+            </div>
+          </div>
+        ) : selectedPage ? (
           <>
             {/* Toolbar */}
             <header className="flex items-center gap-3 px-6 py-2.5 border-b shrink-0 bg-background/80 backdrop-blur-sm">
@@ -3506,8 +4137,8 @@ export default function Dashboard() {
                   variant="ghost"
                   size="sm"
                   className="h-7 text-xs gap-1.5 text-muted-foreground"
-                  disabled={syncPage.isPending}
-                  onClick={() => syncPage.mutate(selectedPage.id)}
+                  disabled={!canSyncContent || syncPage.isPending}
+                  onClick={() => handleSyncCurrentPage(selectedPage.id)}
                 >
                   {syncPage.isPending
                     ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -3521,8 +4152,8 @@ export default function Dashboard() {
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
-                    disabled={unpublishPage.isPending}
-                    onClick={() => unpublishPage.mutate(selectedPage.id)}
+                    disabled={!canPublishContent || unpublishPage.isPending}
+                    onClick={() => handleUnpublishPage(selectedPage)}
                   >
                     Unpublish
                   </Button>
@@ -3531,8 +4162,8 @@ export default function Dashboard() {
                   <Button
                     size="sm"
                     className="h-7 text-xs gap-1.5"
-                    disabled={publishPage.isPending || !selectedPage.html_content || !selectedPage.section_id}
-                    onClick={() => publishPage.mutate(selectedPage.id)}
+                    disabled={!canPublishContent || publishPage.isPending || !selectedPage.html_content || !selectedPage.section_id}
+                    onClick={() => handlePublishCurrentPage(selectedPage)}
                   >
                     {publishPage.isPending
                       ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -3549,7 +4180,7 @@ export default function Dashboard() {
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!canEditContent}>
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -3565,42 +4196,40 @@ export default function Dashboard() {
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setRenamingPage(selectedPage)}>
+                    <DropdownMenuItem onClick={() => setRenamingPage(selectedPage)} disabled={!canEditContent}>
                       <Pencil className="h-3.5 w-3.5 mr-2" /> Edit Title
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setEditingPageSlug(selectedPage)}>
+                    <DropdownMenuItem onClick={() => setEditingPageSlug(selectedPage)} disabled={!canEditContent}>
                       <Pencil className="h-3.5 w-3.5 mr-2" /> Edit URL slug
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setMovingPage(selectedPage)}>
+                    <DropdownMenuItem onClick={() => setMovingPage(selectedPage)} disabled={!canMoveContent}>
                       <ArrowRightLeft className="h-3.5 w-3.5 mr-2" /> Move
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleRearrangePage(selectedPage)}>
+                    <DropdownMenuItem onClick={() => handleRearrangePage(selectedPage)} disabled={!canMoveContent}>
                       <ListOrdered className="h-3.5 w-3.5 mr-2" /> Re-arrange
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      onClick={() =>
-                        updatePageVisibility.mutate({ id: selectedPage.id, visibility_override: null })
-                      }
+                      onClick={() => handlePageVisibilityOverride(selectedPage, null)}
+                      disabled={!canEditVisibilitySettings}
                     >
                       {(selectedPage.visibility_override ?? null) === null ? "✓ " : ""}Use section visibility
                     </DropdownMenuItem>
                     {visibilityOptions.map((opt) => (
                       <DropdownMenuItem
                         key={opt.value}
-                        onClick={() =>
-                          updatePageVisibility.mutate({ id: selectedPage.id, visibility_override: opt.value })
-                        }
+                        onClick={() => handlePageVisibilityOverride(selectedPage, opt.value)}
+                        disabled={!canEditVisibilitySettings}
                       >
                         {(selectedPage.visibility_override ?? null) === opt.value ? "✓ " : ""}{opt.label}
                       </DropdownMenuItem>
                     ))}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => duplicatePage.mutate(selectedPage.id)}>
+                    <DropdownMenuItem onClick={() => handleDuplicatePage(selectedPage)} disabled={!canCreateContent}>
                       <Copy className="h-3.5 w-3.5 mr-2" /> Duplicate
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      disabled={!selectedPage.is_published}
+                      disabled={!canPublishContent || !selectedPage.is_published}
                       className={cn(!selectedPage.is_published && "opacity-50")}
                       onClick={() => handleUnpublishPage(selectedPage)}
                     >
@@ -3609,6 +4238,7 @@ export default function Dashboard() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
+                      disabled={!canDeleteContent}
                       onClick={() => handleDeletePage(selectedPage)}
                     >
                       <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete page
@@ -3629,7 +4259,7 @@ export default function Dashboard() {
                         onClick={() => {
                           const firstPage = findFirstPageInSection(tab.id);
                           if (firstPage) {
-                            setSelectedPageId(firstPage.id);
+                            handleSelectPage(firstPage.id);
                           } else {
                             toast({
                               title: "No pages in tab",
@@ -3656,7 +4286,7 @@ export default function Dashboard() {
             <div className="flex-1 min-h-0 flex">
               <ReaderHierarchy
                 title={readerHierarchyTitle}
-                pages={visiblePages}
+                pages={treeVisiblePages}
                 topPages={readerHierarchyTopPages}
                 rootSections={readerHierarchySections}
                 sectionsById={sectionsById}
@@ -3670,38 +4300,32 @@ export default function Dashboard() {
                 hideVersionSections={Boolean(selectedProduct && !selectedVersion)}
                 visibilityFilter={visibilityFilter}
                 onVisibilityFilterChange={setVisibilityFilter}
+                pageSearchQuery={pageSearchQuery}
+                onPageSearchChange={setPageSearchQuery}
                 selectedPageId={selectedPageId}
-                onSelectPage={setSelectedPageId}
-                onAddPage={(sectionId) => { setAddPageSectionId(sectionId); setShowAddPage(true); }}
-                onAddSubSection={(parentId) => {
-                  setAddSectionParentId(parentId);
-                  setAddSectionPreferredType(undefined);
-                  setAddSectionCloneFromId(null);
-                  setShowAddSection(true);
-                }}
+                onSelectPage={handleSelectPage}
+                onAddPage={(sectionId) => openAddPageDialog(sectionId)}
+                onAddSubSection={openAddSectionDialog}
                 onImportHere={(section) => openImportDialogForTarget(section)}
                 onRenameSection={setRenamingSection}
                 onMoveSection={setMovingSection}
-                onDeleteSection={(s) => deleteSection.mutate(s.id)}
-                onChangeSectionType={(s, nextType) =>
-                  updateSectionType.mutate({
-                    id: s.id,
-                    section_type: nextType,
-                  })
-                }
-                onSetSectionVisibility={(s, visibility) =>
-                  updateSectionVisibility.mutate({ id: s.id, visibility })
-                }
+                onDeleteSection={handleDeleteSection}
+                onChangeSectionType={handleSectionTypeChange}
+                onSetSectionVisibility={handleSectionVisibilityChange}
                 onRenamePage={setRenamingPage}
                 onEditPageSlug={setEditingPageSlug}
                 onMovePage={setMovingPage}
-                onSetPageVisibilityOverride={(p, visibility) =>
-                  updatePageVisibility.mutate({ id: p.id, visibility_override: visibility })
-                }
-                onDuplicatePage={(p) => duplicatePage.mutate(p.id)}
+                onSetPageVisibilityOverride={handlePageVisibilityOverride}
+                onDuplicatePage={handleDuplicatePage}
                 onUnpublishPage={handleUnpublishPage}
                 onRearrangePage={handleRearrangePage}
                 onDeletePage={handleDeletePage}
+                canEditContent={canEditContent}
+                canMoveContent={canMoveContent}
+                canEditVisibilitySettings={canEditVisibilitySettings}
+                canPublishContent={canPublishContent}
+                canDeleteContent={canDeleteContent}
+                canOpenImportDialog={canOpenImportDialog}
               />
               <div className="flex-1 min-w-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_16rem]">
                 <div className="dashboard-doc-scroll overflow-y-auto">
@@ -3723,8 +4347,8 @@ export default function Dashboard() {
                         variant="outline"
                         size="sm"
                         className="h-8 text-xs gap-1.5 mt-1"
-                        disabled={syncPage.isPending}
-                        onClick={() => syncPage.mutate(selectedPage.id)}
+                        disabled={!canSyncContent || syncPage.isPending}
+                        onClick={() => handleSyncCurrentPage(selectedPage.id)}
                       >
                         {syncPage.isPending
                           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3750,46 +4374,71 @@ export default function Dashboard() {
           </>
         ) : (
           /* Empty state */
-          <div className="flex flex-col items-center justify-center flex-1 gap-5 px-8">
-            <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center"
-              style={{ background: `${org?.primary_color ?? "#6366f1"}15` }}
-            >
-              <BookOpen
-                className="h-7 w-7"
-                style={{ color: org?.primary_color ?? "#6366f1" }}
+          <div className="flex-1 overflow-y-auto px-6 py-8">
+            <div className="max-w-5xl mx-auto space-y-6">
+              {!hasWorkspaceContent && (
+                <div className="flex flex-col items-center gap-5">
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                    style={{ background: `${org?.primary_color ?? "#6366f1"}15` }}
+                  >
+                    <BookOpen
+                      className="h-7 w-7"
+                      style={{ color: org?.primary_color ?? "#6366f1" }}
+                    />
+                  </div>
+                  <div className="text-center max-w-sm">
+                    <h2 className="font-semibold text-base tracking-tight">
+                      Welcome to {org?.name ?? "AccelDocs"}
+                    </h2>
+                    <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
+                      Select a page from the sidebar, or get started by importing your Google Drive folder.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5"
+                      onClick={() => openImportDialogForTarget(null)}
+                      disabled={!canOpenImportDialog}
+                    >
+                      <FolderOpen className="h-3.5 w-3.5" /> Import content
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5"
+                      onClick={openConfigureHierarchyDialog}
+                      disabled={!canConfigureHierarchy}
+                    >
+                      <Settings className="h-3.5 w-3.5" /> Tabs (optional)
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-8 text-xs gap-1.5"
+                      onClick={() => openAddPageDialog(defaultAddPageSectionId)}
+                      disabled={!canCreateContent}
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add page
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <DocumentationImpactPanel
+                snapshot={analyticsSnapshot}
+                onOpenPage={(pageId) => {
+                  handleSelectPage(pageId);
+                }}
               />
-            </div>
-            <div className="text-center max-w-sm">
-              <h2 className="font-semibold text-base tracking-tight">
-                Welcome to {org?.name ?? "AccelDocs"}
-              </h2>
-              <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
-                Select a page from the sidebar, or get started by importing your Google Drive folder.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => openImportDialogForTarget(null)}>
-                <FolderOpen className="h-3.5 w-3.5" /> Import content
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs gap-1.5"
-                onClick={() => setShowConfigureTabs(true)}
-              >
-                <Settings className="h-3.5 w-3.5" /> Tabs (optional)
-              </Button>
-              <Button size="sm" className="h-8 text-xs gap-1.5" onClick={() => { setAddPageSectionId(defaultAddPageSectionId); setShowAddPage(true); }}>
-                <Plus className="h-3.5 w-3.5" /> Add page
-              </Button>
             </div>
           </div>
         )}
       </main>
 
-      {showAddPage && <AddPageDialog sectionId={addPageSectionId} onClose={() => setShowAddPage(false)} />}
-      {showAddSection && (
+      {showAddPage && canCreateContent && <AddPageDialog sectionId={addPageSectionId} onClose={() => setShowAddPage(false)} />}
+      {showAddSection && canManageStructure && (
         <AddSectionDialog
           parentId={addSectionParentId}
           allSections={sections}
@@ -3808,7 +4457,7 @@ export default function Dashboard() {
         <ScanDriveDialog
           onClose={() => { setShowScanDrive(false); setScanTarget(null); }}
           onSuccess={() => {
-            if (!scanTarget) setShowConfigureTabs(true);
+            if (!scanTarget && canConfigureHierarchy) setShowConfigureTabs(true);
           }}
           rootFolderId={org?.drive_folder_id ?? driveStatus?.drive_folder_id ?? null}
           driveConnected={driveConnected}
@@ -3817,14 +4466,14 @@ export default function Dashboard() {
           allSections={sections}
         />
       )}
-      {showConfigureTabs && (
+      {showConfigureTabs && canConfigureHierarchy && (
         <ConfigureTabsDialog
           sections={sections}
           hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
           onClose={() => setShowConfigureTabs(false)}
         />
       )}
-      {showExternalAccessPanel && org?.id && (
+      {showExternalAccessPanel && org?.id && canManageExternalAccess && (
         <ProjectSharePanel
           open={showExternalAccessPanel}
           onOpenChange={setShowExternalAccessPanel}
@@ -3832,14 +4481,17 @@ export default function Dashboard() {
           projectName={selectedProduct?.name ?? org.name}
           organizationSlug={org.slug ?? null}
           projectSlug={selectedProduct?.slug ?? null}
+          canManageAccess={canManageExternalAccess}
         />
       )}
-      {showInviteMember && org && (
+      {showInviteMember && org && canInviteMembers && (
         <InviteMemberDialog
           open={showInviteMember}
           onOpenChange={setShowInviteMember}
           organizationName={org.name}
           organizationDomain={org.domain}
+          currentUserRole={org.user_role}
+          currentUserEmail={user?.email ?? null}
         />
       )}
       {showWorkspaceSettings && org && canManageWorkspace && (
@@ -3848,7 +4500,7 @@ export default function Dashboard() {
           onClose={() => setShowWorkspaceSettings(false)}
         />
       )}
-      {renamingSection && (
+      {renamingSection && canEditContent && (
         <RenameDialog
           label="section"
           initialValue={renamingSection.name}
@@ -3856,7 +4508,7 @@ export default function Dashboard() {
           onClose={() => setRenamingSection(null)}
         />
       )}
-      {renamingPage && (
+      {renamingPage && canEditContent && (
         <RenameDialog
           label="page title"
           initialValue={renamingPage.title}
@@ -3864,7 +4516,7 @@ export default function Dashboard() {
           onClose={() => setRenamingPage(null)}
         />
       )}
-      {editingPageSlug && (
+      {editingPageSlug && canEditContent && (
         <RenameDialog
           label="URL slug"
           initialValue={editingPageSlug.slug}
@@ -3872,14 +4524,14 @@ export default function Dashboard() {
           onClose={() => setEditingPageSlug(null)}
         />
       )}
-      {movingSection && (
+      {movingSection && canMoveContent && (
         <MoveSectionDialog
           section={movingSection}
           allSections={sections}
           onClose={() => setMovingSection(null)}
         />
       )}
-      {movingPage && (
+      {movingPage && canMoveContent && (
         <MovePageDialog
           page={movingPage}
           allSections={sections}

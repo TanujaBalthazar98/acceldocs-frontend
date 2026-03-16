@@ -28,6 +28,7 @@ interface ProjectSharePanelProps {
   projectSlug?: string | null;
   organizationSlug?: string | null;
   projectVersionSlug?: string | null;
+  canManageAccess?: boolean;
 }
 
 export const ProjectSharePanel = ({
@@ -35,6 +36,7 @@ export const ProjectSharePanel = ({
   onOpenChange,
   projectId,
   projectName,
+  canManageAccess = false,
 }: ProjectSharePanelProps) => {
   const { toast } = useToast();
   const [members, setMembers] = useState<Member[]>([]);
@@ -79,6 +81,10 @@ export const ProjectSharePanel = ({
   }, [open, projectId]);
 
   const handleInvite = async () => {
+    if (!canManageAccess) {
+      toast({ title: "Permission denied", description: "Only owner/admin can manage external access.", variant: "destructive" });
+      return;
+    }
     if (!email.trim()) return;
     setInviting(true);
     try {
@@ -109,6 +115,10 @@ export const ProjectSharePanel = ({
   };
 
   const handleRemove = async (memberId: number) => {
+    if (!canManageAccess) {
+      toast({ title: "Permission denied", description: "Only owner/admin can manage external access.", variant: "destructive" });
+      return;
+    }
     setRemovingId(memberId);
     try {
       const { data, error } = await apiFetch<{ ok: boolean; error?: string }>(
@@ -143,11 +153,17 @@ export const ProjectSharePanel = ({
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleInvite()}
             className="flex-1"
+            disabled={!canManageAccess}
           />
-          <Button onClick={handleInvite} disabled={inviting || !email.trim()} size="sm">
+          <Button onClick={handleInvite} disabled={!canManageAccess || inviting || !email.trim()} size="sm">
             {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
           </Button>
         </div>
+        {!canManageAccess && (
+          <p className="text-xs text-muted-foreground">
+            Only owner/admin can grant or revoke external access.
+          </p>
+        )}
 
         {/* Member list */}
         <div className="space-y-1 max-h-56 overflow-y-auto">
@@ -176,7 +192,7 @@ export const ProjectSharePanel = ({
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
                     onClick={() => handleRemove(m.id)}
-                    disabled={removingId === m.id}
+                    disabled={!canManageAccess || removingId === m.id}
                   >
                     {removingId === m.id ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
