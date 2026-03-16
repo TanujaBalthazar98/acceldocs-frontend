@@ -7,9 +7,13 @@
 const AUTH_TOKEN_KEY = "acceldocs_auth_token";
 const ORG_ID_KEY = "acceldocs_current_org_id";
 
-// Backend base URL — Railway in production, localhost in dev
+// Backend base URL — set VITE_API_URL in production (e.g. Vercel env vars)
+const _configuredUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
+if (import.meta.env.PROD && !_configuredUrl) {
+  console.warn("[AccelDocs] VITE_API_URL is not set — using hardcoded fallback. Set this env var in your deployment.");
+}
 const PRODUCTION_API_URL = "https://web-production-6a023.up.railway.app";
-export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "")
+export const API_BASE_URL = _configuredUrl
   || (import.meta.env.PROD ? PRODUCTION_API_URL : "http://localhost:8000");
 
 function getApiFetchBaseUrl(): string {
