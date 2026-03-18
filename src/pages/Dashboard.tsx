@@ -88,6 +88,9 @@ import {
   X,
   PanelLeftOpen,
   Sparkles,
+  Lock,
+  Globe,
+  Share2,
 } from "lucide-react";
 import {
   Select,
@@ -96,6 +99,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL, getAuthToken } from "@/api/client";
 import { openGoogleDocWithAcl } from "@/lib/googleDocsAccess";
@@ -3577,9 +3581,33 @@ export default function Dashboard() {
   }, [currentOrgId, isConnectingDrive, org?.id, toast]);
 
   const orgSlug = org?.slug ?? String(org?.id ?? "");
-  const publicDocsUrl = `${API_BASE_URL}/docs/${orgSlug}`;
+  const normalizedCustomDocsOrigin = useMemo(() => {
+    const raw = (org?.custom_docs_domain ?? "").trim();
+    if (!raw) return null;
+    const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    try {
+      const parsed = new URL(candidate);
+      return `${parsed.protocol}//${parsed.host}`;
+    } catch {
+      return null;
+    }
+  }, [org?.custom_docs_domain]);
+  const publicDocsUrl = normalizedCustomDocsOrigin
+    ? `${normalizedCustomDocsOrigin}/docs/${orgSlug}`
+    : `${API_BASE_URL}/docs/${orgSlug}`;
   const internalDocsUrl = `${API_BASE_URL}/internal-docs/${orgSlug}`;
   const externalDocsUrl = `${API_BASE_URL}/external-docs/${orgSlug}`;
+  const publishedSlugCountsByVisibility = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const candidate of pages) {
+      const isLive = candidate.is_published || candidate.status === "published";
+      if (!isLive) continue;
+      const visibility = resolveEffectivePageVisibility(candidate, sectionsById);
+      const key = `${visibility}:${candidate.slug}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [pages, sectionsById]);
   const bootstrapDocsSession = useCallback(async () => {
     const token = getAuthToken();
     if (!token) return;
@@ -3621,9 +3649,21 @@ export default function Dashboard() {
           : effectiveVisibility === "external"
             ? externalDocsUrl
             : publicDocsUrl;
-      return `${baseUrl}/p/${page.id}/${page.slug}`;
+      const collisionKey = `${effectiveVisibility}:${page.slug}`;
+      const hasSlugCollision = (publishedSlugCountsByVisibility.get(collisionKey) ?? 0) > 1;
+      if (hasSlugCollision) {
+        return `${baseUrl}/p/${page.id}/${page.slug}`;
+      }
+      return `${baseUrl}/${page.slug}`;
     },
-    [externalDocsUrl, internalDocsUrl, orgSlug, publicDocsUrl, sectionsById],
+    [
+      externalDocsUrl,
+      internalDocsUrl,
+      orgSlug,
+      publicDocsUrl,
+      publishedSlugCountsByVisibility,
+      sectionsById,
+    ],
   );
   const selectedPageEffectiveVisibility = selectedPage
     ? resolveEffectivePageVisibility(selectedPage, sectionsById)
@@ -3769,184 +3809,253 @@ export default function Dashboard() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 mx-auto text-[10px] text-muted-foreground"
+                className="h-7 w-7 mx-auto text-muted-foreground hover:text-foreground"
                 onClick={() => void openPublishedDocs(internalDocsUrl)}
                 title="Open internal docs"
               >
-                I
+                <Lock className="h-3.5 w-3.5" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 mx-auto text-[10px] text-muted-foreground"
+                className="h-7 w-7 mx-auto text-muted-foreground hover:text-foreground"
                 onClick={() => void openPublishedDocs(externalDocsUrl)}
                 title="Open external docs"
               >
-                E
+                <Share2 className="h-3.5 w-3.5" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 mx-auto text-[10px] text-muted-foreground"
+                className="h-7 w-7 mx-auto text-muted-foreground hover:text-foreground"
                 onClick={() => void openPublishedDocs(publicDocsUrl)}
                 title="Open public docs"
               >
-                P
+                <Globe className="h-3.5 w-3.5" />
               </Button>
             </div>
           )}
         </div>
 
         {sidebarCollapsed && !isMobile ? (
-          <div className="flex-1 flex flex-col items-center gap-1.5 py-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8 disabled:opacity-40 disabled:pointer-events-none",
-                dashboardPaneMode === "content"
-                  ? "text-primary bg-primary/10 hover:bg-primary/15"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => setDashboardPaneMode("content")}
-              title="Content view"
-            >
-              <FileText className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8 disabled:opacity-40 disabled:pointer-events-none",
-                dashboardPaneMode === "analytics"
-                  ? "text-primary bg-primary/10 hover:bg-primary/15"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => setDashboardPaneMode("analytics")}
-              title="Analytics view"
-            >
-              <BarChart3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8 disabled:opacity-40 disabled:pointer-events-none relative",
-                dashboardPaneMode === "approvals"
-                  ? "text-primary bg-primary/10 hover:bg-primary/15"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => setDashboardPaneMode("approvals")}
-              title="Approvals"
-            >
-              <ClipboardCheck className="h-4 w-4" />
-              {pendingReviewCount > 0 && (
-                <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-[9px] font-semibold">
-                  {pendingReviewCount > 99 ? "99+" : pendingReviewCount}
-                </span>
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8 disabled:opacity-40 disabled:pointer-events-none",
-                dashboardPaneMode === "agent"
-                  ? "text-primary bg-primary/10 hover:bg-primary/15"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => setDashboardPaneMode("agent")}
-              title="AI Agent"
-            >
-              <Sparkles className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
-              onClick={openConfigureHierarchyDialog}
-              disabled={!canConfigureHierarchy}
-              title="Configure content hierarchy"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
-              onClick={openAddProductDialog}
-              disabled={!canManageStructure}
-              title="New product"
-            >
-              <FolderPlus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
-              onClick={() => openImportDialogForTarget(null)}
-              disabled={!canOpenImportDialog}
-              title="Import content"
-            >
-              <ArrowUpFromLine className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
-              onClick={() => openAddVersionDialog()}
-              disabled={!canCreateContent || !canCreateVersionForSelectedProduct}
-              title="New version"
-            >
-              <GitBranchPlus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
-              onClick={() => openAddPageDialog(defaultAddPageSectionId)}
-              disabled={!canCreateContent}
-              title="New page"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <div className="mt-auto flex flex-col items-center gap-1.5">
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Scrollable icon buttons */}
+            <div className="flex-1 overflow-y-auto flex flex-col items-center gap-1.5 py-3">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => setShowInviteMember(true)}
-                disabled={!org?.id || !canInviteMembers}
-                title="Invite members"
+                className={cn(
+                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+                  dashboardPaneMode === "content"
+                    ? "text-primary bg-primary/10 hover:bg-primary/15"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setDashboardPaneMode("content")}
+                title="Content view"
               >
-                <UserPlus className="h-4 w-4" />
+                <FileText className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={handleSyncAllPages}
-                disabled={!driveConnected || !canSyncContent || syncAll.isPending}
-                title="Sync all pages"
+                className={cn(
+                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+                  dashboardPaneMode === "analytics"
+                    ? "text-primary bg-primary/10 hover:bg-primary/15"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setDashboardPaneMode("analytics")}
+                title="Analytics view"
               >
-                {syncAll.isPending
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <RefreshCw className="h-4 w-4" />
-                }
+                <BarChart3 className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={handleSignOut}
-                disabled={isSigningOut}
-                title="Log out"
+                className={cn(
+                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none relative",
+                  dashboardPaneMode === "approvals"
+                    ? "text-primary bg-primary/10 hover:bg-primary/15"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setDashboardPaneMode("approvals")}
+                title="Approvals"
               >
-                {isSigningOut
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <LogOut className="h-4 w-4" />
-                }
+                <ClipboardCheck className="h-4 w-4" />
+                {pendingReviewCount > 0 && (
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-[9px] font-semibold">
+                    {pendingReviewCount > 99 ? "99+" : pendingReviewCount}
+                  </span>
+                )}
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+                  dashboardPaneMode === "agent"
+                    ? "text-primary bg-primary/10 hover:bg-primary/15"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setDashboardPaneMode("agent")}
+                title="AI Agent"
+              >
+                <Sparkles className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+                onClick={openConfigureHierarchyDialog}
+                disabled={!canConfigureHierarchy}
+                title="Configure content hierarchy"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+                onClick={openAddProductDialog}
+                disabled={!canManageStructure}
+                title="New product"
+              >
+                <FolderPlus className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+                onClick={() => openImportDialogForTarget(null)}
+                disabled={!canOpenImportDialog}
+                title="Import content"
+              >
+                <ArrowUpFromLine className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+                onClick={() => openAddVersionDialog()}
+                disabled={!canCreateContent || !canCreateVersionForSelectedProduct}
+                title="New version"
+              >
+                <GitBranchPlus className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+                onClick={() => openAddPageDialog(defaultAddPageSectionId)}
+                disabled={!canCreateContent}
+                title="New page"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            {/* Pinned bottom — menu popover */}
+            <div className="shrink-0 flex flex-col items-center py-3 border-t">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="Menu"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent side="right" align="end" className="w-56 p-1">
+                  {/* Drive section */}
+                  <p className="px-2 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Drive</p>
+                  {!driveConnected && canManageDrive && (
+                    <button
+                      onClick={handleConnectDrive}
+                      disabled={isConnectingDrive}
+                      className="flex items-center w-full gap-2 px-2 py-1.5 rounded-sm text-xs text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                    >
+                      {isConnectingDrive ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
+                      {isConnectingDrive ? "Connecting..." : "Connect Drive"}
+                    </button>
+                  )}
+                  {!driveConnected && !canManageDrive && (
+                    <p className="px-2 py-1 text-[11px] text-muted-foreground/70">Drive managed by owner/admin.</p>
+                  )}
+                  <button
+                    onClick={() => openImportDialogForTarget(null)}
+                    disabled={!driveConnected || !canOpenImportDialog}
+                    className="flex items-center w-full gap-2 px-2 py-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5" />
+                    Import content
+                  </button>
+                  <button
+                    disabled={!driveConnected || !canSyncContent || syncAll.isPending}
+                    onClick={handleSyncAllPages}
+                    className="flex items-center w-full gap-2 px-2 py-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {syncAll.isPending
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <RefreshCw className="h-3.5 w-3.5" />
+                    }
+                    Sync all pages
+                  </button>
+                  {driveConnected && (
+                    <div className="mx-1 mt-1 rounded-md border bg-muted/30 px-2 py-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Wifi className="h-3 w-3 text-emerald-500" />
+                        <span className="text-[11px] text-muted-foreground/70">Drive connected</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Account section */}
+                  <div className="border-t mt-2 pt-1">
+                    <p className="px-2 pt-1 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Account</p>
+                    <div className="px-2 py-1.5 mb-1 rounded-sm bg-muted/30">
+                      <p className="text-xs font-medium truncate">{accountName}</p>
+                      {accountEmail && <p className="text-[11px] text-muted-foreground truncate mt-0.5">{accountEmail}</p>}
+                    </div>
+                    <button
+                      onClick={() => setShowWorkspaceSettings(true)}
+                      disabled={!canManageWorkspace}
+                      className="flex items-center w-full gap-2 px-2 py-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      Workspace settings
+                    </button>
+                    <button
+                      onClick={() => setShowInviteMember(true)}
+                      disabled={!org?.id || !canInviteMembers}
+                      className="flex items-center w-full gap-2 px-2 py-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Invite members
+                    </button>
+                    <button
+                      onClick={() => setShowExternalAccessPanel(true)}
+                      disabled={!org?.id || !canManageExternalAccess}
+                      className="flex items-center w-full gap-2 px-2 py-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      External access
+                    </button>
+                  </div>
+
+                  {/* Log out */}
+                  <div className="border-t mt-1 pt-1">
+                    <button
+                      onClick={handleSignOut}
+                      disabled={isSigningOut}
+                      className="flex items-center w-full gap-2 px-2 py-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
+                    >
+                      {isSigningOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+                      {isSigningOut ? "Signing out..." : "Log out"}
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         ) : (
@@ -4454,6 +4563,8 @@ export default function Dashboard() {
               handleSelectPage(pageId);
               setDashboardPaneMode("content");
             }}
+            isMobile={isMobile}
+            onOpenSidebar={() => setMobileSidebarOpen(true)}
           />
         ) : dashboardPaneMode === "approvals" ? (
           <ApprovalsPanel
@@ -4466,6 +4577,8 @@ export default function Dashboard() {
               setDashboardPaneMode("content");
             }}
             onCountChange={setPendingReviewCount}
+            isMobile={isMobile}
+            onOpenSidebar={() => setMobileSidebarOpen(true)}
           />
         ) : dashboardPaneMode === "analytics" ? (
           <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-6 sm:py-8">

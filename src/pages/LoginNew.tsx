@@ -4,11 +4,13 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { signInWithGoogle, isAuthenticated } from '@/lib/auth-new';
+import { signInWithGoogle } from '@/lib/auth-new';
+import { useAuth } from '@/hooks/useAuthNew';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isAuthenticated, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -27,7 +29,7 @@ export default function LoginPage() {
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated()) {
+    if (!loading && isAuthenticated) {
       const pendingInvite = localStorage.getItem('acceldocs_pending_invite');
       if (pendingInvite) {
         // Already logged in — go straight to accept the invite
@@ -36,7 +38,7 @@ export default function LoginPage() {
         navigate('/dashboard');
       }
     }
-  }, [navigate]);
+  }, [isAuthenticated, loading, navigate]);
 
   async function handleGoogleSignIn() {
     try {

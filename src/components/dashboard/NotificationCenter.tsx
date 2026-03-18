@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { invokeFunction } from "@/lib/api/functions";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bell, Check, UserPlus, FileText, Settings, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
+import { parseApiDate } from "@/lib/datetime";
 
 interface Notification {
   id: string;
@@ -46,14 +47,6 @@ const iconMap = {
   info: Info,
 };
 
-type PendingDoc = {
-  id: string;
-  entity_type?: "document" | "page";
-  title: string;
-  owner_id?: string | number | null;
-  owner_name?: string | null;
-};
-
 type ApprovalHistoryEntry = {
   id: string | number;
   document_id: string | number;
@@ -63,6 +56,7 @@ type ApprovalHistoryEntry = {
   user_id?: string | number | null;
   user_name: string;
   action: string;
+  comment?: string | null;
   created_at: string | null;
 };
 
@@ -100,24 +94,42 @@ export const NotificationCenter = ({ organizationId, userRole }: NotificationCen
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
-  // Initialize from localStorage
-  const [seenRequestIds, setSeenRequestIds] = useState<Set<string>>(() => loadPersistedSet(SEEN_NOTIFICATIONS_KEY));
-  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => loadPersistedSet(READ_NOTIFICATIONS_KEY));
-  const initialFetchDone = useRef(false);
+  // localStorage is scoped per user+workspace to avoid cross-workspace/account bleed.
+  const [seenRequestIds, setSeenRequestIds] = useState<Set<string>>(new Set());
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set());
   const currentUserId = user?.id ? Number(user.id) : null;
-  const canReviewContent = ["owner", "admin", "reviewer", "editor"].includes((userRole || "").toLowerCase());
+  const canReviewContent = ["owner", "admin", "reviewer"].includes((userRole || "").toLowerCase());
+  const canManageJoinRequests = ["owner", "admin"].includes((userRole || "").toLowerCase());
+  const storageScope = useMemo(() => {
+    const userId = user?.id ? String(user.id) : "anon";
+    const orgId = organizationId || "no-org";
+    return `${userId}:${orgId}`;
+  }, [user?.id, organizationId]);
+  const seenStorageKey = `${SEEN_NOTIFICATIONS_KEY}:${storageScope}`;
+  const readStorageKey = `${READ_NOTIFICATIONS_KEY}:${storageScope}`;
+
+  // Load persisted IDs when user/workspace changes.
+  useEffect(() => {
+    setSeenRequestIds(loadPersistedSet(seenStorageKey));
+    setReadNotificationIds(loadPersistedSet(readStorageKey));
+    setNotifications([]);
+  }, [seenStorageKey, readStorageKey]);
 
   // Persist seen IDs when they change
   useEffect(() => {
-    persistSet(SEEN_NOTIFICATIONS_KEY, seenRequestIds);
-  }, [seenRequestIds]);
+    persistSet(seenStorageKey, seenRequestIds);
+  }, [seenRequestIds, seenStorageKey]);
 
   // Persist read IDs when they change
   useEffect(() => {
-    persistSet(READ_NOTIFICATIONS_KEY, readNotificationIds);
-  }, [readNotificationIds]);
+    persistSet(readStorageKey, readNotificationIds);
+  }, [readNotificationIds, readStorageKey]);
 
-  const addNotification = useCallback((notification: Omit<Notification, "id" | "timestamp" | "read">, entityId?: string) => {
+  const addNotification = useCallback((
+    notification: Omit<Notification, "id" | "timestamp" | "read">,
+    entityId?: string,
+    timestampIso?: string | null,
+  ) => {
     // Use entity ID (like request ID) as the notification ID if provided
     const notificationId = entityId || crypto.randomUUID();
     
@@ -129,7 +141,7 @@ export const NotificationCenter = ({ organizationId, userRole }: NotificationCen
     const newNotification: Notification = {
       ...notification,
       id: notificationId,
-      timestamp: new Date(),
+      timestamp: parseApiDate(timestampIso) || new Date(),
       read: false,
     };
     setNotifications((prev) => {
@@ -141,15 +153,18 @@ export const NotificationCenter = ({ organizationId, userRole }: NotificationCen
     });
   }, [readNotificationIds]);
 
-  // Fetch pending join requests on mount - only once
+  // Join-request notifications: poll pending requests for owner/admin users.
   useEffect(() => {
-    if (!user || !organizationId || initialFetchDone.current) return;
+    if (!user || !organizationId || !canManageJoinRequests) return;
+
+    let cancelled = false;
 
     const fetchPendingRequests = async () => {
       let requests: Array<{ id: string; user_email: string; user_name: string | null; requested_at: string }> = [];
       const { data, error } = await invokeFunction<{ requests: typeof requests }>("list-join-requests", {
         body: { organizationId },
       });
+      if (cancelled) return;
       if (!error && data?.requests) {
         requests = data.requests;
       }
@@ -164,15 +179,19 @@ export const NotificationCenter = ({ organizationId, userRole }: NotificationCen
               title: "Pending Join Request",
               message: `${req.user_name || req.user_email} wants to join your workspace`,
               metadata: { requestId: req.id },
-            }, req.id);
+            }, req.id, req.requested_at);
           }
         });
       }
-      initialFetchDone.current = true;
     };
 
-    fetchPendingRequests();
-  }, [user, organizationId, addNotification, seenRequestIds, readNotificationIds]);
+    void fetchPendingRequests();
+    const interval = window.setInterval(fetchPendingRequests, 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [user, organizationId, canManageJoinRequests, addNotification, seenRequestIds, readNotificationIds]);
 
   // Subscribe to real-time events
   useEffect(() => {
@@ -187,32 +206,37 @@ export const NotificationCenter = ({ organizationId, userRole }: NotificationCen
 
     const fetchApprovalNotifications = async () => {
       try {
-        const [pendingRes, historyRes] = await Promise.all([
-          invokeFunction<{ ok?: boolean; pending?: PendingDoc[] }>("approvals-pending", { body: {} }),
-          invokeFunction<{ ok?: boolean; history?: ApprovalHistoryEntry[] }>("approvals-history", { body: {} }),
-        ]);
+        const historyRes = await invokeFunction<{ ok?: boolean; history?: ApprovalHistoryEntry[] }>(
+          "approvals-history",
+          { body: {} },
+        );
 
         if (cancelled) return;
 
-        const pending = pendingRes.data?.ok ? pendingRes.data.pending || [] : [];
         const history = historyRes.data?.ok ? historyRes.data.history || [] : [];
 
-        // Notify reviewers/admins/owners about newly submitted review items.
+        // Notify reviewers/admins/owners about each explicit submit action.
+        // This uses approval-history IDs so re-submitting the same page still notifies.
         if (canReviewContent) {
-          for (const doc of pending) {
-            const notifId = `approval:pending:${doc.id}`;
+          for (const item of history) {
+            const action = String(item.action || "").toLowerCase();
+            if (action !== "submit") continue;
+            if (!currentUserId) continue;
+            if (item.user_id != null && Number(item.user_id) === currentUserId) continue;
+
+            const notifId = `approval:submit:${item.id}`;
             if (seenRequestIds.has(notifId) || readNotificationIds.has(notifId)) continue;
-            if (currentUserId && doc.owner_id != null && Number(doc.owner_id) === currentUserId) continue;
 
             setSeenRequestIds((prev) => new Set([...prev, notifId]));
             addNotification(
               {
                 type: "approval_submitted",
                 title: "New page awaiting review",
-                message: `${doc.owner_name || "A teammate"} submitted "${doc.title || "Untitled"}"`,
-                metadata: { documentId: doc.id },
+                message: `${item.user_name || "A teammate"} submitted "${item.document_title || "Untitled"}"`,
+                metadata: { documentId: item.document_id, approvalId: item.id },
               },
               notifId,
+              item.created_at,
             );
           }
         }
@@ -229,14 +253,22 @@ export const NotificationCenter = ({ organizationId, userRole }: NotificationCen
           if (item.user_id != null && Number(item.user_id) === currentUserId) continue;
 
           setSeenRequestIds((prev) => new Set([...prev, notifId]));
+          const rejectComment = String(item.comment || "").trim();
+          const decisionMessage =
+            action === "reject"
+              ? `${item.user_name} requested changes on "${item.document_title || "your page"}"${
+                  rejectComment ? `: ${rejectComment}` : ""
+                }`
+              : `${item.user_name} approved "${item.document_title || "your page"}"`;
           addNotification(
             {
               type: action === "reject" ? "approval_rejected" : "approval_approved",
               title: action === "reject" ? "Changes requested" : "Page approved",
-              message: `${item.user_name} ${action === "reject" ? "requested changes on" : "approved"} "${item.document_title || "your page"}"`,
+              message: decisionMessage,
               metadata: { approvalId: item.id, documentId: item.document_id },
             },
             notifId,
+            item.created_at,
           );
         }
       } catch {
@@ -296,7 +328,12 @@ export const NotificationCenter = ({ organizationId, userRole }: NotificationCen
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={8} className="w-80 p-0">
+      <PopoverContent
+        align="start"
+        side="bottom"
+        sideOffset={8}
+        className="w-[calc(100vw-2rem)] sm:w-80 max-w-80 p-0"
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b">
           <h4 className="font-semibold text-sm">Notifications</h4>
@@ -312,8 +349,6 @@ export const NotificationCenter = ({ organizationId, userRole }: NotificationCen
             </Button>
           )}
         </div>
-
-        {/* Workspace switching is now in the sidebar header */}
 
         {/* Notifications List */}
         <ScrollArea className="h-[280px]">
@@ -334,28 +369,28 @@ export const NotificationCenter = ({ organizationId, userRole }: NotificationCen
                     }`}
                     onClick={() => markAsRead(notification.id)}
                   >
-                    <div className="flex gap-3">
+                    <div className="flex gap-2 sm:gap-3">
                       <div
-                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                        className={`flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ${
                           !notification.read
                             ? "bg-primary/10 text-primary"
                             : "bg-muted text-muted-foreground"
                         }`}
                       >
-                        <Icon className="h-4 w-4" />
+                        <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p
-                          className={`text-sm leading-tight ${
+                          className={`text-xs sm:text-sm leading-tight ${
                             !notification.read ? "font-medium" : ""
                           }`}
                         >
                           {notification.title}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                        <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 line-clamp-2">
                           {notification.message}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">
                           {formatDistanceToNow(notification.timestamp, {
                             addSuffix: true,
                           })}

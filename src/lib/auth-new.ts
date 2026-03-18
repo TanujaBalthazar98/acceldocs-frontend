@@ -182,6 +182,12 @@ export async function handleGoogleCallback(code: string): Promise<User & { strap
     throw new Error('NO_ACCOUNT_REDIRECT');
   }
 
+  // Handle org join request flow — access is pending owner/admin approval.
+  if (data.error === 'join_request_pending') {
+    window.location.assign(data.redirect || '/signup?requested=1');
+    throw new Error('JOIN_REQUEST_PENDING_REDIRECT');
+  }
+
   // Store token and user
   setToken(data.access_token);
   setStoredUser(data.user);

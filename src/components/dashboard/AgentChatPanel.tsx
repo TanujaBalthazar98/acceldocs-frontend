@@ -22,6 +22,16 @@ import {
   User,
   AlertCircle,
   FilePlus,
+  Menu,
+  RotateCcw,
+  FolderPlus,
+  Pencil,
+  Globe,
+  GlobeLock,
+  RefreshCw,
+  Copy,
+  Trash2,
+  Users,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -59,7 +69,15 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
   list_pages: <List className="h-3.5 w-3.5" />,
   read_page: <BookOpen className="h-3.5 w-3.5" />,
   search_docs: <Search className="h-3.5 w-3.5" />,
+  list_members: <Users className="h-3.5 w-3.5" />,
   create_draft: <FilePlus className="h-3.5 w-3.5" />,
+  create_section: <FolderPlus className="h-3.5 w-3.5" />,
+  update_page: <Pencil className="h-3.5 w-3.5" />,
+  publish_page: <Globe className="h-3.5 w-3.5" />,
+  unpublish_page: <GlobeLock className="h-3.5 w-3.5" />,
+  sync_page: <RefreshCw className="h-3.5 w-3.5" />,
+  duplicate_page: <Copy className="h-3.5 w-3.5" />,
+  delete_page: <Trash2 className="h-3.5 w-3.5" />,
   fetch_jira_ticket: <FileText className="h-3.5 w-3.5" />,
   search_confluence: <Search className="h-3.5 w-3.5" />,
 };
@@ -69,7 +87,15 @@ const TOOL_LABELS: Record<string, string> = {
   list_pages: "Listing pages",
   read_page: "Reading page",
   search_docs: "Searching documentation",
+  list_members: "Listing team members",
   create_draft: "Creating draft",
+  create_section: "Creating section",
+  update_page: "Updating page",
+  publish_page: "Publishing page",
+  unpublish_page: "Unpublishing page",
+  sync_page: "Syncing from Drive",
+  duplicate_page: "Duplicating page",
+  delete_page: "Deleting page",
   fetch_jira_ticket: "Fetching Jira ticket",
   search_confluence: "Searching Confluence",
 };
@@ -97,14 +123,14 @@ function ToolBubble({ item }: { item: ToolEvent }) {
 
 function DraftCard({ item, onOpen }: { item: DraftEvent; onOpen: (pageId: number) => void }) {
   return (
-    <div className="ml-10 mr-2 rounded-xl border bg-primary/5 border-primary/20 p-4 space-y-2">
+    <div className="ml-2 sm:ml-10 mr-1 sm:mr-2 rounded-xl border bg-primary/5 border-primary/20 p-3 sm:p-4 space-y-2">
       <div className="flex items-center gap-2">
-        <FilePlus className="h-4 w-4 text-primary" />
+        <FilePlus className="h-4 w-4 text-primary shrink-0" />
         <span className="text-sm font-medium text-primary">Draft created</span>
         <Badge variant="secondary" className="text-xs ml-auto">Draft</Badge>
       </div>
       <p className="text-sm font-medium leading-snug">{item.title}</p>
-      <div className="flex gap-2 pt-1">
+      <div className="flex flex-col sm:flex-row gap-2 pt-1">
         <Button
           size="sm"
           variant="outline"
@@ -284,10 +310,10 @@ function JiraSetupForm({ onConnected }: JiraSetupProps) {
 // Suggested prompts
 // ---------------------------------------------------------------------------
 const SUGGESTED_PROMPTS = [
-  "What sections do we have in our documentation?",
-  "Generate a doc for ticket PROJ-123",
-  "Search for existing content about authentication",
-  "Create a getting started guide",
+  "Audit our docs — what's published, what's still in draft?",
+  "Create a Getting Started guide for new users",
+  "Reorganize our documentation into better sections",
+  "Generate docs from Jira ticket PROJ-123",
 ];
 
 // ---------------------------------------------------------------------------
@@ -296,9 +322,11 @@ const SUGGESTED_PROMPTS = [
 
 interface AgentChatPanelProps {
   onPageCreated: (pageId: number) => void;
+  isMobile?: boolean;
+  onOpenSidebar?: () => void;
 }
 
-export function AgentChatPanel({ onPageCreated }: AgentChatPanelProps) {
+export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: AgentChatPanelProps) {
   const { toast } = useToast();
   const [items, setItems] = useState<ChatItem[]>([]);
   const [history, setHistory] = useState<ChatHistoryMessage[]>([]);
@@ -431,28 +459,34 @@ export function AgentChatPanel({ onPageCreated }: AgentChatPanelProps) {
   const isEmpty = items.length === 0;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex-1 overflow-hidden flex flex-col items-center bg-muted/20">
+      <div className="flex flex-col h-full w-full max-w-3xl overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 border-b px-4 py-3 flex items-center justify-between gap-3 bg-background">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+      <div className="shrink-0 border-b px-3 sm:px-4 py-3 flex items-center justify-between gap-2 sm:gap-3 bg-background">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+          {isMobile && onOpenSidebar && (
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onOpenSidebar}>
+              <Menu className="h-4 w-4" />
+            </Button>
+          )}
+          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
             <Sparkles className="h-4 w-4 text-primary" />
           </div>
-          <div>
-            <h2 className="text-sm font-semibold leading-none">Documentation Agent</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Powered by Claude</p>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold leading-none truncate">Documentation Agent</h2>
+            <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">Powered by Claude</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {jiraConnected === null && (
             <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
           )}
           {jiraConnected === true && (
-            <div className="flex items-center gap-1.5">
-              <Badge variant="outline" className="gap-1 text-xs h-6">
-                <Link2 className="h-2.5 w-2.5" />
-                {jiraDomain}
+            <div className="flex items-center gap-1 sm:gap-1.5">
+              <Badge variant="outline" className="gap-1 text-xs h-6 max-w-[120px] sm:max-w-none">
+                <Link2 className="h-2.5 w-2.5 shrink-0" />
+                <span className="truncate">{jiraDomain}</span>
               </Badge>
               <Button
                 variant="ghost"
@@ -476,6 +510,23 @@ export function AgentChatPanel({ onPageCreated }: AgentChatPanelProps) {
               <ChevronDown className={`h-3 w-3 ml-1 transition-transform ${showJiraSetup ? "rotate-180" : ""}`} />
             </Button>
           )}
+          {!isEmpty && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground"
+              onClick={() => {
+                setItems([]);
+                setHistory([]);
+                setInput("");
+              }}
+              disabled={streaming}
+              title="New chat"
+            >
+              <RotateCcw className="h-3 w-3 sm:mr-1" />
+              <span className="hidden sm:inline">New chat</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -495,14 +546,14 @@ export function AgentChatPanel({ onPageCreated }: AgentChatPanelProps) {
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto" ref={scrollRef}>
         {isEmpty ? (
-          <div className="h-full flex flex-col items-center justify-center p-8 gap-6">
+          <div className="h-full flex flex-col items-center justify-center p-4 sm:p-8 gap-4 sm:gap-6">
             <div className="text-center space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
                 <Sparkles className="h-6 w-6 text-primary" />
               </div>
               <h3 className="font-semibold">Documentation Agent</h3>
               <p className="text-sm text-muted-foreground max-w-xs">
-                I can help you create and explore documentation. Connect Jira to generate docs from tickets, or just ask me anything.
+                I can create, organize, publish, and manage your documentation. I'll explore your workspace, write content, and take actions autonomously.
               </p>
             </div>
             <div className="w-full max-w-sm space-y-2">
@@ -518,7 +569,7 @@ export function AgentChatPanel({ onPageCreated }: AgentChatPanelProps) {
             </div>
           </div>
         ) : (
-          <div className="p-4 space-y-4 max-w-3xl mx-auto w-full">
+          <div className="p-3 sm:p-4 space-y-3 sm:space-y-4 w-full">
             {items.map((item, i) => {
               // User message
               if ("role" in item && item.role === "user") {
@@ -589,16 +640,16 @@ export function AgentChatPanel({ onPageCreated }: AgentChatPanelProps) {
       </div>
 
       {/* Input */}
-      <div className="shrink-0 border-t p-3 bg-background">
-        <div className="max-w-3xl mx-auto flex gap-2">
+      <div className="shrink-0 border-t p-2 sm:p-3 bg-background">
+        <div className="flex gap-2">
           <input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask me to create docs, search content, or fetch a Jira ticket…"
+            placeholder={isMobile ? "Ask anything…" : "Create, organize, publish docs — or just ask me anything…"}
             disabled={streaming}
-            className="flex-1 min-w-0 h-10 rounded-xl border border-input bg-background px-4 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0 disabled:opacity-50"
+            className="flex-1 min-w-0 h-10 rounded-xl border border-input bg-background px-3 sm:px-4 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0 disabled:opacity-50"
           />
           <Button
             size="icon"
@@ -613,9 +664,10 @@ export function AgentChatPanel({ onPageCreated }: AgentChatPanelProps) {
             )}
           </Button>
         </div>
-        <p className="text-center text-xs text-muted-foreground mt-2">
+        <p className="text-center text-[10px] sm:text-xs text-muted-foreground mt-1.5 sm:mt-2">
           Agent may make mistakes. Review drafts before publishing.
         </p>
+      </div>
       </div>
     </div>
   );

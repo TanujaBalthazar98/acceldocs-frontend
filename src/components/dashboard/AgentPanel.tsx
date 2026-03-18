@@ -24,6 +24,7 @@ import {
   Unplug,
   Link2,
   ArrowLeft,
+  Menu,
 } from "lucide-react";
 
 type AgentStep = "loading" | "setup" | "ready" | "ticket-loaded" | "generating" | "preview";
@@ -47,9 +48,11 @@ interface GeneratedDraft {
 interface AgentPanelProps {
   sections: Section[];
   onPageCreated: (pageId: number) => void;
+  isMobile?: boolean;
+  onOpenSidebar?: () => void;
 }
 
-export function AgentPanel({ sections, onPageCreated }: AgentPanelProps) {
+export function AgentPanel({ sections, onPageCreated, isMobile, onOpenSidebar }: AgentPanelProps) {
   const { toast } = useToast();
 
   const [step, setStep] = useState<AgentStep>("loading");
@@ -201,11 +204,16 @@ export function AgentPanel({ sections, onPageCreated }: AgentPanelProps) {
 
   return (
     <ScrollArea className="flex-1">
-      <div className="max-w-2xl mx-auto p-6 md:p-8 space-y-6">
+      <div className="max-w-2xl mx-auto p-3 sm:p-6 md:p-8 space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold flex items-center gap-2">
+            <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
+              {isMobile && onOpenSidebar && (
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onOpenSidebar}>
+                  <Menu className="h-4 w-4" />
+                </Button>
+              )}
               <Sparkles className="h-5 w-5 text-primary" />
               Documentation Agent
             </h2>
@@ -230,7 +238,7 @@ export function AgentPanel({ sections, onPageCreated }: AgentPanelProps) {
 
         {/* Step: Jira Setup */}
         {step === "setup" && (
-          <div className="rounded-xl border bg-card p-6 space-y-4">
+          <div className="rounded-xl border bg-card p-4 sm:p-6 space-y-4">
             <div>
               <h3 className="font-medium text-base">Connect Jira</h3>
               <p className="text-sm text-muted-foreground mt-1">
@@ -292,7 +300,7 @@ export function AgentPanel({ sections, onPageCreated }: AgentPanelProps) {
         {/* Step: Ready — ticket input */}
         {step === "ready" && (
           <div className="space-y-4">
-            <div className="rounded-xl border bg-card p-6 space-y-4">
+            <div className="rounded-xl border bg-card p-4 sm:p-6 space-y-4">
               <div>
                 <Label htmlFor="ticket-key">Jira ticket key</Label>
                 <div className="flex gap-2 mt-1">
@@ -337,7 +345,7 @@ export function AgentPanel({ sections, onPageCreated }: AgentPanelProps) {
         {/* Step: Ticket loaded */}
         {step === "ticket-loaded" && ticket && (
           <div className="space-y-4">
-            <div className="rounded-xl border bg-card p-6 space-y-4">
+            <div className="rounded-xl border bg-card p-4 sm:p-6 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
@@ -399,7 +407,7 @@ export function AgentPanel({ sections, onPageCreated }: AgentPanelProps) {
         {/* Step: Preview */}
         {step === "preview" && draft && (
           <div className="space-y-4">
-            <div className="rounded-xl border bg-card p-6 space-y-4">
+            <div className="rounded-xl border bg-card p-4 sm:p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-medium">{draft.title}</h3>
                 <Badge variant="secondary">Draft</Badge>

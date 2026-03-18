@@ -50,7 +50,7 @@ export default function SignUp() {
 
   const [step, setStep] = useState<"search" | "create">("search");
 
-  // Show message if redirected from login (no account found)
+  // Show context-aware onboarding messages.
   useEffect(() => {
     if (searchParams.get("reason") === "no_account") {
       toast({
@@ -58,7 +58,13 @@ export default function SignUp() {
         description: "Please create or join an organization to get started.",
       });
     }
-  }, []);
+    if (searchParams.get("requested") === "1") {
+      toast({
+        title: "Request submitted",
+        description: "Workspace owner/admin has been notified. You'll be able to switch after approval.",
+      });
+    }
+  }, [searchParams, toast]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Organization[]>([]);
   const [searching, setSearching] = useState(false);

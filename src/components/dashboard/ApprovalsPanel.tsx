@@ -11,6 +11,7 @@ import {
   ClipboardCheck,
   History,
   Send,
+  Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { parseApiDate } from "@/lib/datetime";
 
 const GOOGLE_TOKEN_KEY = "google_access_token";
 import { formatDistanceToNow } from "date-fns";
@@ -66,6 +68,8 @@ interface ApprovalsPanelProps {
   onClose: () => void;
   onOpenDocument: (docId: string, docTitle: string) => void;
   onCountChange?: (count: number) => void;
+  isMobile?: boolean;
+  onOpenSidebar?: () => void;
 }
 
 const statusConfig: Record<DocStatus, { label: string; color: string; bg: string; border: string }> = {
@@ -87,9 +91,13 @@ function StatusBadge({ status }: { status: DocStatus }) {
 function TimeAgo({ dateStr }: { dateStr: string | null }) {
   if (!dateStr) return <span className="text-xs text-muted-foreground">—</span>;
   try {
+    const parsed = parseApiDate(dateStr, false);
+    if (!parsed) {
+      return <span className="text-xs text-muted-foreground">—</span>;
+    }
     return (
       <span className="text-xs text-muted-foreground">
-        {formatDistanceToNow(new Date(dateStr), { addSuffix: true })}
+        {formatDistanceToNow(parsed, { addSuffix: true })}
       </span>
     );
   } catch {
@@ -97,7 +105,7 @@ function TimeAgo({ dateStr }: { dateStr: string | null }) {
   }
 }
 
-export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChange }: ApprovalsPanelProps) {
+export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChange, isMobile, onOpenSidebar }: ApprovalsPanelProps) {
   const { toast } = useToast();
   const { googleAccessToken } = useAuth();
   const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
@@ -195,6 +203,11 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <div className="flex items-center gap-2">
+                {isMobile && onOpenSidebar && (
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onOpenSidebar}>
+                    <Menu className="h-4 w-4" />
+                  </Button>
+                )}
                 <ClipboardCheck className="w-4 h-4 text-primary" />
                 <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-semibold">Workflow</p>
               </div>
