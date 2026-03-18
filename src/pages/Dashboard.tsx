@@ -106,6 +106,7 @@ import { TableOfContents } from "@/components/docs/TableOfContents";
 import { ApprovalsPanel } from "@/components/dashboard/ApprovalsPanel";
 import { AgentChatPanel } from "@/components/dashboard/AgentChatPanel";
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
+import { TemplatePickerDialog } from "@/components/dashboard/TemplatePickerDialog";
 import { invokeFunction } from "@/lib/api/functions";
 
 type VisibilityLevel = "public" | "internal" | "external";
@@ -293,6 +294,7 @@ function importTargetTypeLabel(type: ImportTargetType): string {
 function AddPageDialog({ sectionId, onClose }: { sectionId: number | null; onClose: () => void }) {
   const [docId, setDocId] = useState("");
   const [title, setTitle] = useState("");
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -309,51 +311,95 @@ function AddPageDialog({ sectionId, onClose }: { sectionId: number | null; onClo
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const createFromTemplate = useMutation({
+    mutationFn: (vars: { title: string; content: string }) =>
+      pagesApi.createFromTemplate({ title: vars.title, content: vars.content, section_id: sectionId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      toast({ title: "Page created from template" });
+      onClose();
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const isPending = create.isPending || createFromTemplate.isPending;
+
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-base">Add page</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-1">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Title <span className="normal-case font-normal text-muted-foreground/60">(required when creating a new doc)</span>
-            </Label>
-            <Input
-              placeholder="Page title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Google Doc URL or ID <span className="normal-case font-normal text-muted-foreground/60">(optional)</span>
-            </Label>
-            <Input
-              placeholder="Leave blank to create a new Google Doc"
-              value={docId}
-              onChange={(e) => setDocId(e.target.value)}
-              className="text-sm"
-            />
-            {resolvedId && resolvedId !== docId && (
-              <p className="text-xs text-emerald-600">ID: {resolvedId}</p>
-            )}
+    <>
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Add page</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Title <span className="normal-case font-normal text-muted-foreground/60">(required when creating a new doc)</span>
+              </Label>
+              <Input
+                placeholder="Page title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Google Doc URL or ID <span className="normal-case font-normal text-muted-foreground/60">(optional)</span>
+              </Label>
+              <Input
+                placeholder="Leave blank to create a new Google Doc"
+                value={docId}
+                onChange={(e) => setDocId(e.target.value)}
+                className="text-sm"
+              />
+              {resolvedId && resolvedId !== docId && (
+                <p className="text-xs text-emerald-600">ID: {resolvedId}</p>
+              )}
+              {!docId && (
+                <p className="text-xs text-muted-foreground">A blank Google Doc will be created in your Drive.</p>
+              )}
+            </div>
+
+            {/* Template shortcut */}
             {!docId && (
-              <p className="text-xs text-muted-foreground">A blank Google Doc will be created in your Drive.</p>
+              <div className="rounded-lg border border-dashed p-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Start from a template</span>
+                  {" "}— pre-built structures for common doc types
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs shrink-0"
+                  disabled={isPending}
+                  onClick={() => setShowTemplatePicker(true)}
+                >
+                  Browse templates
+                </Button>
+              </div>
             )}
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={(!resolvedId && !title.trim()) || create.isPending} onClick={() => create.mutate()}>
-            {create.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
-            {resolvedId ? "Add page" : "Create page"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+            <Button size="sm" disabled={(!resolvedId && !title.trim()) || isPending} onClick={() => create.mutate()}>
+              {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              {resolvedId ? "Add page" : "Create page"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <TemplatePickerDialog
+        open={showTemplatePicker}
+        onOpenChange={setShowTemplatePicker}
+        onSelectTemplate={(template) => {
+          const templateTitle = title.trim() || template.name;
+          createFromTemplate.mutate({ title: templateTitle, content: template.content });
+          setShowTemplatePicker(false);
+        }}
+      />
+    </>
   );
 }
 
