@@ -104,7 +104,7 @@ import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
 import { WorkspaceSwitcher, setStoredOrgId, getStoredOrgId } from "@/components/dashboard/WorkspaceSwitcher";
 import { TableOfContents } from "@/components/docs/TableOfContents";
 import { ApprovalsPanel } from "@/components/dashboard/ApprovalsPanel";
-import { AgentPanel } from "@/components/dashboard/AgentPanel";
+import { AgentChatPanel } from "@/components/dashboard/AgentChatPanel";
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { invokeFunction } from "@/lib/api/functions";
 
@@ -4403,8 +4403,7 @@ export default function Dashboard() {
       {/* ── Main ──────────────────────────────────────────────────── */}
       <main className="flex-1 overflow-hidden flex flex-col min-w-0 bg-background">
         {dashboardPaneMode === "agent" ? (
-          <AgentPanel
-            sections={sectionTree}
+          <AgentChatPanel
             onPageCreated={(pageId) => {
               handleSelectPage(pageId);
               setDashboardPaneMode("content");
