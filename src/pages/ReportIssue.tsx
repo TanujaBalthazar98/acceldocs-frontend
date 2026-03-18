@@ -58,7 +58,7 @@ const ReportIssue = () => {
 
       <div className="min-h-screen bg-background">
         <header className="border-b border-border bg-card/50">
-          <div className="container mx-auto px-6 py-4">
+          <div className="container mx-auto px-4 md:px-6 py-4">
             <div className="flex items-center justify-between">
               <Link to="/auth" className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl overflow-hidden">
@@ -77,14 +77,14 @@ const ReportIssue = () => {
           </div>
         </header>
 
-        <main className="container mx-auto px-6 py-16 max-w-4xl">
-          <h1 className="text-4xl font-bold text-foreground mb-4">Report an issue</h1>
+        <main className="container mx-auto px-4 md:px-6 py-8 md:py-16 max-w-4xl">
+          <h1 className="text-2xl md:text-4xl font-bold text-foreground mb-4">Report an issue</h1>
           <p className="text-muted-foreground mb-10">
             The fastest way to resolve issues is to include steps, expected results, and screenshots.
           </p>
 
           <div className="grid gap-6">
-            <section className="rounded-lg border border-border bg-card p-6">
+            <section className="rounded-lg border border-border bg-card p-4 md:p-6">
               <div className="flex items-center gap-3 mb-4">
                 <Bug className="h-5 w-5 text-primary" />
                 <h2 className="text-xl font-semibold text-foreground">What to include</h2>
@@ -98,7 +98,7 @@ const ReportIssue = () => {
               </ul>
             </section>
 
-            <section className="rounded-lg border border-border bg-card p-6">
+            <section className="rounded-lg border border-border bg-card p-4 md:p-6">
               <div className="flex items-center gap-3 mb-4">
                 <Send className="h-5 w-5 text-primary" />
                 <h2 className="text-xl font-semibold text-foreground">Submit a report</h2>
@@ -175,7 +175,7 @@ const ReportIssue = () => {
               </form>
             </section>
 
-            <section className="rounded-lg border border-border bg-card p-6">
+            <section className="rounded-lg border border-border bg-card p-4 md:p-6">
               <div className="flex items-center gap-3 mb-4">
                 <FileText className="h-5 w-5 text-primary" />
                 <h2 className="text-xl font-semibold text-foreground">Use email for now</h2>
@@ -192,7 +192,7 @@ const ReportIssue = () => {
               </p>
             </section>
 
-            <section className="rounded-lg border border-border bg-card p-6">
+            <section className="rounded-lg border border-border bg-card p-4 md:p-6">
               <div className="flex items-center gap-3 mb-4">
                 <Mail className="h-5 w-5 text-primary" />
                 <h2 className="text-xl font-semibold text-foreground">Alternative</h2>

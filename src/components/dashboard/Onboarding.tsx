@@ -34,7 +34,7 @@ interface DriveItem {
   isFolder?: boolean;
 }
 
-const APP_NAME = "Docspeare";
+const APP_NAME = "Knowledge Workspace";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const DOC_MIME = "application/vnd.google-apps.document";
 const GOOGLE_APP_MIMES = new Set([

@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { 
-  BookOpen, 
-  FolderOpen, 
-  FileText, 
-  Users, 
-  Globe, 
-  Search, 
-  Settings,
+import {
+  BookOpen,
+  FolderOpen,
+  FileText,
+  Users,
+  Globe,
+  Search,
   ChevronDown,
   ChevronRight,
   ArrowLeft,
@@ -16,11 +15,12 @@ import {
   Shield,
   Layers,
   Share2,
-  Link2,
   RefreshCw,
   Eye,
-  Bot,
-  Palette
+  Palette,
+  Upload,
+  ClipboardCheck,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -45,27 +45,27 @@ const Help = () => {
       content: (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">Welcome to your knowledge workspace</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Welcome to Docspeare</h2>
             <p className="text-muted-foreground mb-4">
-              This workspace turns the documents you already keep in Google Drive into structured, publishable
-              knowledge. You keep using Google Docs as your editor, while the workspace organizes, structures,
-              and publishes content without duplicating files.
+              Docspeare turns the documents you already keep in Google Drive into structured, publishable
+              documentation. You keep using Google Docs as your editor, while Docspeare organizes, syncs,
+              and publishes content with a review workflow built in.
             </p>
           </div>
 
           <div className="bg-primary/10 rounded-lg p-6 border border-primary/20">
             <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
-              Why this approach?
+              Why Docspeare?
             </h3>
             <ul className="space-y-2 text-muted-foreground">
               <li className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
-                <span><strong>No migration required</strong> — Keep using Google Docs as your editor</span>
+                <span><strong>No migration required</strong> — Keep writing in Google Docs</span>
               </li>
               <li className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
-                <span><strong>Personal or team workspaces</strong> — Personal emails get a private workspace; business domains can share one</span>
+                <span><strong>Automatic workspaces</strong> — Personal emails get a private workspace; business domains share one</span>
               </li>
               <li className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
@@ -73,11 +73,11 @@ const Help = () => {
               </li>
               <li className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
-                <span><strong>Automatic sync</strong> — Changes in Google Docs reflect in your documentation</span>
+                <span><strong>Review workflow</strong> — Submit pages for review, approve or reject before publishing</span>
               </li>
               <li className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
-                <span><strong>Publish confidently</strong> — Transform docs into organized, shareable knowledge</span>
+                <span><strong>Multiple audiences</strong> — Publish docs as public, internal, or external with access controls</span>
               </li>
             </ul>
           </div>
@@ -89,35 +89,35 @@ const Help = () => {
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">1</div>
                 <div>
                   <span className="font-medium">Sign in with Google</span>
-                  <p className="text-sm text-muted-foreground">Your account grants Drive access for reading and creating folders</p>
+                  <p className="text-sm text-muted-foreground">Your account is used for authentication and Drive access</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">2</div>
                 <div>
-                  <span className="font-medium">Create your workspace</span>
-                  <p className="text-sm text-muted-foreground">Create a workspace for your team and invite collaborators</p>
+                  <span className="font-medium">Your workspace is created automatically</span>
+                  <p className="text-sm text-muted-foreground">Business emails join a shared workspace; personal emails get a private one</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">3</div>
                 <div>
-                  <span className="font-medium">Set your Drive root folder</span>
-                  <p className="text-sm text-muted-foreground">Choose the Drive folder that will store all projects</p>
+                  <span className="font-medium">Connect Google Drive</span>
+                  <p className="text-sm text-muted-foreground">Grant Drive permissions so Docspeare can read and organize your docs</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">4</div>
                 <div>
-                  <span className="font-medium">Create your first project</span>
-                  <p className="text-sm text-muted-foreground">Start with an empty project and add topics and pages</p>
+                  <span className="font-medium">Import content</span>
+                  <p className="text-sm text-muted-foreground">Import from a Google Drive folder or upload local files (.md, .docx, .pdf, etc.)</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs text-primary font-medium shrink-0">5</div>
                 <div>
-                  <span className="font-medium">Organize topics and publish</span>
-                  <p className="text-sm text-muted-foreground">Topics map to folders; pages map to Google Docs</p>
+                  <span className="font-medium">Sync, review, and publish</span>
+                  <p className="text-sm text-muted-foreground">Sync content from Drive, submit for review, and publish when approved</p>
                 </div>
               </li>
             </ul>
@@ -129,14 +129,14 @@ const Help = () => {
               To get started:
             </p>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Sign in with your Google account (required for Drive integration)</li>
+              <li>Go to the sign-in page and click "Sign in with Google"</li>
               <li>Grant Drive permissions when prompted</li>
-              <li>Create your workspace and invite your teammates</li>
+              <li>You'll be taken to your dashboard automatically</li>
             </ol>
             <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
               <p className="text-sm text-muted-foreground">
-                <strong>Note:</strong> Google sign-in is required because the workspace integrates directly with
-                Google Drive. Your documents never leave Google—content is read and organized with your permission.
+                <strong>Note:</strong> Google sign-in is required because Docspeare integrates directly with
+                Google Drive. Your documents stay in your Drive — content is read and organized with your permission.
               </p>
             </div>
           </div>
@@ -150,64 +150,71 @@ const Help = () => {
       content: (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">Managing Organizations</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Managing Your Workspace</h2>
             <p className="text-muted-foreground mb-4">
-              Organizations are the top-level workspace for all your documentation. They represent 
-              your company, team, or group and contain all projects, members, and branding settings.
+              Organizations (workspaces) are the top-level container for your documentation. They hold
+              all your sections, pages, and team members.
             </p>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Creating a Workspace</h3>
+            <h3 className="font-semibold text-lg mb-3">How Workspaces Are Created</h3>
             <p className="text-muted-foreground mb-3">
               Workspaces are created automatically based on your email:
             </p>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Personal emails create a private workspace tied to your account</li>
-              <li>Business domains map to a shared workspace for that domain</li>
-              <li>Set the workspace name, logo, and brand colors in Settings</li>
-              <li>Invite teammates once the workspace is created</li>
-            </ol>
-            <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
-              <p className="text-sm text-muted-foreground">
-                <strong>Tip:</strong> A workspace slug or custom domain can be used to create clean URLs
-                when you publish documentation.
-              </p>
+            <div className="space-y-3">
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium">Business emails (e.g., you@company.com)</h4>
+                <p className="text-sm text-muted-foreground">
+                  A shared workspace is created for the domain. Everyone with an @company.com email
+                  joins the same workspace automatically.
+                </p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium">Personal emails (e.g., you@gmail.com)</h4>
+                <p className="text-sm text-muted-foreground">
+                  A private workspace is created for your account. You can invite others by email.
+                </p>
+              </div>
             </div>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Organization Roles</h3>
+            <h3 className="font-semibold text-lg mb-3">Workspace Roles</h3>
             <p className="text-muted-foreground mb-3">
-              Members can have different roles within an organization:
+              Members can have different roles:
             </p>
             <div className="space-y-3">
               <div className="bg-muted/50 rounded-lg p-4 border">
                 <h4 className="font-medium text-primary">Owner</h4>
                 <p className="text-sm text-muted-foreground">
-                  Full control over the organization. Can manage billing, delete the organization, 
-                  transfer ownership, and perform all admin actions. Each organization has one owner.
+                  Full control. Can manage settings, members, hierarchy mode, and custom domain.
+                  Each workspace has one owner.
                 </p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4 border">
                 <h4 className="font-medium text-primary">Admin</h4>
                 <p className="text-sm text-muted-foreground">
-                  Can manage projects, invite/remove members, configure branding and settings, 
-                  and manage workspace settings. Cannot delete the organization or transfer ownership.
+                  Can manage members, invite new users, configure hierarchy mode, and manage all content.
+                  Cannot transfer ownership.
                 </p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4 border">
                 <h4 className="font-medium text-primary">Editor</h4>
                 <p className="text-sm text-muted-foreground">
-                  Can create and edit projects, topics, and pages. Can publish content and manage 
-                  documentation structure. Cannot manage organization settings or members.
+                  Can create and edit sections and pages, sync content from Drive, and submit pages for review.
+                </p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-primary">Reviewer</h4>
+                <p className="text-sm text-muted-foreground">
+                  Can approve or reject pages submitted for review. This role is key to the approval workflow.
                 </p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4 border">
                 <h4 className="font-medium text-primary">Viewer</h4>
                 <p className="text-sm text-muted-foreground">
-                  Read-only access to internal documentation. Can view all projects and pages 
-                  within the organization but cannot make changes.
+                  Read-only access to internal documentation and the dashboard.
                 </p>
               </div>
             </div>
@@ -216,102 +223,184 @@ const Help = () => {
           <div>
             <h3 className="font-semibold text-lg mb-3">Inviting Team Members</h3>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Go to the Dashboard and click your organization name</li>
-              <li>Navigate to Settings → Team</li>
-              <li>Click "Invite Member"</li>
+              <li>Open the dashboard sidebar and click "Invite members"</li>
               <li>Enter the email address of the person you want to invite</li>
-              <li>Select their role (Admin, Editor, or Viewer)</li>
+              <li>Select their role (Admin, Editor, Reviewer, or Viewer)</li>
               <li>Click "Send Invitation"</li>
             </ol>
             <p className="text-sm text-muted-foreground mt-3">
-              Invitations expire after 7 days. You can resend or revoke invitations from the Team settings page.
+              Invitations expire after 7 days. The invited person will receive an email with a link to sign in
+              and join your workspace. Their Google Drive permissions are automatically synced when they accept.
             </p>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Switching Organizations</h3>
+            <h3 className="font-semibold text-lg mb-3">Switching Workspaces</h3>
             <p className="text-muted-foreground">
-              If you're a member of multiple organizations, use the workspace switcher in the 
-              dashboard sidebar to switch between them. Your role and permissions may differ 
-              across organizations.
+              If you belong to multiple workspaces, use the workspace switcher at the top of the
+              dashboard sidebar to switch between them.
             </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Workspace Settings</h3>
+            <p className="text-muted-foreground mb-3">
+              Owners and admins can access workspace settings from the sidebar:
+            </p>
+            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
+              <li><strong>Workspace name:</strong> Change the display name of your workspace</li>
+              <li><strong>Custom docs domain:</strong> Set a custom domain for your published documentation (e.g., docs.yourcompany.com)</li>
+              <li><strong>Hierarchy mode:</strong> Choose between "Product" mode (for versioned product docs) or "Flat" mode (simple sections)</li>
+            </ul>
           </div>
         </div>
       )
     },
     {
-      id: "projects",
-      title: "Projects",
+      id: "sections-pages",
+      title: "Sections & Pages",
       icon: FolderOpen,
       content: (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">Working with Projects</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Sections & Pages</h2>
             <p className="text-muted-foreground mb-4">
-              Projects are collections of documentation organized around a specific product, service, 
-              or topic. Each project is connected to a Google Drive folder and contains topics and pages.
+              Sections organize your documentation into a tree structure. Pages are individual
+              documentation articles backed by Google Docs.
             </p>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Creating a Project</h3>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>From the dashboard sidebar, click "Add Project"</li>
-              <li>Enter a project name (e.g., "API Documentation")</li>
-              <li>Optionally add a description</li>
-              <li>Select a Google Drive folder to connect (or create a new one)</li>
-              <li>Set the visibility level</li>
-              <li>Click "Create Project"</li>
-            </ol>
-            <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
-              <p className="text-sm text-muted-foreground">
-                <strong>Important:</strong> The connected Drive folder becomes the home for all Google Docs 
-                in this project. Topics will create subfolders, and pages will create Google Docs within them.
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Connecting Google Drive</h3>
+            <h3 className="font-semibold text-lg mb-3">Hierarchy Modes</h3>
             <p className="text-muted-foreground mb-3">
-              When you create or edit a project, you can connect it to a Google Drive folder:
-            </p>
-            <div className="bg-muted/50 rounded-lg p-4 border space-y-3">
-              <div className="flex items-start gap-3">
-                <FolderOpen className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-medium">Select Existing Folder</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Choose a folder from your Google Drive that already contains documentation
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <FolderOpen className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-medium">Create New Folder</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Docspeare can create a new folder in your Drive for this project
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Project Visibility Levels</h3>
-            <p className="text-muted-foreground mb-3">
-              Visibility determines who can access your documentation:
+              Docspeare supports two hierarchy modes, configurable by workspace owners and admins:
             </p>
             <div className="space-y-3">
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-primary">Product Mode</h4>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Designed for versioned product documentation. The hierarchy is:
+                </p>
+                <div className="font-mono text-sm space-y-1 ml-2">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <FolderOpen className="h-4 w-4" />
+                    <span>Product (top-level section)</span>
+                  </div>
+                  <div className="ml-6 flex items-center gap-2 text-muted-foreground">
+                    <Layers className="h-4 w-4" />
+                    <span>Version (optional, e.g., "v2.0")</span>
+                  </div>
+                  <div className="ml-12 flex items-center gap-2 text-muted-foreground">
+                    <Layers className="h-4 w-4 opacity-70" />
+                    <span>Tab (navigation group)</span>
+                  </div>
+                  <div className="ml-12 pl-6 flex items-center gap-2 text-muted-foreground">
+                    <FolderOpen className="h-4 w-4 opacity-70" />
+                    <span>Section</span>
+                  </div>
+                  <div className="ml-12 pl-12 flex items-center gap-2 text-muted-foreground">
+                    <FileText className="h-4 w-4" />
+                    <span>Page</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-primary">Flat Mode</h4>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Simple, flexible structure without product or version grouping:
+                </p>
+                <div className="font-mono text-sm space-y-1 ml-2">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <FolderOpen className="h-4 w-4" />
+                    <span>Section (optionally promoted to Tab)</span>
+                  </div>
+                  <div className="ml-6 flex items-center gap-2 text-muted-foreground">
+                    <FolderOpen className="h-4 w-4 opacity-70" />
+                    <span>Sub-section</span>
+                  </div>
+                  <div className="ml-12 flex items-center gap-2 text-muted-foreground">
+                    <FileText className="h-4 w-4" />
+                    <span>Page</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Creating Sections</h3>
+            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <li>Click the folder icon in the sidebar to create a new section</li>
+              <li>Enter a section name</li>
+              <li>The section appears in the sidebar tree</li>
+            </ol>
+            <p className="text-sm text-muted-foreground mt-3">
+              Sections can be nested. Use the three-dot menu on any section to add sub-sections,
+              rename, move, change type (section/tab), set visibility, or delete.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Creating Pages</h3>
+            <p className="text-muted-foreground mb-3">
+              Pages are backed by Google Docs. You can create them in two ways:
+            </p>
+            <div className="space-y-3">
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium">New blank page</h4>
+                <p className="text-sm text-muted-foreground">
+                  Click the "+" icon in the sidebar or use "Add page" from a section's menu.
+                  Enter a title and a new Google Doc is automatically created in your Drive.
+                </p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium">Link an existing Google Doc</h4>
+                <p className="text-sm text-muted-foreground">
+                  When creating a page, paste a Google Doc URL or ID to link an existing document
+                  instead of creating a new one.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Page Actions</h3>
+            <p className="text-muted-foreground mb-3">
+              Use the three-dot menu on any page for these actions:
+            </p>
+            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
+              <li><strong>Open in Google Docs:</strong> Edit the source document directly in Google Docs</li>
+              <li><strong>Edit Title:</strong> Rename the page (also renames the Google Doc in Drive)</li>
+              <li><strong>Edit URL slug:</strong> Customize the page URL path</li>
+              <li><strong>Move:</strong> Move the page to a different section</li>
+              <li><strong>Set visibility:</strong> Override the section's visibility for this page</li>
+              <li><strong>Duplicate:</strong> Create a copy of the page and its Google Doc</li>
+              <li><strong>Delete:</strong> Remove the page and trash the Drive doc</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Section Visibility</h3>
+            <p className="text-muted-foreground mb-3">
+              Each section has a visibility setting that determines who can access its published pages:
+            </p>
+            <div className="space-y-3">
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <div className="flex items-center gap-2 mb-1">
+                  <Globe className="h-4 w-4 text-green-500" />
+                  <h4 className="font-medium">Public</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Visible to everyone without authentication. Best for public-facing docs.
+                </p>
+              </div>
               <div className="bg-muted/50 rounded-lg p-4 border">
                 <div className="flex items-center gap-2 mb-1">
                   <Shield className="h-4 w-4 text-orange-500" />
                   <h4 className="font-medium">Internal</h4>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Only visible to authenticated members of your organization. Perfect for internal 
-                  processes, team wikis, and sensitive documentation.
+                  Only visible to authenticated members of your workspace.
                 </p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4 border">
@@ -320,421 +409,265 @@ const Help = () => {
                   <h4 className="font-medium">External</h4>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Visible to authenticated users outside your organization. Ideal for partner 
-                  documentation, customer portals, or documentation requiring login.
-                </p>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-4 border">
-                <div className="flex items-center gap-2 mb-1">
-                  <Globe className="h-4 w-4 text-green-500" />
-                  <h4 className="font-medium">Public</h4>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Visible to everyone without authentication. Indexed by search engines. 
-                  Best for public-facing documentation, API docs, and help centers.
+                  Visible to authenticated users with explicit access grants. Use this for partner
+                  or customer documentation.
                 </p>
               </div>
             </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Project Settings</h3>
-            <p className="text-muted-foreground mb-3">
-              Access project settings by clicking the settings icon on a project:
+            <p className="text-sm text-muted-foreground mt-3">
+              Individual pages can override their section's visibility using the "Set visibility" option.
             </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li><strong>General:</strong> Update name, description, visibility, and Drive folder connection</li>
-              <li><strong>SEO:</strong> Configure indexing, robots.txt, and LLM crawler settings</li>
-              <li><strong>API:</strong> Add OpenAPI specifications to generate API documentation</li>
-              <li><strong>MCP:</strong> Enable Model Context Protocol for AI tool integration</li>
-              <li><strong>Sharing:</strong> Invite specific users to collaborate on the project</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Project-Level Sharing</h3>
-            <p className="text-muted-foreground mb-3">
-              In addition to organization roles, you can grant access to specific projects:
-            </p>
-            <div className="space-y-3">
-              <div className="bg-muted/50 rounded-lg p-4 border">
-                <h4 className="font-medium text-primary">Admin</h4>
-                <p className="text-sm text-muted-foreground">Full control over project settings, content, and team</p>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-4 border">
-                <h4 className="font-medium text-primary">Editor</h4>
-                <p className="text-sm text-muted-foreground">Can create, edit, and publish topics and pages</p>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-4 border">
-                <h4 className="font-medium text-primary">Reviewer</h4>
-                <p className="text-sm text-muted-foreground">Can view content and provide feedback, but cannot edit</p>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-4 border">
-                <h4 className="font-medium text-primary">Viewer</h4>
-                <p className="text-sm text-muted-foreground">Read-only access to project content</p>
-              </div>
-            </div>
           </div>
         </div>
       )
     },
     {
-      id: "topics-pages",
-      title: "Topics & Pages",
-      icon: FileText,
+      id: "importing",
+      title: "Importing Content",
+      icon: Upload,
       content: (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">Topics & Pages</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Importing Content</h2>
             <p className="text-muted-foreground mb-4">
-              Topics are folders that organize related pages within a project. Pages are 
-              individual documentation articles powered by Google Docs.
+              Docspeare supports importing content from Google Drive folders or from local files on your computer.
             </p>
           </div>
 
-          <div className="bg-muted/50 rounded-lg p-4 border">
-            <h4 className="font-medium mb-2">Content Hierarchy</h4>
-            <div className="font-mono text-sm space-y-1">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Users className="h-4 w-4" />
-                <span>Organization</span>
-              </div>
-              <div className="ml-6 flex items-center gap-2 text-muted-foreground">
-                <FolderOpen className="h-4 w-4" />
-                <span>Project (linked to Drive folder)</span>
-              </div>
-              <div className="ml-12 flex items-center gap-2 text-muted-foreground">
-                <Layers className="h-4 w-4" />
-                <span>Topic (Drive subfolder)</span>
-              </div>
-              <div className="ml-12 pl-6 flex items-center gap-2 text-muted-foreground">
-                <Layers className="h-4 w-4 opacity-50" />
-                <span className="opacity-70">Subtopic (nested subfolder)</span>
-              </div>
-              <div className="ml-12 pl-12 flex items-center gap-2 text-muted-foreground">
-                <FileText className="h-4 w-4" />
-                <span>Page (Google Doc)</span>
-              </div>
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Import from Google Drive</h3>
+            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <li>Click the "Import content" button in the sidebar</li>
+              <li>Select "From Drive" as the source</li>
+              <li>Paste a Google Drive folder URL or folder ID</li>
+              <li>Choose a destination section (or import to the workspace root)</li>
+              <li>Click "Import"</li>
+            </ol>
+            <p className="text-sm text-muted-foreground mt-3">
+              Docspeare scans the folder recursively: subfolders become sections, and Google Docs become pages.
+              The folder structure from Drive is preserved.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Import from Local Files</h3>
+            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <li>Click the "Import content" button in the sidebar</li>
+              <li>Select "From local files" as the source</li>
+              <li>Select files or a folder from your computer</li>
+              <li>Choose a destination section</li>
+              <li>Click "Import"</li>
+            </ol>
+            <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
+              <p className="text-sm text-muted-foreground mb-2">
+                <strong>Supported file formats:</strong>
+              </p>
+              <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                <li>Markdown (.md)</li>
+                <li>Plain text (.txt)</li>
+                <li>HTML (.html, .htm)</li>
+                <li>Word documents (.doc, .docx)</li>
+                <li>PDF (.pdf)</li>
+                <li>Rich text (.rtf)</li>
+              </ul>
+              <p className="text-sm text-muted-foreground mt-2">
+                Maximum file size: 20 MB per file. Files are uploaded to your Google Drive first,
+                then imported into Docspeare.
+              </p>
             </div>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Creating Topics</h3>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Select a project from the sidebar</li>
-              <li>Click "Add Topic" in the topics panel</li>
-              <li>Enter a topic name</li>
-              <li>Click "Create" to add the topic</li>
-            </ol>
-            <p className="text-sm text-muted-foreground mt-3">
-              When you create a topic, Docspeare creates a corresponding subfolder in your connected 
-              Google Drive folder. Topics can be nested to create hierarchies.
+            <h3 className="font-semibold text-lg mb-3">After Importing</h3>
+            <p className="text-muted-foreground mb-3">
+              After import, pages are created but their HTML content is not yet pulled from Drive.
+              To fetch the content:
+            </p>
+            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
+              <li>Click "Sync all pages" in the Drive panel to bulk sync everything</li>
+              <li>Or click "Sync" on individual pages to sync them one at a time</li>
+            </ul>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: "syncing",
+      title: "Syncing Content",
+      icon: RefreshCw,
+      content: (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Syncing Content from Drive</h2>
+            <p className="text-muted-foreground mb-4">
+              Syncing pulls the latest content from your Google Docs into Docspeare.
+              Sync is manual — you control when content is updated.
             </p>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Creating Pages</h3>
-            <p className="text-muted-foreground mb-3">
-              Pages are the core documentation content, powered by Google Docs:
-            </p>
+            <h3 className="font-semibold text-lg mb-3">How Syncing Works</h3>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Navigate to a topic (or project for top-level pages)</li>
-              <li>Click "Add Page"</li>
-              <li>Enter a page title</li>
-              <li>A new Google Doc is created and linked to this page</li>
-              <li>Click "Open in Google Docs" to edit the content</li>
+              <li>You edit content in Google Docs as usual</li>
+              <li>When ready, click "Sync" on a page (or "Sync all pages" in the Drive panel)</li>
+              <li>Docspeare fetches the latest HTML from the Google Doc</li>
+              <li>The page preview updates with the new content</li>
             </ol>
             <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary/20">
               <p className="text-sm text-muted-foreground">
-                <strong>Key concept:</strong> All editing happens in Google Docs. Docspeare reads 
-                the content and displays it beautifully in your documentation portal. Changes in 
-                Google Docs sync automatically when you view the page.
+                <strong>Important:</strong> Syncing updates the draft content. If a page is already published,
+                syncing new content will show a "Changes pending" status — the published version remains
+                unchanged until you go through the review and publish workflow again.
               </p>
             </div>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Editing Content</h3>
-            <p className="text-muted-foreground mb-3">
-              Docspeare uses Google Docs as the editor:
-            </p>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Click on a page in the dashboard to open the preview</li>
-              <li>Click "Open in Google Docs" to edit the source document</li>
-              <li>Make your changes in Google Docs (formatting, images, tables, etc.)</li>
-              <li>Return to Docspeare—changes sync automatically when viewing</li>
-            </ol>
-            <p className="text-sm text-muted-foreground mt-3">
-              Supported Google Docs features include: headings, bold/italic text, lists, tables, 
-              images, links, code blocks, and more.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Content Syncing</h3>
-            <div className="bg-muted/50 rounded-lg p-4 border">
-              <div className="flex items-center gap-2 mb-2">
-                <RefreshCw className="h-4 w-4 text-primary" />
-                <h4 className="font-medium">Automatic Sync</h4>
+            <h3 className="font-semibold text-lg mb-3">Sync Methods</h3>
+            <div className="space-y-3">
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium">Per-page sync</h4>
+                <p className="text-sm text-muted-foreground">
+                  Select a page in the dashboard and click the "Sync" button in the toolbar.
+                  This fetches the latest version of that specific Google Doc.
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground mb-2">
-                Content syncs automatically when you view a page in the documentation viewer. 
-                The latest version from Google Docs is fetched and displayed.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Previously synced content is cached, so pages load quickly and remain viewable 
-                even if there are temporary connectivity issues.
-              </p>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium">Bulk sync</h4>
+                <p className="text-sm text-muted-foreground">
+                  Click "Sync all pages" in the Drive panel (sidebar). This syncs every page in your
+                  workspace, skipping pages that haven't changed in Drive since the last sync.
+                </p>
+              </div>
             </div>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Page Settings</h3>
+            <h3 className="font-semibold text-lg mb-3">Connecting Google Drive</h3>
             <p className="text-muted-foreground mb-3">
-              Configure individual page settings:
+              The Drive panel in the sidebar shows your connection status:
             </p>
             <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li><strong>Slug:</strong> Customize the URL path for the page</li>
-              <li><strong>Visibility:</strong> Inherits the project visibility (Internal, External, or Public)</li>
-              <li><strong>Publish/Unpublish:</strong> Control whether the page appears in published docs</li>
+              <li><strong>Connected:</strong> Shows your root Drive folder with a link to open it</li>
+              <li><strong>Not connected:</strong> Click "Connect Drive" to authorize Google Drive access</li>
             </ul>
+            <p className="text-sm text-muted-foreground mt-3">
+              Drive connection is per-workspace. The root folder is where Docspeare creates new
+              documents and organizes imported content.
+            </p>
           </div>
         </div>
       )
     },
     {
       id: "publishing",
-      title: "Publishing",
-      icon: Globe,
+      title: "Publishing & Review",
+      icon: ClipboardCheck,
       content: (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">Publishing Documentation</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Publishing & Review Workflow</h2>
             <p className="text-muted-foreground mb-4">
-              Publishing makes your documentation accessible to your intended audience. Docspeare 
-              generates a beautiful, branded documentation portal from your Google Docs.
+              Docspeare uses a review workflow to ensure documentation quality before publishing.
+              Pages go through draft, review, and published states.
             </p>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">How Publishing Works</h3>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Configure your project's visibility (Internal, External, or Public)</li>
-              <li>Add topics and pages with content in Docspeare</li>
-              <li>Publish individual pages when they're ready (from the dashboard)</li>
-              <li>Your documentation is available at your organization's URL</li>
-            </ol>
-            <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
-              <p className="text-sm text-muted-foreground">
-                <strong>URL Structure:</strong> Published documentation follows the pattern 
-                <code className="bg-background px-1 rounded mx-1">docspeare.io/docs/your-org/project/topic/page</code>
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Publishing a Page</h3>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Open the page in Docspeare</li>
-              <li>Click <strong>Preview</strong> to verify, then <strong>Publish</strong></li>
-              <li>The page becomes visible based on project visibility settings</li>
-            </ol>
-            <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary/20">
-              <p className="text-sm text-muted-foreground">
-                <strong>Draft vs Published:</strong> Pages can be in draft mode while you're working on them. 
-                Only published pages appear in your public documentation. Previously published content 
-                remains visible even if you later unpublish a page (showing the last published version).
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Documentation Landing Page</h3>
-            <p className="text-muted-foreground mb-3">
-              Your organization gets an auto-generated landing page for documentation:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Displays your organization branding (logo, colors, fonts)</li>
-              <li>Shows a hero section with customizable title and description</li>
-              <li>Lists featured projects (optional)</li>
-              <li>Includes a search bar for finding content quickly</li>
-            </ul>
-            <p className="text-sm text-muted-foreground mt-3">
-              Customize the landing page in Settings → General under your organization settings.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Custom Documentation Domains</h3>
-            <p className="text-muted-foreground mb-3">
-              Serve your documentation from your own domain:
-            </p>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Go to Settings → General in your organization</li>
-              <li>Enter your custom documentation domain (e.g., docs.yourcompany.com)</li>
-              <li>Add a CNAME record pointing to Docspeare's servers</li>
-              <li>Wait for DNS propagation (usually 15 minutes to 24 hours)</li>
-            </ol>
-            <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
-              <p className="text-sm text-muted-foreground">
-                With a custom domain, URLs simplify to 
-                <code className="bg-background px-1 rounded mx-1">docs.yourcompany.com/project/page</code>
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">SEO Settings</h3>
-            <p className="text-muted-foreground mb-3">
-              Optimize your public documentation for search engines:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li><strong>Allow Indexing:</strong> Enable search engines to discover your docs</li>
-              <li><strong>Disallowed Paths:</strong> Specify paths to exclude from indexing</li>
-              <li><strong>LLM Crawlers:</strong> Control which AI services can access your content</li>
-              <li><strong>Allow AI Training:</strong> Opt in or out of AI training data collection</li>
-              <li><strong>Allow Summarization:</strong> Control whether AI can summarize your content</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Visibility and Access Control</h3>
+            <h3 className="font-semibold text-lg mb-3">Page Status Lifecycle</h3>
             <div className="space-y-3">
               <div className="bg-muted/50 rounded-lg p-4 border">
-                <h4 className="font-medium">Public Projects</h4>
+                <div className="flex items-center gap-2 mb-1">
+                  <Eye className="h-4 w-4 text-muted-foreground" />
+                  <h4 className="font-medium">Draft</h4>
+                </div>
                 <p className="text-sm text-muted-foreground">
-                  Accessible to everyone. Internal metadata (last updated, visibility badges) 
-                  is hidden from public viewers. No login required.
+                  Initial state. Content is being written or edited. Only visible in the dashboard.
                 </p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4 border">
-                <h4 className="font-medium">Internal Projects</h4>
+                <div className="flex items-center gap-2 mb-1">
+                  <Search className="h-4 w-4 text-yellow-500" />
+                  <h4 className="font-medium">In Review</h4>
+                </div>
                 <p className="text-sm text-muted-foreground">
-                  Only visible to authenticated organization members. Full metadata shown. 
-                  Dashboard access available.
+                  Submitted for review. A reviewer, admin, or owner can approve or reject the page.
                 </p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4 border">
-                <h4 className="font-medium">External Projects</h4>
+                <div className="flex items-center gap-2 mb-1">
+                  <Globe className="h-4 w-4 text-green-500" />
+                  <h4 className="font-medium">Published</h4>
+                </div>
                 <p className="text-sm text-muted-foreground">
-                  Visible to authenticated users outside your organization. Requires login 
-                  but not organization membership.
+                  Approved and live. The published HTML is served to readers based on visibility settings.
+                </p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <div className="flex items-center gap-2 mb-1">
+                  <RefreshCw className="h-4 w-4 text-blue-500" />
+                  <h4 className="font-medium">Changes Pending</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  A published page whose draft content has been updated via sync. The published version
+                  remains live until a new version is approved.
                 </p>
               </div>
             </div>
           </div>
-        </div>
-      )
-    },
-    {
-      id: "search",
-      title: "Search & Navigation",
-      icon: Search,
-      content: (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">Search & Navigation</h2>
-            <p className="text-muted-foreground mb-4">
-              Docspeare provides powerful search and navigation to help users find information quickly.
-            </p>
-          </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Using Search</h3>
-            <div className="bg-muted/50 rounded-lg p-4 border mb-4">
-              <div className="flex items-center gap-2 text-sm">
-                <kbd className="px-2 py-1 bg-background rounded border text-xs">⌘</kbd>
-                <span>+</span>
-                <kbd className="px-2 py-1 bg-background rounded border text-xs">K</kbd>
-                <span className="text-muted-foreground ml-2">Quick access to search from anywhere</span>
-              </div>
-            </div>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Search works across all projects and pages you have access to</li>
-              <li>Results show matching titles and content snippets</li>
-              <li>Click a result to navigate directly to that page</li>
-              <li>Search is available in both the dashboard and published documentation</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Ask AI</h3>
-            <div className="flex items-start gap-3 bg-primary/10 rounded-lg p-4 border border-primary/20">
-              <Bot className="h-5 w-5 text-primary mt-0.5" />
-              <div>
-                <h4 className="font-medium mb-1">AI-Powered Answers</h4>
-                <p className="text-sm text-muted-foreground">
-                  Use the "Ask AI" feature to get intelligent answers based on your documentation. 
-                  The AI searches through your content and provides contextual answers with references 
-                  to the relevant pages.
-                </p>
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground mt-3">
-              Ask AI is available in the search dialog and helps readers find answers to complex 
-              questions that span multiple pages.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Documentation Layout</h3>
-            <p className="text-muted-foreground mb-3">
-              The published documentation viewer follows a Stripe Docs-inspired layout:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li><strong>Header:</strong> Organization logo, search bar, and navigation</li>
-              <li><strong>Project Tabs:</strong> Switch between projects in the organization</li>
-              <li><strong>Left Sidebar:</strong> Topics and pages navigation (collapsible)</li>
-              <li><strong>Main Content:</strong> Page content with breadcrumbs and title</li>
-              <li><strong>Right Sidebar:</strong> Table of contents for the current page</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Table of Contents</h3>
-            <p className="text-muted-foreground mb-3">
-              Each documentation page includes an auto-generated table of contents:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Extracted from headings in your Google Doc</li>
-              <li>Appears in the right sidebar on desktop</li>
-              <li>Click any heading to jump to that section</li>
-              <li>Highlights the current section as you scroll</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Internal Linking</h3>
-            <p className="text-muted-foreground mb-3">
-              Create stable links between documentation pages:
-            </p>
-            <div className="bg-muted/50 rounded-lg p-4 border">
-              <div className="flex items-center gap-2 mb-2">
-                <Link2 className="h-4 w-4 text-primary" />
-                <h4 className="font-medium">Copy Link Button</h4>
-              </div>
-              <p className="text-sm text-muted-foreground mb-2">
-                Every page has a "Copy Link" button that generates a stable, slug-based URL. 
-                These URLs use SEO-friendly paths like <code className="bg-background px-1 rounded">/docs/org/project/topic/page</code>.
-              </p>
+            <h3 className="font-semibold text-lg mb-3">The Review Workflow</h3>
+            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <li>Edit your content in Google Docs</li>
+              <li>Click "Sync" to pull the latest content into Docspeare</li>
+              <li>Click "Submit for review" to send the page for approval</li>
+              <li>A reviewer sees the page in the Approvals panel</li>
+              <li>The reviewer can <strong>Approve</strong> (publishes the page) or <strong>Reject</strong> (returns to draft)</li>
+            </ol>
+            <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
               <p className="text-sm text-muted-foreground">
-                <strong>Redirect support:</strong> If you change a page title or move it, old URLs 
-                automatically redirect to the new location, preserving any shared links.
+                <strong>Requirements:</strong> A page must have synced content and be in a section
+                before it can be submitted for review.
               </p>
             </div>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">URL Structure</h3>
+            <h3 className="font-semibold text-lg mb-3">Approvals Panel</h3>
             <p className="text-muted-foreground mb-3">
-              Documentation URLs follow a consistent pattern:
+              Switch to the Approvals view in the dashboard sidebar to see:
+            </p>
+            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
+              <li>Pages currently awaiting review</li>
+              <li>Submission history</li>
+              <li>A badge count showing pending reviews (refreshes automatically)</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Published Documentation URLs</h3>
+            <p className="text-muted-foreground mb-3">
+              Published pages are accessible at these URLs:
             </p>
             <div className="bg-muted/50 rounded-lg p-4 border font-mono text-sm space-y-1">
-              <p className="text-muted-foreground">/docs/:org/:project — Project landing</p>
-              <p className="text-muted-foreground">/docs/:org/:project/:topic — Topic view</p>
-              <p className="text-muted-foreground">/docs/:org/:project/:topic/:page — Page view</p>
-              <p className="text-muted-foreground">/docs/:org/:project/:page — Top-level page</p>
+              <p className="text-muted-foreground">/docs/your-org — Public docs landing page</p>
+              <p className="text-muted-foreground">/docs/your-org/p/page-id/page-slug — Public page</p>
+              <p className="text-muted-foreground">/internal-docs/your-org/... — Internal pages</p>
+              <p className="text-muted-foreground">/external-docs/your-org/... — External pages</p>
             </div>
+            <p className="text-sm text-muted-foreground mt-3">
+              Use the "Copy link" button on any published page to get its shareable URL. If you set a
+              custom docs domain, published pages are served from that domain instead.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Unpublishing</h3>
+            <p className="text-muted-foreground">
+              Use the "Unpublish" action to revert a published page to draft. The page will no longer
+              be visible to readers. You can re-publish it later through the review workflow.
+            </p>
           </div>
         </div>
       )
@@ -748,8 +681,8 @@ const Help = () => {
           <div>
             <h2 className="text-2xl font-bold text-foreground mb-4">Collaboration</h2>
             <p className="text-muted-foreground mb-4">
-              Work together with your team to create and maintain documentation. Docspeare 
-              leverages Google Docs' collaboration features while adding structured workflows.
+              Work together with your team to create and maintain documentation. Docspeare
+              leverages Google Docs' collaboration features while adding structured review workflows.
             </p>
           </div>
 
@@ -766,263 +699,221 @@ const Help = () => {
             </ul>
             <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
               <p className="text-sm text-muted-foreground">
-                <strong>Tip:</strong> Use Google Docs' suggesting mode for review workflows. 
-                Reviewers can suggest changes, and authors can accept or reject them.
+                <strong>Tip:</strong> Use Google Docs' suggesting mode for review workflows.
+                Reviewers can suggest changes, and authors can accept or reject them before syncing.
               </p>
             </div>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Project Sharing</h3>
+            <h3 className="font-semibold text-lg mb-3">Team Invitations</h3>
             <p className="text-muted-foreground mb-3">
-              Share projects with specific team members:
+              Invite team members from the dashboard sidebar:
             </p>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Open the project settings</li>
-              <li>Go to the "Sharing" tab</li>
-              <li>Click "Invite Member"</li>
+              <li>Click "Invite members" in the Account section of the sidebar</li>
               <li>Enter their email address</li>
               <li>Assign a role (Admin, Editor, Reviewer, or Viewer)</li>
-              <li>They'll receive an invitation email</li>
+              <li>They receive an email invitation valid for 7 days</li>
+            </ol>
+            <p className="text-sm text-muted-foreground mt-3">
+              When a member accepts the invitation, their Google Drive permissions are automatically
+              synced so they can access shared documents.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">External Access</h3>
+            <p className="text-muted-foreground mb-3">
+              For documentation marked as "External" visibility, you can grant access to specific
+              people outside your organization:
+            </p>
+            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <li>Click "External access" in the sidebar</li>
+              <li>Add email addresses of people who should have access</li>
+              <li>They can view external documentation after signing in</li>
             </ol>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Page Feedback</h3>
-            <p className="text-muted-foreground mb-3">
-              Readers can provide feedback on documentation pages:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Thumbs up/down to rate page helpfulness</li>
-              <li>Submit detailed written feedback</li>
-              <li>Feedback is collected and visible to editors in the dashboard</li>
-              <li>Mark feedback as resolved when addressed</li>
-            </ul>
-            <p className="text-sm text-muted-foreground mt-3">
-              Use feedback to identify unclear sections, outdated information, or missing content.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Audit Logs</h3>
-            <p className="text-muted-foreground mb-3">
-              Track changes and activity in your organization:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>View who made changes and when</li>
-              <li>Track page publishes and unpublishes</li>
-              <li>Monitor member invitations</li>
-              <li>Review project and topic modifications</li>
-            </ul>
-            <p className="text-sm text-muted-foreground mt-3">
-              Access audit logs in Settings → Audit Log (available to Admins and Owners).
-            </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Notifications</h3>
+            <h3 className="font-semibold text-lg mb-3">Drive Permissions</h3>
             <p className="text-muted-foreground">
-              Stay informed about activity in your organization:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground mt-3">
-              <li>Invitation acceptances</li>
-              <li>Page feedback submissions</li>
-            </ul>
-            <p className="text-sm text-muted-foreground mt-3">
-              Notifications appear in the dashboard header and can be viewed in the notification center.
+              Docspeare automatically manages Google Drive sharing when you invite or remove members.
+              When a member's role changes, their Drive access is updated to match. When a member
+              is removed from the workspace, their Drive access is revoked.
             </p>
           </div>
         </div>
       )
     },
     {
-      id: "branding",
-      title: "Branding & Customization",
-      icon: Palette,
+      id: "analytics",
+      title: "Analytics",
+      icon: BarChart3,
       content: (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">Branding & Customization</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Analytics</h2>
             <p className="text-muted-foreground mb-4">
-              Customize the look and feel of your documentation portal to match your brand identity.
+              The Analytics view in the dashboard gives you an overview of your documentation health and coverage.
             </p>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Organization Branding</h3>
-            <p className="text-muted-foreground mb-3">
-              Configure your organization's branding in Settings → General:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li><strong>Logo:</strong> Upload your company logo (displayed in header and landing page)</li>
-              <li><strong>Primary Color:</strong> Main brand color for buttons, links, and accents</li>
-              <li><strong>Secondary Color:</strong> Complementary color for secondary elements</li>
-              <li><strong>Accent Color:</strong> Highlight color for special elements</li>
-              <li><strong>Heading Font:</strong> Font family for headings (Google Fonts supported)</li>
-              <li><strong>Body Font:</strong> Font family for body text</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Landing Page Customization</h3>
-            <p className="text-muted-foreground mb-3">
-              Customize what visitors see on your documentation homepage:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li><strong>Hero Title:</strong> Main headline on the landing page</li>
-              <li><strong>Hero Description:</strong> Subtitle or description text</li>
-              <li><strong>Show Search:</strong> Toggle the search bar on the landing page</li>
-              <li><strong>Show Featured Projects:</strong> Highlight specific projects</li>
-              <li><strong>Tagline:</strong> Short tagline displayed with your logo</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Custom CSS</h3>
-            <p className="text-muted-foreground mb-3">
-              For advanced customization, add custom CSS to fine-tune appearance:
-            </p>
-            <div className="bg-muted/50 rounded-lg p-4 border">
-              <p className="text-sm text-muted-foreground mb-2">
-                Custom CSS is applied to your published documentation. Use it to:
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Adjust spacing and layout</li>
-                <li>Customize specific components</li>
-                <li>Add background patterns or images</li>
-                <li>Override default styles</li>
-              </ul>
-            </div>
-            <p className="text-sm text-muted-foreground mt-3">
-              Access Custom CSS in Settings → General under your organization settings.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Light & Dark Mode</h3>
+            <h3 className="font-semibold text-lg mb-3">Accessing Analytics</h3>
             <p className="text-muted-foreground">
-              Docspeare automatically supports both light and dark themes. Readers can toggle 
-              between modes using the theme switcher in the documentation header. Your brand colors 
-              are optimized for both modes.
+              Switch to the Analytics view using the view switcher in the dashboard sidebar
+              (the bar chart icon).
             </p>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Custom Domain</h3>
-            <p className="text-muted-foreground mb-3">
-              Complete your brand experience with a custom documentation domain:
-            </p>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Choose a subdomain (e.g., docs.yourcompany.com)</li>
-              <li>Add a CNAME record in your DNS settings</li>
-              <li>Enter the domain in Settings → General</li>
-              <li>Wait for verification (usually within an hour)</li>
-            </ol>
-          </div>
-        </div>
-      )
-    },
-    {
-      id: "integrations",
-      title: "Integrations",
-      icon: Settings,
-      content: (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">Integrations</h2>
-            <p className="text-muted-foreground mb-4">
-              Extend Docspeare's capabilities with powerful integrations for API documentation 
-              and AI-powered tools.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">OpenAPI / Swagger Integration</h3>
-            <p className="text-muted-foreground mb-3">
-              Generate API documentation from your OpenAPI specification:
-            </p>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Go to Project Settings → API</li>
-              <li>Enter your OpenAPI spec URL or paste the JSON directly</li>
-              <li>Save the configuration</li>
-              <li>An "API Reference" section appears in your documentation</li>
-            </ol>
-            <div className="mt-4 p-4 bg-muted/50 rounded-lg border">
-              <p className="text-sm text-muted-foreground">
-                The API documentation displays endpoints, parameters, request/response examples, 
-                and authentication requirements directly from your OpenAPI spec.
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-3">Model Context Protocol (MCP)</h3>
-            <p className="text-muted-foreground mb-3">
-              Enable AI tools to interact with your documentation:
-            </p>
-            <div className="bg-primary/10 rounded-lg p-4 border border-primary/20 mb-4">
-              <div className="flex items-start gap-3">
-                <Bot className="h-5 w-5 text-primary mt-0.5" />
-                <div>
-                  <h4 className="font-medium mb-1">What is MCP?</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Model Context Protocol allows AI assistants like Claude to access your documentation 
-                    as a tool. Users can ask their AI assistant questions about your product, and it 
-                    will search your documentation to provide accurate answers.
-                  </p>
-                </div>
+            <h3 className="font-semibold text-lg mb-3">Documentation Impact Metrics</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-sm">Reader Coverage</h4>
+                <p className="text-xs text-muted-foreground">Published pages vs. total pages, with percentage live</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-sm">Audience Reach</h4>
+                <p className="text-xs text-muted-foreground">Count of public and external published pages</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-sm">Freshness</h4>
+                <p className="text-xs text-muted-foreground">Pages updated in the last 30 days</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-sm">Publish Backlog</h4>
+                <p className="text-xs text-muted-foreground">Draft count and stale drafts older than 14 days</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-sm">Internal Live Docs</h4>
+                <p className="text-xs text-muted-foreground">Count of internal published pages</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-sm">Stale Live Docs</h4>
+                <p className="text-xs text-muted-foreground">Published pages not updated in 30 days</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-sm">Sync Lag</h4>
+                <p className="text-xs text-muted-foreground">Published pages with Drive changes not yet synced</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <h4 className="font-medium text-sm">Activity</h4>
+                <p className="text-xs text-muted-foreground">Pages updated and synced in the last 7 days</p>
               </div>
             </div>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-              <li>Go to Project Settings → MCP</li>
-              <li>Enable MCP for the project</li>
-              <li>Copy the MCP endpoint URL</li>
-              <li>Users can add this endpoint to their AI assistant configuration</li>
-            </ol>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">Connectors</h3>
-            <p className="text-muted-foreground mb-3">
-              Connect external services to enhance your documentation workflow:
+            <h3 className="font-semibold text-lg mb-3">Recently Updated Pages</h3>
+            <p className="text-muted-foreground">
+              The Analytics view also shows the 5 most recently updated pages, helping you
+              quickly find and review recent changes.
             </p>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: "visibility",
+      title: "Visibility & Access",
+      icon: Globe,
+      content: (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Visibility & Access Control</h2>
+            <p className="text-muted-foreground mb-4">
+              Docspeare gives you fine-grained control over who can see your published documentation.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Three Visibility Levels</h3>
             <div className="space-y-3">
               <div className="bg-muted/50 rounded-lg p-4 border">
-                <h4 className="font-medium">Google Drive</h4>
+                <div className="flex items-center gap-2 mb-1">
+                  <Globe className="h-4 w-4 text-green-500" />
+                  <h4 className="font-medium">Public</h4>
+                </div>
                 <p className="text-sm text-muted-foreground">
-                  Core integration for content management. Syncs automatically with your Google Docs.
+                  Anyone can view without logging in. Ideal for open-source docs, help centers,
+                  and API references.
                 </p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4 border">
-                <h4 className="font-medium">Custom MCP Servers</h4>
+                <div className="flex items-center gap-2 mb-1">
+                  <Shield className="h-4 w-4 text-orange-500" />
+                  <h4 className="font-medium">Internal</h4>
+                </div>
                 <p className="text-sm text-muted-foreground">
-                  Connect to custom MCP-compatible AI tools and services.
+                  Only workspace members can view. Perfect for team wikis, internal processes,
+                  and confidential documentation.
+                </p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <div className="flex items-center gap-2 mb-1">
+                  <Users className="h-4 w-4 text-blue-500" />
+                  <h4 className="font-medium">External</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Only users with an explicit access grant can view. Use for partner docs,
+                  customer-specific documentation, or gated content.
                 </p>
               </div>
             </div>
           </div>
 
           <div>
-            <h3 className="font-semibold text-lg mb-3">llms.txt Support</h3>
-            <p className="text-muted-foreground mb-3">
-              The platform automatically generates an llms.txt file for your documentation:
-            </p>
+            <h3 className="font-semibold text-lg mb-3">Where Visibility Is Set</h3>
             <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Provides AI-friendly access to your documentation structure</li>
-              <li>Enables LLMs to understand and reference your content</li>
-              <li>Configurable through SEO settings</li>
+              <li><strong>Section level:</strong> Set via the section's three-dot menu. All pages in the section inherit this visibility.</li>
+              <li><strong>Page level:</strong> Individual pages can override their section's visibility using "Set visibility" in the page menu.</li>
             </ul>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">External Access Grants</h3>
+            <p className="text-muted-foreground mb-3">
+              To give someone outside your workspace access to external docs:
+            </p>
+            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <li>Open "External access" from the dashboard sidebar</li>
+              <li>Add the email addresses of people who need access</li>
+              <li>They sign in with Google and can view external documentation</li>
+            </ol>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Documentation Landing Pages</h3>
+            <p className="text-muted-foreground mb-3">
+              Each visibility level has its own landing page showing available sections:
+            </p>
+            <div className="bg-muted/50 rounded-lg p-4 border font-mono text-sm space-y-1">
+              <p className="text-muted-foreground">/docs/your-org — Public landing</p>
+              <p className="text-muted-foreground">/internal-docs/your-org — Internal landing</p>
+              <p className="text-muted-foreground">/external-docs/your-org — External landing</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-lg mb-3">Quick Doc Links</h3>
+            <p className="text-muted-foreground">
+              The dashboard sidebar has quick links to open your published docs in a new tab —
+              one for each visibility level (Public, Internal, External). These links only appear
+              when you have published pages at that visibility level.
+            </p>
           </div>
         </div>
       )
-    }
+    },
   ];
 
   return (
     <>
       <Helmet>
-        <title>Documentation | Knowledge Workspace</title>
-        <meta name="description" content="Learn how to organize and publish knowledge from Google Drive using the workspace." />
+        <title>Documentation | Docspeare</title>
+        <meta name="description" content="Learn how to use Docspeare to organize and publish documentation from Google Drive." />
       </Helmet>
 
       <div className="min-h-screen bg-background flex flex-col">
@@ -1120,7 +1011,7 @@ const Help = () => {
           {/* Main Content */}
           <main className="flex-1 overflow-auto">
             <ScrollArea className="h-[calc(100vh-3.5rem)]">
-              <div className="container max-w-3xl py-8 px-6">
+              <div className="container max-w-3xl py-6 md:py-8 px-4 md:px-6">
                 {sections.find(s => s.id === activeSection)?.content}
 
                 {/* Navigation Footer */}

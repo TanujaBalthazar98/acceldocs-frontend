@@ -3,6 +3,7 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef, type ChangeEvent } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DndContext,
   DragOverlay,
@@ -26,6 +27,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuthNew";
 import { useToast } from "@/hooks/use-toast";
 import { signInWithGoogle as startGoogleOAuth } from "@/lib/auth-new";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { orgApi, sectionsApi, pagesApi, driveApi, buildSectionTree } from "@/api";
 import type { Org, Section, Page, ImportTargetType } from "@/api/types";
@@ -52,7 +54,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   BookOpen,
   BarChart3,
+  ClipboardCheck,
   Circle,
+  Check,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -74,11 +78,16 @@ import {
   Settings,
   Trash2,
   ArrowUpFromLine,
+  XCircle,
   Search,
   GitBranchPlus,
   UserPlus,
   Users,
   Wifi,
+  Menu,
+  X,
+  PanelLeftOpen,
+  Sparkles,
 } from "lucide-react";
 import {
   Select,
@@ -94,17 +103,119 @@ import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
 import { InviteMemberDialog } from "@/components/dashboard/InviteMemberDialog";
 import { WorkspaceSwitcher, setStoredOrgId, getStoredOrgId } from "@/components/dashboard/WorkspaceSwitcher";
 import { TableOfContents } from "@/components/docs/TableOfContents";
+import { ApprovalsPanel } from "@/components/dashboard/ApprovalsPanel";
+import { AgentPanel } from "@/components/dashboard/AgentPanel";
+import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
+import { invokeFunction } from "@/lib/api/functions";
 
 type VisibilityLevel = "public" | "internal" | "external";
 type VisibilityFilter = "all" | VisibilityLevel;
 type LocalImportMode = "files" | "folder";
-type DashboardPaneMode = "content" | "analytics";
+type DashboardPaneMode = "content" | "analytics" | "approvals" | "agent";
 
 type DriveImportTarget = {
   id: number;
   name: string;
   type: ImportTargetType;
 };
+
+type ParsedDashboardLocation = {
+  mode: DashboardPaneMode;
+  pageId: number | null;
+  approvalId: string | null;
+  workspaceId: number | null;
+};
+
+function parseNumberId(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeSlugSegment(raw: string | null | undefined): string {
+  const seed = String(raw || "").trim().toLowerCase();
+  if (!seed) return "";
+  return seed
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function parseDashboardLocation(pathname: string, search: string): ParsedDashboardLocation {
+  const query = new URLSearchParams(search);
+  const segments = pathname.split("/").filter(Boolean);
+  const afterDashboard = segments[0] === "dashboard" ? segments.slice(1) : [];
+  const tabParam = (query.get("tab") || "").trim().toLowerCase();
+
+  let mode: DashboardPaneMode = "content";
+  let pageId: number | null = parseNumberId(query.get("pageId"));
+  let approvalId: string | null = (query.get("approvalId") || "").trim() || null;
+
+  const first = (afterDashboard[0] || "").trim().toLowerCase();
+  if (first === "analytics") {
+    mode = "analytics";
+  } else if (first === "approvals") {
+    mode = "approvals";
+    approvalId = approvalId || (afterDashboard[1] || "").trim() || null;
+  } else if (first === "agent") {
+    mode = "agent";
+  } else if (first === "content") {
+    mode = "content";
+    if ((afterDashboard[1] || "").trim().toLowerCase() === "p") {
+      pageId = parseNumberId(afterDashboard[2]);
+    } else {
+      pageId = pageId ?? parseNumberId(afterDashboard[1]);
+    }
+  } else if (first === "page") {
+    mode = "content";
+    pageId = parseNumberId(afterDashboard[1]);
+  } else if (tabParam === "analytics") {
+    mode = "analytics";
+  } else if (tabParam === "approvals") {
+    mode = "approvals";
+  } else if (tabParam === "agent") {
+    mode = "agent";
+  } else if (tabParam === "content") {
+    mode = "content";
+  }
+
+  const workspaceId = parseNumberId(query.get("workspaceId"));
+  return { mode, pageId, approvalId, workspaceId };
+}
+
+function buildDashboardUrl(params: {
+  mode: DashboardPaneMode;
+  pageId: number | null;
+  pageSlug?: string | null;
+  approvalId: string | null;
+  workspaceId: number | undefined;
+}): string {
+  let path = "/dashboard";
+  if (params.mode === "analytics") {
+    path = "/dashboard/analytics";
+  } else if (params.mode === "approvals") {
+    path = params.approvalId
+      ? `/dashboard/approvals/${encodeURIComponent(params.approvalId)}`
+      : "/dashboard/approvals";
+  } else if (params.mode === "agent") {
+    path = "/dashboard/agent";
+  } else if (params.pageId !== null) {
+    const slugPart = normalizeSlugSegment(params.pageSlug);
+    path = slugPart
+      ? `/dashboard/content/p/${params.pageId}/${encodeURIComponent(slugPart)}`
+      : `/dashboard/content/p/${params.pageId}`;
+  } else {
+    path = "/dashboard/content";
+  }
+
+  const query = new URLSearchParams();
+  if (typeof params.workspaceId === "number" && Number.isFinite(params.workspaceId)) {
+    query.set("workspaceId", String(params.workspaceId));
+  }
+  const search = query.toString();
+  return search ? `${path}?${search}` : path;
+}
 
 const visibilityOptions: Array<{ value: VisibilityLevel; label: string }> = [
   { value: "public", label: "Public" },
@@ -2293,11 +2404,18 @@ function DocumentationImpactPanel({
 // ---------------------------------------------------------------------------
 
 export default function Dashboard() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
+  const routeState = useMemo(
+    () => parseDashboardLocation(location.pathname, location.search),
+    [location.pathname, location.search],
+  );
 
-  const [selectedPageId, setSelectedPageId] = useState<number | null>(null);
+  const [selectedPageId, setSelectedPageId] = useState<number | null>(routeState.pageId);
   const [showAddPage, setShowAddPage] = useState(false);
   const [addPageSectionId, setAddPageSectionId] = useState<number | null>(null);
   const [showAddSection, setShowAddSection] = useState(false);
@@ -2317,6 +2435,8 @@ export default function Dashboard() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileHierarchyOpen, setMobileHierarchyOpen] = useState(false);
   const [selectedSidebarProductId, setSelectedSidebarProductId] = useState<number | null>(null);
   const [selectedSidebarVersionId, setSelectedSidebarVersionId] = useState<number | null>(null);
   const [drivePanelOpen, setDrivePanelOpen] = useState(true);
@@ -2326,13 +2446,64 @@ export default function Dashboard() {
   const [showWorkspaceSettings, setShowWorkspaceSettings] = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
   const [pageSearchQuery, setPageSearchQuery] = useState("");
-  const [dashboardPaneMode, setDashboardPaneMode] = useState<DashboardPaneMode>("content");
+  const [dashboardPaneMode, setDashboardPaneMode] = useState<DashboardPaneMode>(routeState.mode);
+  const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(routeState.approvalId);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
+  const routeModeRef = useRef<DashboardPaneMode>(routeState.mode);
+  const routePageIdRef = useRef<number | null>(routeState.pageId);
+  const routeApprovalIdRef = useRef<string | null>(routeState.approvalId);
 
-  const [currentOrgId, setCurrentOrgId] = useState<number | undefined>(getStoredOrgId() ?? undefined);
+  const [currentOrgId, setCurrentOrgId] = useState<number | undefined>(
+    routeState.workspaceId ?? getStoredOrgId() ?? undefined,
+  );
+  const routeWorkspaceIdRef = useRef<number | null>(routeState.workspaceId);
+
+  // Only react when the URL workspace id actually changes (e.g. browser back/forward or deep-link),
+  // so a local workspace switch isn't immediately overwritten by stale query params.
+  useEffect(() => {
+    if (routeState.workspaceId === routeWorkspaceIdRef.current) return;
+    routeWorkspaceIdRef.current = routeState.workspaceId;
+    if (routeState.workspaceId !== null) {
+      setStoredOrgId(routeState.workspaceId);
+      setCurrentOrgId(routeState.workspaceId);
+      setSelectedPageId(null);
+      setSelectedApprovalId(null);
+    }
+  }, [routeState.workspaceId]);
+
+  useEffect(() => {
+    if (routeState.mode !== routeModeRef.current) {
+      routeModeRef.current = routeState.mode;
+      setDashboardPaneMode(routeState.mode);
+    }
+
+    if (routeState.pageId !== routePageIdRef.current) {
+      routePageIdRef.current = routeState.pageId;
+      if (routeState.mode === "content" && routeState.pageId !== null) {
+        setSelectedPageId(routeState.pageId);
+      }
+    }
+
+    if (routeState.approvalId !== routeApprovalIdRef.current) {
+      routeApprovalIdRef.current = routeState.approvalId;
+      setSelectedApprovalId(routeState.approvalId);
+    }
+  }, [routeState.approvalId, routeState.mode, routeState.pageId]);
+
   const { data: org, isLoading: orgLoading } = useQuery({ queryKey: ["org", currentOrgId], queryFn: () => orgApi.get(currentOrgId) });
   const { data: sectionsData } = useQuery({ queryKey: ["sections", currentOrgId], queryFn: sectionsApi.list, enabled: !!org });
   const { data: pagesData } = useQuery({ queryKey: ["pages", currentOrgId], queryFn: () => pagesApi.list(), enabled: !!org });
   const { data: driveStatus } = useQuery({ queryKey: ["drive-status", currentOrgId], queryFn: driveApi.status, enabled: !!org });
+  const { data: approvalsCountData } = useQuery({
+    queryKey: ["approvals-count", currentOrgId],
+    enabled: !!org,
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      const { data, error } = await invokeFunction<{ ok?: boolean; count?: number }>("approvals-count", { body: {} });
+      if (error || !data?.ok) return 0;
+      return typeof data.count === "number" ? data.count : 0;
+    },
+  });
   const { data: selectedPageFull } = useQuery({
     queryKey: ["page", selectedPageId],
     queryFn: () => pagesApi.get(selectedPageId!),
@@ -2345,11 +2516,51 @@ export default function Dashboard() {
     // Reset selection state
     setSelectedProduct(null);
     setSelectedPageId(null);
+    setSelectedApprovalId(null);
+    setDashboardPaneMode("content");
   }, []);
 
   const sections = sectionsData?.sections ?? [];
   const pages = pagesData?.pages ?? [];
+  useEffect(() => {
+    if (typeof approvalsCountData === "number") {
+      setPendingReviewCount(approvalsCountData);
+    }
+  }, [approvalsCountData]);
   const selectedPage = selectedPageFull ?? (pages.find((p) => p.id === selectedPageId) ?? null);
+
+  useEffect(() => {
+    const desiredUrl = buildDashboardUrl({
+      mode: dashboardPaneMode,
+      pageId: selectedPageId,
+      pageSlug: selectedPage?.slug,
+      approvalId: selectedApprovalId,
+      workspaceId: currentOrgId,
+    });
+    const currentUrl = `${location.pathname}${location.search}`;
+    if (currentUrl !== desiredUrl) {
+      const sameSemanticRoute =
+        routeState.mode === dashboardPaneMode &&
+        routeState.pageId === selectedPageId &&
+        routeState.approvalId === selectedApprovalId &&
+        routeState.workspaceId === (typeof currentOrgId === "number" ? currentOrgId : null);
+      navigate(desiredUrl, { replace: sameSemanticRoute });
+    }
+  }, [
+    currentOrgId,
+    dashboardPaneMode,
+    location.pathname,
+    location.search,
+    navigate,
+    routeState.approvalId,
+    routeState.mode,
+    routeState.pageId,
+    routeState.workspaceId,
+    selectedApprovalId,
+    selectedPage?.slug,
+    selectedPageId,
+  ]);
+
   const hasWorkspaceContent = sections.length > 0 || pages.length > 0;
   const currentUserRole = org?.user_role ?? "viewer";
   const canEditContent = currentUserRole === "owner" || currentUserRole === "admin" || currentUserRole === "editor";
@@ -2357,6 +2568,7 @@ export default function Dashboard() {
   const canDeleteContent = canEditContent;
   const canMoveContent = canEditContent;
   const canPublishContent = canEditContent;
+  const canReviewContent = currentUserRole === "owner" || currentUserRole === "admin" || currentUserRole === "reviewer";
   const canSyncContent = canEditContent;
   const canEditVisibilitySettings = canEditContent;
   const canManageStructure = canEditContent;
@@ -2775,8 +2987,14 @@ export default function Dashboard() {
   }, [pages, sectionsById]);
   const handleSelectPage = useCallback((pageId: number | null) => {
     setSelectedPageId(pageId);
+    setSelectedApprovalId(null);
     setDashboardPaneMode("content");
-  }, []);
+    // Close mobile overlays when a page is selected
+    if (isMobile) {
+      setMobileSidebarOpen(false);
+      setMobileHierarchyOpen(false);
+    }
+  }, [isMobile]);
 
   const handleSidebarProductSwitch = useCallback(
     (value: string) => {
@@ -3107,13 +3325,34 @@ export default function Dashboard() {
     },
   });
 
-  const publishPage = useMutation({
-    mutationFn: (id: number) => pagesApi.publish(id),
+  const submitPageForReview = useMutation({
+    mutationFn: (id: number) => pagesApi.submitReview(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pages"] });
       qc.invalidateQueries({ queryKey: ["page", selectedPageId] });
-      toast({ title: "Published" });
+      toast({ title: "Submitted for review" });
     },
+    onError: (err: Error) => toast({ title: "Submit failed", description: err.message, variant: "destructive" }),
+  });
+
+  const approvePage = useMutation({
+    mutationFn: (id: number) => pagesApi.approve(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      qc.invalidateQueries({ queryKey: ["page", selectedPageId] });
+      toast({ title: "Approved and published" });
+    },
+    onError: (err: Error) => toast({ title: "Approve failed", description: err.message, variant: "destructive" }),
+  });
+
+  const rejectPage = useMutation({
+    mutationFn: (id: number) => pagesApi.reject(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      qc.invalidateQueries({ queryKey: ["page", selectedPageId] });
+      toast({ title: "Changes requested", description: "Page moved back to draft." });
+    },
+    onError: (err: Error) => toast({ title: "Reject failed", description: err.message, variant: "destructive" }),
   });
 
   const unpublishPage = useMutation({
@@ -3207,13 +3446,29 @@ export default function Dashboard() {
     syncPage.mutate(pageId);
   }, [canSyncContent, notifyPermissionDenied, syncPage]);
 
-  const handlePublishCurrentPage = useCallback((page: Page) => {
+  const handleSubmitCurrentPageForReview = useCallback((page: Page) => {
     if (!canPublishContent) {
-      notifyPermissionDenied("publish pages");
+      notifyPermissionDenied("submit pages for review");
       return;
     }
-    publishPage.mutate(page.id);
-  }, [canPublishContent, notifyPermissionDenied, publishPage]);
+    submitPageForReview.mutate(page.id);
+  }, [canPublishContent, notifyPermissionDenied, submitPageForReview]);
+
+  const handleApproveCurrentPage = useCallback((page: Page) => {
+    if (!canReviewContent) {
+      notifyPermissionDenied("approve pages");
+      return;
+    }
+    approvePage.mutate(page.id);
+  }, [approvePage, canReviewContent, notifyPermissionDenied]);
+
+  const handleRejectCurrentPage = useCallback((page: Page) => {
+    if (!canReviewContent) {
+      notifyPermissionDenied("reject pages");
+      return;
+    }
+    rejectPage.mutate(page.id);
+  }, [canReviewContent, notifyPermissionDenied, rejectPage]);
 
   const handleRearrangePage = useCallback((page: Page) => {
     if (!canMoveContent) {
@@ -3363,11 +3618,28 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
 
+      {/* ── Mobile sidebar overlay backdrop ─────────────────────── */}
+      {isMobile && mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ───────────────────────────────────────────────── */}
       <aside
         className={cn(
-          "shrink-0 flex flex-col border-r bg-[#F9F8F6] dark:bg-muted/20 overflow-hidden transition-[width] duration-200",
-          sidebarCollapsed ? "w-[64px]" : "w-[248px]",
+          "shrink-0 flex flex-col border-r bg-[#F9F8F6] dark:bg-muted/20 overflow-hidden transition-all duration-200",
+          // Mobile: fixed overlay sidebar
+          isMobile
+            ? cn(
+                "fixed inset-y-0 left-0 z-50 w-[248px]",
+                mobileSidebarOpen ? "translate-x-0" : "-translate-x-full",
+              )
+            : cn(
+                "relative",
+                sidebarCollapsed ? "w-[64px]" : "w-[248px]",
+              ),
         )}
       >
 
@@ -3384,10 +3656,16 @@ export default function Dashboard() {
                 {orgInitials}
               </div>
             )}
-            {!sidebarCollapsed && (
+            {(!sidebarCollapsed || isMobile) && (
               <WorkspaceSwitcher
                 currentOrg={org ? { id: org.id, name: org.name, logo_url: org.logo_url, primary_color: org.primary_color } : null}
                 onWorkspaceChange={handleWorkspaceChange}
+              />
+            )}
+            {(!sidebarCollapsed || isMobile) && (
+              <NotificationCenter
+                organizationId={org?.id ? String(org.id) : null}
+                userRole={currentUserRole || undefined}
               />
             )}
             <Button
@@ -3397,14 +3675,20 @@ export default function Dashboard() {
                 "h-7 w-7 text-muted-foreground hover:text-foreground",
                 !sidebarCollapsed && "ml-auto",
               )}
-              onClick={() => setSidebarCollapsed((v) => !v)}
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              onClick={() => {
+                if (isMobile) {
+                  setMobileSidebarOpen(false);
+                } else {
+                  setSidebarCollapsed((v) => !v);
+                }
+              }}
+              title={isMobile ? "Close sidebar" : sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              {isMobile ? <X className="h-4 w-4" /> : sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </Button>
           </div>
 
-          {!sidebarCollapsed ? (
+          {(!sidebarCollapsed || isMobile) ? (
             <div className="rounded-md border bg-muted/30 p-0.5 grid grid-cols-3 gap-0.5">
               <Button
                 variant="ghost"
@@ -3467,7 +3751,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {sidebarCollapsed ? (
+        {sidebarCollapsed && !isMobile ? (
           <div className="flex-1 flex flex-col items-center gap-1.5 py-3">
             <Button
               variant="ghost"
@@ -3496,6 +3780,39 @@ export default function Dashboard() {
               title="Analytics view"
             >
               <BarChart3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-8 w-8 disabled:opacity-40 disabled:pointer-events-none relative",
+                dashboardPaneMode === "approvals"
+                  ? "text-primary bg-primary/10 hover:bg-primary/15"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setDashboardPaneMode("approvals")}
+              title="Approvals"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              {pendingReviewCount > 0 && (
+                <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-[9px] font-semibold">
+                  {pendingReviewCount > 99 ? "99+" : pendingReviewCount}
+                </span>
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-8 w-8 disabled:opacity-40 disabled:pointer-events-none",
+                dashboardPaneMode === "agent"
+                  ? "text-primary bg-primary/10 hover:bg-primary/15"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setDashboardPaneMode("agent")}
+              title="AI Agent"
+            >
+              <Sparkles className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
@@ -3592,32 +3909,60 @@ export default function Dashboard() {
             <div className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
               <div className="px-2 mb-2">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-1.5">View</p>
-                <div className="grid grid-cols-2 rounded-md border bg-background/80 p-0.5">
+                <div className="grid grid-cols-2 rounded-lg border bg-background/90 p-1 gap-1">
                   <button
                     type="button"
                     onClick={() => setDashboardPaneMode("content")}
                     className={cn(
-                      "h-7 rounded-sm text-[11px] font-medium transition-colors inline-flex items-center justify-center gap-1.5",
+                      "h-7 rounded-md text-[11px] font-semibold transition-colors inline-flex items-center justify-center",
                       dashboardPaneMode === "content"
-                        ? "bg-primary/10 text-primary shadow-sm"
+                        ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <FileText className="h-3 w-3" />
                     Content
                   </button>
                   <button
                     type="button"
                     onClick={() => setDashboardPaneMode("analytics")}
                     className={cn(
-                      "h-7 rounded-sm text-[11px] font-medium transition-colors inline-flex items-center justify-center gap-1.5",
+                      "h-7 rounded-md text-[11px] font-semibold transition-colors inline-flex items-center justify-center",
                       dashboardPaneMode === "analytics"
-                        ? "bg-primary/10 text-primary shadow-sm"
+                        ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <BarChart3 className="h-3 w-3" />
                     Analytics
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDashboardPaneMode("approvals")}
+                    className={cn(
+                      "h-7 rounded-md text-[11px] font-semibold transition-colors inline-flex items-center justify-center gap-1",
+                      dashboardPaneMode === "approvals"
+                        ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Approvals
+                    {pendingReviewCount > 0 && (
+                      <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-[9px] font-semibold">
+                        {pendingReviewCount > 99 ? "99+" : pendingReviewCount}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDashboardPaneMode("agent")}
+                    className={cn(
+                      "h-7 rounded-md text-[11px] font-semibold transition-colors inline-flex items-center justify-center gap-1",
+                      dashboardPaneMode === "agent"
+                        ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    Agent
                   </button>
                 </div>
               </div>
@@ -4057,13 +4402,45 @@ export default function Dashboard() {
 
       {/* ── Main ──────────────────────────────────────────────────── */}
       <main className="flex-1 overflow-hidden flex flex-col min-w-0 bg-background">
-        {dashboardPaneMode === "analytics" ? (
-          <div className="flex-1 overflow-y-auto px-6 py-8">
+        {dashboardPaneMode === "agent" ? (
+          <AgentPanel
+            sections={sectionTree}
+            onPageCreated={(pageId) => {
+              handleSelectPage(pageId);
+              setDashboardPaneMode("content");
+            }}
+          />
+        ) : dashboardPaneMode === "approvals" ? (
+          <ApprovalsPanel
+            userRole={currentUserRole}
+            onClose={() => setDashboardPaneMode("content")}
+            onOpenDocument={(docId) => {
+              const parsed = Number(docId);
+              if (!Number.isFinite(parsed)) return;
+              handleSelectPage(parsed);
+              setDashboardPaneMode("content");
+            }}
+            onCountChange={setPendingReviewCount}
+          />
+        ) : dashboardPaneMode === "analytics" ? (
+          <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-6 sm:py-8">
             <div className="max-w-5xl mx-auto space-y-4">
-              <div className="rounded-xl border bg-background/85 shadow-sm px-5 py-4">
+              <div className="rounded-xl border bg-background/85 shadow-sm px-4 sm:px-5 py-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-semibold">Workspace analytics</p>
+                    <div className="flex items-center gap-2">
+                      {isMobile && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          onClick={() => setMobileSidebarOpen(true)}
+                        >
+                          <Menu className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-semibold">Workspace analytics</p>
+                    </div>
                     <h2 className="text-lg font-semibold mt-1">Documentation impact for {org?.name ?? "your workspace"}</h2>
                     <p className="text-sm text-muted-foreground mt-1">Track coverage, freshness, and publishing momentum in one place.</p>
                   </div>
@@ -4089,7 +4466,17 @@ export default function Dashboard() {
         ) : selectedPage ? (
           <>
             {/* Toolbar */}
-            <header className="flex items-center gap-3 px-6 py-2.5 border-b shrink-0 bg-background/80 backdrop-blur-sm">
+            <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 border-b shrink-0 bg-background/80 backdrop-blur-sm">
+              {isMobile && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => setMobileSidebarOpen(true)}
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h1 className="font-semibold text-sm truncate leading-snug">{selectedPage.title}</h1>
@@ -4099,16 +4486,24 @@ export default function Dashboard() {
                       "text-[10px] px-1.5 py-0 h-[18px] font-semibold rounded",
                       selectedPage.status === "published"
                         ? "bg-emerald-500/10 text-emerald-600 border-emerald-200 hover:bg-emerald-500/10"
-                        : selectedPage.is_published
-                          ? "bg-amber-500/10 text-amber-600 border-amber-200 hover:bg-amber-500/10"
-                          : "bg-muted text-muted-foreground"
+                        : selectedPage.status === "review"
+                          ? "bg-amber-500/10 text-amber-700 border-amber-200 hover:bg-amber-500/10"
+                          : selectedPage.status === "rejected"
+                            ? "bg-rose-500/10 text-rose-700 border-rose-200 hover:bg-rose-500/10"
+                            : selectedPage.is_published
+                              ? "bg-amber-500/10 text-amber-600 border-amber-200 hover:bg-amber-500/10"
+                              : "bg-muted text-muted-foreground"
                     )}
                   >
                     {selectedPage.status === "published"
                       ? "Published"
-                      : selectedPage.is_published
-                        ? "Changes pending"
-                        : "Draft"}
+                      : selectedPage.status === "review"
+                        ? "In review"
+                        : selectedPage.status === "rejected"
+                          ? "Changes requested"
+                          : selectedPage.is_published
+                            ? "Changes pending"
+                            : "Draft"}
                   </Badge>
                   {selectedPage.last_synced_at && (
                     <span className="text-[11px] text-muted-foreground/50 hidden sm:block">
@@ -4118,12 +4513,12 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                 {selectedPage.is_published && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-xs gap-1.5 text-muted-foreground"
+                    className="h-7 text-xs gap-1.5 text-muted-foreground hidden sm:inline-flex"
                     onClick={() => {
                       if (selectedPagePublishedUrl) void openPublishedDocs(selectedPagePublishedUrl);
                     }}
@@ -4135,7 +4530,7 @@ export default function Dashboard() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-xs gap-1.5 text-muted-foreground"
+                    className="h-7 text-xs gap-1.5 text-muted-foreground hidden sm:inline-flex"
                     onClick={() => void copyPublishedLink()}
                   >
                     <Copy className="h-3 w-3" /> Copy link
@@ -4152,7 +4547,7 @@ export default function Dashboard() {
                     ? <Loader2 className="h-3 w-3 animate-spin" />
                     : <RefreshCw className="h-3 w-3" />
                   }
-                  Sync
+                  <span className="hidden sm:inline">Sync</span>
                 </Button>
 
                 {selectedPage.is_published && (
@@ -4166,23 +4561,46 @@ export default function Dashboard() {
                     Unpublish
                   </Button>
                 )}
-                {selectedPage.status !== "published" && (
+                {selectedPage.status === "review" && canReviewContent && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1.5"
+                      disabled={rejectPage.isPending}
+                      onClick={() => handleRejectCurrentPage(selectedPage)}
+                    >
+                      {rejectPage.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
+                      <span className="hidden sm:inline">Reject</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs gap-1.5"
+                      disabled={approvePage.isPending}
+                      onClick={() => handleApproveCurrentPage(selectedPage)}
+                    >
+                      {approvePage.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      <span className="hidden sm:inline">Approve</span>
+                    </Button>
+                  </>
+                )}
+                {selectedPage.status === "draft" && (
                   <Button
                     size="sm"
                     className="h-7 text-xs gap-1.5"
-                    disabled={!canPublishContent || publishPage.isPending || !selectedPage.html_content || !selectedPage.section_id}
-                    onClick={() => handlePublishCurrentPage(selectedPage)}
+                    disabled={!canPublishContent || submitPageForReview.isPending || !selectedPage.html_content || !selectedPage.section_id}
+                    onClick={() => handleSubmitCurrentPageForReview(selectedPage)}
                   >
-                    {publishPage.isPending
+                    {submitPageForReview.isPending
                       ? <Loader2 className="h-3 w-3 animate-spin" />
                       : <ArrowUpFromLine className="h-3 w-3" />
                     }
-                    Publish
+                    <span className="hidden sm:inline">Submit for review</span>
                   </Button>
                 )}
-                {selectedPage.status !== "published" && !selectedPage.section_id && (
-                  <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                    Move page into a section to publish
+                {selectedPage.status === "draft" && !selectedPage.section_id && (
+                  <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 hidden sm:inline">
+                    Move page into a section to submit for review
                   </span>
                 )}
 
@@ -4257,7 +4675,7 @@ export default function Dashboard() {
             </header>
 
             {selectedProduct && productTabs.length > 0 && (
-              <div className="border-b px-6 py-2 bg-background">
+              <div className="border-b px-3 sm:px-6 py-2 bg-background">
                 <div className="flex items-center gap-1 overflow-x-auto">
                   {productTabs.map((tab) => {
                     const isActive = selectedTab?.id === tab.id;
@@ -4291,55 +4709,83 @@ export default function Dashboard() {
             )}
 
             {/* Content */}
-            <div className="flex-1 min-h-0 flex">
-              <ReaderHierarchy
-                title={readerHierarchyTitle}
-                pages={treeVisiblePages}
-                topPages={readerHierarchyTopPages}
-                rootSections={readerHierarchySections}
-                sectionsById={sectionsById}
-                sectionDepthById={sectionDepthById}
-                hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
-                sensors={sensors}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                activeDragType={activeDragType}
-                activeDragLabel={activeDragLabel}
-                hideVersionSections={Boolean(selectedProduct && !selectedVersion)}
-                visibilityFilter={visibilityFilter}
-                onVisibilityFilterChange={setVisibilityFilter}
-                pageSearchQuery={pageSearchQuery}
-                onPageSearchChange={setPageSearchQuery}
-                selectedPageId={selectedPageId}
-                onSelectPage={handleSelectPage}
-                onAddPage={(sectionId) => openAddPageDialog(sectionId)}
-                onAddSubSection={openAddSectionDialog}
-                onImportHere={(section) => openImportDialogForTarget(section)}
-                onRenameSection={setRenamingSection}
-                onMoveSection={setMovingSection}
-                onDeleteSection={handleDeleteSection}
-                onChangeSectionType={handleSectionTypeChange}
-                onSetSectionVisibility={handleSectionVisibilityChange}
-                onRenamePage={setRenamingPage}
-                onEditPageSlug={setEditingPageSlug}
-                onMovePage={setMovingPage}
-                onSetPageVisibilityOverride={handlePageVisibilityOverride}
-                onDuplicatePage={handleDuplicatePage}
-                onUnpublishPage={handleUnpublishPage}
-                onRearrangePage={handleRearrangePage}
-                onDeletePage={handleDeletePage}
-                canEditContent={canEditContent}
-                canMoveContent={canMoveContent}
-                canEditVisibilitySettings={canEditVisibilitySettings}
-                canPublishContent={canPublishContent}
-                canDeleteContent={canDeleteContent}
-                canOpenImportDialog={canOpenImportDialog}
-              />
+            <div className="flex-1 min-h-0 flex relative">
+              {/* Mobile hierarchy overlay backdrop */}
+              {isMobile && mobileHierarchyOpen && (
+                <div
+                  className="absolute inset-0 z-20 bg-black/30"
+                  onClick={() => setMobileHierarchyOpen(false)}
+                />
+              )}
+              {/* Mobile hierarchy toggle */}
+              {isMobile && !mobileHierarchyOpen && (
+                <button
+                  type="button"
+                  onClick={() => setMobileHierarchyOpen(true)}
+                  className="absolute top-2 left-2 z-10 h-8 w-8 rounded-md border bg-background shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground"
+                  title="Show page hierarchy"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </button>
+              )}
+              <div className={cn(
+                // On mobile: absolute overlay panel
+                isMobile
+                  ? cn(
+                      "absolute inset-y-0 left-0 z-30 bg-background shadow-xl transition-transform duration-200",
+                      mobileHierarchyOpen ? "translate-x-0" : "-translate-x-full",
+                    )
+                  : "",
+              )}>
+                <ReaderHierarchy
+                  title={readerHierarchyTitle}
+                  pages={treeVisiblePages}
+                  topPages={readerHierarchyTopPages}
+                  rootSections={readerHierarchySections}
+                  sectionsById={sectionsById}
+                  sectionDepthById={sectionDepthById}
+                  hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
+                  sensors={sensors}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  activeDragType={activeDragType}
+                  activeDragLabel={activeDragLabel}
+                  hideVersionSections={Boolean(selectedProduct && !selectedVersion)}
+                  visibilityFilter={visibilityFilter}
+                  onVisibilityFilterChange={setVisibilityFilter}
+                  pageSearchQuery={pageSearchQuery}
+                  onPageSearchChange={setPageSearchQuery}
+                  selectedPageId={selectedPageId}
+                  onSelectPage={handleSelectPage}
+                  onAddPage={(sectionId) => openAddPageDialog(sectionId)}
+                  onAddSubSection={openAddSectionDialog}
+                  onImportHere={(section) => openImportDialogForTarget(section)}
+                  onRenameSection={setRenamingSection}
+                  onMoveSection={setMovingSection}
+                  onDeleteSection={handleDeleteSection}
+                  onChangeSectionType={handleSectionTypeChange}
+                  onSetSectionVisibility={handleSectionVisibilityChange}
+                  onRenamePage={setRenamingPage}
+                  onEditPageSlug={setEditingPageSlug}
+                  onMovePage={setMovingPage}
+                  onSetPageVisibilityOverride={handlePageVisibilityOverride}
+                  onDuplicatePage={handleDuplicatePage}
+                  onUnpublishPage={handleUnpublishPage}
+                  onRearrangePage={handleRearrangePage}
+                  onDeletePage={handleDeletePage}
+                  canEditContent={canEditContent}
+                  canMoveContent={canMoveContent}
+                  canEditVisibilitySettings={canEditVisibilitySettings}
+                  canPublishContent={canPublishContent}
+                  canDeleteContent={canDeleteContent}
+                  canOpenImportDialog={canOpenImportDialog}
+                />
+              </div>
               <div className="flex-1 min-w-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_16rem]">
                 <div className="dashboard-doc-scroll overflow-y-auto">
                   {selectedPage.html_content ? (
                     <div
-                      className="dashboard-doc-content prose prose-sm prose-neutral max-w-4xl mx-auto px-8 py-10 xl:px-10"
+                      className="dashboard-doc-content prose prose-sm prose-neutral max-w-4xl mx-auto px-4 py-6 sm:px-8 sm:py-10 xl:px-10"
                       dangerouslySetInnerHTML={{ __html: selectedPage.html_content }}
                     />
                   ) : (
@@ -4382,7 +4828,20 @@ export default function Dashboard() {
           </>
         ) : (
           /* Empty state */
-          <div className="flex-1 overflow-y-auto px-6 py-8">
+          <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-6 sm:py-8">
+            {isMobile && (
+              <div className="mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5"
+                  onClick={() => setMobileSidebarOpen(true)}
+                >
+                  <Menu className="h-3.5 w-3.5" />
+                  Menu
+                </Button>
+              </div>
+            )}
             <div className="max-w-5xl mx-auto space-y-6">
               {!hasWorkspaceContent && (
                 <div className="flex flex-col items-center gap-5">

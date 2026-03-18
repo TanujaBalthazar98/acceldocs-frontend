@@ -11,11 +11,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bell, Check, UserPlus, FileText, Settings, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
-import { Separator } from "@/components/ui/separator";
 
 interface Notification {
   id: string;
-  type: "join_request" | "member_added" | "project_created" | "settings_changed" | "info";
+  type:
+    | "join_request"
+    | "member_added"
+    | "project_created"
+    | "settings_changed"
+    | "approval_submitted"
+    | "approval_approved"
+    | "approval_rejected"
+    | "info";
   title: string;
   message: string;
   timestamp: Date;
@@ -25,7 +32,7 @@ interface Notification {
 
 interface NotificationCenterProps {
   organizationId: string | null;
-  onWorkspaceChange?: (orgId: number) => void;
+  userRole?: string;
 }
 
 const iconMap = {
@@ -33,7 +40,30 @@ const iconMap = {
   member_added: UserPlus,
   project_created: FileText,
   settings_changed: Settings,
+  approval_submitted: FileText,
+  approval_approved: Check,
+  approval_rejected: Info,
   info: Info,
+};
+
+type PendingDoc = {
+  id: string;
+  entity_type?: "document" | "page";
+  title: string;
+  owner_id?: string | number | null;
+  owner_name?: string | null;
+};
+
+type ApprovalHistoryEntry = {
+  id: string | number;
+  document_id: string | number;
+  entity_type?: "document" | "page";
+  document_title: string | null;
+  document_owner_id?: string | number | null;
+  user_id?: string | number | null;
+  user_name: string;
+  action: string;
+  created_at: string | null;
 };
 
 // LocalStorage keys for persistence
@@ -66,15 +96,16 @@ const persistSet = (key: string, set: Set<string>) => {
   }
 };
 
-export const NotificationCenter = ({ organizationId, onWorkspaceChange }: NotificationCenterProps) => {
+export const NotificationCenter = ({ organizationId, userRole }: NotificationCenterProps) => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   // Initialize from localStorage
   const [seenRequestIds, setSeenRequestIds] = useState<Set<string>>(() => loadPersistedSet(SEEN_NOTIFICATIONS_KEY));
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => loadPersistedSet(READ_NOTIFICATIONS_KEY));
-  const [hasMultipleWorkspaces, setHasMultipleWorkspaces] = useState(false);
   const initialFetchDone = useRef(false);
+  const currentUserId = user?.id ? Number(user.id) : null;
+  const canReviewContent = ["owner", "admin", "reviewer", "editor"].includes((userRole || "").toLowerCase());
 
   // Persist seen IDs when they change
   useEffect(() => {
@@ -109,13 +140,6 @@ export const NotificationCenter = ({ organizationId, onWorkspaceChange }: Notifi
       return [newNotification, ...prev].slice(0, 50);
     });
   }, [readNotificationIds]);
-
-  // Check if user has multiple workspaces
-  useEffect(() => {
-    if (!user) return;
-
-    setHasMultipleWorkspaces(false);
-  }, [user]);
 
   // Fetch pending join requests on mount - only once
   useEffect(() => {
@@ -154,6 +178,88 @@ export const NotificationCenter = ({ organizationId, onWorkspaceChange }: Notifi
   useEffect(() => {
     return;
   }, [user, organizationId, seenRequestIds, addNotification]);
+
+  // Approval notifications (in-app): poll pending + history and derive unread events.
+  useEffect(() => {
+    if (!user || !organizationId) return;
+
+    let cancelled = false;
+
+    const fetchApprovalNotifications = async () => {
+      try {
+        const [pendingRes, historyRes] = await Promise.all([
+          invokeFunction<{ ok?: boolean; pending?: PendingDoc[] }>("approvals-pending", { body: {} }),
+          invokeFunction<{ ok?: boolean; history?: ApprovalHistoryEntry[] }>("approvals-history", { body: {} }),
+        ]);
+
+        if (cancelled) return;
+
+        const pending = pendingRes.data?.ok ? pendingRes.data.pending || [] : [];
+        const history = historyRes.data?.ok ? historyRes.data.history || [] : [];
+
+        // Notify reviewers/admins/owners about newly submitted review items.
+        if (canReviewContent) {
+          for (const doc of pending) {
+            const notifId = `approval:pending:${doc.id}`;
+            if (seenRequestIds.has(notifId) || readNotificationIds.has(notifId)) continue;
+            if (currentUserId && doc.owner_id != null && Number(doc.owner_id) === currentUserId) continue;
+
+            setSeenRequestIds((prev) => new Set([...prev, notifId]));
+            addNotification(
+              {
+                type: "approval_submitted",
+                title: "New page awaiting review",
+                message: `${doc.owner_name || "A teammate"} submitted "${doc.title || "Untitled"}"`,
+                metadata: { documentId: doc.id },
+              },
+              notifId,
+            );
+          }
+        }
+
+        // Notify submitter about approve/reject decisions.
+        for (const item of history) {
+          const notifId = `approval:history:${item.id}`;
+          if (seenRequestIds.has(notifId) || readNotificationIds.has(notifId)) continue;
+
+          const action = String(item.action || "").toLowerCase();
+          if (!["approve", "reject", "publish"].includes(action)) continue;
+          if (!currentUserId || item.document_owner_id == null) continue;
+          if (Number(item.document_owner_id) !== currentUserId) continue;
+          if (item.user_id != null && Number(item.user_id) === currentUserId) continue;
+
+          setSeenRequestIds((prev) => new Set([...prev, notifId]));
+          addNotification(
+            {
+              type: action === "reject" ? "approval_rejected" : "approval_approved",
+              title: action === "reject" ? "Changes requested" : "Page approved",
+              message: `${item.user_name} ${action === "reject" ? "requested changes on" : "approved"} "${item.document_title || "your page"}"`,
+              metadata: { approvalId: item.id, documentId: item.document_id },
+            },
+            notifId,
+          );
+        }
+      } catch {
+        // Avoid noisy toasts for background polling failures.
+      }
+    };
+
+    void fetchApprovalNotifications();
+    const interval = window.setInterval(fetchApprovalNotifications, 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    user,
+    organizationId,
+    userRole,
+    currentUserId,
+    canReviewContent,
+    seenRequestIds,
+    readNotificationIds,
+    addNotification,
+  ]);
 
   const markAsRead = (id: string) => {
     setNotifications((prev) =>

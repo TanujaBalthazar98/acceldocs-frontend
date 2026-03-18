@@ -274,7 +274,7 @@ export function DashboardSidebar({
                 <span className="bg-primary/10 p-1.5 rounded-md text-primary">
                   <FileText className="w-4 h-4" />
                 </span>
-                <span className="truncate text-lg">{organizationName || "Docspeare"}</span>
+                <span className="truncate text-lg">{organizationName || "Knowledge Workspace"}</span>
               </div>
               <Button 
                 variant="ghost" 

@@ -289,8 +289,8 @@ export default function SignUp() {
       <div className="relative z-10 mx-auto w-full max-w-4xl">
         {/* Header */}
         <div className="mb-6 text-center sm:mb-8">
-          <h1 className="mb-2 text-3xl font-bold text-foreground sm:text-4xl">
-            Welcome
+          <h1 className="mb-2 text-3xl font-bold tracking-tight text-gradient sm:text-4xl">
+            Knowledge Workspace
           </h1>
           <p className="text-base text-muted-foreground sm:text-lg">
             Create or join your documentation workspace

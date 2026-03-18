@@ -55,7 +55,7 @@ export interface Page {
   slug_locked?: boolean;
   visibility_override?: "public" | "internal" | "external" | null;
   is_published: boolean;
-  status: "draft" | "published";
+  status: "draft" | "review" | "published" | "rejected";
   display_order: number;
   drive_modified_at: string | null;
   last_synced_at: string | null;

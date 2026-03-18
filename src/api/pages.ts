@@ -36,6 +36,15 @@ export const pagesApi = {
   publish: (id: number): Promise<{ ok: boolean; page: Page }> =>
     fetchOrThrow<{ ok: boolean; page: Page }>("/api/pages/" + id + "/publish", { method: "POST" }),
 
+  submitReview: (id: number): Promise<{ ok: boolean; page: Page; status?: string }> =>
+    fetchOrThrow<{ ok: boolean; page: Page; status?: string }>("/api/pages/" + id + "/submit-review", { method: "POST" }),
+
+  approve: (id: number): Promise<{ ok: boolean; page: Page }> =>
+    fetchOrThrow<{ ok: boolean; page: Page }>("/api/pages/" + id + "/approve", { method: "POST" }),
+
+  reject: (id: number): Promise<{ ok: boolean; page: Page }> =>
+    fetchOrThrow<{ ok: boolean; page: Page }>("/api/pages/" + id + "/reject", { method: "POST" }),
+
   unpublish: (id: number): Promise<{ ok: boolean }> =>
     fetchOrThrow<{ ok: boolean }>("/api/pages/" + id + "/unpublish", { method: "POST" }),
 
