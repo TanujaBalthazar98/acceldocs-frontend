@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  ArrowLeft,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -12,14 +11,15 @@ import {
   ClipboardCheck,
   History,
   Send,
+  Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { parseApiDate } from "@/lib/datetime";
 
 const GOOGLE_TOKEN_KEY = "google_access_token";
 import { formatDistanceToNow } from "date-fns";
@@ -28,6 +28,8 @@ type DocStatus = "draft" | "review" | "approved" | "rejected";
 
 interface PendingDoc {
   id: string;
+  entity_type?: "document" | "page";
+  can_review?: boolean;
   title: string;
   project: string;
   project_id: string | null;
@@ -42,7 +44,10 @@ interface PendingDoc {
 interface HistoryEntry {
   id: string;
   document_id: string;
+  entity_type?: "document" | "page";
   document_title: string | null;
+  document_owner_id?: string | number | null;
+  user_id?: string | number | null;
   user_name: string;
   action: string;
   comment: string | null;
@@ -63,6 +68,8 @@ interface ApprovalsPanelProps {
   onClose: () => void;
   onOpenDocument: (docId: string, docTitle: string) => void;
   onCountChange?: (count: number) => void;
+  isMobile?: boolean;
+  onOpenSidebar?: () => void;
 }
 
 const statusConfig: Record<DocStatus, { label: string; color: string; bg: string; border: string }> = {
@@ -84,9 +91,13 @@ function StatusBadge({ status }: { status: DocStatus }) {
 function TimeAgo({ dateStr }: { dateStr: string | null }) {
   if (!dateStr) return <span className="text-xs text-muted-foreground">—</span>;
   try {
+    const parsed = parseApiDate(dateStr, false);
+    if (!parsed) {
+      return <span className="text-xs text-muted-foreground">—</span>;
+    }
     return (
       <span className="text-xs text-muted-foreground">
-        {formatDistanceToNow(new Date(dateStr), { addSuffix: true })}
+        {formatDistanceToNow(parsed, { addSuffix: true })}
       </span>
     );
   } catch {
@@ -94,7 +105,7 @@ function TimeAgo({ dateStr }: { dateStr: string | null }) {
   }
 }
 
-export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChange }: ApprovalsPanelProps) {
+export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChange, isMobile, onOpenSidebar }: ApprovalsPanelProps) {
   const { toast } = useToast();
   const { googleAccessToken } = useAuth();
   const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
@@ -141,12 +152,17 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
     return () => clearInterval(interval);
   }, [fetchAll]);
 
-  const handleAction = async (docId: string, action: "approve" | "reject", comment?: string) => {
+  const handleAction = async (
+    docId: string,
+    action: "approve" | "reject",
+    comment?: string,
+    entityType: "document" | "page" = "document",
+  ) => {
     setActioning(docId);
     try {
       const token = getGoogleToken();
       const { data, error } = await invokeFunction("approvals-action", {
-        body: { document_id: Number(docId), action, comment: comment || null },
+        body: { document_id: Number(docId), action, comment: comment || null, entity_type: entityType },
         ...(token ? { headers: { "x-google-token": token } } : {}),
       });
       if (error || !data?.ok) throw new Error(data?.error || error || "Action failed");
@@ -181,35 +197,42 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="h-14 border-b border-border flex items-center justify-between px-4 sm:px-6 shrink-0">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={onClose} className="gap-2 text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Back</span>
-          </Button>
-          <div className="h-4 w-px bg-border" />
-          <div className="flex items-center gap-2">
-            <ClipboardCheck className="w-4 h-4 text-primary" />
-            <h1 className="text-base font-semibold">Approvals</h1>
-            {pending.length > 0 && (
-              <span className="inline-flex items-center justify-center px-1.5 min-w-[1.25rem] h-5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
-                {pending.length}
-              </span>
-            )}
+    <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-6 sm:py-8">
+      <div className="max-w-5xl mx-auto space-y-4">
+        <section className="rounded-xl border bg-background/85 shadow-sm px-4 sm:px-5 py-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2">
+                {isMobile && onOpenSidebar && (
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onOpenSidebar}>
+                    <Menu className="h-4 w-4" />
+                  </Button>
+                )}
+                <ClipboardCheck className="w-4 h-4 text-primary" />
+                <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-semibold">Workflow</p>
+              </div>
+              <h2 className="text-lg font-semibold mt-1">Approvals</h2>
+              <p className="text-sm text-muted-foreground mt-1">Review queued documents, approve publishing, or request changes.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {pending.length > 0 && (
+                <span className="inline-flex items-center justify-center px-2 min-w-[1.4rem] h-6 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                  {pending.length}
+                </span>
+              )}
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onClose}>
+                Back to content
+              </Button>
+              <Button variant="ghost" size="icon" onClick={fetchAll} disabled={isLoading} className="h-8 w-8 text-muted-foreground">
+                <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
           </div>
-        </div>
-        <Button variant="ghost" size="icon" onClick={fetchAll} disabled={isLoading} className="h-8 w-8 text-muted-foreground">
-          <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-        </Button>
-      </header>
+        </section>
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
-            <TabsList className="grid grid-cols-3 w-full max-w-lg mb-6 shrink-0">
+        <section className="rounded-xl border bg-background/85 shadow-sm px-4 sm:px-5 py-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid grid-cols-3 w-full max-w-xl">
               <TabsTrigger value="pending" className="gap-1.5 text-xs sm:text-sm">
                 <Clock className="w-3.5 h-3.5" />
                 Pending
@@ -230,7 +253,7 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
             </TabsList>
 
             {/* ── Pending Review ── */}
-            <TabsContent value="pending" className="flex-1 overflow-y-auto">
+            <TabsContent value="pending" className="mt-4 max-h-[62vh] overflow-y-auto pr-1">
               {isLoading && pending.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
                   <Loader2 className="w-8 h-8 animate-spin opacity-40" />
@@ -244,7 +267,9 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {pending.map((doc) => (
+                  {pending.map((doc) => {
+                    const canReviewThisDoc = canReview && (doc.can_review ?? true);
+                    return (
                     <div key={doc.id} className="rounded-xl border border-border bg-card p-4 hover:border-primary/30 transition-colors">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
@@ -291,7 +316,7 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
                               variant="destructive"
                               className="h-7 text-xs gap-1.5"
                               disabled={actioning === doc.id}
-                              onClick={() => handleAction(doc.id, "reject", commentInputs[doc.id])}
+                              onClick={() => handleAction(doc.id, "reject", commentInputs[doc.id], doc.entity_type || "document")}
                             >
                               {actioning === doc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
                               Send Request
@@ -309,13 +334,13 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
                       )}
 
                       {/* Action buttons (only for reviewers) */}
-                      {canReview && showCommentFor !== doc.id && (
+                      {canReviewThisDoc && showCommentFor !== doc.id && (
                         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
                           <Button
                             size="sm"
                             className="h-7 text-xs gap-1.5 bg-green-600 hover:bg-green-700 text-white"
                             disabled={actioning === doc.id}
-                            onClick={() => handleAction(doc.id, "approve")}
+                            onClick={() => handleAction(doc.id, "approve", undefined, doc.entity_type || "document")}
                           >
                             {actioning === doc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
                             Approve
@@ -342,12 +367,13 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
                       )}
 
                       {/* Non-reviewers can still view */}
-                      {!canReview && (
+                      {!canReviewThisDoc && (
                         <div className="flex items-center mt-3 pt-3 border-t border-border">
+                          <p className="text-xs text-muted-foreground">View-only in this workspace.</p>
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 text-xs text-muted-foreground"
+                            className="h-7 text-xs text-muted-foreground ml-auto"
                             onClick={() => onOpenDocument(doc.id, doc.title)}
                           >
                             View Doc
@@ -355,13 +381,14 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </TabsContent>
 
             {/* ── My Submissions ── */}
-            <TabsContent value="submissions" className="flex-1 overflow-y-auto">
+            <TabsContent value="submissions" className="mt-4 max-h-[62vh] overflow-y-auto pr-1">
               {isLoading && submissions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
                   <Loader2 className="w-8 h-8 animate-spin opacity-40" />
@@ -427,7 +454,7 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
             </TabsContent>
 
             {/* ── History ── */}
-            <TabsContent value="history" className="flex-1 overflow-y-auto">
+            <TabsContent value="history" className="mt-4 max-h-[62vh] overflow-y-auto pr-1">
               {isLoading && history.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
                   <Loader2 className="w-8 h-8 animate-spin opacity-40" />
@@ -442,24 +469,44 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
               ) : (
                 <div className="space-y-2">
                   {history.map((entry) => {
+                    const isSubmit = entry.action === "submit";
                     const isApprove = entry.action === "approve" || entry.action === "publish";
+                    const isReject = entry.action === "reject";
                     return (
                       <div key={entry.id} className="flex items-start gap-3 rounded-lg p-3 hover:bg-secondary/40 transition-colors">
-                        <div className={`mt-0.5 shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${isApprove ? "bg-green-100" : "bg-red-100"}`}>
-                          {isApprove
-                            ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                            : <XCircle className="w-4 h-4 text-red-500" />
-                          }
+                        <div
+                          className={`mt-0.5 shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
+                            isSubmit
+                              ? "bg-blue-100"
+                              : isApprove
+                                ? "bg-green-100"
+                                : "bg-red-100"
+                          }`}
+                        >
+                          {isSubmit ? (
+                            <Send className="w-4 h-4 text-blue-600" />
+                          ) : isApprove ? (
+                            <CheckCircle2 className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-red-500" />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-baseline gap-1 text-sm">
                             <span className="font-medium text-foreground">{entry.user_name}</span>
                             <span className="text-muted-foreground">
-                              {isApprove ? "approved" : "requested changes on"}
+                              {isSubmit
+                                ? "submitted"
+                                : isApprove
+                                  ? "approved"
+                                  : isReject
+                                    ? "requested changes on"
+                                    : `${entry.action} on`}
                             </span>
                             <span className="font-medium text-foreground truncate max-w-[200px]">
                               {entry.document_title || "a document"}
                             </span>
+                            {isSubmit && <span className="text-muted-foreground">for review</span>}
                           </div>
                           {entry.comment && (
                             <p className="text-xs text-muted-foreground mt-0.5 italic line-clamp-2">
@@ -475,7 +522,7 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
               )}
             </TabsContent>
           </Tabs>
-        </div>
+        </section>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { fetchOrThrow } from "./client";
+import { invokeFunction } from "@/lib/api/functions";
 import type { Page } from "./types";
 
 export const pagesApi = {
@@ -36,9 +37,32 @@ export const pagesApi = {
   publish: (id: number): Promise<{ ok: boolean; page: Page }> =>
     fetchOrThrow<{ ok: boolean; page: Page }>("/api/pages/" + id + "/publish", { method: "POST" }),
 
+  submitReview: (id: number): Promise<{ ok: boolean; page: Page; status?: string }> =>
+    fetchOrThrow<{ ok: boolean; page: Page; status?: string }>("/api/pages/" + id + "/submit-review", { method: "POST" }),
+
+  approve: (id: number): Promise<{ ok: boolean; page: Page }> =>
+    fetchOrThrow<{ ok: boolean; page: Page }>("/api/pages/" + id + "/approve", { method: "POST" }),
+
+  reject: (id: number): Promise<{ ok: boolean; page: Page }> =>
+    fetchOrThrow<{ ok: boolean; page: Page }>("/api/pages/" + id + "/reject", { method: "POST" }),
+
   unpublish: (id: number): Promise<{ ok: boolean }> =>
     fetchOrThrow<{ ok: boolean }>("/api/pages/" + id + "/unpublish", { method: "POST" }),
 
   duplicate: (id: number): Promise<Page> =>
     fetchOrThrow<Page>("/api/pages/" + id + "/duplicate", { method: "POST" }),
+
+  createFromTemplate: (data: {
+    title: string;
+    content: string;
+    section_id?: number | null;
+  }): Promise<{ ok: boolean; page_id: number; title: string; slug: string; google_doc_id: string; error?: string }> =>
+    invokeFunction<{ ok: boolean; page_id: number; title: string; slug: string; google_doc_id: string; error?: string }>(
+      "create-template-page",
+      { body: data },
+    ).then(({ data, error }) => {
+      if (error) throw new Error(error.message || "Failed to create page from template");
+      if (!data) throw new Error("No response from server");
+      return data;
+    }),
 };

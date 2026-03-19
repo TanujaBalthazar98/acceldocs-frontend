@@ -77,7 +77,7 @@ const DashboardPreview = () => {
               </div>
               <div className="flex-1 flex justify-center">
                 <div className="px-4 py-1 rounded-md bg-secondary text-xs text-muted-foreground">
-                  app.docspeare.io
+                  acceldocs.vercel.app
                 </div>
               </div>
             </div>

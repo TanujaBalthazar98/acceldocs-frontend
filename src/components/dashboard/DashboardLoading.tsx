@@ -7,7 +7,7 @@ export const DashboardLoading = () => (
         <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
           <BookOpen className="h-5 w-5 text-primary animate-pulse" />
         </div>
-        <span className="text-2xl font-semibold text-foreground">Docspeare</span>
+        <span className="text-2xl font-semibold text-foreground">Knowledge Workspace</span>
       </div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />

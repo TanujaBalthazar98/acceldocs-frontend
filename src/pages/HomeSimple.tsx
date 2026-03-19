@@ -21,17 +21,17 @@ export default function HomeSimple() {
       </header>
 
       {/* Hero */}
-      <main className="container mx-auto px-4 py-20">
+      <main className="container mx-auto px-4 py-10 md:py-20">
         <div className="max-w-3xl mx-auto text-center space-y-8">
-          <h1 className="text-5xl font-bold">
-            Documentation Platform
+          <h1 className="text-3xl md:text-5xl font-bold">
+            Knowledge Workspace
           </h1>
 
           <p className="text-xl text-gray-600 dark:text-gray-400">
             Google Docs → Beautiful Documentation
           </p>
 
-          <div className="flex gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
             {isAuthenticated ? (
               <Button asChild size="lg">
                 <Link to="/admin">Go to Dashboard →</Link>
@@ -49,7 +49,7 @@ export default function HomeSimple() {
 
           {/* Status */}
           <div className="pt-12">
-            <div className="inline-block bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+            <div className="inline-block bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 md:p-6">
               <h3 className="font-semibold mb-4">System Status</h3>
               <div className="space-y-2 text-left">
                 <div className="flex items-center gap-2">

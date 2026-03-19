@@ -171,7 +171,7 @@ export const DocumentationPreview = ({
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  <span>Powered by Docspeare</span>
+                  <span>Powered by Knowledge Workspace</span>
                   <ExternalLink className="w-2 h-2" />
                 </div>
               </footer>

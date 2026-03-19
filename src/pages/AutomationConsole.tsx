@@ -17,23 +17,23 @@ const AutomationConsole = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b bg-card">
-        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
+        <div className="mx-auto max-w-7xl px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-semibold">Docspeare Console</h1>
+            <h1 className="text-lg sm:text-xl font-semibold">Automation Console</h1>
             <p className="text-sm text-muted-foreground">
               Reused UI shell with new automation backend.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => window.open(backendUrl, "_blank")}>
-              <Server className="w-4 h-4 mr-2" />
-              Backend
-              <ExternalLink className="w-4 h-4 ml-2" />
+            <Button variant="outline" size="sm" onClick={() => window.open(backendUrl, "_blank")}>
+              <Server className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Backend</span>
+              <ExternalLink className="w-4 h-4 ml-1 sm:ml-2" />
             </Button>
-            <Button variant="outline" onClick={() => window.open(docsUrl, "_blank")}>
-              <BookOpen className="w-4 h-4 mr-2" />
-              Rendered Docs
-              <ExternalLink className="w-4 h-4 ml-2" />
+            <Button variant="outline" size="sm" onClick={() => window.open(docsUrl, "_blank")}>
+              <BookOpen className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Rendered Docs</span>
+              <ExternalLink className="w-4 h-4 ml-1 sm:ml-2" />
             </Button>
           </div>
         </div>
@@ -66,7 +66,7 @@ const AutomationConsole = () => {
             <iframe
               title={tab === "backend" ? "Automation Backend" : "Rendered Documentation"}
               src={tab === "backend" ? backendUrl : docsUrl}
-              className="w-full h-[78vh] border rounded-md bg-white"
+              className="w-full h-[60vh] sm:h-[78vh] border rounded-md bg-white"
             />
           </CardContent>
         </Card>

@@ -13,12 +13,15 @@ import { strapiFetch } from '@/lib/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Mock dependencies
-vi.mock('@/lib/api/client', () => ({
-  strapiFetch: vi.fn(),
-  STRAPI_URL: 'http://localhost:1337',
-  getStrapiToken: vi.fn(() => null),
-  setStrapiToken: vi.fn(),
-}));
+vi.mock('@/lib/api/client', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/api/client')>('@/lib/api/client');
+  return {
+    ...actual,
+    strapiFetch: vi.fn(),
+    STRAPI_URL: 'http://localhost:1337',
+    API_BASE_URL: 'http://localhost:8000',
+  };
+});
 
 vi.mock('@/lib/api/functions', () => ({
   invokeFunction: vi.fn(),

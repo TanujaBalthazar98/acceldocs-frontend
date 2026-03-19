@@ -50,7 +50,7 @@ export default function SignUp() {
 
   const [step, setStep] = useState<"search" | "create">("search");
 
-  // Show message if redirected from login (no account found)
+  // Show context-aware onboarding messages.
   useEffect(() => {
     if (searchParams.get("reason") === "no_account") {
       toast({
@@ -58,7 +58,13 @@ export default function SignUp() {
         description: "Please create or join an organization to get started.",
       });
     }
-  }, []);
+    if (searchParams.get("requested") === "1") {
+      toast({
+        title: "Request submitted",
+        description: "Workspace owner/admin has been notified. You'll be able to switch after approval.",
+      });
+    }
+  }, [searchParams, toast]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Organization[]>([]);
   const [searching, setSearching] = useState(false);
@@ -289,8 +295,8 @@ export default function SignUp() {
       <div className="relative z-10 mx-auto w-full max-w-4xl">
         {/* Header */}
         <div className="mb-6 text-center sm:mb-8">
-          <h1 className="mb-2 text-3xl font-bold text-foreground sm:text-4xl">
-            Welcome
+          <h1 className="mb-2 text-3xl font-bold tracking-tight text-gradient sm:text-4xl">
+            Knowledge Workspace
           </h1>
           <p className="text-base text-muted-foreground sm:text-lg">
             Create or join your documentation workspace

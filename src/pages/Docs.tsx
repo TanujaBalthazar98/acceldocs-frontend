@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
+import { applySeo } from "@/lib/seo";
 import {
   ChevronRight,
   FolderTree,
@@ -1732,6 +1733,38 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     font_body: currentOrg.font_body,
     custom_css: currentOrg.custom_css,
   } : null);
+
+  // SEO: set document title and meta description based on current page
+  useEffect(() => {
+    const orgName = currentOrg?.name ?? "Documentation";
+    if (selectedDocument) {
+      // Strip HTML from the first ~160 chars of content for meta description
+      const rawText = (selectedDocument as any).text_content
+        || selectedDocument.title || "";
+      const description = rawText.replace(/<[^>]+>/g, "").trim().slice(0, 160);
+      applySeo({
+        title: `${selectedDocument.title} | ${orgName}`,
+        description: description || `Read ${selectedDocument.title} in the ${orgName} documentation.`,
+        canonicalUrl: window.location.href,
+        // Internal docs should not be indexed by search engines
+        noindex: isInternalView,
+      });
+    } else if (selectedProject) {
+      applySeo({
+        title: `${selectedProject.name} | ${orgName}`,
+        description: `${selectedProject.name} documentation for ${orgName}.`,
+        canonicalUrl: window.location.href,
+        noindex: isInternalView,
+      });
+    } else if (currentOrg) {
+      applySeo({
+        title: `${orgName} Documentation`,
+        description: `Documentation hub for ${orgName}.`,
+        canonicalUrl: window.location.href,
+        noindex: isInternalView,
+      });
+    }
+  }, [selectedDocument, selectedProject, currentOrg, isInternalView]);
 
   // If showing landing page
   if (internalAccessDenied && isInternalView) {

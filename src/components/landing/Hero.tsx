@@ -58,7 +58,7 @@ const Hero = () => {
             style={{ transitionDelay: '100ms' }}
           >
             <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            <span className="text-sm text-muted-foreground">Built for Google Workspace</span>
+            <span className="text-sm text-muted-foreground">Google Docs to Production Docs</span>
           </div>
 
           {/* Headline */}

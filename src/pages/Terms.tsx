@@ -14,7 +14,7 @@ const Terms = () => {
       <div className="min-h-screen bg-background">
         {/* Header */}
         <header className="border-b border-border bg-card/50">
-          <div className="container mx-auto px-6 py-4">
+          <div className="container mx-auto px-4 md:px-6 py-4">
             <div className="flex items-center justify-between">
               <Link to="/auth" className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl overflow-hidden">
@@ -34,8 +34,8 @@ const Terms = () => {
         </header>
 
         {/* Content */}
-        <main className="container mx-auto px-6 py-16 max-w-4xl">
-          <h1 className="text-4xl font-bold text-foreground mb-8">Terms of Service</h1>
+        <main className="container mx-auto px-4 md:px-6 py-8 md:py-16 max-w-4xl">
+          <h1 className="text-2xl md:text-4xl font-bold text-foreground mb-8">Terms of Service</h1>
           <p className="text-muted-foreground mb-8">Last updated: January 2025</p>
 
           <div className="prose prose-gray dark:prose-invert max-w-none space-y-8">
@@ -176,7 +176,7 @@ const Terms = () => {
 
         {/* Footer */}
         <footer className="border-t border-border py-8">
-          <div className="container mx-auto px-6 text-center text-sm text-muted-foreground">
+          <div className="container mx-auto px-4 md:px-6 text-center text-sm text-muted-foreground">
             © 2025 Docspeare. All rights reserved.
           </div>
         </footer>

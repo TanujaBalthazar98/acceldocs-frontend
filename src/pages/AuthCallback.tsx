@@ -173,7 +173,7 @@ export default function AuthCallbackPage() {
           await handlePostAuth();
         } catch (err) {
           // If user was redirected to signup (no account), preserve invite token
-          if (err instanceof Error && err.message === 'NO_ACCOUNT_REDIRECT') {
+          if (err instanceof Error && (err.message === 'NO_ACCOUNT_REDIRECT' || err.message === 'JOIN_REQUEST_PENDING_REDIRECT')) {
             // Re-stash the invite token so it survives through the signup flow
             if (inviteToken) {
               localStorage.setItem('acceldocs_pending_invite', inviteToken);
