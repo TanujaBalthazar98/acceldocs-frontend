@@ -4,12 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { searchDocs, type SearchResult } from "@/lib/docSearch";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { searchApi } from "@/api/search";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface SmartSearchProps {
@@ -37,6 +32,10 @@ interface SmartSearchProps {
   onAskAI?: () => void;
   className?: string;
   size?: "default" | "large";
+  /** When provided, search via backend API instead of client-side. */
+  orgSlug?: string;
+  /** Audience filter for backend search. */
+  audience?: "public" | "internal" | "all";
 }
 
 export function SmartSearch({
@@ -51,6 +50,8 @@ export function SmartSearch({
   onAskAI,
   className,
   size = "default",
+  orgSlug,
+  audience,
 }: SmartSearchProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -78,51 +79,67 @@ export function SmartSearch({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Search logic with sanitization and error handling
-  const performSearch = useCallback((searchQuery: string) => {
+  // Search logic — backend (when orgSlug provided) or client-side fallback
+  const performSearch = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
       setResults([]);
       return;
     }
 
     try {
-      const searchResults = searchDocs({
-        query: searchQuery,
-        documents,
-        topics,
-        projects,
-      });
-      setResults(searchResults);
+      if (orgSlug) {
+        // Backend full-text search
+        const { results: apiResults } = await searchApi.search({
+          q: searchQuery,
+          org_slug: orgSlug,
+          audience: audience || "public",
+          limit: 15,
+        });
+        setResults(
+          apiResults.map((r) => ({
+            id: String(r.page_id),
+            title: r.title,
+            type: "page" as const,
+            projectName: r.section_name || undefined,
+            snippet: r.snippet || undefined,
+          })),
+        );
+      } else {
+        // Client-side search fallback
+        const searchResults = searchDocs({
+          query: searchQuery,
+          documents,
+          topics,
+          projects,
+        });
+        setResults(searchResults);
+      }
       setSelectedIndex(0);
     } catch (error) {
       console.error("Search error:", error);
       setResults([]);
-      // Don't throw - gracefully handle search errors
     }
-  }, [documents, topics, projects]);
+  }, [orgSlug, audience, documents, topics, projects]);
 
   // Debounced search to improve performance
   useEffect(() => {
-    // Clear previous timeout
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
 
-    // Set loading state immediately
-    if (query.trim()) {
-      setIsSearching(true);
-    } else {
+    if (!query.trim()) {
       setIsSearching(false);
       setResults([]);
       onSearch?.("");
       return;
     }
 
-    // Debounce search execution
-    debounceTimeoutRef.current = setTimeout(() => {
+    setIsSearching(true);
+
+    debounceTimeoutRef.current = setTimeout(async () => {
       try {
         const sanitizedQuery = query.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-        performSearch(query);
+        await performSearch(sanitizedQuery);
         onSearch?.(sanitizedQuery);
       } catch (error) {
         console.error("Search error:", error);
@@ -130,14 +147,14 @@ export function SmartSearch({
       } finally {
         setIsSearching(false);
       }
-    }, 300); // 300ms debounce
+    }, orgSlug ? 400 : 300); // slightly longer debounce for API calls
 
     return () => {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [query, performSearch, onSearch]);
+  }, [query, performSearch, onSearch, orgSlug]);
 
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {

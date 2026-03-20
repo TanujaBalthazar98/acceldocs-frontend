@@ -3,6 +3,8 @@ export { sectionsApi, buildSectionTree } from "./sections";
 export { pagesApi } from "./pages";
 export { driveApi } from "./drive";
 export { agentApi } from "./agent";
+export { searchApi } from "./search";
+export type { SearchResultItem } from "./search";
 export type {
   Org,
   OrgMember,

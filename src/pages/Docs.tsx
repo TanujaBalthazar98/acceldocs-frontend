@@ -2105,6 +2105,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 id: p.id,
                 name: p.name,
               }))}
+              orgSlug={currentOrg?.slug || orgSlug}
+              audience={currentUser ? "all" : "public"}
               primaryColor={currentOrg?.primary_color}
               showAIButton={selectedProject?.visibility === "public"}
               onAskAI={() => setAskAIOpen(true)}
