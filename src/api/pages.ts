@@ -28,8 +28,8 @@ export const pagesApi = {
       body: JSON.stringify(data),
     }),
 
-  delete: (id: number): Promise<void> =>
-    fetchOrThrow("/api/pages/" + id, { method: "DELETE" }),
+  delete: (id: number): Promise<{ ok: boolean; drive_trashed: boolean; drive_error: string | null }> =>
+    fetchOrThrow<{ ok: boolean; drive_trashed: boolean; drive_error: string | null }>("/api/pages/" + id, { method: "DELETE" }),
 
   sync: (id: number): Promise<{ ok: boolean; page: Page }> =>
     fetchOrThrow<{ ok: boolean; page: Page }>("/api/pages/" + id + "/sync", { method: "POST" }),

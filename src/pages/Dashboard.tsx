@@ -3426,10 +3426,14 @@ export default function Dashboard() {
 
   const deletePage = useMutation({
     mutationFn: (id: number) => pagesApi.delete(id),
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["pages"] });
       setSelectedPageId(null);
-      toast({ title: "Page deleted" });
+      if (result.drive_trashed === false && result.drive_error) {
+        toast({ title: "Page deleted", description: "Warning: the Google Doc could not be trashed — " + result.drive_error, variant: "destructive" });
+      } else {
+        toast({ title: "Page deleted" });
+      }
     },
   });
 
