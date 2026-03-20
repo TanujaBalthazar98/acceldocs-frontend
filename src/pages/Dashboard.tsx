@@ -1788,6 +1788,7 @@ function SectionNode({
   canEditVisibilitySettings,
   canPublishContent,
   canDeleteContent,
+  canDeleteSection,
   canOpenImportDialog,
   activeDragType,
   hierarchyMode,
@@ -1818,6 +1819,7 @@ function SectionNode({
   canEditVisibilitySettings: boolean;
   canPublishContent: boolean;
   canDeleteContent: boolean;
+  canDeleteSection: boolean;
   canOpenImportDialog: boolean;
   activeDragType: "page" | "section" | null;
   hierarchyMode: "product" | "flat";
@@ -2019,7 +2021,7 @@ function SectionNode({
                   ))}
                 </>
               )}
-              {canDeleteContent && (
+              {canDeleteSection && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem className="text-destructive" onClick={() => onDeleteSection(section)}>
@@ -2091,6 +2093,7 @@ function SectionNode({
               canEditVisibilitySettings={canEditVisibilitySettings}
               canPublishContent={canPublishContent}
               canDeleteContent={canDeleteContent}
+              canDeleteSection={canDeleteSection}
               canOpenImportDialog={canOpenImportDialog}
             />
           ))}
@@ -2141,6 +2144,7 @@ function ReaderHierarchy({
   canEditVisibilitySettings,
   canPublishContent,
   canDeleteContent,
+  canDeleteSection,
   canOpenImportDialog,
 }: {
   title: string;
@@ -2183,6 +2187,7 @@ function ReaderHierarchy({
   canEditVisibilitySettings: boolean;
   canPublishContent: boolean;
   canDeleteContent: boolean;
+  canDeleteSection: boolean;
   canOpenImportDialog: boolean;
 }) {
   const filterVisibleSections = useCallback(
@@ -2306,6 +2311,7 @@ function ReaderHierarchy({
                 canEditVisibilitySettings={canEditVisibilitySettings}
                 canPublishContent={canPublishContent}
                 canDeleteContent={canDeleteContent}
+                canDeleteSection={canDeleteSection}
                 canOpenImportDialog={canOpenImportDialog}
               />
             ))}
@@ -2626,6 +2632,7 @@ export default function Dashboard() {
   const canEditContent = currentUserRole === "owner" || currentUserRole === "admin" || currentUserRole === "editor";
   const canCreateContent = canEditContent;
   const canDeleteContent = canEditContent;
+  const canDeleteSection = currentUserRole === "owner" || currentUserRole === "admin";
   const canMoveContent = canEditContent;
   const canPublishContent = canEditContent;
   const canReviewContent = currentUserRole === "owner" || currentUserRole === "admin" || currentUserRole === "reviewer";
@@ -3448,7 +3455,7 @@ export default function Dashboard() {
   });
 
   const handleDeleteSection = useCallback((section: Section) => {
-    if (!canDeleteContent) {
+    if (!canDeleteSection) {
       notifyPermissionDenied("delete sections");
       return;
     }
@@ -3459,7 +3466,7 @@ export default function Dashboard() {
     if ((section.section_type ?? "section") === "version" && selectedSidebarVersionId === section.id) {
       setSelectedSidebarVersionId(null);
     }
-  }, [canDeleteContent, deleteSection, notifyPermissionDenied, selectedSidebarVersionId]);
+  }, [canDeleteSection, deleteSection, notifyPermissionDenied, selectedSidebarVersionId]);
 
   const handleSectionTypeChange = useCallback((section: Section, nextType: "section" | "tab" | "version") => {
     if (!canManageStructure) {
@@ -4235,7 +4242,7 @@ export default function Dashboard() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
-                          disabled={!canDeleteContent}
+                          disabled={!canDeleteSection}
                           onClick={() => handleDeleteSection(selectedProduct)}
                         >
                           <Trash2 className="h-3.5 w-3.5 mr-2" />
@@ -4281,7 +4288,7 @@ export default function Dashboard() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
-                          disabled={!canDeleteContent}
+                          disabled={!canDeleteSection}
                           onClick={() => handleDeleteSection(selectedVersion)}
                         >
                           <Trash2 className="h-3.5 w-3.5 mr-2" />
@@ -4376,6 +4383,7 @@ export default function Dashboard() {
                           canEditVisibilitySettings={canEditVisibilitySettings}
                           canPublishContent={canPublishContent}
                           canDeleteContent={canDeleteContent}
+                          canDeleteSection={canDeleteSection}
                           canOpenImportDialog={canOpenImportDialog}
                         />
                       ))}
@@ -4950,6 +4958,7 @@ export default function Dashboard() {
                   canEditVisibilitySettings={canEditVisibilitySettings}
                   canPublishContent={canPublishContent}
                   canDeleteContent={canDeleteContent}
+                  canDeleteSection={canDeleteSection}
                   canOpenImportDialog={canOpenImportDialog}
                 />
               </div>
