@@ -2541,9 +2541,19 @@ export default function Dashboard() {
   }, [routeState.approvalId, routeState.mode, routeState.pageId]);
 
   const { data: org, isLoading: orgLoading } = useQuery({ queryKey: ["org", currentOrgId], queryFn: () => orgApi.get(currentOrgId) });
-  const { data: sectionsData } = useQuery({ queryKey: ["sections", currentOrgId], queryFn: sectionsApi.list, enabled: !!org });
-  const { data: pagesData } = useQuery({ queryKey: ["pages", currentOrgId], queryFn: () => pagesApi.list(), enabled: !!org });
-  const { data: driveStatus } = useQuery({ queryKey: ["drive-status", currentOrgId], queryFn: driveApi.status, enabled: !!org });
+
+  // If we loaded an org but currentOrgId wasn't set (first login / missing localStorage),
+  // backfill it so X-Org-Id header is sent on all subsequent API calls.
+  useEffect(() => {
+    if (org?.id && currentOrgId === undefined) {
+      setStoredOrgId(org.id);
+      setCurrentOrgId(org.id);
+    }
+  }, [org?.id, currentOrgId]);
+
+  const { data: sectionsData } = useQuery({ queryKey: ["sections", currentOrgId], queryFn: sectionsApi.list, enabled: !!org && currentOrgId !== undefined });
+  const { data: pagesData } = useQuery({ queryKey: ["pages", currentOrgId], queryFn: () => pagesApi.list(), enabled: !!org && currentOrgId !== undefined });
+  const { data: driveStatus } = useQuery({ queryKey: ["drive-status", currentOrgId], queryFn: driveApi.status, enabled: !!org && currentOrgId !== undefined });
   const { data: approvalsCountData } = useQuery({
     queryKey: ["approvals-count", currentOrgId],
     enabled: !!org,

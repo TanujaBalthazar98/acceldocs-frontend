@@ -155,6 +155,11 @@ export default function AuthCallbackPage() {
       // If we have a token directly, store it and get user
       if (token) {
         setToken(token);
+        // Store org_id from redirect params (backend includes it for new signups)
+        const orgIdParam = searchParams.get('org_id');
+        if (orgIdParam) {
+          localStorage.setItem(ORG_ID_KEY, orgIdParam);
+        }
         try {
           await getCurrentUser();
           await handlePostAuth();

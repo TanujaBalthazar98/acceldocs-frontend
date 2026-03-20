@@ -57,6 +57,7 @@ export interface AuthResponse {
   google_access_token?: string;
   strapi_jwt?: string;
   user: User;
+  organization_id?: number;
 }
 
 /**
@@ -196,6 +197,11 @@ export async function handleGoogleCallback(code: string): Promise<User & { strap
   // Store Google access token for Drive operations
   if (data.google_access_token) {
     localStorage.setItem('google_access_token', data.google_access_token);
+  }
+
+  // Store organization ID so X-Org-Id header is sent on all API calls
+  if (data.organization_id) {
+    localStorage.setItem('acceldocs_current_org_id', String(data.organization_id));
   }
 
   // Return user with optional strapi_jwt
