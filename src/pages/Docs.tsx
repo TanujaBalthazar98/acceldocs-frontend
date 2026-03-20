@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { applySeo } from "@/lib/seo";
 import {
@@ -46,6 +46,8 @@ import { ThemeToggle } from "@/components/docs/ThemeToggle";
 import { VersionSwitcher } from "@/components/docs/VersionSwitcher";
 import { SmartSearch } from "@/components/SmartSearch";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
+import { highlightCodeBlocks } from "@/lib/syntaxHighlight";
+import { attachCopyButtons } from "@/lib/codeBlockEnhancements";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading, stripFrontmatter } from "@/lib/markdown";
 import { captureDocView } from "@/lib/analytics/posthog";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -530,6 +532,37 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     if (!documentHtml || !selectedDocument?.title) return null;
     return resolveDocumentHtml(documentHtml, selectedDocument.title);
   }, [documentHtml, selectedDocument?.title]);
+
+  // Syntax highlighting: runs async after resolvedDocumentHtml changes
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
+  const docsContentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!resolvedDocumentHtml) {
+      setHighlightedHtml(null);
+      return;
+    }
+    let cancelled = false;
+    highlightCodeBlocks(resolvedDocumentHtml, theme === "dark" ? "dark" : "light")
+      .then((result) => {
+        if (!cancelled) setHighlightedHtml(result);
+      })
+      .catch(() => {
+        if (!cancelled) setHighlightedHtml(resolvedDocumentHtml);
+      });
+    return () => { cancelled = true; };
+  }, [resolvedDocumentHtml, theme]);
+
+  // Attach copy buttons to code blocks after content mounts
+  useEffect(() => {
+    const el = docsContentRef.current;
+    if (!el) return;
+    const cleanup = attachCopyButtons(el);
+    return cleanup;
+  }, [highlightedHtml]);
+
+  const displayHtml = highlightedHtml || resolvedDocumentHtml;
+
   const [isOrgUser, setIsOrgUser] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
@@ -2435,10 +2468,11 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 )}
 
                 {/* Content - clean rendering */}
-                {resolvedDocumentHtml ? (
-                  <div 
+                {displayHtml ? (
+                  <div
+                    ref={docsContentRef}
                     className="prose prose-sm sm:prose-base lg:prose-lg prose-neutral dark:prose-invert max-w-none docs-content overflow-x-hidden"
-                    dangerouslySetInnerHTML={{ __html: resolvedDocumentHtml }}
+                    dangerouslySetInnerHTML={{ __html: displayHtml }}
                   />
                 ) : (
                   <div className="text-center py-10 text-muted-foreground">
@@ -2475,7 +2509,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
               <aside className="hidden md:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4 border-l border-border/60 bg-background/30">
                 <TableOfContents
                   key={selectedDocument.id}
-                  html={resolvedDocumentHtml}
+                  html={displayHtml}
                   contentContainerSelector=".docs-content"
                 />
               </aside>
