@@ -137,8 +137,12 @@ function removeFirstHeadingIfMatches(html: string, title: string): string {
 
 /**
  * Strip YAML/TOML frontmatter that has been rendered as HTML by Google Docs.
- * Matches a block starting with a "---" paragraph followed by "key: value"
- * paragraphs until a closing "---" paragraph.
+ *
+ * Handles two patterns:
+ * 1. Standard: "---" paragraph → key:value paragraphs → "---" paragraph
+ * 2. Inline: Google Docs flattens frontmatter into text like
+ *    "type: page title: Version 4.10.0 listed: true slug: ..." followed
+ *    by a "---published" or "---" marker.
  */
 function stripHtmlFrontmatter(html: string): string {
   if (!html) return html;
@@ -151,41 +155,60 @@ function stripHtmlFrontmatter(html: string): string {
   const children = Array.from(container.children);
   if (children.length < 2) return html;
 
-  // Check if the first element's text is "---"
   const firstText = (children[0].textContent || "").trim();
-  if (firstText !== "---" && firstText !== "+++") return html;
 
-  // Find the closing "---" or "+++" element
-  const delimiter = firstText;
-  let closingIndex = -1;
-  for (let i = 1; i < children.length; i++) {
+  // Pattern 1: Standard delimited frontmatter (---/+++ ... ---/+++)
+  if (firstText === "---" || firstText === "+++") {
+    const delimiter = firstText;
+    let closingIndex = -1;
+    for (let i = 1; i < children.length; i++) {
+      const text = (children[i].textContent || "").trim();
+      if (text === delimiter) {
+        closingIndex = i;
+        break;
+      }
+      if (text && !text.includes(":") && text !== delimiter) break;
+    }
+
+    if (closingIndex !== -1) {
+      let removeUntil = closingIndex;
+      if (removeUntil + 1 < children.length) {
+        const nextText = (children[removeUntil + 1].textContent || "").trim();
+        if (nextText.startsWith("---") || nextText.startsWith("+++")) {
+          removeUntil++;
+        }
+      }
+      for (let i = removeUntil; i >= 0; i--) children[i].remove();
+      return container.innerHTML;
+    }
+  }
+
+  // Pattern 2: Inline frontmatter — leading elements that look like
+  // "key: value" pairs (possibly concatenated on one line) ending at
+  // an element containing "---" (e.g. "---published", "--- ", "---").
+  // Common frontmatter keys from docs/Mintlify.
+  const FM_KEYS = /\b(type|title|listed|slug|description|index_title|hidden|keywords|tags|sidebar_label|sidebar_position|pagination_next|pagination_prev)\s*:/i;
+
+  let fmEndIndex = -1;
+  for (let i = 0; i < Math.min(children.length, 8); i++) {
     const text = (children[i].textContent || "").trim();
-    if (text === delimiter) {
-      closingIndex = i;
+    if (!text) continue;
+
+    // Element that starts with or equals "---" marks the end of frontmatter
+    if (/^---/.test(text)) {
+      fmEndIndex = i;
       break;
     }
-    // If we find something that doesn't look like frontmatter (key: value),
-    // and it's not empty, stop searching
-    if (text && !text.includes(":") && text !== delimiter) break;
+    // If the element doesn't contain any frontmatter keys, stop looking
+    if (!FM_KEYS.test(text)) break;
   }
 
-  if (closingIndex === -1) return html;
-
-  // Also remove the "---published" line if it follows (common pattern)
-  let removeUntil = closingIndex;
-  if (removeUntil + 1 < children.length) {
-    const nextText = (children[removeUntil + 1].textContent || "").trim();
-    if (nextText.startsWith("---") || nextText.startsWith("+++")) {
-      removeUntil++;
-    }
+  if (fmEndIndex >= 0) {
+    for (let i = fmEndIndex; i >= 0; i--) children[i].remove();
+    return container.innerHTML;
   }
 
-  // Remove frontmatter elements
-  for (let i = removeUntil; i >= 0; i--) {
-    children[i].remove();
-  }
-
-  return container.innerHTML;
+  return html;
 }
 
 function resolveDocumentHtml(html: string, title: string): string {
