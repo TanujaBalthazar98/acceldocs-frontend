@@ -87,25 +87,31 @@ export function SmartSearch({
     }
 
     try {
+      let found = false;
       if (orgSlug) {
-        // Backend full-text search
-        const { results: apiResults } = await searchApi.search({
-          q: searchQuery,
-          org_slug: orgSlug,
-          audience: audience || "public",
-          limit: 15,
-        });
-        setResults(
-          apiResults.map((r) => ({
-            id: String(r.page_id),
-            title: r.title,
-            type: "page" as const,
-            projectName: r.section_name || undefined,
-            snippet: r.snippet || undefined,
-          })),
-        );
-      } else {
-        // Client-side search fallback
+        // Backend full-text search — fall back to client-side on failure
+        try {
+          const { results: apiResults } = await searchApi.search({
+            q: searchQuery,
+            org_slug: orgSlug,
+            audience: audience || "public",
+            limit: 15,
+          });
+          setResults(
+            apiResults.map((r) => ({
+              id: String(r.page_id),
+              title: r.title,
+              type: "page" as const,
+              projectName: r.section_name || undefined,
+              snippet: r.snippet || undefined,
+            })),
+          );
+          found = true;
+        } catch {
+          // API unavailable — fall through to client-side search
+        }
+      }
+      if (!found) {
         const searchResults = searchDocs({
           query: searchQuery,
           documents,
