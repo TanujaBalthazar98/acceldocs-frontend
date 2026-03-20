@@ -185,8 +185,8 @@ function stripHtmlFrontmatter(html: string): string {
 
   // Pattern 2: Inline frontmatter — leading elements that look like
   // "key: value" pairs (possibly concatenated on one line) ending at
-  // an element containing "---" (e.g. "---published", "tags: ---published").
-  // Google Docs may flatten all frontmatter onto 1-2 paragraphs.
+  // an element containing "---" (e.g. "---published", "--- ", "---").
+  // Common frontmatter keys from docs/Mintlify.
   const FM_KEYS = /\b(type|title|listed|slug|description|index_title|hidden|keywords|tags|sidebar_label|sidebar_position|pagination_next|pagination_prev)\s*:/i;
 
   let fmEndIndex = -1;
@@ -194,11 +194,8 @@ function stripHtmlFrontmatter(html: string): string {
     const text = (children[i].textContent || "").trim();
     if (!text) continue;
 
-    // Element that contains "---" marks end of frontmatter when:
-    // - It starts with "---" (standalone delimiter like "---published")
-    // - OR it contains frontmatter keys AND "---" (e.g. "keywords: tags: ---published")
-    const has3Dashes = /---/.test(text);
-    if (has3Dashes && (/^---/.test(text) || FM_KEYS.test(text))) {
+    // Element that starts with or equals "---" marks the end of frontmatter
+    if (/^---/.test(text)) {
       fmEndIndex = i;
       break;
     }
