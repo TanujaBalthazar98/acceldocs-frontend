@@ -58,4 +58,8 @@ export interface Document {
   video_url?: string | null;
   video_title?: string | null;
   display_order?: number | null;
+  hide_toc?: boolean;
+  full_width?: boolean;
+  page_custom_css?: string | null;
+  featured_image_url?: string | null;
 }

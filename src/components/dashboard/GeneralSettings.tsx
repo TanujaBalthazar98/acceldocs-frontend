@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { invokeFunction } from "@/lib/api/functions";
 import { apiFetch } from "@/lib/api/client";
+import { orgApi } from "@/api/org";
 import { useAuth } from "@/contexts/AuthContext";
 import { Github, ExternalLink, RefreshCw, Globe, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Link2Off } from "lucide-react";
 
@@ -77,6 +79,13 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const [analyticsPropertyId, setAnalyticsPropertyId] = useState("");
   const [copyright, setCopyright] = useState("");
   const [socialLinks, setSocialLinks] = useState("");
+  const [sidebarPosition, setSidebarPosition] = useState<"left" | "right">("left");
+  const [showToc, setShowToc] = useState(true);
+  const [codeTheme, setCodeTheme] = useState("github-dark");
+  const [maxContentWidth, setMaxContentWidth] = useState<"4xl" | "5xl" | "6xl" | "full">("4xl");
+  const [headerHtml, setHeaderHtml] = useState("");
+  const [footerHtml, setFooterHtml] = useState("");
+  const [landingBlocks, setLandingBlocks] = useState("");
   const [showDriveId, setShowDriveId] = useState(false);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [autoReconnectDrive, setAutoReconnectDrive] = useState(true);
@@ -90,52 +99,8 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
     const load = async () => {
       setLoading(true);
       try {
-        const { data: workspace, error: workspaceError } = await invokeFunction<{
-          ok?: boolean;
-          organization?: { id: number; name: string };
-          error?: string;
-        }>("ensure-workspace", {
-          body: {},
-        });
-        if (workspaceError || !workspace?.organization?.id) {
-          throw workspaceError || new Error(workspace?.error || "Failed to load workspace");
-        }
-        const orgId = Number(workspace.organization.id);
-        if (!Number.isFinite(orgId)) {
-          throw new Error("Invalid workspace id");
-        }
-        setOrganizationId(orgId);
-
-        const { data: orgRes, error: orgError } = await invokeFunction<{
-          ok?: boolean;
-          id?: number;
-          name?: string;
-          slug?: string;
-          domain?: string;
-          custom_docs_domain?: string;
-          drive_folder_id?: string;
-          tagline?: string;
-          logo_url?: string;
-          primary_color?: string;
-          secondary_color?: string;
-          accent_color?: string;
-          font_heading?: string;
-          font_body?: string;
-          custom_css?: string;
-          hero_title?: string;
-          hero_description?: string;
-          show_search_on_landing?: boolean;
-          show_featured_projects?: boolean;
-          analytics_property_id?: string;
-          copyright?: string;
-          custom_links?: string;
-          members?: any[];
-          error?: string;
-        }>("get-organization");
-        if (orgError || !orgRes?.ok) {
-          throw orgError || new Error(orgRes?.error || "Failed to load organization");
-        }
-        const org = orgRes || {};
+        const org = await orgApi.get();
+        setOrganizationId(org.id);
         setName(org.name || "");
         setSlug(org.slug || "");
         const resolvedDomain = (org.domain || "").trim().toLowerCase() || inferredDomain;
@@ -152,11 +117,17 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         setCustomCss(org.custom_css || "");
         setHeroTitle(org.hero_title || "");
         setHeroDescription(org.hero_description || "");
-        setShowSearch(org.show_search_on_landing ?? true);
-        setShowFeatured(org.show_featured_projects ?? true);
-        setAnalyticsPropertyId(org.analytics_property_id || "");
-        setCopyright(org.copyright || "");
-        // Render custom_links as pretty JSON if it looks like social links
+        setShowSearch((org as any).show_search_on_landing ?? true);
+        setShowFeatured((org as any).show_featured_projects ?? true);
+        setAnalyticsPropertyId((org as any).analytics_property_id || "");
+        setCopyright((org as any).copyright || "");
+        setSidebarPosition(org.sidebar_position === "right" ? "right" : "left");
+        setShowToc(org.show_toc ?? true);
+        setCodeTheme(org.code_theme || "github-dark");
+        setMaxContentWidth(org.max_content_width || "4xl");
+        setHeaderHtml(org.header_html || "");
+        setFooterHtml(org.footer_html || "");
+        setLandingBlocks(org.landing_blocks || "");
         if (org.custom_links) {
           try {
             const parsed = JSON.parse(org.custom_links);
@@ -166,15 +137,13 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           }
         }
 
-        const mapped = Array.isArray(orgRes.members)
-          ? orgRes.members.map((member: any) => ({
-              id: String(member.id ?? ""),
-              email: member.email || "",
-              full_name: member.full_name ?? null,
-              role: member.role || "viewer",
-            }))
-          : [];
-        setMembers(mapped);
+        const { members: memberList } = await orgApi.listMembers();
+        setMembers(memberList.map((m) => ({
+          id: String(m.id),
+          email: m.email || "",
+          full_name: m.name ?? null,
+          role: m.role || "viewer",
+        })));
       } catch (error: any) {
         toast({
           title: "Failed to load settings",
@@ -212,66 +181,43 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const handleSave = async () => {
     if (!organizationId) return;
     setSaving(true);
-    const normalizedDomain = (domain.trim().toLowerCase() || inferredDomain || null);
-    const payload = {
-      name: name.trim(),
-      slug: slug.trim() || null,
-      domain: normalizedDomain,
-      custom_docs_domain: customDocsDomain.trim() || null,
-      drive_folder_id: driveFolderId.trim() || null,
-      tagline: tagline.trim() || null,
-      logo_url: logoUrl.trim() || null,
-      primary_color: primaryColor.trim() || null,
-      secondary_color: secondaryColor.trim() || null,
-      accent_color: accentColor.trim() || null,
-      font_heading: fontHeading.trim() || null,
-      font_body: fontBody.trim() || null,
-      custom_css: customCss.trim() || null,
-      hero_title: heroTitle.trim() || null,
-      hero_description: heroDescription.trim() || null,
-      show_search_on_landing: showSearch,
-      show_featured_projects: showFeatured,
-      analytics_property_id: analyticsPropertyId.trim() || null,
-      copyright: copyright.trim() || null,
-      custom_links: socialLinks.trim() || null,
-    };
-
-    const attempts = [
-      { organizationId, data: payload },
-      { id: organizationId, ...payload },
-      { id: organizationId, data: payload },
-      { organizationId, ...payload },
-      { org_id: organizationId, data: payload },
-    ];
-
-    let finalError: Error | null = null;
-    let saved = false;
-    for (const body of attempts) {
-      const { data: updated, error } = await invokeFunction<{ ok?: boolean; error?: string }>(
-        "update-organization",
-        { body }
-      );
-      if (!error && updated?.ok !== false) {
-        saved = true;
-        break;
-      }
-      finalError = error || new Error(updated?.error || "Could not update organization.");
-    }
-
-    setSaving(false);
-    if (!saved) {
+    try {
+      await orgApi.update({
+        name: name.trim(),
+        logo_url: logoUrl.trim() || null,
+        primary_color: primaryColor.trim() || null,
+        secondary_color: secondaryColor.trim() || null,
+        accent_color: accentColor.trim() || null,
+        font_heading: fontHeading.trim() || null,
+        font_body: fontBody.trim() || null,
+        custom_css: customCss.trim() || null,
+        tagline: tagline.trim() || null,
+        custom_docs_domain: customDocsDomain.trim() || null,
+        hero_title: heroTitle.trim() || null,
+        hero_description: heroDescription.trim() || null,
+        show_search_on_landing: showSearch,
+        show_featured_projects: showFeatured,
+        analytics_property_id: analyticsPropertyId.trim() || null,
+        copyright: copyright.trim() || null,
+        custom_links: socialLinks.trim() || null,
+        sidebar_position: sidebarPosition,
+        show_toc: showToc,
+        code_theme: codeTheme.trim() || null,
+        max_content_width: maxContentWidth,
+        header_html: headerHtml.trim() || null,
+        footer_html: footerHtml.trim() || null,
+        landing_blocks: landingBlocks.trim() || null,
+      });
+      toast({ title: "Saved", description: "Organization settings updated." });
+    } catch (error: any) {
       toast({
         title: "Save failed",
-        description: finalError?.message || "Could not update organization.",
+        description: error?.message || "Could not update organization.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setSaving(false);
     }
-
-    if (normalizedDomain && normalizedDomain !== domain) {
-      setDomain(normalizedDomain);
-    }
-    toast({ title: "Saved", description: "Organization settings updated." });
   };
 
   return (
@@ -421,7 +367,99 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
               <div>
                 <h3 className="text-sm font-semibold text-foreground mb-1">Published Docs Site</h3>
                 <p className="text-xs text-muted-foreground">
-                  These settings are written into <code className="bg-muted px-1 rounded">zensical.toml</code> when you publish. Changes take effect on next publish.
+                  Control how your published documentation renders for readers.
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="org-sidebar-pos">Sidebar position</Label>
+                <Select value={sidebarPosition} onValueChange={(value) => setSidebarPosition(value as "left" | "right")}>
+                  <SelectTrigger id="org-sidebar-pos">
+                    <SelectValue placeholder="Sidebar position" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="left">Left</SelectItem>
+                    <SelectItem value="right">Right</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/50 p-4">
+                <div>
+                  <Label>Show table of contents</Label>
+                  <div className="text-xs text-muted-foreground">
+                    Show section anchors in the right rail while reading a page.
+                  </div>
+                </div>
+                <Switch checked={showToc} onCheckedChange={setShowToc} />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="org-code-theme">Code block theme</Label>
+                <Select value={codeTheme} onValueChange={setCodeTheme}>
+                  <SelectTrigger id="org-code-theme">
+                    <SelectValue placeholder="Code theme" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="github-dark">GitHub Dark</SelectItem>
+                    <SelectItem value="github-light">GitHub Light</SelectItem>
+                    <SelectItem value="nord">Nord</SelectItem>
+                    <SelectItem value="material-theme">Material</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="org-content-width">Content width</Label>
+                <Select value={maxContentWidth} onValueChange={(value) => setMaxContentWidth(value as "4xl" | "5xl" | "6xl" | "full")}>
+                  <SelectTrigger id="org-content-width">
+                    <SelectValue placeholder="Content width" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="4xl">Standard (4xl)</SelectItem>
+                    <SelectItem value="5xl">Wide (5xl)</SelectItem>
+                    <SelectItem value="6xl">Extra wide (6xl)</SelectItem>
+                    <SelectItem value="full">Full width</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="org-header-html">Header HTML (optional)</Label>
+                <Textarea
+                  id="org-header-html"
+                  value={headerHtml}
+                  onChange={(e) => setHeaderHtml(e.target.value)}
+                  rows={3}
+                  placeholder="<div>Banner / alert / announcement</div>"
+                  className="font-mono text-xs"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="org-footer-html">Footer HTML (optional)</Label>
+                <Textarea
+                  id="org-footer-html"
+                  value={footerHtml}
+                  onChange={(e) => setFooterHtml(e.target.value)}
+                  rows={3}
+                  placeholder="<div>Copyright and links</div>"
+                  className="font-mono text-xs"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="org-landing-blocks">Landing blocks JSON (optional)</Label>
+                <Textarea
+                  id="org-landing-blocks"
+                  value={landingBlocks}
+                  onChange={(e) => setLandingBlocks(e.target.value)}
+                  rows={6}
+                  placeholder='[{"title":"Get started","description":"Start here","href":"/docs/getting-started"}]'
+                  className="font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Advanced: custom cards/sections for your docs landing page.
                 </p>
               </div>
 
@@ -460,13 +498,6 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                 <p className="text-xs text-muted-foreground">
                   JSON array of social links. Each item: <code className="bg-muted px-1 rounded">{"{ link, icon, name }"}</code>.
                   Icons use <a href="https://fontawesome.com/icons" target="_blank" rel="noopener noreferrer" className="underline">FontAwesome</a> names like <code className="bg-muted px-1 rounded">fontawesome/brands/github</code>.
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-border/60 bg-muted/40 p-4">
-                <p className="text-xs font-medium text-foreground mb-1">About themes</p>
-                <p className="text-xs text-muted-foreground">
-                  Zensical uses the Material for MkDocs theme — there is no theme switcher. You control the look via <strong>Primary Color</strong> (Branding tab), fonts, and custom CSS. Colors must be Material color names (e.g. <code className="bg-muted px-1 rounded">indigo</code>, <code className="bg-muted px-1 rounded">teal</code>, <code className="bg-muted px-1 rounded">deep-orange</code>) or left blank for the default.
                 </p>
               </div>
             </TabsContent>
@@ -902,7 +933,7 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
           data.errors ? `${data.errors} errors` : null,
           data.hasGoogleToken ? "has Drive token" : "no Drive token",
         ].filter(Boolean).join(", ");
-        toast({ title: "Published via Zensical", description: detail });
+        toast({ title: "Published", description: detail });
         // Always show per-doc details so user can see what happened to each doc
         if (data.docDetails && data.docDetails.length > 0) {
           const notPublished = data.docDetails
@@ -1116,7 +1147,7 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
                 ) : (
                   <RefreshCw className="w-4 h-4 mr-2" />
                 )}
-                {publishing ? "Publishing…" : "Publish via Zensical"}
+                {publishing ? "Publishing…" : "Publish docs"}
               </Button>
               {settings.lastPublishedAt && (
                 <p className="text-xs text-muted-foreground">

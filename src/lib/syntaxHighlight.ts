@@ -27,6 +27,17 @@ function getHighlighter() {
   return highlighterPromise;
 }
 
+async function ensureThemeLoaded(
+  highlighter: HighlighterGeneric<string, string>,
+  themeName: string,
+): Promise<string> {
+  const loadedThemes = highlighter.getLoadedThemes();
+  if (!loadedThemes.includes(themeName)) {
+    await highlighter.loadTheme(themeName as Parameters<typeof highlighter.loadTheme>[0]);
+  }
+  return themeName;
+}
+
 const LANG_CLASS_RE = /\blanguage-(\S+)/;
 
 /**
@@ -38,6 +49,7 @@ const LANG_CLASS_RE = /\blanguage-(\S+)/;
 export async function highlightCodeBlocks(
   html: string,
   mode: "dark" | "light" = "light",
+  themeOverride?: string,
 ): Promise<string> {
   if (!html || !html.includes("language-")) return html;
 
@@ -47,7 +59,16 @@ export async function highlightCodeBlocks(
   if (codeEls.length === 0) return html;
 
   const highlighter = await getHighlighter();
-  const theme = THEME_MAP[mode];
+  const fallbackTheme = THEME_MAP[mode];
+  let theme = fallbackTheme;
+  const candidateTheme = themeOverride?.trim();
+  if (candidateTheme) {
+    try {
+      theme = await ensureThemeLoaded(highlighter, candidateTheme);
+    } catch {
+      theme = fallbackTheme;
+    }
+  }
   let changed = false;
 
   for (const codeEl of codeEls) {

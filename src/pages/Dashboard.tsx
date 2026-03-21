@@ -51,6 +51,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BookOpen,
   BarChart3,
@@ -78,6 +81,8 @@ import {
   Settings,
   Trash2,
   ArrowUpFromLine,
+  ArrowUp,
+  ArrowDown,
   XCircle,
   Search,
   GitBranchPlus,
@@ -91,6 +96,15 @@ import {
   Lock,
   Globe,
   Share2,
+  PanelLeft,
+  PanelRight,
+  Columns3,
+  Type,
+  Link2,
+  Megaphone,
+  LayoutGrid,
+  Palette,
+  Image,
 } from "lucide-react";
 import {
   Select,
@@ -1133,6 +1147,311 @@ function ConfigureTabsDialog({
   );
 }
 
+function PageSettingsDialog({ page, onClose }: { page: Page; onClose: () => void }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [hideToc, setHideToc] = useState(page.hide_toc ?? false);
+  const [fullWidth, setFullWidth] = useState(page.full_width ?? false);
+  const [customCss, setCustomCss] = useState(page.page_custom_css ?? "");
+  const [featuredImage, setFeaturedImage] = useState(page.featured_image_url ?? "");
+
+  const saveSettings = useMutation({
+    mutationFn: () =>
+      pagesApi.update(page.id, {
+        hide_toc: hideToc,
+        full_width: fullWidth,
+        page_custom_css: customCss.trim() || null,
+        featured_image_url: featuredImage.trim() || null,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["page", page.id] });
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      toast({ title: "Page settings saved" });
+      onClose();
+    },
+    onError: (err: Error) =>
+      toast({ title: "Save failed", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base">Page settings</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-1">
+          {/* Display toggles */}
+          <div className="rounded-lg border border-border divide-y divide-border">
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Hide table of contents</p>
+                <p className="text-xs text-muted-foreground">Remove the TOC rail for this page</p>
+              </div>
+              <Switch checked={hideToc} onCheckedChange={setHideToc} />
+            </div>
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Full width layout</p>
+                <p className="text-xs text-muted-foreground">Expand content to fill the page</p>
+              </div>
+              <Switch checked={fullWidth} onCheckedChange={setFullWidth} />
+            </div>
+          </div>
+
+          {/* Featured image */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Featured image URL</Label>
+            {featuredImage && (
+              <div className="rounded-md border border-border overflow-hidden">
+                <img
+                  src={featuredImage}
+                  alt=""
+                  className="w-full h-32 object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+              </div>
+            )}
+            <Input
+              value={featuredImage}
+              onChange={(e) => setFeaturedImage(e.target.value)}
+              placeholder="https://example.com/image.png"
+              className="text-xs"
+            />
+          </div>
+
+          {/* Custom CSS */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Page CSS override</Label>
+            <p className="text-[11px] text-muted-foreground -mt-0.5">Scoped to this page only. Overrides workspace-level styles.</p>
+            <Textarea
+              value={customCss}
+              onChange={(e) => setCustomCss(e.target.value)}
+              rows={4}
+              placeholder=".doc-content { font-size: 15px; }"
+              className="font-mono text-xs"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending}>
+            {saveSettings.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Landing Block Editor helpers
+// ---------------------------------------------------------------------------
+
+type BlockType = "cta" | "text" | "links" | "featured_sections" | "featured_pages";
+
+interface LandingBlockEntry {
+  id: string;
+  type: BlockType;
+  props: Record<string, any>;
+}
+
+const BLOCK_TYPE_META: Record<BlockType, { label: string; icon: typeof Type; description: string }> = {
+  cta: { label: "Call to Action", icon: Megaphone, description: "Highlighted banner with button" },
+  text: { label: "Text / HTML", icon: Type, description: "Rich text or HTML content block" },
+  links: { label: "Link List", icon: Link2, description: "List of labelled links" },
+  featured_sections: { label: "Featured Cards", icon: LayoutGrid, description: "Grid of cards with titles" },
+  featured_pages: { label: "Featured Pages", icon: FileText, description: "Grid of page links" },
+};
+
+function newBlockId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function LandingBlockEditor({
+  blocks,
+  onChange,
+}: {
+  blocks: LandingBlockEntry[];
+  onChange: (blocks: LandingBlockEntry[]) => void;
+}) {
+  const [addingType, setAddingType] = useState<BlockType | null>(null);
+
+  const moveBlock = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= blocks.length) return;
+    const next = [...blocks];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
+
+  const removeBlock = (index: number) => {
+    onChange(blocks.filter((_, i) => i !== index));
+  };
+
+  const updateBlock = (index: number, props: Record<string, any>) => {
+    const next = [...blocks];
+    next[index] = { ...next[index], props: { ...next[index].props, ...props } };
+    onChange(next);
+  };
+
+  const addBlock = (type: BlockType) => {
+    const defaults: Record<BlockType, Record<string, any>> = {
+      cta: { title: "", description: "", button_text: "Get started", button_url: "" },
+      text: { content: "" },
+      links: { title: "", items: [{ label: "", url: "", description: "" }] },
+      featured_sections: { title: "", items: [{ title: "", description: "", href: "" }], columns: 3 },
+      featured_pages: { title: "", items: [{ title: "", description: "", href: "" }], columns: 3 },
+    };
+    onChange([...blocks, { id: newBlockId(), type, props: defaults[type] }]);
+    setAddingType(null);
+  };
+
+  return (
+    <div className="space-y-3">
+      {blocks.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border p-6 text-center">
+          <LayoutGrid className="h-5 w-5 mx-auto text-muted-foreground/40 mb-2" />
+          <p className="text-xs text-muted-foreground">No custom blocks yet. Add blocks below to customize your landing page.</p>
+        </div>
+      )}
+
+      {blocks.map((block, index) => {
+        const meta = BLOCK_TYPE_META[block.type];
+        const Icon = meta?.icon ?? Type;
+        return (
+          <div key={block.id} className="rounded-lg border border-border bg-card">
+            {/* Block header */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/30 rounded-t-lg">
+              <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-xs font-medium flex-1">{meta?.label ?? block.type}</span>
+              <div className="flex items-center gap-0.5">
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveBlock(index, -1)} disabled={index === 0}>
+                  <ArrowUp className="h-3 w-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveBlock(index, 1)} disabled={index === blocks.length - 1}>
+                  <ArrowDown className="h-3 w-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => removeBlock(index)}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Block fields */}
+            <div className="p-3 space-y-2.5">
+              {block.type === "cta" && (
+                <>
+                  <Input className="h-8 text-xs" placeholder="Headline" value={block.props.title ?? ""} onChange={(e) => updateBlock(index, { title: e.target.value })} />
+                  <Input className="h-8 text-xs" placeholder="Description (optional)" value={block.props.description ?? ""} onChange={(e) => updateBlock(index, { description: e.target.value })} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input className="h-8 text-xs" placeholder="Button label" value={block.props.button_text ?? ""} onChange={(e) => updateBlock(index, { button_text: e.target.value })} />
+                    <Input className="h-8 text-xs" placeholder="Button URL" value={block.props.button_url ?? ""} onChange={(e) => updateBlock(index, { button_url: e.target.value })} />
+                  </div>
+                </>
+              )}
+
+              {block.type === "text" && (
+                <Textarea className="text-xs font-mono" rows={3} placeholder="<p>Your content here...</p>" value={block.props.content ?? ""} onChange={(e) => updateBlock(index, { content: e.target.value })} />
+              )}
+
+              {(block.type === "links" || block.type === "featured_sections" || block.type === "featured_pages") && (
+                <>
+                  <Input className="h-8 text-xs" placeholder="Section title (optional)" value={block.props.title ?? ""} onChange={(e) => updateBlock(index, { title: e.target.value })} />
+                  {block.type !== "links" && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-[11px] text-muted-foreground">Columns</Label>
+                      <Select value={String(block.props.columns ?? 3)} onValueChange={(v) => updateBlock(index, { columns: Number(v) })}>
+                        <SelectTrigger className="h-7 w-20 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="2">2</SelectItem>
+                          <SelectItem value="3">3</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    {(block.props.items ?? []).map((item: any, itemIdx: number) => (
+                      <div key={itemIdx} className="flex items-start gap-1.5">
+                        <div className="flex-1 grid grid-cols-2 gap-1.5">
+                          <Input className="h-7 text-[11px]" placeholder={block.type === "links" ? "Label" : "Title"} value={item.label ?? item.title ?? ""}
+                            onChange={(e) => {
+                              const items = [...(block.props.items ?? [])];
+                              const key = block.type === "links" ? "label" : "title";
+                              items[itemIdx] = { ...items[itemIdx], [key]: e.target.value };
+                              updateBlock(index, { items });
+                            }}
+                          />
+                          <Input className="h-7 text-[11px]" placeholder={block.type === "links" ? "URL" : "Link (optional)"} value={item.url ?? item.href ?? ""}
+                            onChange={(e) => {
+                              const items = [...(block.props.items ?? [])];
+                              const key = block.type === "links" ? "url" : "href";
+                              items[itemIdx] = { ...items[itemIdx], [key]: e.target.value };
+                              updateBlock(index, { items });
+                            }}
+                          />
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => {
+                          const items = (block.props.items ?? []).filter((_: any, i: number) => i !== itemIdx);
+                          updateBlock(index, { items });
+                        }}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 w-full text-muted-foreground" onClick={() => {
+                      const template = block.type === "links"
+                        ? { label: "", url: "", description: "" }
+                        : { title: "", description: "", href: "" };
+                      updateBlock(index, { items: [...(block.props.items ?? []), template] });
+                    }}>
+                      <Plus className="h-3 w-3" /> Add item
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Add block */}
+      {addingType === null ? (
+        <Button variant="outline" size="sm" className="w-full h-8 text-xs gap-1.5 border-dashed" onClick={() => setAddingType("cta")}>
+          <Plus className="h-3.5 w-3.5" /> Add block
+        </Button>
+      ) : (
+        <div className="rounded-lg border border-border p-3 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Choose block type</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(Object.entries(BLOCK_TYPE_META) as [BlockType, typeof BLOCK_TYPE_META[BlockType]][]).map(([type, meta]) => {
+              const Icon = meta.icon;
+              return (
+                <button
+                  key={type}
+                  onClick={() => addBlock(type)}
+                  className="flex items-center gap-2 p-2 rounded-md border border-border hover:bg-accent/50 transition-colors text-left"
+                >
+                  <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="text-xs font-medium">{meta.label}</p>
+                    <p className="text-[10px] text-muted-foreground leading-tight">{meta.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <Button variant="ghost" size="sm" className="w-full h-7 text-xs" onClick={() => setAddingType(null)}>Cancel</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WorkspaceSettingsDialog
+// ---------------------------------------------------------------------------
+
 function WorkspaceSettingsDialog({
   org,
   onClose,
@@ -1142,72 +1461,411 @@ function WorkspaceSettingsDialog({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+
+  // General
   const [workspaceName, setWorkspaceName] = useState(org.name ?? "");
   const [customDomain, setCustomDomain] = useState(org.custom_docs_domain ?? "");
+
+  // Layout
+  const [sidebarPosition, setSidebarPosition] = useState<"left" | "right">(org.sidebar_position ?? "left");
+  const [showToc, setShowToc] = useState<boolean>(org.show_toc ?? true);
+  const [codeTheme, setCodeTheme] = useState<string>(org.code_theme ?? "github-dark");
+  const [maxContentWidth, setMaxContentWidth] = useState<"4xl" | "5xl" | "6xl" | "full">(org.max_content_width ?? "4xl");
+  const [headerHtml, setHeaderHtml] = useState<string>(org.header_html ?? "");
+  const [footerHtml, setFooterHtml] = useState<string>(org.footer_html ?? "");
+
+  // Landing blocks
+  const [landingBlocks, setLandingBlocks] = useState<LandingBlockEntry[]>(() => {
+    if (!org.landing_blocks) return [];
+    try {
+      const parsed = JSON.parse(org.landing_blocks);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Branding
+  const [primaryColor, setPrimaryColor] = useState(org.primary_color ?? "#6366f1");
+  const [secondaryColor, setSecondaryColor] = useState(org.secondary_color ?? "");
+  const [accentColor, setAccentColor] = useState(org.accent_color ?? "");
+  const [fontHeading, setFontHeading] = useState(org.font_heading ?? "");
+  const [fontBody, setFontBody] = useState(org.font_body ?? "");
+  const [logoUrl, setLogoUrl] = useState(org.logo_url ?? "");
+  const [tagline, setTagline] = useState(org.tagline ?? "");
+  const [heroTitle, setHeroTitle] = useState(org.hero_title ?? "");
+  const [heroDescription, setHeroDescription] = useState(org.hero_description ?? "");
+  const [showSearchOnLanding, setShowSearchOnLanding] = useState(org.show_search_on_landing ?? true);
+  const [showFeaturedProjects, setShowFeaturedProjects] = useState(org.show_featured_projects ?? true);
+  const [analyticsPropertyId, setAnalyticsPropertyId] = useState(org.analytics_property_id ?? "");
+  const [copyright, setCopyright] = useState(org.copyright ?? "");
+  const [customCss, setCustomCss] = useState(org.custom_css ?? "");
+  const [brandUrl, setBrandUrl] = useState("");
+
+  const extractBrand = useMutation({
+    mutationFn: () => orgApi.extractBrand(brandUrl.trim()),
+    onSuccess: (result) => {
+      if (result.name) setWorkspaceName(result.name);
+      if (result.tagline) setTagline(result.tagline);
+      if (result.logo_url) setLogoUrl(result.logo_url);
+      if (result.primary_color) setPrimaryColor(result.primary_color);
+      if (result.secondary_color) setSecondaryColor(result.secondary_color);
+      if (result.accent_color) setAccentColor(result.accent_color);
+      if (result.font_heading) setFontHeading(result.font_heading);
+      if (result.font_body) setFontBody(result.font_body);
+
+      toast({
+        title: "Brand extracted",
+        description: "Previewed settings have been filled. Review and save to apply.",
+      });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Brand extraction failed", description: err.message, variant: "destructive" }),
+  });
 
   const save = useMutation({
     mutationFn: async () =>
       orgApi.update({
         name: workspaceName.trim(),
         custom_docs_domain: customDomain.trim() || null,
+        sidebar_position: sidebarPosition,
+        show_toc: showToc,
+        code_theme: codeTheme.trim() || null,
+        max_content_width: maxContentWidth,
+        header_html: headerHtml.trim() || null,
+        footer_html: footerHtml.trim() || null,
+        landing_blocks: landingBlocks.length > 0 ? JSON.stringify(landingBlocks) : null,
+        primary_color: primaryColor.trim() || null,
+        secondary_color: secondaryColor.trim() || null,
+        accent_color: accentColor.trim() || null,
+        font_heading: fontHeading.trim() || null,
+        font_body: fontBody.trim() || null,
+        logo_url: logoUrl.trim() || null,
+        tagline: tagline.trim() || null,
+        hero_title: heroTitle.trim() || null,
+        hero_description: heroDescription.trim() || null,
+        show_search_on_landing: showSearchOnLanding,
+        show_featured_projects: showFeaturedProjects,
+        analytics_property_id: analyticsPropertyId.trim() || null,
+        copyright: copyright.trim() || null,
+        custom_css: customCss.trim() || null,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["org"] });
       qc.invalidateQueries({ queryKey: ["org", org.id] });
       qc.invalidateQueries({ queryKey: ["org-list"] });
-      toast({ title: "Workspace settings saved" });
+      toast({ title: "Settings saved" });
       onClose();
     },
     onError: (err: Error) =>
-      toast({
-        title: "Update failed",
-        description: err.message,
-        variant: "destructive",
-      }),
+      toast({ title: "Update failed", description: err.message, variant: "destructive" }),
   });
 
   const canSave = workspaceName.trim().length > 0 && !save.isPending;
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-base">Workspace settings</DialogTitle>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-5 pb-3">
+          <DialogTitle className="text-base">Docs settings</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-1">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Workspace name
-            </Label>
-            <Input
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-              placeholder="My Workspace"
-              autoFocus
-            />
-          </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Custom docs domain
-            </Label>
-            <Input
-              value={customDomain}
-              onChange={(e) => setCustomDomain(e.target.value.toLowerCase())}
-              placeholder="docs.example.com"
-            />
-            <p className="text-xs text-muted-foreground">
-              Optional. Leave empty to use default docs URL.
-            </p>
+        <Tabs defaultValue="branding" className="flex-1 min-h-0 flex flex-col">
+          <TabsList className="mx-6 w-fit grid grid-cols-4 h-8">
+            <TabsTrigger value="branding" className="text-xs px-3 h-7">Branding</TabsTrigger>
+            <TabsTrigger value="layout" className="text-xs px-3 h-7">Layout</TabsTrigger>
+            <TabsTrigger value="landing" className="text-xs px-3 h-7">Landing</TabsTrigger>
+            <TabsTrigger value="advanced" className="text-xs px-3 h-7">Advanced</TabsTrigger>
+          </TabsList>
+
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {/* ---- BRANDING TAB ---- */}
+            <TabsContent value="branding" className="mt-0 space-y-5">
+              <div className="space-y-2 rounded-lg border border-dashed border-border p-3">
+                <Label className="text-xs font-medium">Extract brand from website</Label>
+                <p className="text-[11px] text-muted-foreground -mt-0.5">
+                  Paste your website URL to auto-fill logo, colors, fonts, and tagline.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={brandUrl}
+                    onChange={(e) => setBrandUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    className="h-8 text-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && brandUrl.trim() && !extractBrand.isPending) {
+                        extractBrand.mutate();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0"
+                    disabled={!brandUrl.trim() || extractBrand.isPending}
+                    onClick={() => extractBrand.mutate()}
+                  >
+                    {extractBrand.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    <span className="ml-1">Analyze</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Colors */}
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Brand colors</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  {([
+                    { label: "Primary", value: primaryColor, set: setPrimaryColor },
+                    { label: "Secondary", value: secondaryColor, set: setSecondaryColor },
+                    { label: "Accent", value: accentColor, set: setAccentColor },
+                  ] as const).map(({ label, value, set }) => (
+                    <div key={label} className="space-y-1">
+                      <p className="text-[11px] text-muted-foreground">{label}</p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={value || "#6366f1"}
+                          onChange={(e) => set(e.target.value)}
+                          className="h-8 w-8 rounded border border-border cursor-pointer shrink-0 p-0"
+                        />
+                        <Input
+                          value={value}
+                          onChange={(e) => set(e.target.value)}
+                          placeholder="#6366f1"
+                          className="h-8 text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fonts */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Heading font</Label>
+                  <Select value={fontHeading || "__default"} onValueChange={(v) => setFontHeading(v === "__default" ? "" : v)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__default">System default</SelectItem>
+                      <SelectItem value="Inter">Inter</SelectItem>
+                      <SelectItem value="DM Sans">DM Sans</SelectItem>
+                      <SelectItem value="Plus Jakarta Sans">Plus Jakarta Sans</SelectItem>
+                      <SelectItem value="Outfit">Outfit</SelectItem>
+                      <SelectItem value="Space Grotesk">Space Grotesk</SelectItem>
+                      <SelectItem value="Manrope">Manrope</SelectItem>
+                      <SelectItem value="Sora">Sora</SelectItem>
+                      <SelectItem value="Poppins">Poppins</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Body font</Label>
+                  <Select value={fontBody || "__default"} onValueChange={(v) => setFontBody(v === "__default" ? "" : v)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__default">System default</SelectItem>
+                      <SelectItem value="Inter">Inter</SelectItem>
+                      <SelectItem value="DM Sans">DM Sans</SelectItem>
+                      <SelectItem value="Plus Jakarta Sans">Plus Jakarta Sans</SelectItem>
+                      <SelectItem value="Nunito Sans">Nunito Sans</SelectItem>
+                      <SelectItem value="Source Sans 3">Source Sans 3</SelectItem>
+                      <SelectItem value="Lato">Lato</SelectItem>
+                      <SelectItem value="Open Sans">Open Sans</SelectItem>
+                      <SelectItem value="IBM Plex Sans">IBM Plex Sans</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Logo + Tagline */}
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Logo URL</Label>
+                  <div className="flex items-center gap-2">
+                    {logoUrl && (
+                      <img src={logoUrl} alt="" className="h-8 w-8 object-contain rounded border border-border shrink-0" />
+                    )}
+                    <Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://example.com/logo.svg" className="text-xs" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Tagline</Label>
+                  <Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="Your tagline or slogan" className="text-xs" />
+                </div>
+              </div>
+
+              {/* Hero */}
+              <div className="space-y-3 p-3 rounded-lg border border-border">
+                <p className="text-xs font-medium">Hero section</p>
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] text-muted-foreground">Title</Label>
+                  <Input value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} placeholder="Welcome to Our Docs" className="text-xs" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] text-muted-foreground">Description</Label>
+                  <Textarea value={heroDescription} onChange={(e) => setHeroDescription(e.target.value)} placeholder="Explore our documentation..." rows={2} className="text-xs" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-medium">Show search bar</p>
+                    <p className="text-[10px] text-muted-foreground">Search bar on landing page</p>
+                  </div>
+                  <Switch checked={showSearchOnLanding} onCheckedChange={setShowSearchOnLanding} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-medium">Show featured projects</p>
+                    <p className="text-[10px] text-muted-foreground">Project cards grid on landing</p>
+                  </div>
+                  <Switch checked={showFeaturedProjects} onCheckedChange={setShowFeaturedProjects} />
+                </div>
+              </div>
+
+              {/* Analytics + Copyright */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Analytics ID</Label>
+                  <Input value={analyticsPropertyId} onChange={(e) => setAnalyticsPropertyId(e.target.value)} placeholder="G-XXXXXXXXXX" className="text-xs font-mono" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Copyright</Label>
+                  <Input value={copyright} onChange={(e) => setCopyright(e.target.value)} placeholder="2026 Acme Inc." className="text-xs" />
+                </div>
+              </div>
+
+              {/* Custom CSS */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Custom CSS</Label>
+                <p className="text-[11px] text-muted-foreground -mt-0.5">Applied globally to your published docs site.</p>
+                <Textarea value={customCss} onChange={(e) => setCustomCss(e.target.value)} rows={3} placeholder=".docs-content { font-size: 15px; }" className="font-mono text-[11px]" />
+              </div>
+            </TabsContent>
+
+            {/* ---- LAYOUT TAB ---- */}
+            <TabsContent value="layout" className="mt-0 space-y-5">
+              {/* Workspace name */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Workspace name</Label>
+                <Input value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} placeholder="My Workspace" autoFocus />
+              </div>
+
+              {/* Sidebar position — visual toggle */}
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Sidebar position</Label>
+                <p className="text-[11px] text-muted-foreground -mt-1">Where the navigation sidebar appears on your docs site.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["left", "right"] as const).map((pos) => {
+                    const active = sidebarPosition === pos;
+                    return (
+                      <button
+                        key={pos}
+                        onClick={() => setSidebarPosition(pos)}
+                        className={cn(
+                          "flex items-center gap-2.5 p-3 rounded-lg border-2 transition-all",
+                          active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
+                        )}
+                      >
+                        {pos === "left" ? <PanelLeft className="h-4 w-4 shrink-0" /> : <PanelRight className="h-4 w-4 shrink-0" />}
+                        <div className="text-left">
+                          <p className="text-xs font-medium capitalize">{pos}</p>
+                          <p className="text-[10px] text-muted-foreground">{pos === "left" ? "Standard layout" : "Content-first"}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* TOC toggle */}
+              <div className="flex items-center justify-between p-3 rounded-lg border border-border">
+                <div>
+                  <p className="text-xs font-medium">Table of contents</p>
+                  <p className="text-[11px] text-muted-foreground">Show a "On this page" rail beside doc content.</p>
+                </div>
+                <Switch checked={showToc} onCheckedChange={setShowToc} />
+              </div>
+
+              {/* Code theme + Content width */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Code block theme</Label>
+                  <Select value={codeTheme} onValueChange={setCodeTheme}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="github-dark">GitHub Dark</SelectItem>
+                      <SelectItem value="github-light">GitHub Light</SelectItem>
+                      <SelectItem value="one-dark-pro">One Dark Pro</SelectItem>
+                      <SelectItem value="dracula">Dracula</SelectItem>
+                      <SelectItem value="nord">Nord</SelectItem>
+                      <SelectItem value="material-theme">Material</SelectItem>
+                      <SelectItem value="min-light">Min Light</SelectItem>
+                      <SelectItem value="catppuccin-mocha">Catppuccin Mocha</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Content width</Label>
+                  <Select value={maxContentWidth} onValueChange={(v) => setMaxContentWidth(v as any)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="4xl">Standard</SelectItem>
+                      <SelectItem value="5xl">Wide</SelectItem>
+                      <SelectItem value="6xl">Extra wide</SelectItem>
+                      <SelectItem value="full">Full width</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ---- LANDING PAGE TAB ---- */}
+            <TabsContent value="landing" className="mt-0 space-y-4">
+              <div>
+                <p className="text-xs font-medium">Landing page blocks</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Add and arrange content blocks shown below the hero section on your docs landing page.
+                  The hero (title, search, logo) is always shown first.
+                </p>
+              </div>
+              <LandingBlockEditor blocks={landingBlocks} onChange={setLandingBlocks} />
+            </TabsContent>
+
+            {/* ---- ADVANCED TAB ---- */}
+            <TabsContent value="advanced" className="mt-0 space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Custom docs domain</Label>
+                <Input value={customDomain} onChange={(e) => setCustomDomain(e.target.value.toLowerCase())} placeholder="docs.example.com" />
+                <p className="text-[11px] text-muted-foreground">Point your CNAME to us, then enter it here. Leave empty for default URL.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Header HTML</Label>
+                <p className="text-[11px] text-muted-foreground -mt-0.5">Rendered above the page content. Useful for announcement banners.</p>
+                <Textarea value={headerHtml} onChange={(e) => setHeaderHtml(e.target.value)} rows={3} placeholder='<div class="bg-blue-50 text-center py-2 text-sm">New: v2.0 is live!</div>' className="font-mono text-[11px]" />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Footer HTML</Label>
+                <p className="text-[11px] text-muted-foreground -mt-0.5">Rendered below the page content. Copyright, links, etc.</p>
+                <Textarea value={footerHtml} onChange={(e) => setFooterHtml(e.target.value)} rows={3} placeholder='<footer class="text-center text-sm py-4">2026 Acme Inc.</footer>' className="font-mono text-[11px]" />
+              </div>
+            </TabsContent>
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
+        </Tabs>
+
+        <DialogFooter className="px-6 py-3 border-t">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={() => save.mutate()} disabled={!canSave}>
             {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-            Save
+            Save changes
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2488,6 +3146,7 @@ export default function Dashboard() {
   const [editingPageSlug, setEditingPageSlug] = useState<Page | null>(null);
   const [movingSection, setMovingSection] = useState<Section | null>(null);
   const [movingPage, setMovingPage] = useState<Page | null>(null);
+  const [pageSettingsPage, setPageSettingsPage] = useState<Page | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -4808,6 +5467,9 @@ export default function Dashboard() {
                     <DropdownMenuItem onClick={() => setEditingPageSlug(selectedPage)} disabled={!canEditContent}>
                       <Pencil className="h-3.5 w-3.5 mr-2" /> Edit URL slug
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setPageSettingsPage(selectedPage)} disabled={!canEditContent}>
+                      <Settings className="h-3.5 w-3.5 mr-2" /> Page settings
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setMovingPage(selectedPage)} disabled={!canMoveContent}>
                       <ArrowRightLeft className="h-3.5 w-3.5 mr-2" /> Move
                     </DropdownMenuItem>
@@ -4995,7 +5657,7 @@ export default function Dashboard() {
                   )}
                 </div>
                 <aside className="hidden xl:block border-l bg-background/60">
-                  <div className="sticky top-0 h-[calc(100vh-108px)] overflow-y-auto p-4">
+                  <div className="sticky top-0 h-[calc(100vh-108px)] overflow-y-auto p-4 space-y-6">
                     <TableOfContents
                       key={selectedPage.id}
                       html={selectedPage.html_content}
@@ -5185,6 +5847,12 @@ export default function Dashboard() {
           allSections={sections}
           allPages={pages}
           onClose={() => setMovingPage(null)}
+        />
+      )}
+      {pageSettingsPage && canEditContent && (
+        <PageSettingsDialog
+          page={pageSettingsPage}
+          onClose={() => setPageSettingsPage(null)}
         />
       )}
     </div>

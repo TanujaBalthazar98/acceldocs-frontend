@@ -22,7 +22,7 @@ export const pagesApi = {
   get: (id: number): Promise<Page> =>
     fetchOrThrow<Page>("/api/pages/" + id),
 
-  update: (id: number, data: Partial<Pick<Page, "section_id" | "title" | "slug" | "visibility_override" | "display_order">>): Promise<Page> =>
+  update: (id: number, data: Partial<Pick<Page, "section_id" | "title" | "slug" | "visibility_override" | "display_order" | "hide_toc" | "full_width" | "page_custom_css" | "featured_image_url">>): Promise<Page> =>
     fetchOrThrow<Page>("/api/pages/" + id, {
       method: "PATCH",
       body: JSON.stringify(data),

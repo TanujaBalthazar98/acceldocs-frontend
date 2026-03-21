@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from "react-router-dom";
 import { applySeo } from "@/lib/seo";
 import {
   ChevronRight,
+  ChevronDown,
   FolderTree,
   Menu,
   Lock,
@@ -74,6 +75,13 @@ interface Organization {
   hero_description: string | null;
   show_search_on_landing: boolean;
   show_featured_projects: boolean;
+  sidebar_position: "left" | "right";
+  show_toc: boolean;
+  code_theme: string | null;
+  max_content_width: "4xl" | "5xl" | "6xl" | "full";
+  header_html: string | null;
+  footer_html: string | null;
+  landing_blocks: string | null;
   mcp_enabled?: boolean | null;
   openapi_spec_json?: any;
   openapi_spec_url?: string | null;
@@ -238,6 +246,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       hero_description: attrs.hero_description ?? null,
       show_search_on_landing: attrs.show_search_on_landing ?? true,
       show_featured_projects: attrs.show_featured_projects ?? true,
+      sidebar_position: attrs.sidebar_position === "right" ? "right" : "left",
+      show_toc: attrs.show_toc ?? true,
+      code_theme: attrs.code_theme ?? null,
+      max_content_width: attrs.max_content_width ?? "4xl",
+      header_html: attrs.header_html ?? null,
+      footer_html: attrs.footer_html ?? null,
+      landing_blocks: attrs.landing_blocks ?? null,
       mcp_enabled: attrs.mcp_enabled ?? null,
       openapi_spec_json: attrs.openapi_spec_json ?? null,
       openapi_spec_url: attrs.openapi_spec_url ?? null,
@@ -422,6 +437,10 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       created_at: attrs.createdAt || attrs.created_at || "",
       updated_at: attrs.updatedAt || attrs.updated_at || "",
       owner_id: ownerRaw ? String(ownerRaw) : null,
+      hide_toc: attrs.hide_toc ?? false,
+      full_width: attrs.full_width ?? false,
+      page_custom_css: attrs.page_custom_css ?? null,
+      featured_image_url: attrs.featured_image_url ?? null,
     };
   };
   
@@ -543,7 +562,11 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       return;
     }
     let cancelled = false;
-    highlightCodeBlocks(resolvedDocumentHtml, theme === "dark" ? "dark" : "light")
+    highlightCodeBlocks(
+      resolvedDocumentHtml,
+      theme === "dark" ? "dark" : "light",
+      currentOrg?.code_theme ?? undefined
+    )
       .then((result) => {
         if (!cancelled) setHighlightedHtml(result);
       })
@@ -551,7 +574,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         if (!cancelled) setHighlightedHtml(resolvedDocumentHtml);
       });
     return () => { cancelled = true; };
-  }, [resolvedDocumentHtml, theme]);
+  }, [resolvedDocumentHtml, theme, currentOrg?.code_theme]);
 
   // Attach copy buttons to code blocks after content mounts
   useEffect(() => {
@@ -562,6 +585,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   }, [highlightedHtml]);
 
   const displayHtml = highlightedHtml || resolvedDocumentHtml;
+
+  const readingTimeMin = useMemo(() => {
+    if (!displayHtml) return 0;
+    const text = displayHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const words = text.split(" ").filter(Boolean).length;
+    return Math.max(1, Math.ceil(words / 200));
+  }, [displayHtml]);
 
   const [isOrgUser, setIsOrgUser] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
@@ -1767,6 +1797,28 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     custom_css: currentOrg.custom_css,
   } : null);
 
+  const showTocRail = (currentOrg?.show_toc ?? true) && !selectedDocument?.hide_toc;
+  const sidebarOnRight = currentOrg?.sidebar_position === "right";
+  const effectiveFullWidth = isFullWidth || selectedDocument?.full_width;
+  const contentWidthClass = effectiveFullWidth
+    ? "max-w-none lg:px-16"
+    : (() => {
+        const width = currentOrg?.max_content_width || "4xl";
+        if (width === "5xl") return "max-w-5xl mx-auto";
+        if (width === "6xl") return "max-w-6xl mx-auto";
+        if (width === "full") return "max-w-none";
+        return "max-w-4xl mx-auto";
+      })();
+  const parsedLandingBlocks = useMemo(() => {
+    if (!currentOrg?.landing_blocks) return null;
+    try {
+      const parsed = JSON.parse(currentOrg.landing_blocks);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }, [currentOrg?.landing_blocks]);
+
   // SEO: set document title and meta description based on current page
   useEffect(() => {
     const orgName = currentOrg?.name ?? "Documentation";
@@ -1989,7 +2041,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   <Link to="/dashboard" className="font-medium underline underline-offset-2 hover:no-underline">
                     Connect GitHub in Settings
                   </Link>{" "}
-                  to publish your docs to a public site via Zensical.
+                  to publish your docs to a public site.
                 </span>
               </div>
             </div>
@@ -2031,6 +2083,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           isAuthenticated={!!user}
           isOrgMember={isOrgUser}
           hasNonPublicContent={projects.some(p => p.visibility !== "public")}
+          landingBlocks={parsedLandingBlocks || undefined}
         />
 
         {/* Ask AI Dialog (landing page) */}
@@ -2106,7 +2159,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 name: p.name,
               }))}
               orgSlug={currentOrg?.slug || orgSlug}
-              audience={currentUser ? "all" : "public"}
+              audience={user ? "all" : "public"}
               primaryColor={currentOrg?.primary_color}
               showAIButton={selectedProject?.visibility === "public"}
               onAskAI={() => setAskAIOpen(true)}
@@ -2343,19 +2396,27 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
               <Link to="/dashboard" className="font-medium underline underline-offset-2 hover:no-underline">
                 Connect GitHub in Settings
               </Link>{" "}
-              to publish your docs to a public site via Zensical.
+              to publish your docs to a public site.
             </span>
           </div>
         </div>
       )}
 
+      {currentOrg?.header_html ? (
+        <div
+          className="border-b border-border/50 bg-muted/20 px-4 py-3 text-sm"
+          dangerouslySetInnerHTML={{ __html: currentOrg.header_html }}
+        />
+      ) : null}
+
       {/* Main Layout */}
-      <div className="flex flex-1 min-h-0">
+      <div className={cn("flex flex-1 min-h-0", sidebarOnRight && "lg:flex-row-reverse")}>
         {/* Desktop Sidebar - Sticky */}
         {!sidebarCollapsed && (
           <aside
             className={cn(
-              "hidden lg:flex w-64 border-r border-border flex-col bg-card sticky overflow-hidden",
+              "hidden lg:flex w-64 flex-col bg-card sticky overflow-hidden",
+              sidebarOnRight ? "border-l border-border" : "border-r border-border",
               hasSubProjects ? "top-[104px] h-[calc(100vh-104px)]" : "top-[56px] h-[calc(100vh-56px)]"
             )}
           >
@@ -2365,7 +2426,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
         {/* Collapsed sidebar trigger */}
         {sidebarCollapsed && (
-          <div className="hidden lg:flex items-start pt-4 pl-2">
+          <div className={cn("hidden lg:flex items-start pt-4", sidebarOnRight ? "pr-2" : "pl-2")}>
             <Button 
               variant="ghost" 
               size="icon" 
@@ -2386,11 +2447,11 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
               <Skeleton className="h-96 w-full" />
             </div>
           ) : selectedDocument ? (
-            <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_16rem]">
+            <div className={cn("min-w-0", showTocRail && "grid md:grid-cols-[minmax(0,1fr)_16rem]")}>
               {/* Article content */}
               <article className={cn(
                 "flex-1 px-4 py-6 sm:px-6 lg:p-8 transition-all duration-300 min-w-0 overflow-x-hidden",
-                isFullWidth ? "max-w-none lg:px-16" : "max-w-4xl mx-auto"
+                contentWidthClass
               )}>
                 {/* Breadcrumb and controls */}
                 <div className="flex items-center justify-between mb-6">
@@ -2442,12 +2503,14 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 {showMinimalPublicMeta ? (
                   /* Public docs: minimal metadata, no internal info */
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
+                    {readingTimeMin > 0 && <span>{readingTimeMin} min read</span>}
                     <CopyLinkButton className="ml-auto" />
                   </div>
                 ) : (
                   /* Internal/External docs: full metadata */
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
                     <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
+                    {readingTimeMin > 0 && <span>{readingTimeMin} min read</span>}
                     <Badge variant="outline" className="text-xs">
                       {visibilityConfig[effectiveDocVisibility].label}
                     </Badge>
@@ -2467,6 +2530,11 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                       title={selectedDocument.video_title || selectedDocument.title}
                     />
                   </div>
+                )}
+
+                {/* Per-page custom CSS */}
+                {selectedDocument.page_custom_css && (
+                  <style dangerouslySetInnerHTML={{ __html: selectedDocument.page_custom_css }} />
                 )}
 
                 {/* Content - clean rendering */}
@@ -2508,13 +2576,15 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
               </article>
 
               {/* Right sidebar - Table of Contents */}
-              <aside className="hidden md:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4 border-l border-border/60 bg-background/30">
-                <TableOfContents
-                  key={selectedDocument.id}
-                  html={displayHtml}
-                  contentContainerSelector=".docs-content"
-                />
-              </aside>
+              {showTocRail ? (
+                <aside className="hidden md:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4 border-l border-border/60 bg-background/30">
+                  <TableOfContents
+                    key={selectedDocument.id}
+                    html={displayHtml}
+                    contentContainerSelector=".docs-content"
+                  />
+                </aside>
+              ) : null}
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-center p-8">
@@ -2533,6 +2603,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           )}
         </main>
       </div>
+
+      {currentOrg?.footer_html ? (
+        <div
+          className="border-t border-border/50 bg-muted/20 px-4 py-3 text-sm"
+          dangerouslySetInnerHTML={{ __html: currentOrg.footer_html }}
+        />
+      ) : null}
 
       {/* Ask AI Dialog */}
       <AskAIDialog

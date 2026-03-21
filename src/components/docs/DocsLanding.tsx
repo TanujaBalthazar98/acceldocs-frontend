@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, FileText, FolderOpen, Code, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SmartSearch } from "@/components/SmartSearch";
+import { LandingBlockRenderer, type LandingBlock } from "./LandingBlockRenderer";
 
 interface Project {
   id: string;
@@ -60,6 +61,7 @@ interface DocsLandingProps {
   isAuthenticated: boolean;
   isOrgMember?: boolean;
   hasNonPublicContent?: boolean;
+  landingBlocks?: LandingBlock[] | null;
 }
 
 export const DocsLanding = ({
@@ -78,6 +80,7 @@ export const DocsLanding = ({
   isAuthenticated,
   isOrgMember = false,
   hasNonPublicContent = false,
+  landingBlocks,
 }: DocsLandingProps) => {
   const orgIdentifier = organization.slug || organization.domain;
   const featured = featuredProjects ?? projects;
@@ -170,7 +173,26 @@ export const DocsLanding = ({
         )}
       </section>
 
-      {/* Featured Projects */}
+      {/* Custom Landing Blocks */}
+      {landingBlocks && landingBlocks.length > 0 && (
+        <div>
+          {landingBlocks
+            .filter((b) => b.type !== "hero")
+            .map((block) => (
+              <LandingBlockRenderer
+                key={block.id}
+                block={block}
+                primaryColor={organization.primary_color}
+                onNavigate={(href) => {
+                  if (href.startsWith("/") || href.startsWith("http")) {
+                    window.location.href = href;
+                  }
+                }}
+              />
+            ))}
+        </div>
+      )}
+
       {organization.show_featured_projects && featured.length > 0 && (
         <section className="px-4 pb-16 lg:pb-24">
           <div className="max-w-5xl mx-auto">

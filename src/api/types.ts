@@ -7,9 +7,28 @@ export interface Org {
   hierarchy_mode: "product" | "flat";
   logo_url: string | null;
   primary_color: string | null;
+  secondary_color: string | null;
+  accent_color: string | null;
+  font_heading: string | null;
+  font_body: string | null;
+  custom_css: string | null;
   tagline: string | null;
   domain: string | null;
   custom_docs_domain: string | null;
+  hero_title: string | null;
+  hero_description: string | null;
+  show_search_on_landing: boolean;
+  show_featured_projects: boolean;
+  analytics_property_id: string | null;
+  copyright: string | null;
+  custom_links: string | null;
+  sidebar_position: "left" | "right";
+  show_toc: boolean;
+  code_theme: string | null;
+  max_content_width: "4xl" | "5xl" | "6xl" | "full";
+  header_html: string | null;
+  footer_html: string | null;
+  landing_blocks: string | null;
   drive_folder_id: string | null;
   has_drive_connected: boolean;
   user_role: "owner" | "admin" | "editor" | "reviewer" | "viewer";
@@ -24,6 +43,18 @@ export interface OrgMember {
   name: string | null;
   role: "owner" | "admin" | "editor" | "reviewer" | "viewer";
   joined_at: string | null;
+}
+
+export interface BrandExtractResult {
+  name: string | null;
+  tagline: string | null;
+  logo_url: string | null;
+  favicon_url: string | null;
+  primary_color: string | null;
+  secondary_color: string | null;
+  accent_color: string | null;
+  font_heading: string | null;
+  font_body: string | null;
 }
 
 export interface Section {
@@ -62,6 +93,11 @@ export interface Page {
   owner_id: number | null;
   created_at: string;
   updated_at: string;
+  /** Per-page display settings */
+  hide_toc: boolean;
+  full_width: boolean;
+  page_custom_css: string | null;
+  featured_image_url: string | null;
   /** Only present when fetched individually */
   html_content?: string;
   published_html?: string;
