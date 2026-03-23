@@ -1,6 +1,6 @@
 import { fetchOrThrow } from "./client";
 import { invokeFunction } from "@/lib/api/functions";
-import type { Page } from "./types";
+import type { EngagementOverview, Page, PageEngagementDetail } from "./types";
 
 export const pagesApi = {
   list: (sectionId?: number): Promise<{ pages: Page[] }> =>
@@ -51,6 +51,12 @@ export const pagesApi = {
 
   duplicate: (id: number): Promise<Page> =>
     fetchOrThrow<Page>("/api/pages/" + id + "/duplicate", { method: "POST" }),
+
+  engagementOverview: (limit = 10): Promise<EngagementOverview> =>
+    fetchOrThrow<EngagementOverview>("/api/pages/engagement/overview?limit=" + limit),
+
+  engagementDetail: (id: number, limit = 20): Promise<PageEngagementDetail> =>
+    fetchOrThrow<PageEngagementDetail>("/api/pages/" + id + "/engagement?limit=" + limit),
 
   createFromTemplate: (data: {
     title: string;

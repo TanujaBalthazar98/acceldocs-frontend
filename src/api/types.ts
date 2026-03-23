@@ -1,5 +1,14 @@
 /** Shared TypeScript types for the clean-arch AccelDocs API. */
 
+export type AIProvider = "gemini" | "anthropic" | "groq" | "openai_compat";
+
+export interface AISettings {
+  ai_provider: AIProvider | null;
+  ai_has_key: boolean;
+  ai_model: string | null;
+  ai_base_url: string | null;
+}
+
 export interface Org {
   id: number;
   name: string;
@@ -31,6 +40,10 @@ export interface Org {
   landing_blocks: string | null;
   drive_folder_id: string | null;
   has_drive_connected: boolean;
+  ai_provider: AIProvider | null;
+  ai_has_key: boolean;
+  ai_model: string | null;
+  ai_base_url: string | null;
   user_role: "owner" | "admin" | "editor" | "reviewer" | "viewer";
   member_count: number;
   created_at: string;
@@ -101,6 +114,68 @@ export interface Page {
   /** Only present when fetched individually */
   html_content?: string;
   published_html?: string;
+}
+
+export interface PageEngagementStats {
+  page_id: number;
+  page_title: string;
+  page_slug: string;
+  up: number;
+  down: number;
+  total_feedback: number;
+  total_comments: number;
+  helpful_ratio: number | null;
+  last_feedback_at: string | null;
+  last_comment_at: string | null;
+  last_activity_at: string | null;
+}
+
+export interface PageCommentInsight {
+  id: number;
+  page_id: number;
+  page_title?: string;
+  display_name: string;
+  user_email: string | null;
+  body: string;
+  source: "public" | "internal" | "external" | null;
+  created_at: string | null;
+}
+
+export interface PageFeedbackInsightItem {
+  id: number;
+  vote: "up" | "down";
+  message: string | null;
+  user_email: string | null;
+  source: "public" | "internal" | "external" | null;
+  created_at: string | null;
+}
+
+export interface EngagementOverview {
+  summary: {
+    total_feedback: number;
+    helpful: number;
+    not_helpful: number;
+    total_comments: number;
+    pages_with_feedback: number;
+    commented_pages: number;
+  };
+  pages: PageEngagementStats[];
+  recent_comments: PageCommentInsight[];
+}
+
+export interface PageEngagementDetail {
+  page: {
+    id: number;
+    title: string;
+    slug: string;
+  };
+  feedback: {
+    up: number;
+    down: number;
+    total: number;
+    items: PageFeedbackInsightItem[];
+  };
+  comments: PageCommentInsight[];
 }
 
 export interface DriveStatus {

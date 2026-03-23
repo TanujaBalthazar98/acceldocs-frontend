@@ -30,7 +30,7 @@ import { signInWithGoogle as startGoogleOAuth } from "@/lib/auth-new";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { orgApi, sectionsApi, pagesApi, driveApi, buildSectionTree } from "@/api";
-import type { Org, Section, Page, ImportTargetType } from "@/api/types";
+import type { AIProvider, Org, Section, Page, ImportTargetType, EngagementOverview } from "@/api/types";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -105,6 +105,14 @@ import {
   LayoutGrid,
   Palette,
   Image,
+  Wand2,
+  Bot,
+  Eye,
+  EyeOff,
+  CheckCircle,
+  MessageSquare,
+  ThumbsUp,
+  Clock3,
 } from "lucide-react";
 import {
   Select,
@@ -123,6 +131,7 @@ import { WorkspaceSwitcher, setStoredOrgId, getStoredOrgId } from "@/components/
 import { TableOfContents } from "@/components/docs/TableOfContents";
 import { ApprovalsPanel } from "@/components/dashboard/ApprovalsPanel";
 import { AgentChatPanel } from "@/components/dashboard/AgentChatPanel";
+import InlineAssistDialog from "@/components/dashboard/InlineAssistDialog";
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { TemplatePickerDialog } from "@/components/dashboard/TemplatePickerDialog";
 import { invokeFunction } from "@/lib/api/functions";
@@ -159,6 +168,21 @@ function normalizeSlugSegment(raw: string | null | undefined): string {
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function formatRelativeTimestamp(value: string | null | undefined): string {
+  if (!value) return "—";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return "—";
+  const diffMs = Date.now() - parsed;
+  const absMs = Math.abs(diffMs);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (absMs < minute) return "just now";
+  if (absMs < hour) return `${Math.round(absMs / minute)} min ago`;
+  if (absMs < day) return `${Math.round(absMs / hour)} hr ago`;
+  return `${Math.round(absMs / day)}d ago`;
 }
 
 function parseDashboardLocation(pathname: string, search: string): ParsedDashboardLocation {
@@ -1571,11 +1595,12 @@ function WorkspaceSettingsDialog({
         </DialogHeader>
 
         <Tabs defaultValue="branding" className="flex-1 min-h-0 flex flex-col">
-          <TabsList className="mx-6 w-fit grid grid-cols-4 h-8">
+          <TabsList className="mx-6 w-fit grid grid-cols-5 h-8">
             <TabsTrigger value="branding" className="text-xs px-3 h-7">Branding</TabsTrigger>
             <TabsTrigger value="layout" className="text-xs px-3 h-7">Layout</TabsTrigger>
             <TabsTrigger value="landing" className="text-xs px-3 h-7">Landing</TabsTrigger>
             <TabsTrigger value="advanced" className="text-xs px-3 h-7">Advanced</TabsTrigger>
+            <TabsTrigger value="ai" className="text-xs px-3 h-7">AI</TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -1858,6 +1883,10 @@ function WorkspaceSettingsDialog({
                 <Textarea value={footerHtml} onChange={(e) => setFooterHtml(e.target.value)} rows={3} placeholder='<footer class="text-center text-sm py-4">2026 Acme Inc.</footer>' className="font-mono text-[11px]" />
               </div>
             </TabsContent>
+
+            <TabsContent value="ai" className="mt-0">
+              <AISettingsPanel />
+            </TabsContent>
           </div>
         </Tabs>
 
@@ -1870,6 +1899,180 @@ function WorkspaceSettingsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AISettingsPanel — BYOK (Bring Your Own Key) for AI features
+// ---------------------------------------------------------------------------
+
+const AI_PROVIDERS: { value: AIProvider; label: string; hint: string; needsBaseUrl: boolean }[] = [
+  { value: "gemini", label: "Google Gemini", hint: "Free tier (gemini-2.0-flash)", needsBaseUrl: false },
+  { value: "anthropic", label: "Anthropic Claude", hint: "High quality (claude-sonnet)", needsBaseUrl: false },
+  { value: "groq", label: "Groq", hint: "Free tier (Llama 4 Scout)", needsBaseUrl: false },
+  { value: "openai_compat", label: "OpenAI-compatible", hint: "Ollama, vLLM, or any OpenAI API", needsBaseUrl: true },
+];
+
+function AISettingsPanel() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [provider, setProvider] = useState<AIProvider>("gemini");
+  const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [hasKey, setHasKey] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+
+  useEffect(() => {
+    orgApi.getAISettings()
+      .then((data) => {
+        if (data.ai_provider) setProvider(data.ai_provider);
+        setHasKey(data.ai_has_key);
+        setModel(data.ai_model || "");
+        setBaseUrl(data.ai_base_url || "");
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    if (!provider) return;
+    setSaving(true);
+    try {
+      const payload: Record<string, string> = { ai_provider: provider };
+      if (apiKey.trim()) payload.ai_api_key = apiKey.trim();
+      if (model.trim()) payload.ai_model = model.trim();
+      if (baseUrl.trim()) payload.ai_base_url = baseUrl.trim();
+      const data = await orgApi.updateAISettings(payload);
+      setHasKey(data.ai_has_key);
+      setApiKey("");
+      toast({ title: "AI settings saved" });
+    } catch (err: any) {
+      toast({ title: "Failed to save", description: err?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm("Remove AI configuration? AI features will be disabled.")) return;
+    setSaving(true);
+    try {
+      await orgApi.deleteAISettings();
+      setProvider("gemini");
+      setApiKey("");
+      setModel("");
+      setBaseUrl("");
+      setHasKey(false);
+      toast({ title: "AI settings removed" });
+    } catch (err: any) {
+      toast({ title: "Failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center gap-2 text-xs text-muted-foreground py-6"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...</div>;
+  }
+
+  const selected = AI_PROVIDERS.find((p) => p.value === provider);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Bot className="w-4 h-4 text-muted-foreground" />
+        <div>
+          <p className="text-xs font-medium">AI Agent Configuration</p>
+          <p className="text-[11px] text-muted-foreground">Add your LLM API key to enable AI chat, inline assistant, and template generation.</p>
+        </div>
+      </div>
+
+      {hasKey && (
+        <div className="flex items-center gap-1 text-[11px] text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 w-fit">
+          <CheckCircle className="w-3 h-3" /> API key configured
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">Provider</Label>
+          <Select value={provider} onValueChange={(v) => setProvider(v as AIProvider)}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AI_PROVIDERS.map((p) => (
+                <SelectItem key={p.value} value={p.value} className="text-xs">{p.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selected && <p className="text-[11px] text-muted-foreground">{selected.hint}</p>}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">API Key</Label>
+          <div className="relative">
+            <Input
+              type={showKey ? "text" : "password"}
+              placeholder={hasKey ? "Key saved (enter new to replace)" : "Enter your API key"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="h-8 text-xs font-mono pr-8"
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowKey((v) => !v)}
+            >
+              {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Encrypted at rest. Never exposed via the API.</p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">Model (optional)</Label>
+          <Input
+            placeholder={
+              provider === "gemini" ? "gemini-2.0-flash" :
+              provider === "anthropic" ? "claude-sonnet-4-5-20250514" :
+              provider === "groq" ? "llama-4-scout-17b-16e-instruct" : "model name"
+            }
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="h-8 text-xs"
+          />
+          <p className="text-[11px] text-muted-foreground">Leave blank for the default model.</p>
+        </div>
+
+        {selected?.needsBaseUrl && (
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Base URL</Label>
+            <Input
+              placeholder="http://localhost:11434/v1"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              className="h-8 text-xs font-mono"
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between pt-1">
+        {hasKey ? (
+          <button type="button" className="text-[11px] text-destructive hover:underline" onClick={handleDelete} disabled={saving}>
+            Remove AI config
+          </button>
+        ) : <span />}
+        <Button size="sm" className="h-7 text-xs" onClick={handleSave} disabled={saving || !provider}>
+          {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+          {saving ? "Saving..." : "Save AI Settings"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -3113,6 +3316,127 @@ function DocumentationImpactPanel({
   );
 }
 
+function FeedbackInsightsPanel({
+  data,
+  loading,
+  onOpenPage,
+}: {
+  data: EngagementOverview | undefined;
+  loading: boolean;
+  onOpenPage: (pageId: number) => void;
+}) {
+  const summary = data?.summary;
+  const helpfulRate =
+    summary && summary.total_feedback > 0
+      ? Math.round((summary.helpful / summary.total_feedback) * 100)
+      : 0;
+  const activeDiscussions =
+    (data?.pages ?? []).filter((item) => item.total_comments > 0).length;
+
+  return (
+    <section className="rounded-xl border bg-background/85 shadow-sm">
+      <div className="border-b px-4 py-3">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Feedback & comments</h3>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Feedback votes</p>
+            <p className="text-lg font-semibold">{summary?.total_feedback ?? 0}</p>
+            <p className="text-[11px] text-muted-foreground">{helpfulRate}% helpful</p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Comments</p>
+            <p className="text-lg font-semibold">{summary?.total_comments ?? 0}</p>
+            <p className="text-[11px] text-muted-foreground">{activeDiscussions} active page threads</p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Pages with feedback</p>
+            <p className="text-lg font-semibold">{summary?.pages_with_feedback ?? 0}</p>
+            <p className="text-[11px] text-muted-foreground">Pages discussed: {summary?.commented_pages ?? 0}</p>
+          </div>
+          <div className="rounded-lg border bg-background/70 p-3">
+            <p className="text-[11px] text-muted-foreground">Helpful vs not helpful</p>
+            <p className="text-lg font-semibold">
+              {summary?.helpful ?? 0} / {summary?.not_helpful ?? 0}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Signal from readers</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div className="rounded-lg border bg-background/70">
+            <div className="border-b px-3 py-2.5 flex items-center justify-between">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Top discussed pages</p>
+              <ThumbsUp className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+            <div className="p-2 space-y-1.5 max-h-64 overflow-auto">
+              {loading ? (
+                <p className="text-xs text-muted-foreground px-2 py-3">Loading feedback…</p>
+              ) : (data?.pages ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground px-2 py-3">No feedback or comments yet.</p>
+              ) : (
+                (data?.pages ?? []).map((item) => (
+                  <button
+                    key={`feedback-page-${item.page_id}`}
+                    type="button"
+                    onClick={() => onOpenPage(item.page_id)}
+                    className="w-full rounded-md border px-2.5 py-2 text-left hover:bg-accent/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium truncate">{item.page_title}</span>
+                      <span className="text-[11px] text-muted-foreground shrink-0">{formatRelativeTimestamp(item.last_activity_at)}</span>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground">
+                      <span>{item.total_comments} comments</span>
+                      <span>{item.total_feedback} votes</span>
+                      <span>{item.helpful_ratio ?? 0}% helpful</span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-background/70">
+            <div className="border-b px-3 py-2.5 flex items-center justify-between">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Recent comments</p>
+              <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+            <div className="p-2 space-y-1.5 max-h-64 overflow-auto">
+              {loading ? (
+                <p className="text-xs text-muted-foreground px-2 py-3">Loading comments…</p>
+              ) : (data?.recent_comments ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground px-2 py-3">No recent comments.</p>
+              ) : (
+                (data?.recent_comments ?? []).map((item) => (
+                  <button
+                    key={`feedback-comment-${item.id}`}
+                    type="button"
+                    onClick={() => onOpenPage(item.page_id)}
+                    className="w-full rounded-md border px-2.5 py-2 text-left hover:bg-accent/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium truncate">{item.page_title || "Untitled page"}</span>
+                      <span className="text-[11px] text-muted-foreground shrink-0">{formatRelativeTimestamp(item.created_at)}</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground truncate">{item.display_name}</p>
+                    <p className="mt-1 text-xs text-foreground/90 line-clamp-2">{item.body}</p>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
@@ -3147,6 +3471,7 @@ export default function Dashboard() {
   const [movingSection, setMovingSection] = useState<Section | null>(null);
   const [movingPage, setMovingPage] = useState<Page | null>(null);
   const [pageSettingsPage, setPageSettingsPage] = useState<Page | null>(null);
+  const [inlineAssistOpen, setInlineAssistOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -3233,6 +3558,12 @@ export default function Dashboard() {
     queryKey: ["page", selectedPageId],
     queryFn: () => pagesApi.get(selectedPageId!),
     enabled: selectedPageId !== null,
+  });
+  const { data: engagementOverview, isLoading: engagementOverviewLoading } = useQuery({
+    queryKey: ["pages-engagement-overview", currentOrgId],
+    queryFn: () => pagesApi.engagementOverview(12),
+    enabled: !!org && currentOrgId !== undefined && dashboardPaneMode === "analytics",
+    staleTime: 30_000,
   });
 
   const handleWorkspaceChange = useCallback((orgId: number) => {
@@ -5300,6 +5631,13 @@ export default function Dashboard() {
                   handleSelectPage(pageId);
                 }}
               />
+              <FeedbackInsightsPanel
+                data={engagementOverview}
+                loading={engagementOverviewLoading}
+                onOpenPage={(pageId) => {
+                  handleSelectPage(pageId);
+                }}
+              />
             </div>
           </div>
         ) : selectedPage ? (
@@ -5469,6 +5807,9 @@ export default function Dashboard() {
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setPageSettingsPage(selectedPage)} disabled={!canEditContent}>
                       <Settings className="h-3.5 w-3.5 mr-2" /> Page settings
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setInlineAssistOpen(true)}>
+                      <Wand2 className="h-3.5 w-3.5 mr-2" /> AI Assist
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setMovingPage(selectedPage)} disabled={!canMoveContent}>
                       <ArrowRightLeft className="h-3.5 w-3.5 mr-2" /> Move
@@ -5855,6 +6196,10 @@ export default function Dashboard() {
           onClose={() => setPageSettingsPage(null)}
         />
       )}
+      <InlineAssistDialog
+        open={inlineAssistOpen}
+        onClose={() => setInlineAssistOpen(false)}
+      />
     </div>
   );
 }

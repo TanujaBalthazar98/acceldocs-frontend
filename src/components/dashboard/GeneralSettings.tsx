@@ -18,7 +18,8 @@ import { invokeFunction } from "@/lib/api/functions";
 import { apiFetch } from "@/lib/api/client";
 import { orgApi } from "@/api/org";
 import { useAuth } from "@/contexts/AuthContext";
-import { Github, ExternalLink, RefreshCw, Globe, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Link2Off } from "lucide-react";
+import { Github, ExternalLink, RefreshCw, Globe, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Link2Off, Bot, Trash2 } from "lucide-react";
+import type { AIProvider } from "@/api/types";
 
 interface GeneralSettingsProps {
   onBack: () => void;
@@ -251,13 +252,14 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           <div className="text-sm text-muted-foreground">Loading...</div>
         ) : (
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-7">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-8">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="brand">Branding</TabsTrigger>
               <TabsTrigger value="landing">Landing</TabsTrigger>
               <TabsTrigger value="docs">Docs Site</TabsTrigger>
               <TabsTrigger value="drive">Drive</TabsTrigger>
               <TabsTrigger value="github">GitHub</TabsTrigger>
+              <TabsTrigger value="ai">AI</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
             </TabsList>
 
@@ -551,6 +553,10 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
             <TabsContent value="github" className="mt-6 space-y-5">
               <GitHubSettingsTab organizationId={organizationId} />
+            </TabsContent>
+
+            <TabsContent value="ai" className="mt-6">
+              <AISettingsTab />
             </TabsContent>
 
             <TabsContent value="members" className="mt-6 space-y-4">
@@ -1204,5 +1210,214 @@ function GitHubSettingsTab({ organizationId }: GitHubSettingsTabProps) {
         )}
       </div>
     </>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// AI Settings Tab — BYOK (Bring Your Own Key)
+// ---------------------------------------------------------------------------
+
+const AI_PROVIDERS: { value: AIProvider; label: string; description: string; needsBaseUrl: boolean }[] = [
+  { value: "gemini", label: "Google Gemini", description: "Free tier available (gemini-2.0-flash)", needsBaseUrl: false },
+  { value: "anthropic", label: "Anthropic Claude", description: "High quality (claude-sonnet)", needsBaseUrl: false },
+  { value: "groq", label: "Groq", description: "Free tier (Llama 4 Scout)", needsBaseUrl: false },
+  { value: "openai_compat", label: "OpenAI-compatible", description: "Ollama, vLLM, or any OpenAI API", needsBaseUrl: true },
+];
+
+function AISettingsTab() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [provider, setProvider] = useState<AIProvider | "">("gemini");
+  const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [hasKey, setHasKey] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await orgApi.getAISettings();
+        setProvider(data.ai_provider || "gemini");
+        setHasKey(data.ai_has_key);
+        setModel(data.ai_model || "");
+        setBaseUrl(data.ai_base_url || "");
+      } catch {
+        // Not configured yet — that's fine
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const handleSave = async () => {
+    if (!provider) return;
+    setSaving(true);
+    try {
+      const payload: Record<string, string> = { ai_provider: provider };
+      if (apiKey.trim()) payload.ai_api_key = apiKey.trim();
+      if (model.trim()) payload.ai_model = model.trim();
+      if (baseUrl.trim()) payload.ai_base_url = baseUrl.trim();
+      const data = await orgApi.updateAISettings(payload);
+      setHasKey(data.ai_has_key);
+      setApiKey("");
+      toast({ title: "AI settings saved" });
+    } catch (err: any) {
+      toast({ title: "Failed to save", description: err?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm("Remove AI configuration? AI features will be disabled for this workspace.")) return;
+    setSaving(true);
+    try {
+      await orgApi.deleteAISettings();
+      setProvider("gemini");
+      setApiKey("");
+      setModel("");
+      setBaseUrl("");
+      setHasKey(false);
+      toast({ title: "AI settings removed" });
+    } catch (err: any) {
+      toast({ title: "Failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading AI settings...
+      </div>
+    );
+  }
+
+  const selectedProvider = AI_PROVIDERS.find((p) => p.value === provider);
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-lg border border-border/60 bg-card/50 p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted">
+            <Bot className="w-5 h-5 text-muted-foreground" />
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-foreground">AI Agent Configuration</h4>
+            <p className="text-xs text-muted-foreground">
+              Configure your LLM provider API key to enable AI-powered features (chat agent, inline assistant, template generation).
+            </p>
+          </div>
+        </div>
+
+        {hasKey && (
+          <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5 w-fit">
+            <CheckCircle className="w-3 h-3" /> API key configured
+          </div>
+        )}
+
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label>Provider</Label>
+            <Select value={provider} onValueChange={(v) => setProvider(v as AIProvider)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_PROVIDERS.map((p) => (
+                  <SelectItem key={p.value} value={p.value}>
+                    <div className="flex flex-col">
+                      <span>{p.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedProvider && (
+              <p className="text-xs text-muted-foreground">{selectedProvider.description}</p>
+            )}
+          </div>
+
+          <div className="grid gap-2">
+            <Label>API Key</Label>
+            <div className="relative">
+              <Input
+                type={showKey ? "text" : "password"}
+                placeholder={hasKey ? "Key saved (enter new key to replace)" : "Enter your API key"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="pr-10 font-mono text-sm"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowKey((v) => !v)}
+              >
+                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Your key is encrypted at rest and never exposed via the API.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Model (optional)</Label>
+            <Input
+              placeholder={
+                provider === "gemini" ? "gemini-2.0-flash" :
+                provider === "anthropic" ? "claude-sonnet-4-5-20250514" :
+                provider === "groq" ? "llama-4-scout-17b-16e-instruct" :
+                "model name"
+              }
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave blank to use the default model for the selected provider.
+            </p>
+          </div>
+
+          {selectedProvider?.needsBaseUrl && (
+            <div className="grid gap-2">
+              <Label>Base URL</Label>
+              <Input
+                placeholder="http://localhost:11434/v1"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                className="text-sm font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                The OpenAI-compatible API base URL (e.g. Ollama, vLLM).
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          <div>
+            {hasKey && (
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={handleDelete} disabled={saving}>
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                Remove AI config
+              </Button>
+            )}
+          </div>
+          <Button onClick={handleSave} disabled={saving || !provider}>
+            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            {saving ? "Saving..." : "Save AI Settings"}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { streamAgentChat, agentApi, type ChatHistoryMessage, type ChatSSEEvent } from "@/api/agent";
+import { streamAgentChat, agentApi, type ChatHistoryMessage, type ChatSSEEvent, type ConversationSummary } from "@/api/agent";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,9 @@ import {
   Copy,
   Trash2,
   Users,
+  History,
+  MessageSquare,
+  X,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -80,6 +83,10 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
   delete_page: <Trash2 className="h-3.5 w-3.5" />,
   fetch_jira_ticket: <FileText className="h-3.5 w-3.5" />,
   search_confluence: <Search className="h-3.5 w-3.5" />,
+  search_knowledge_base: <Search className="h-3.5 w-3.5" />,
+  web_search: <Globe className="h-3.5 w-3.5" />,
+  list_templates: <BookOpen className="h-3.5 w-3.5" />,
+  create_from_template: <FilePlus className="h-3.5 w-3.5" />,
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -98,6 +105,10 @@ const TOOL_LABELS: Record<string, string> = {
   delete_page: "Deleting page",
   fetch_jira_ticket: "Fetching Jira ticket",
   search_confluence: "Searching Confluence",
+  search_knowledge_base: "Searching knowledge base",
+  web_search: "Searching the web",
+  list_templates: "Listing templates",
+  create_from_template: "Creating from template",
 };
 
 // ---------------------------------------------------------------------------
@@ -307,6 +318,24 @@ function JiraSetupForm({ onConnected }: JiraSetupProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function relativeTime(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString();
+}
+
+// ---------------------------------------------------------------------------
 // Suggested prompts
 // ---------------------------------------------------------------------------
 const SUGGESTED_PROMPTS = [
@@ -332,6 +361,10 @@ export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: Agent
   const [history, setHistory] = useState<ChatHistoryMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [loadingConvo, setLoadingConvo] = useState(false);
   const [jiraConnected, setJiraConnected] = useState<boolean | null>(null); // null = loading
   const [jiraDomain, setJiraDomain] = useState("");
   const [showJiraSetup, setShowJiraSetup] = useState(false);
@@ -339,7 +372,7 @@ export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: Agent
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Check Jira status on mount
+  // Load conversations and Jira status on mount
   useEffect(() => {
     agentApi.jiraStatus().then(({ data }) => {
       if (data?.connected) {
@@ -349,6 +382,7 @@ export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: Agent
         setJiraConnected(false);
       }
     });
+    agentApi.listConversations().then(setConversations).catch(() => {});
   }, []);
 
   // Auto-scroll to bottom
@@ -363,6 +397,42 @@ export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: Agent
     setJiraConnected(false);
     setJiraDomain("");
     toast({ title: "Jira disconnected" });
+  };
+
+  const loadConversation = async (id: number) => {
+    setLoadingConvo(true);
+    try {
+      const convo = await agentApi.getConversation(id);
+      const parsedItems = JSON.parse(convo.messages || "[]") as ChatItem[];
+      const parsedHistory = JSON.parse(convo.history || "[]") as ChatHistoryMessage[];
+      setItems(parsedItems);
+      setHistory(parsedHistory);
+      setConversationId(id);
+      setShowHistory(false);
+    } catch {
+      toast({ title: "Failed to load conversation", variant: "destructive" });
+    } finally {
+      setLoadingConvo(false);
+    }
+  };
+
+  const handleDeleteConversation = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await agentApi.deleteConversation(id);
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (conversationId === id) {
+      setItems([]);
+      setHistory([]);
+      setConversationId(null);
+    }
+  };
+
+  const handleNewChat = () => {
+    setItems([]);
+    setHistory([]);
+    setInput("");
+    setConversationId(null);
+    setShowHistory(false);
   };
 
   const appendItem = (item: ChatItem) => {
@@ -397,7 +467,7 @@ export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: Agent
       let assistantText = "";
 
       try {
-        const gen = streamAgentChat(userMessage, history);
+        const gen = streamAgentChat(userMessage, history, conversationId);
 
         for await (const event of gen) {
           if (event.type === "text_delta" && event.text) {
@@ -428,6 +498,10 @@ export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: Agent
               title: event.title!,
               googleDocId: event.google_doc_id!,
             });
+          } else if (event.type === "conversation_saved" && event.conversation_id) {
+            setConversationId(event.conversation_id);
+            // Refresh conversation list
+            agentApi.listConversations().then(setConversations).catch(() => {});
           } else if (event.type === "error") {
             appendItem({ type: "error", message: event.message || "Unknown error" });
           }
@@ -446,7 +520,7 @@ export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: Agent
         setTimeout(() => inputRef.current?.focus(), 50);
       }
     },
-    [history, streaming],
+    [history, streaming, conversationId],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -510,16 +584,23 @@ export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: Agent
               <ChevronDown className={`h-3 w-3 ml-1 transition-transform ${showJiraSetup ? "rotate-180" : ""}`} />
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground"
+            onClick={() => setShowHistory((v) => !v)}
+            disabled={streaming}
+            title="Chat history"
+          >
+            <History className="h-3 w-3 sm:mr-1" />
+            <span className="hidden sm:inline">History</span>
+          </Button>
           {!isEmpty && (
             <Button
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs text-muted-foreground"
-              onClick={() => {
-                setItems([]);
-                setHistory([]);
-                setInput("");
-              }}
+              onClick={handleNewChat}
               disabled={streaming}
               title="New chat"
             >
@@ -540,6 +621,55 @@ export function AgentChatPanel({ onPageCreated, isMobile, onOpenSidebar }: Agent
               setShowJiraSetup(false);
             }}
           />
+        </div>
+      )}
+
+      {/* Conversation history panel */}
+      {showHistory && (
+        <div className="shrink-0 border-b bg-muted/30 max-h-64 overflow-y-auto">
+          <div className="px-3 py-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Chat History</span>
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setShowHistory(false)}>
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+          {conversations.length === 0 ? (
+            <p className="text-xs text-muted-foreground px-3 pb-3">No past conversations yet.</p>
+          ) : (
+            <div className="pb-1">
+              {conversations.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => loadConversation(c.id)}
+                  className={`w-full text-left px-3 py-2 hover:bg-muted/60 transition-colors flex items-center gap-2 group ${
+                    conversationId === c.id ? "bg-primary/5 border-l-2 border-primary" : ""
+                  }`}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{c.title}</p>
+                    <p className="text-[10px] text-muted-foreground">{relativeTime(c.updated_at)}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 shrink-0"
+                    onClick={(e) => handleDeleteConversation(c.id, e)}
+                  >
+                    <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                  </Button>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Loading overlay */}
+      {loadingConvo && (
+        <div className="shrink-0 flex items-center justify-center py-4 border-b">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <span className="text-xs text-muted-foreground ml-2">Loading conversation...</span>
         </div>
       )}
 

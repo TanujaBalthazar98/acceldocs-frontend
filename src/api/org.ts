@@ -1,5 +1,5 @@
 import { fetchOrThrow } from "./client";
-import type { BrandExtractResult, Org, OrgMember } from "./types";
+import type { AISettings, BrandExtractResult, Org, OrgMember } from "./types";
 
 export const orgApi = {
   get: (orgId?: number): Promise<Org> =>
@@ -58,4 +58,21 @@ export const orgApi = {
       method: "POST",
       body: JSON.stringify({ url }),
     }),
+
+  getAISettings: (): Promise<AISettings> =>
+    fetchOrThrow<AISettings>("/api/org/ai-settings"),
+
+  updateAISettings: (data: {
+    ai_provider?: string;
+    ai_api_key?: string;
+    ai_model?: string;
+    ai_base_url?: string;
+  }): Promise<AISettings> =>
+    fetchOrThrow<AISettings>("/api/org/ai-settings", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  deleteAISettings: (): Promise<{ ok: boolean }> =>
+    fetchOrThrow<{ ok: boolean }>("/api/org/ai-settings", { method: "DELETE" }),
 };
