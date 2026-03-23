@@ -7,14 +7,22 @@
 const AUTH_TOKEN_KEY = "acceldocs_auth_token";
 const ORG_ID_KEY = "acceldocs_current_org_id";
 
-// Backend base URL — set VITE_API_URL in production (e.g. Vercel env vars)
-const _configuredUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
-if (import.meta.env.PROD && !_configuredUrl) {
-  console.warn("[AccelDocs] VITE_API_URL is not set — using hardcoded fallback. Set this env var in your deployment.");
+function resolveApiBaseUrl(): string {
+  const configuredUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
+  if (configuredUrl) return configuredUrl;
+
+  if (import.meta.env.PROD) {
+    const sameOrigin = typeof window !== "undefined" ? window.location.origin : "";
+    console.error(
+      "[AccelDocs] VITE_API_URL is not set in production. Falling back to same-origin.",
+    );
+    return sameOrigin;
+  }
+
+  return "http://localhost:8000";
 }
-const PRODUCTION_API_URL = "https://acceldocs-backend.vercel.app";
-export const API_BASE_URL = _configuredUrl
-  || (import.meta.env.PROD ? PRODUCTION_API_URL : "http://localhost:8000");
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 function getApiFetchBaseUrl(): string {
   if (typeof window === "undefined") return API_BASE_URL;

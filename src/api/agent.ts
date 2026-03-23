@@ -1,5 +1,5 @@
 import { invokeFunction } from "@/lib/api/functions";
-import { getAuthToken } from "@/lib/api/client";
+import { API_BASE_URL, getAuthToken } from "@/lib/api/client";
 
 // ---------------------------------------------------------------------------
 // Jira API types (existing)
@@ -164,10 +164,7 @@ export interface ChatHistoryMessage {
 // ---------------------------------------------------------------------------
 
 function getApiBaseUrl(): string {
-  const configuredUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
-  const productionUrl = "https://acceldocs-backend.vercel.app";
-  const base = configuredUrl || (import.meta.env.PROD ? productionUrl : "http://localhost:8000");
-
+  const base = API_BASE_URL;
   if (typeof window === "undefined") return base;
   const isLocalHttps =
     window.location.protocol === "https:" &&

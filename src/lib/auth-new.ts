@@ -3,10 +3,27 @@
  * Connects to FastAPI backend at /auth endpoints
  */
 
-// Backend base URL — set VITE_API_URL in production (e.g. Vercel env vars)
-const PRODUCTION_API_URL = "https://acceldocs-backend.vercel.app";
-const API_URL = import.meta.env.VITE_AUTH_URL || import.meta.env.VITE_API_URL
-  || (import.meta.env.PROD ? PRODUCTION_API_URL : 'http://localhost:8000');
+function resolveAuthApiUrl(): string {
+  const configured = (
+    (import.meta.env.VITE_AUTH_URL as string | undefined)
+    || (import.meta.env.VITE_API_URL as string | undefined)
+    || ""
+  ).replace(/\/$/, "");
+
+  if (configured) return configured;
+
+  if (import.meta.env.PROD) {
+    const sameOrigin = typeof window !== "undefined" ? window.location.origin : "";
+    console.error(
+      "[AccelDocs] VITE_AUTH_URL/VITE_API_URL is not set in production. Falling back to same-origin.",
+    );
+    return sameOrigin;
+  }
+
+  return "http://localhost:8000";
+}
+
+const API_URL = resolveAuthApiUrl();
 
 function getAuthApiUrl(): string {
   if (typeof window === 'undefined') return API_URL;
