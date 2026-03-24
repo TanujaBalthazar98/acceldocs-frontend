@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,7 +85,7 @@ export const Onboarding = ({ onComplete, organizationId }: OnboardingProps) => {
     const domain = email.split("@")[1]?.trim();
     return domain || email;
   })();
-  const workspaceName = formatPersonalWorkspaceName(user?.email || null, user?.user_metadata?.full_name || null);
+  const workspaceName = formatPersonalWorkspaceName(user?.email || null, user?.name || null);
 
   useEffect(() => {
     // Once we've saved the folder and moved to discovery step, stop re-checking

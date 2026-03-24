@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Folder, Upload, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { invokeFunction } from "@/lib/api/functions";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 
 interface AddTopicDialogProps {
   open: boolean;
@@ -47,7 +48,8 @@ export const AddTopicDialog = ({
   const [isCreating, setIsCreating] = useState(false);
   const [activeTab, setActiveTab] = useState<"create" | "import">("create");
   const { toast } = useToast();
-  const { user, googleAccessToken } = useAuth();
+  const { user } = useAuth();
+  const { googleAccessToken } = useDriveAuth();
 
   // Import state
   const [importItems, setImportItems] = useState<ImportItem[]>([]);

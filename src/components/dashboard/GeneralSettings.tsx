@@ -17,7 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 import { invokeFunction } from "@/lib/api/functions";
 import { apiFetch } from "@/lib/api/client";
 import { orgApi } from "@/api/org";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { Github, ExternalLink, RefreshCw, Globe, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Link2Off, Bot, Trash2 } from "lucide-react";
 import type { AIProvider } from "@/api/types";
 
@@ -56,7 +57,8 @@ function inferWorkspaceDomain(email?: string | null): string {
 
 export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const { toast } = useToast();
-  const { user, googleAccessToken, requestDriveAccess } = useAuth();
+  const { user } = useAuth();
+  const { googleAccessToken, requestDriveAccess } = useDriveAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [organizationId, setOrganizationId] = useState<number | null>(null);

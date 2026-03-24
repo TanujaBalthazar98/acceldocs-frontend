@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Folder, ChevronRight, CornerLeftUp, Check } from "lucide-react";
 import { useGoogleDrive, DriveFile } from "@/hooks/useGoogleDrive";
-import { useAuth } from "@/contexts/AuthContext";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { cn } from "@/lib/utils";
 
 interface DriveFolderPickerDialogProps {
@@ -30,7 +30,7 @@ export const DriveFolderPickerDialog = ({
   onOpenSettings,
 }: DriveFolderPickerDialogProps) => {
   const { listFolder, getGoogleToken } = useGoogleDrive();
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle } = useDriveAuth();
   const [currentFolderId, setCurrentFolderId] = useState<string>(rootFolderId);
   // Need to track folder name for breadcrumbs or title? 
   // keeping it simple: just navigation stack

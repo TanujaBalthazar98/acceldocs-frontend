@@ -9,7 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { invokeFunction } from "@/lib/api/functions";
 import { strapiFetch } from "@/lib/api/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { ensureFreshSession } from "@/lib/authSession";
 import { ProjectSharePanel } from "@/components/dashboard/ProjectSharePanel";
@@ -56,7 +57,8 @@ const visibilityConfig: Record<VisibilityLevel, { icon: typeof Lock; label: stri
 export default function PagePreview() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, googleAccessToken, requestDriveAccess } = useAuth();
+  const { user } = useAuth();
+  const { googleAccessToken, requestDriveAccess } = useDriveAuth();
   const { getGoogleToken } = useGoogleDrive();
   const { toast } = useToast();
   

@@ -32,7 +32,7 @@ import {
 import { auth } from "@/lib/api/auth";
 import { strapiFetch } from "@/lib/api/client";
 import { invokeFunction } from "@/lib/api/functions";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useBrandingLoader, useBrandingStyles } from "@/hooks/useBrandingLoader";
 import { cn } from "@/lib/utils";

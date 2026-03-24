@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 
 const GOOGLE_TOKEN_KEY = "google_access_token";
 
 export const useSyncContent = () => {
   const { toast } = useToast();
-  const { googleAccessToken } = useAuth();
+  const { googleAccessToken } = useDriveAuth();
   const { attemptRecovery, isInCooldown } = useDriveRecovery();
   const [syncing, setSyncing] = useState(false);
 

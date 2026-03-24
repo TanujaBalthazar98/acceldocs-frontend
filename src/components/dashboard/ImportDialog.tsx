@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Upload, FileText, Folder, Loader2, AlertCircle, FolderTree } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { invokeFunction } from "@/lib/api/functions";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { ImportProgressIndicator } from "./ImportProgressIndicator";
 import { splitImportBatches } from "@/lib/importBatching";
 
@@ -61,7 +62,8 @@ export const ImportDialog = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const { user, googleAccessToken } = useAuth();
+  const { user } = useAuth();
+  const { googleAccessToken } = useDriveAuth();
 
   const parentFolderId = type === "page" ? (topicFolderId || projectFolderId) : projectFolderId;
   const importParentTopicId = type === "page" ? (topicId || null) : (parentTopicId || null);

@@ -29,7 +29,7 @@ import { SharePanel } from "./SharePanel";
 import { invokeFunction } from "@/lib/api/functions";
 import { getById } from "@/lib/api/queries";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { ensureFreshSession } from "@/lib/authSession";
 import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading } from "@/lib/markdown";
@@ -96,7 +96,7 @@ export const PageView = ({ document, onBack, onDocumentUpdate, userRole, require
     document.content_html || document.published_content_html
   );
   const { toast } = useToast();
-  const { googleAccessToken } = useAuth();
+  const { googleAccessToken } = useDriveAuth();
 
   const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
 

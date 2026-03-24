@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { MCPDocs as MCPDocsComponent } from "@/components/docs/MCPDocs";
 import { ThemeToggle } from "@/components/docs/ThemeToggle";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Bot } from "lucide-react";

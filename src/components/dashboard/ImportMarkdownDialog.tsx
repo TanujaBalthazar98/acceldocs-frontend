@@ -16,7 +16,8 @@ import { useGoogleDrive } from "@/hooks/useGoogleDrive";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 
 interface ImportItem {
   type: "folder" | "file";
@@ -52,7 +53,8 @@ export const ImportMarkdownDialog = ({
 }: ImportMarkdownDialogProps) => {
   const { toast } = useToast();
   const { createFolder } = useGoogleDrive();
-  const { googleAccessToken, user: authUser } = useAuth();
+  const { user: authUser } = useAuth();
+  const { googleAccessToken } = useDriveAuth();
   const [importItems, setImportItems] = useState<ImportItem[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);

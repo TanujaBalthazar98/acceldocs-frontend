@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MessageSquare, Send, AlertCircle, Lightbulb, Loader2, Check, Trash2, Star } from "lucide-react";
 import { list, create, update, remove } from "@/lib/api/queries";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -100,7 +100,7 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
     const { error } = await create("page_feedback", {
       document_id: documentId,
       user_id: user?.id ?? null,
-      user_name: user?.user_metadata?.full_name || user?.email?.split("@")[0] || null,
+      user_name: user?.name || user?.email?.split("@")[0] || null,
       user_email: user?.email ?? null,
       content: newComment.trim(),
       feedback_type: effectiveFeedbackType,

@@ -6,7 +6,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { invokeFunction } from "@/lib/api/functions";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 import { DRIVE_INTEGRATION_ENABLED } from "@/lib/featureFlags";
@@ -22,7 +23,8 @@ export const DriveStatusIndicator = ({ onStatusChange }: DriveStatusIndicatorPro
     return null;
   }
 
-  const { user, googleAccessToken, requestDriveAccess } = useAuth();
+  const { user } = useAuth();
+  const { googleAccessToken, requestDriveAccess } = useDriveAuth();
   const { resetRecoveryState, attemptRecovery } = useDriveRecovery();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);

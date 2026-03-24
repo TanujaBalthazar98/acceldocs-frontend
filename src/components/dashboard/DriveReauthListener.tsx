@@ -1,12 +1,12 @@
 import { useEffect } from "react";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
-import { useAuth } from "@/contexts/AuthContext";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 
 const DRIVE_AUTO_RECONNECT_KEY = "drive_auto_reconnect";
 
 export const DriveReauthListener = () => {
   const { attemptRecovery } = useDriveRecovery();
-  const { requestDriveAccess } = useAuth();
+  const { requestDriveAccess } = useDriveAuth();
 
   useEffect(() => {
     const handler = async () => {

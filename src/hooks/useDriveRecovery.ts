@@ -3,7 +3,8 @@ import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import * as React from "react";
 import { ToastAction } from "@/components/ui/toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { ensureFreshSession } from "@/lib/authSession";
 
 // Centralized Drive failure recovery:
@@ -23,7 +24,8 @@ export interface DriveRecoveryState {
 
 export const useDriveRecovery = () => {
   const { toast } = useToast();
-  const { user, googleAccessToken, requestDriveAccess } = useAuth();
+  const { user } = useAuth();
+  const { googleAccessToken, requestDriveAccess } = useDriveAuth();
 
   const isRecoveringRef = useRef(false);
   const lastRecoveryRef = useRef<number | null>(null);

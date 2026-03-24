@@ -1,7 +1,8 @@
 import { invokeFunction } from "@/lib/api/functions";
 
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { useDriveRecovery } from "@/hooks/useDriveRecovery";
 
 export interface DriveFile {
@@ -16,7 +17,8 @@ const GOOGLE_TOKEN_KEY = "google_access_token";
 
 export const useGoogleDrive = () => {
   const { toast } = useToast();
-  const { user, googleAccessToken } = useAuth();
+  const { user } = useAuth();
+  const { googleAccessToken } = useDriveAuth();
   const { attemptRecovery, isInCooldown } = useDriveRecovery();
 
   const getGoogleToken = (): string | null => {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions, useAuditLog } from "@/hooks/usePermissions";
@@ -19,7 +20,8 @@ import type {
 } from "@/types/dashboard";
 
 export const useDashboardData = () => {
-  const { user, signOut, googleAccessToken } = useAuth();
+  const { user, signOut } = useAuth();
+  const { googleAccessToken } = useDriveAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();

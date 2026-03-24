@@ -22,7 +22,7 @@ import {
 import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 
 interface Message {
   role: "user" | "assistant";
@@ -79,7 +79,7 @@ export function DocAssistantChat({
   const [isReauthorizing, setIsReauthorizing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  const { requestDriveAccess } = useAuth();
+  const { requestDriveAccess } = useDriveAuth();
 
   useEffect(() => {
     if (scrollRef.current) {

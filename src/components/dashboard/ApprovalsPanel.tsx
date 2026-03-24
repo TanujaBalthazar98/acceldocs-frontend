@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { parseApiDate } from "@/lib/datetime";
 
 const GOOGLE_TOKEN_KEY = "google_access_token";
@@ -107,7 +107,7 @@ function TimeAgo({ dateStr }: { dateStr: string | null }) {
 
 export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChange, isMobile, onOpenSidebar }: ApprovalsPanelProps) {
   const { toast } = useToast();
-  const { googleAccessToken } = useAuth();
+  const { googleAccessToken } = useDriveAuth();
   const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
   const canReview = userRole === "owner" || userRole === "admin" || userRole === "reviewer";
 

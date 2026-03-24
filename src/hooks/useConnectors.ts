@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invokeFunction } from '@/lib/api/functions';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuthNew';
 import { usePermissions } from '@/hooks/usePermissions';
 import { 
   Connector, 

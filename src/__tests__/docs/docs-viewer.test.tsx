@@ -10,7 +10,7 @@ import { BrowserRouter, MemoryRouter } from 'react-router-dom';
 import Docs from '@/pages/Docs';
 import { mockProject, mockDocument, mockTopic, setupTestEnv, mockFetch } from '../utils/test-helpers';
 import { strapiFetch } from '@/lib/api/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuthNew';
 
 // Mock dependencies
 vi.mock('@/lib/api/client', async () => {
@@ -27,7 +27,7 @@ vi.mock('@/lib/api/functions', () => ({
   invokeFunction: vi.fn(),
 }));
 
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/hooks/useAuthNew', () => ({
   useAuth: vi.fn(),
 }));
 

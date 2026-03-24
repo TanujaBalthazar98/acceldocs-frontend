@@ -12,7 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Upload, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useGoogleDrive } from "@/hooks/useGoogleDrive";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthNew";
+import { useDriveAuth } from "@/hooks/useDriveAuth";
 import { invokeFunction } from "@/lib/api/functions";
 
 interface AddPageDialogProps {
@@ -41,7 +42,8 @@ export const AddPageDialog = ({
 }: AddPageDialogProps) => {
   const { toast } = useToast();
   const { createDoc, checkFolderAccess } = useGoogleDrive();
-  const { user, googleAccessToken } = useAuth();
+  const { user } = useAuth();
+  const { googleAccessToken } = useDriveAuth();
   const [title, setTitle] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [activeTab, setActiveTab] = useState<"create" | "import">("create");
