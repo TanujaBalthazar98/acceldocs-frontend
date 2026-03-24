@@ -10,12 +10,15 @@ import {
   isAuthenticated as checkAuth,
   signOut as authSignOut,
 } from '@/lib/auth-new';
+import { ORG_ID_KEY } from '@/lib/api/client';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
   isAuthenticated: boolean;
+  profileOrganizationId: string | null;
+  profileLoading: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -26,6 +29,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profileOrganizationId, setProfileOrganizationId] = useState<string | null>(
+    () => localStorage.getItem(ORG_ID_KEY),
+  );
 
   // Load user on mount
   useEffect(() => {
@@ -62,9 +68,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Sync profileOrganizationId from localStorage when user changes
+  useEffect(() => {
+    if (user) {
+      setProfileOrganizationId(localStorage.getItem(ORG_ID_KEY));
+    } else {
+      setProfileOrganizationId(null);
+    }
+  }, [user?.id]);
+
   async function signOut() {
     await authSignOut();
     setUser(null);
+    setProfileOrganizationId(null);
   }
 
   async function refreshUser() {
@@ -77,10 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       isAuthenticated: user !== null,
+      profileOrganizationId,
+      profileLoading: false,
       signOut,
       refreshUser,
     }),
-    [user, loading, error]
+    [user, loading, error, profileOrganizationId]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
