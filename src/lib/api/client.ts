@@ -5,7 +5,7 @@
  */
 
 const AUTH_TOKEN_KEY = "acceldocs_auth_token";
-const ORG_ID_KEY = "acceldocs_current_org_id";
+export const ORG_ID_KEY = "acceldocs_current_org_id";
 
 function resolveApiBaseUrl(): string {
   const configuredUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");

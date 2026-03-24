@@ -4286,10 +4286,18 @@ export default function Dashboard() {
 
   const deleteSection = useMutation({
     mutationFn: (id: number) => sectionsApi.delete(id),
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["sections"] });
       qc.invalidateQueries({ queryKey: ["pages"] });
-      toast({ title: "Section deleted" });
+      if (result.drive_errors?.length) {
+        toast({
+          title: "Section deleted",
+          description: "Warning: some Drive items could not be trashed. Reconnect Drive if this persists.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Section deleted" });
+      }
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -4364,9 +4372,16 @@ export default function Dashboard() {
     mutationFn: driveApi.syncAll,
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["pages"] });
+      if (result.removed_pages || result.removed_sections) {
+        qc.invalidateQueries({ queryKey: ["sections"] });
+      }
+      const parts = [`${result.synced} updated`, `${result.skipped} unchanged`];
+      if (result.removed_pages) parts.push(`${result.removed_pages} removed`);
+      if (result.removed_sections) parts.push(`${result.removed_sections} sections cleaned up`);
+      if (result.errors) parts.push(`${result.errors} failed`);
       toast({
         title: "Sync complete",
-        description: `${result.synced} updated, ${result.skipped} unchanged${result.errors ? `, ${result.errors} failed` : ""}`,
+        description: parts.join(", "),
         variant: result.errors ? "destructive" : "default",
       });
     },
@@ -5489,6 +5504,13 @@ export default function Dashboard() {
                       }
                       Sync all pages
                     </button>
+                    {driveConnected && driveStatus && !driveStatus.has_write_access && (
+                      <div className="mx-1 mt-1 rounded-md border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 px-2 py-1.5">
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                          Drive has read-only access. Reconnect to enable create/delete/move.
+                        </p>
+                      </div>
+                    )}
                     <div className="mx-1 mt-1 rounded-md border bg-background/70 px-2 py-1.5">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">

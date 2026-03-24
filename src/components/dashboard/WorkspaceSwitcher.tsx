@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, ORG_ID_KEY } from "@/lib/api/client";
 import { ChevronsUpDown, Check } from "lucide-react";
 import {
   DropdownMenu,
@@ -25,15 +25,13 @@ interface WorkspaceSwitcherProps {
   collapsed?: boolean;
 }
 
-const ORG_KEY = "acceldocs_current_org_id";
-
 export function getStoredOrgId(): number | null {
-  const val = localStorage.getItem(ORG_KEY);
+  const val = localStorage.getItem(ORG_ID_KEY);
   return val ? parseInt(val, 10) : null;
 }
 
 export function setStoredOrgId(id: number): void {
-  localStorage.setItem(ORG_KEY, String(id));
+  localStorage.setItem(ORG_ID_KEY, String(id));
 }
 
 /**

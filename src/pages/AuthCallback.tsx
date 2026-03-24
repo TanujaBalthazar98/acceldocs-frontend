@@ -6,10 +6,8 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { setToken, getCurrentUser, handleGoogleCallback } from '@/lib/auth-new';
-import { apiFetch } from '@/lib/api/client';
+import { apiFetch, ORG_ID_KEY } from '@/lib/api/client';
 import { Loader2, CheckCircle2 } from 'lucide-react';
-
-const ORG_ID_KEY = 'acceldocs_current_org_id';
 
 /**
  * Decode a ``next`` docs URL from the OAuth state parameter.

@@ -3,6 +3,8 @@
  * Connects to FastAPI backend at /auth endpoints
  */
 
+import { ORG_ID_KEY } from "@/lib/api/client";
+
 function resolveAuthApiUrl(): string {
   const configured = (
     (import.meta.env.VITE_AUTH_URL as string | undefined)
@@ -218,7 +220,7 @@ export async function handleGoogleCallback(code: string): Promise<User & { strap
 
   // Store organization ID so X-Org-Id header is sent on all API calls
   if (data.organization_id) {
-    localStorage.setItem('acceldocs_current_org_id', String(data.organization_id));
+    localStorage.setItem(ORG_ID_KEY, String(data.organization_id));
   }
 
   // Return user with optional strapi_jwt

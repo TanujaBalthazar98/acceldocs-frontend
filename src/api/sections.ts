@@ -25,8 +25,8 @@ export const sectionsApi = {
       body: JSON.stringify(data),
     }),
 
-  delete: (id: number): Promise<void> =>
-    fetchOrThrow("/api/sections/" + id, { method: "DELETE" }),
+  delete: (id: number): Promise<{ ok: boolean; pages_deleted: number; sections_deleted: number; drive_trashed: number; drive_errors: string[] | null }> =>
+    fetchOrThrow<{ ok: boolean; pages_deleted: number; sections_deleted: number; drive_trashed: number; drive_errors: string[] | null }>("/api/sections/" + id, { method: "DELETE" }),
 };
 
 /** Build a nested tree from a flat section list. */

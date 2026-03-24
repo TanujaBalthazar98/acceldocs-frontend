@@ -1,5 +1,5 @@
 import { invokeFunction } from "@/lib/api/functions";
-import { API_BASE_URL, getAuthToken } from "@/lib/api/client";
+import { API_BASE_URL, getAuthToken, ORG_ID_KEY } from "@/lib/api/client";
 
 // ---------------------------------------------------------------------------
 // Jira API types (existing)
@@ -64,7 +64,7 @@ export const agentApi = {
 
   listConversations: async (): Promise<ConversationSummary[]> => {
     const token = getAuthToken();
-    const orgId = localStorage.getItem("acceldocs_current_org_id");
+    const orgId = localStorage.getItem(ORG_ID_KEY);
     const baseUrl = getApiBaseUrl();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -76,7 +76,7 @@ export const agentApi = {
 
   getConversation: async (id: number): Promise<ConversationFull> => {
     const token = getAuthToken();
-    const orgId = localStorage.getItem("acceldocs_current_org_id");
+    const orgId = localStorage.getItem(ORG_ID_KEY);
     const baseUrl = getApiBaseUrl();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -88,7 +88,7 @@ export const agentApi = {
 
   deleteConversation: async (id: number): Promise<void> => {
     const token = getAuthToken();
-    const orgId = localStorage.getItem("acceldocs_current_org_id");
+    const orgId = localStorage.getItem(ORG_ID_KEY);
     const baseUrl = getApiBaseUrl();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -103,7 +103,7 @@ export const agentApi = {
     language?: string;
   }): Promise<InlineAssistResult> => {
     const token = getAuthToken();
-    const orgId = localStorage.getItem("acceldocs_current_org_id");
+    const orgId = localStorage.getItem(ORG_ID_KEY);
     const baseUrl = getApiBaseUrl();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -178,7 +178,7 @@ export async function* streamAgentChat(
   conversationId?: number | null,
 ): AsyncGenerator<ChatSSEEvent, void, unknown> {
   const token = getAuthToken();
-  const orgId = localStorage.getItem("acceldocs_current_org_id");
+  const orgId = localStorage.getItem(ORG_ID_KEY);
   const baseUrl = getApiBaseUrl();
 
   const headers: Record<string, string> = {

@@ -1,7 +1,6 @@
 import { API_BASE_URL, fetchOrThrow, getAuthToken } from "./client";
+import { ORG_ID_KEY } from "../lib/api/client";
 import type { DriveStatus, ImportTargetType, LocalImportResult, ScanResult, SyncResult } from "./types";
-
-const ORG_ID_KEY = "acceldocs_current_org_id";
 
 function getUploadBaseUrl(): string {
   if (typeof window === "undefined") return API_BASE_URL;

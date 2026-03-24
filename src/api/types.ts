@@ -180,6 +180,7 @@ export interface PageEngagementDetail {
 
 export interface DriveStatus {
   connected: boolean;
+  has_write_access: boolean;
   drive_folder_id: string | null;
   last_refreshed_at: string | null;
 }
@@ -210,4 +211,6 @@ export interface SyncResult {
   synced: number;
   skipped: number;
   errors: number;
+  removed_pages: number;
+  removed_sections: number;
 }
