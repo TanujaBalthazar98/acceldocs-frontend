@@ -189,7 +189,7 @@ export const ImportMarkdownDialog = ({
     setProgress(0);
 
     try {
-      // Get access token from AuthContext (synchronized with localStorage)
+      // Get access token from useDriveAuth (synchronized with localStorage)
       if (!googleAccessToken || !authUser) {
         throw new Error("No Google access token or user available");
       }

@@ -15,10 +15,14 @@ vi.mock('@/lib/api/functions', () => ({
   invokeFunction: vi.fn(),
 }));
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
+vi.mock('@/hooks/useDriveAuth', () => ({
+  useDriveAuth: () => ({
     googleAccessToken: 'token123',
+    isDriveConnected: true,
+    requestDriveAccess: vi.fn(),
+    signInWithGoogle: vi.fn(),
   }),
+  DriveAuthProvider: ({ children }: { children: unknown }) => children,
 }));
 
 vi.mock('@/hooks/use-toast', () => ({

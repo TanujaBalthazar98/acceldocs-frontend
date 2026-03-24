@@ -21,10 +21,14 @@ vi.mock('@/hooks/use-toast', () => ({
   }),
 }));
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
+vi.mock('@/hooks/useDriveAuth', () => ({
+  useDriveAuth: () => ({
     requestDriveAccess: vi.fn(),
+    googleAccessToken: null,
+    isDriveConnected: false,
+    signInWithGoogle: vi.fn(),
   }),
+  DriveAuthProvider: ({ children }: { children: unknown }) => children,
 }));
 
 describe('AI Assistant', () => {
