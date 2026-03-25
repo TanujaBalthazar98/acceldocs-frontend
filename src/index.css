@@ -998,7 +998,13 @@
   color: hsl(var(--foreground));
 }
 
-/* Callouts/Admonitions (Note, Warning, Tip, etc.) */
+/* Callouts/Admonitions (Note, Warning, Tip, Info, Success, Danger)
+   Supports multiple class conventions:
+   - .callout-note           (legacy)
+   - .admonition-note        (hyphenated)
+   - .admonition.note        (Python markdown library output)
+   - [data-callout="note"]   (data attribute)
+*/
 .docs-content .callout,
 .docs-content .admonition,
 .docs-content [data-callout] {
@@ -1008,8 +1014,14 @@
   border-left: 4px solid;
 }
 
+.docs-content .admonition-title {
+  font-weight: 600;
+  margin-bottom: 0.25em;
+}
+
 .docs-content .callout-note,
 .docs-content .admonition-note,
+.docs-content .admonition.note,
 .docs-content [data-callout="note"] {
   background: hsl(210 100% 97%);
   border-color: hsl(210 100% 50%);
@@ -1017,12 +1029,29 @@
 
 .dark .docs-content .callout-note,
 .dark .docs-content .admonition-note,
+.dark .docs-content .admonition.note,
 .dark .docs-content [data-callout="note"] {
+  background: hsl(210 50% 15%);
+}
+
+.docs-content .callout-info,
+.docs-content .admonition-info,
+.docs-content .admonition.info,
+.docs-content [data-callout="info"] {
+  background: hsl(210 100% 97%);
+  border-color: hsl(210 100% 50%);
+}
+
+.dark .docs-content .callout-info,
+.dark .docs-content .admonition-info,
+.dark .docs-content .admonition.info,
+.dark .docs-content [data-callout="info"] {
   background: hsl(210 50% 15%);
 }
 
 .docs-content .callout-warning,
 .docs-content .admonition-warning,
+.docs-content .admonition.warning,
 .docs-content [data-callout="warning"] {
   background: hsl(45 100% 97%);
   border-color: hsl(45 100% 50%);
@@ -1030,12 +1059,14 @@
 
 .dark .docs-content .callout-warning,
 .dark .docs-content .admonition-warning,
+.dark .docs-content .admonition.warning,
 .dark .docs-content [data-callout="warning"] {
   background: hsl(45 50% 15%);
 }
 
 .docs-content .callout-danger,
 .docs-content .admonition-danger,
+.docs-content .admonition.danger,
 .docs-content [data-callout="danger"] {
   background: hsl(0 100% 97%);
   border-color: hsl(0 100% 50%);
@@ -1043,12 +1074,14 @@
 
 .dark .docs-content .callout-danger,
 .dark .docs-content .admonition-danger,
+.dark .docs-content .admonition.danger,
 .dark .docs-content [data-callout="danger"] {
   background: hsl(0 50% 15%);
 }
 
 .docs-content .callout-tip,
 .docs-content .admonition-tip,
+.docs-content .admonition.tip,
 .docs-content [data-callout="tip"] {
   background: hsl(140 100% 97%);
   border-color: hsl(140 70% 45%);
@@ -1056,7 +1089,23 @@
 
 .dark .docs-content .callout-tip,
 .dark .docs-content .admonition-tip,
+.dark .docs-content .admonition.tip,
 .dark .docs-content [data-callout="tip"] {
+  background: hsl(140 40% 15%);
+}
+
+.docs-content .callout-success,
+.docs-content .admonition-success,
+.docs-content .admonition.success,
+.docs-content [data-callout="success"] {
+  background: hsl(140 100% 97%);
+  border-color: hsl(140 70% 45%);
+}
+
+.dark .docs-content .callout-success,
+.dark .docs-content .admonition-success,
+.dark .docs-content .admonition.success,
+.dark .docs-content [data-callout="success"] {
   background: hsl(140 40% 15%);
 }
 
