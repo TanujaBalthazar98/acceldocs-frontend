@@ -3871,8 +3871,7 @@ export default function Dashboard() {
       return sortedVisibleChildren(selectedTab.id);
     }
     const children = sortedVisibleChildren(activeHierarchyRoot.id);
-    const nonTabChildren = children.filter((section) => (section.section_type ?? "section") !== "tab");
-    const base = nonTabChildren.length > 0 ? nonTabChildren : children;
+    const base = children;
     // When viewing a version, also include product-level non-version siblings (e.g. FAQ)
     if (selectedVersion && selectedProduct && selectedVersion.id !== selectedProduct.id) {
       const productChildren = sortedVisibleChildren(selectedProduct.id);
