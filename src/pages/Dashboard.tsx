@@ -3958,9 +3958,17 @@ export default function Dashboard() {
     if (!isProductHierarchy) return displayedSectionTree;
     const selectedRoot = displayedSectionTree[0];
     if (!selectedRoot) return [] as Section[];
-    if (selectedVersion) return selectedRoot.children ?? [];
+    if (selectedVersion) {
+      const versionChildren = selectedRoot.children ?? [];
+      // Also include non-version siblings from the product level (e.g. FAQ imported directly under the product)
+      const productNode = sectionTree.find((root) => root.id === selectedSidebarProductId);
+      const productLevelSections = (productNode?.children ?? []).filter(
+        (child) => (child.section_type ?? "section") !== "version" && !versionChildren.some((vc) => vc.id === child.id),
+      );
+      return [...versionChildren, ...productLevelSections];
+    }
     return selectedRoot.children ?? [];
-  }, [displayedSectionTree, isProductHierarchy, selectedVersion]);
+  }, [displayedSectionTree, isProductHierarchy, sectionTree, selectedSidebarProductId, selectedVersion]);
   const adminRootPages = useMemo(() => {
     if (!isProductHierarchy || selectedSidebarProductId === null) {
       return treeVisiblePages.filter((page) => !page.section_id);
