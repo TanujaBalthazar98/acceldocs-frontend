@@ -385,7 +385,10 @@ export const InviteMemberDialog = ({
                           <SelectValue placeholder="Role" />
                         </SelectTrigger>
                         <SelectContent>
-                          {editableRoleOptions.map((candidateRole) => (
+                          {(editableRoleOptions.includes(member.role as MemberRole)
+                            ? editableRoleOptions
+                            : [member.role as MemberRole, ...editableRoleOptions]
+                          ).map((candidateRole) => (
                             <SelectItem key={candidateRole} value={candidateRole}>
                               {roleLabel(candidateRole)}
                             </SelectItem>
