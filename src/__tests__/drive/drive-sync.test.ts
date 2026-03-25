@@ -15,6 +15,18 @@ vi.mock('@/lib/api/functions', () => ({
   invokeFunction: vi.fn(),
 }));
 
+vi.mock('@/hooks/useAuthNew', () => ({
+  useAuth: () => ({
+    user: { id: 1, email: 'test@example.com', name: 'Test User', role: 'owner', google_id: 'g1', created_at: new Date().toISOString() },
+    loading: false,
+    isAuthenticated: true,
+    error: null,
+    signOut: vi.fn(),
+    refreshUser: vi.fn(),
+  }),
+  AuthProvider: ({ children }: { children: unknown }) => children,
+}));
+
 vi.mock('@/hooks/useDriveAuth', () => ({
   useDriveAuth: () => ({
     googleAccessToken: 'token123',
