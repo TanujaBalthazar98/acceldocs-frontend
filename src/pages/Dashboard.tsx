@@ -3872,8 +3872,17 @@ export default function Dashboard() {
     }
     const children = sortedVisibleChildren(activeHierarchyRoot.id);
     const nonTabChildren = children.filter((section) => (section.section_type ?? "section") !== "tab");
-    return nonTabChildren.length > 0 ? nonTabChildren : children;
-  }, [activeHierarchyRoot, selectedTab, sortedVisibleChildren]);
+    const base = nonTabChildren.length > 0 ? nonTabChildren : children;
+    // When viewing a version, also include product-level non-version siblings (e.g. FAQ)
+    if (selectedVersion && selectedProduct && selectedVersion.id !== selectedProduct.id) {
+      const productChildren = sortedVisibleChildren(selectedProduct.id);
+      const siblings = productChildren.filter(
+        (s) => (s.section_type ?? "section") !== "version" && !base.some((b) => b.id === s.id),
+      );
+      return [...base, ...siblings];
+    }
+    return base;
+  }, [activeHierarchyRoot, selectedProduct, selectedTab, selectedVersion, sortedVisibleChildren]);
   const readerHierarchyTitle = selectedTab?.name ?? selectedVersion?.name ?? selectedProduct?.name ?? "Documentation";
 
   const getDescendantSectionIds = useCallback(
