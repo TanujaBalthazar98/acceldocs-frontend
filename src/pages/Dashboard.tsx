@@ -38,6 +38,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -326,6 +327,14 @@ function inferImportTargetType(section: Section): ImportTargetType {
   return "section";
 }
 
+function toDriveImportTarget(section: Section): DriveImportTarget {
+  return {
+    id: section.id,
+    name: section.name,
+    type: inferImportTargetType(section),
+  };
+}
+
 function importTargetTypeLabel(type: ImportTargetType): string {
   if (type === "product") return "Product";
   if (type === "version") return "Version";
@@ -474,6 +483,10 @@ function ScanDriveDialog({
   const [localMode, setLocalMode] = useState<LocalImportMode>("files");
   const [localFiles, setLocalFiles] = useState<File[]>([]);
   const [relativePaths, setRelativePaths] = useState<string[]>([]);
+  const ROOT_DESTINATION_VALUE = "__workspace_root__";
+  const [driveTargetId, setDriveTargetId] = useState<string>(
+    target ? String(target.id) : ROOT_DESTINATION_VALUE,
+  );
   const [localTargetId, setLocalTargetId] = useState<number | null>(target?.id ?? null);
   const filesInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
@@ -518,15 +531,28 @@ function ScanDriveDialog({
     () => destinationOptions.find((option) => option.id === localTargetId) ?? null,
     [destinationOptions, localTargetId],
   );
+  const selectedDriveTarget = useMemo(() => {
+    if (driveTargetId === ROOT_DESTINATION_VALUE) return null;
+    const parsed = Number(driveTargetId);
+    if (!Number.isFinite(parsed)) return null;
+    return destinationOptions.find((option) => option.id === parsed) ?? null;
+  }, [destinationOptions, driveTargetId]);
   const localImportTarget = target ?? selectedLocalTarget;
+  const driveImportTarget = selectedDriveTarget;
+  const hasExistingTopLevelContent = useMemo(
+    () => allSections.some((section) => section.parent_id === null),
+    [allSections],
+  );
 
   useEffect(() => {
     if (target) {
       setDriveFolderInput("");
       setSource("drive");
+      setDriveTargetId(String(target.id));
       setLocalTargetId(target.id);
     } else {
       setDriveFolderInput(resolvedRootFolderId);
+      setDriveTargetId(ROOT_DESTINATION_VALUE);
       setLocalTargetId((prev) => {
         if (prev !== null && destinationOptions.some((option) => option.id === prev)) return prev;
         return defaultLocalTargetId;
@@ -539,7 +565,7 @@ function ScanDriveDialog({
   const rootFolderMissing = !resolvedRootFolderId;
   const parsedDriveFolderId = parseDriveFolderId(driveFolderInput);
   const canConfigureRootFolder = !rootFolderMissing || canManageDrive;
-  const canImportDriveFolder = target
+  const canImportDriveFolder = driveImportTarget
     ? !!parsedDriveFolderId
     : (rootFolderMissing ? !!parsedDriveFolderId && canConfigureRootFolder : !!resolvedRootFolderId);
   const localImportNeedsTarget = source === "local" && localImportTarget === null;
@@ -551,11 +577,11 @@ function ScanDriveDialog({
       if (!driveConnected) {
         throw new Error("Connect Drive and set a root folder before importing.");
       }
-      if (target) {
+      if (driveImportTarget) {
         if (!parsedDriveFolderId) {
-          throw new Error("Paste a Google Drive folder URL or ID to import into this destination.");
+          throw new Error("Paste a Google Drive folder URL or ID to import into the selected destination.");
         }
-        return driveApi.scan(parsedDriveFolderId, target.id, target.type);
+        return driveApi.scan(parsedDriveFolderId, driveImportTarget.id, driveImportTarget.type);
       }
       if (!canConfigureRootFolder) {
         throw new Error("Only workspace owner/admin can configure the Drive root folder.");
@@ -570,8 +596,8 @@ function ScanDriveDialog({
       qc.invalidateQueries({ queryKey: ["pages"] });
       toast({
         title: "Import complete",
-        description: target
-          ? `${result.sections_created} sections, ${result.pages_created} pages imported into ${target.name}`
+        description: driveImportTarget
+          ? `${result.sections_created} sections, ${result.pages_created} pages imported into ${driveImportTarget.name}`
           : `${result.sections_created} sections, ${result.pages_created} pages from "${result.folder_name}"`,
       });
       onClose();
@@ -630,15 +656,32 @@ function ScanDriveDialog({
           <DialogTitle className="text-base">Import content</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-1">
-          {target ? (
-            <div className="rounded-md border bg-muted/30 px-3 py-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destination</p>
-              <p className="text-sm font-medium mt-1">{target.name}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Type: {importTargetTypeLabel(target.type)}
+          {source === "drive" ? (
+            <div className="space-y-1.5 rounded-md border bg-muted/30 px-3 py-2">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destination</Label>
+              <Select value={driveTargetId} onValueChange={setDriveTargetId}>
+                <SelectTrigger className="h-9 text-sm bg-background">
+                  <SelectValue placeholder="Choose destination" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ROOT_DESTINATION_VALUE}>Workspace root (new product)</SelectItem>
+                  {destinationOptions.map((option) => (
+                    <SelectItem key={option.id} value={String(option.id)}>
+                      <span className="truncate">{option.path} ({importTargetTypeLabel(option.type)})</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Import into Product, Version, Tab, or Section. Use workspace root only to add a brand-new top-level product.
               </p>
+              {!driveImportTarget && hasExistingTopLevelContent && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                  Root import creates another top-level product. Pick a destination above to avoid orphaned content.
+                </div>
+              )}
             </div>
-          ) : source === "local" ? (
+          ) : (
             <div className="space-y-1.5 rounded-md border bg-muted/30 px-3 py-2">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destination</Label>
               {destinationOptions.length === 0 ? (
@@ -667,12 +710,6 @@ function ScanDriveDialog({
                   </p>
                 </>
               )}
-            </div>
-          ) : (
-            <div className="rounded-md border bg-muted/30 px-3 py-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destination</p>
-              <p className="text-sm font-medium mt-1">Workspace root</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Use this for first-time onboarding imports.</p>
             </div>
           )}
 
@@ -710,13 +747,13 @@ function ScanDriveDialog({
           {source === "drive" ? (
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {target
+                {driveImportTarget
                   ? "Drive folder URL or ID"
                   : rootFolderMissing
                     ? "Root folder URL or ID"
                     : "Connected root folder"}
               </Label>
-              {target || rootFolderMissing ? (
+              {driveImportTarget || rootFolderMissing ? (
                 <>
                   <Input
                     value={driveFolderInput}
@@ -729,7 +766,7 @@ function ScanDriveDialog({
                     <p className="text-xs text-emerald-600">Folder ID: {parsedDriveFolderId}</p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    {target
+                    {driveImportTarget
                       ? "The selected Drive folder will be moved under this destination before syncing."
                       : "This folder will be saved as the workspace root and imported."}
                   </p>
@@ -2086,6 +2123,10 @@ function AddSectionDialog({
   hierarchyMode,
   preferredType,
   cloneFromSectionId,
+  titleOverride,
+  hideTypePicker,
+  allowDestinationPicker,
+  onCreated,
   onClose,
 }: {
   parentId?: number | null;
@@ -2093,14 +2134,23 @@ function AddSectionDialog({
   hierarchyMode: "product" | "flat";
   preferredType?: "section" | "tab" | "version";
   cloneFromSectionId?: number | null;
+  titleOverride?: string;
+  hideTypePicker?: boolean;
+  allowDestinationPicker?: boolean;
+  onCreated?: (section: Section) => void;
   onClose: () => void;
 }) {
+  const ROOT_DESTINATION_VALUE = "__create_root__";
   const [name, setName] = useState("");
   const [sectionType, setSectionType] = useState<"section" | "tab" | "version">(preferredType ?? "section");
+  const [destinationValue, setDestinationValue] = useState<string>(
+    parentId == null ? ROOT_DESTINATION_VALUE : String(parentId),
+  );
   const [visibility, setVisibility] = useState<VisibilityLevel>("public");
   const { toast } = useToast();
   const qc = useQueryClient();
   const parentMap = useMemo(() => new Map(allSections.map((s) => [s.id, s.parent_id])), [allSections]);
+  const sectionsById = useMemo(() => new Map(allSections.map((section) => [section.id, section])), [allSections]);
 
   const getDepth = useCallback((id: number | null | undefined): number => {
     if (!id) return 0;
@@ -2115,15 +2165,52 @@ function AddSectionDialog({
     return depth;
   }, [parentMap]);
 
-  const isRootCreate = parentId == null;
-  const parentDepth = getDepth(parentId);
+  const destinationParentId = useMemo(() => {
+    if (!allowDestinationPicker) return parentId ?? null;
+    if (destinationValue === ROOT_DESTINATION_VALUE) return null;
+    const parsed = Number(destinationValue);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [allowDestinationPicker, destinationValue, parentId]);
+  const buildPath = useCallback((section: Section): string => {
+    const names: string[] = [section.name];
+    let cursor = section.parent_id;
+    while (cursor != null) {
+      const parent = sectionsById.get(cursor);
+      if (!parent) break;
+      names.unshift(parent.name);
+      cursor = parent.parent_id;
+    }
+    return names.join(" / ");
+  }, [sectionsById]);
+  const destinationOptions = useMemo(
+    () =>
+      allSections
+        .map((section) => ({
+          id: section.id,
+          type: inferImportTargetType(section),
+          path: buildPath(section),
+        }))
+        .sort((a, b) => a.path.localeCompare(b.path)),
+    [allSections, buildPath],
+  );
+
+  const isRootCreate = destinationParentId == null;
+  const parentDepth = getDepth(destinationParentId);
   const isProductMode = hierarchyMode === "product";
-  const canCreateTab = isProductMode ? (!isRootCreate && parentDepth === 0) : isRootCreate;
+  const parentSection = destinationParentId != null ? allSections.find((section) => section.id === destinationParentId) ?? null : null;
+  const parentType = parentSection?.section_type ?? "section";
+  const canCreateTab = isProductMode
+    ? (!isRootCreate && (parentDepth === 0 || parentType === "version"))
+    : isRootCreate;
   const canCreateVersion = isProductMode && !isRootCreate && parentDepth === 0;
 
   useEffect(() => {
     setSectionType(preferredType ?? "section");
   }, [preferredType, parentId]);
+
+  useEffect(() => {
+    setDestinationValue(parentId == null ? ROOT_DESTINATION_VALUE : String(parentId));
+  }, [parentId]);
 
   useEffect(() => {
     if (!canCreateTab && sectionType === "tab") {
@@ -2139,12 +2226,12 @@ function AddSectionDialog({
     mutationFn: () =>
       sectionsApi.create({
         name: name.trim(),
-        parent_id: parentId ?? null,
+        parent_id: destinationParentId,
         section_type: isRootCreate ? (isProductMode ? "section" : sectionType) : sectionType,
         visibility,
-        clone_from_section_id: !isRootCreate && sectionType === "version" ? (cloneFromSectionId ?? null) : undefined,
+        clone_from_section_id: !isRootCreate && sectionType === "version" ? (cloneFromSectionId ?? destinationParentId ?? null) : undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (createdSection) => {
       qc.invalidateQueries({ queryKey: ["sections"] });
       const createdLabel = isRootCreate
         ? (isProductMode ? "Product" : sectionType === "tab" ? "Tab" : sectionType === "version" ? "Version" : "Section")
@@ -2153,26 +2240,56 @@ function AddSectionDialog({
           : sectionType === "version"
             ? "Version"
           : "Section";
+      onCreated?.(createdSection);
       toast({ title: `${createdLabel} created` });
       onClose();
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const sectionOptionLabel = isRootCreate && isProductMode
+    ? "Product"
+    : parentType === "section"
+      ? "Sub-section"
+      : "Section";
+
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-base">
-            {isRootCreate
+            {titleOverride ?? (isRootCreate
               ? (isProductMode ? "New product" : "New section")
               : canCreateTab
                 ? "New item"
-                : "New section"}
+                : "New section")}
           </DialogTitle>
         </DialogHeader>
         <div className="py-1">
           <div className="space-y-3">
+            {allowDestinationPicker && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Create in</Label>
+                <Select value={destinationValue} onValueChange={setDestinationValue}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Choose destination" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ROOT_DESTINATION_VALUE}>
+                      {isProductMode ? "Workspace root (new product)" : "Workspace root"}
+                    </SelectItem>
+                    {destinationOptions.map((option) => (
+                      <SelectItem key={option.id} value={String(option.id)}>
+                        {option.path} ({importTargetTypeLabel(option.type)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Choose destination first, then pick type (tab/section/sub-section/version).
+                </p>
+              </div>
+            )}
             <Input
               placeholder={
                 isRootCreate
@@ -2186,13 +2303,13 @@ function AddSectionDialog({
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && name.trim() && create.mutate()}
             />
-            {isRootCreate ? (
+            {isRootCreate && !allowDestinationPicker ? (
               <p className="text-xs text-muted-foreground">
                 {isProductMode
                   ? "Products render as top-level entries and can contain optional tabs and sections."
                   : "Top-level sections render directly in docs. You can convert a section to Tab from its action menu if needed."}
               </p>
-            ) : (
+            ) : !hideTypePicker ? (
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Type</Label>
                 <Select value={sectionType} onValueChange={(v) => setSectionType(v as "section" | "tab" | "version")}>
@@ -2200,7 +2317,7 @@ function AddSectionDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="section">Section</SelectItem>
+                    <SelectItem value="section">{sectionOptionLabel}</SelectItem>
                     {canCreateTab && <SelectItem value="tab">Tab</SelectItem>}
                     {canCreateVersion && <SelectItem value="version">Version</SelectItem>}
                   </SelectContent>
@@ -2208,11 +2325,16 @@ function AddSectionDialog({
                 {(!canCreateTab || !canCreateVersion) && (
                   <p className="text-[11px] text-muted-foreground">
                     {isProductMode
-                      ? "Tabs/versions are allowed only directly under a product."
+                      ? "Tabs are allowed under product/version. Versions are allowed only directly under a product."
                       : "Tabs are allowed only at the top level in flat mode."}
                   </p>
                 )}
               </div>
+            ) : null}
+            {!isRootCreate && hideTypePicker && (
+              <p className="text-xs text-muted-foreground">
+                Creating a {sectionType === "version" ? "version" : sectionType} in the selected destination.
+              </p>
             )}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Visibility</Label>
@@ -3460,6 +3582,9 @@ export default function Dashboard() {
   const [addSectionParentId, setAddSectionParentId] = useState<number | null>(null);
   const [addSectionPreferredType, setAddSectionPreferredType] = useState<"section" | "tab" | "version" | undefined>(undefined);
   const [addSectionCloneFromId, setAddSectionCloneFromId] = useState<number | null>(null);
+  const [addSectionDialogTitle, setAddSectionDialogTitle] = useState<string | undefined>(undefined);
+  const [addSectionHideTypePicker, setAddSectionHideTypePicker] = useState(false);
+  const [addSectionAllowDestinationPicker, setAddSectionAllowDestinationPicker] = useState(false);
   const [activeDragType, setActiveDragType] = useState<"page" | "section" | null>(null);
   const [activeDragLabel, setActiveDragLabel] = useState<string>("");
   const [showScanDrive, setShowScanDrive] = useState(false);
@@ -3809,6 +3934,28 @@ export default function Dashboard() {
     selectedSectionPath[selectedSectionPath.length - 1] ?? selectedVersion ?? selectedProduct ?? null;
   const selectedTab =
     selectedSectionPath.find((s, idx) => idx > 0 && (s.section_type ?? "section") === "tab") ?? null;
+  const importQuickTargets = useMemo(() => {
+    const targets: Array<{ contextLabel: string; target: DriveImportTarget }> = [];
+    const seen = new Set<number>();
+
+    const pushTarget = (section: Section | null | undefined, contextLabel: string) => {
+      if (!section || seen.has(section.id)) return;
+      seen.add(section.id);
+      targets.push({
+        contextLabel,
+        target: toDriveImportTarget(section),
+      });
+    };
+
+    if (selectedImportTargetSection && inferImportTargetType(selectedImportTargetSection) === "section") {
+      pushTarget(selectedImportTargetSection, "current section");
+    }
+    pushTarget(selectedTab, "current tab");
+    pushTarget(selectedVersion, "current version");
+    pushTarget(selectedProduct, "current product");
+
+    return targets;
+  }, [selectedImportTargetSection, selectedProduct, selectedTab, selectedVersion]);
 
   const productTabs = useMemo(() => {
     const parent = selectedVersion ?? selectedProduct;
@@ -4106,6 +4253,22 @@ export default function Dashboard() {
     selectedVersion?.id !== undefined && selectedVersion?.id !== null
       ? String(selectedVersion.id)
       : "__base__";
+  const selectedSectionForSubSection = useMemo(() => {
+    if (selectedPage?.section_id) {
+      return sectionsById.get(selectedPage.section_id) ?? null;
+    }
+    const deepest = selectedSectionPath[selectedSectionPath.length - 1];
+    if (!deepest) return null;
+    return deepest.parent_id !== null ? deepest : null;
+  }, [sectionsById, selectedPage?.section_id, selectedSectionPath]);
+  const createTargetParent = selectedTab ?? selectedVersion ?? selectedProduct ?? null;
+  const canCreateTabInCurrentContext = isProductHierarchy
+    ? !!(selectedVersion ?? selectedProduct)
+    : true;
+  const canCreateSectionInCurrentContext = isProductHierarchy
+    ? createTargetParent !== null
+    : true;
+  const canCreateSubSectionInCurrentContext = selectedSectionForSubSection !== null;
   const defaultAddPageSectionId =
     isProductHierarchy
       ? (selectedVersion?.id ?? selectedProduct?.id ?? null)
@@ -4128,6 +4291,46 @@ export default function Dashboard() {
     },
     [currentUserRole, toast],
   );
+  const handleSectionCreated = useCallback((created: Section) => {
+    // Ensure newly created nodes are visible immediately in the current tree view.
+    setPageSearchQuery("");
+    setVisibilityFilter("all");
+    setDashboardPaneMode("content");
+    setSelectedPageId(null);
+    setSelectedApprovalId(null);
+
+    if (created.parent_id === null) {
+      setSelectedSidebarProductId(created.id);
+      setSelectedSidebarVersionId(null);
+      return;
+    }
+
+    let cursor = sectionsById.get(created.parent_id);
+    let productId: number | null = null;
+    let versionId: number | null = null;
+
+    while (cursor) {
+      if (cursor.parent_id === null) {
+        productId = cursor.id;
+        break;
+      }
+      if (versionId === null && (cursor.section_type ?? "section") === "version") {
+        versionId = cursor.id;
+      }
+      cursor = cursor.parent_id ? sectionsById.get(cursor.parent_id) : undefined;
+    }
+
+    if (productId !== null) {
+      setSelectedSidebarProductId(productId);
+    }
+    if ((created.section_type ?? "section") === "version") {
+      setSelectedSidebarVersionId(created.id);
+    } else if (versionId !== null) {
+      setSelectedSidebarVersionId(versionId);
+    } else {
+      setSelectedSidebarVersionId(null);
+    }
+  }, [sectionsById]);
   const openConfigureHierarchyDialog = useCallback(() => {
     if (!canConfigureHierarchy) {
       notifyPermissionDenied("configure hierarchy");
@@ -4135,26 +4338,115 @@ export default function Dashboard() {
     }
     setShowConfigureTabs(true);
   }, [canConfigureHierarchy, notifyPermissionDenied]);
+  const openAddSectionDialogInternal = useCallback((params: {
+    parentId: number | null;
+    preferredType?: "section" | "tab" | "version";
+    cloneFromSectionId?: number | null;
+    title?: string;
+    hideTypePicker?: boolean;
+    allowDestinationPicker?: boolean;
+    deniedActionLabel?: string;
+  }) => {
+    if (!canManageStructure) {
+      notifyPermissionDenied(params.deniedActionLabel ?? "manage hierarchy");
+      return;
+    }
+    setAddSectionParentId(params.parentId);
+    setAddSectionPreferredType(params.preferredType);
+    setAddSectionCloneFromId(params.cloneFromSectionId ?? null);
+    setAddSectionDialogTitle(params.title);
+    setAddSectionHideTypePicker(params.hideTypePicker ?? false);
+    setAddSectionAllowDestinationPicker(params.allowDestinationPicker ?? false);
+    setShowAddSection(true);
+  }, [canManageStructure, notifyPermissionDenied]);
   const openAddProductDialog = useCallback(() => {
-    if (!canManageStructure) {
-      notifyPermissionDenied("create products");
-      return;
-    }
-    setAddSectionParentId(null);
-    setAddSectionPreferredType(undefined);
-    setAddSectionCloneFromId(null);
-    setShowAddSection(true);
-  }, [canManageStructure, notifyPermissionDenied]);
+    openAddSectionDialogInternal({
+      parentId: null,
+      title: "New product",
+      deniedActionLabel: "create products",
+    });
+  }, [openAddSectionDialogInternal]);
+  const openCreateItemDialog = useCallback(() => {
+    openAddSectionDialogInternal({
+      parentId: selectedImportTargetSection?.id ?? selectedVersion?.id ?? selectedProduct?.id ?? null,
+      title: "Create item",
+      deniedActionLabel: "create content",
+      allowDestinationPicker: true,
+    });
+  }, [openAddSectionDialogInternal, selectedImportTargetSection, selectedProduct, selectedVersion]);
   const openAddSectionDialog = useCallback((parentId: number) => {
-    if (!canManageStructure) {
-      notifyPermissionDenied("create sections");
+    openAddSectionDialogInternal({
+      parentId,
+      preferredType: "section",
+      title: "New sub-section",
+      hideTypePicker: false,
+      deniedActionLabel: "create sections",
+    });
+  }, [openAddSectionDialogInternal]);
+  const openAddTabDialog = useCallback(() => {
+    if (!canCreateTabInCurrentContext) {
+      toast({
+        title: "Choose destination first",
+        description: "Select a product or version to create a tab.",
+        variant: "destructive",
+      });
       return;
     }
-    setAddSectionParentId(parentId);
-    setAddSectionPreferredType(undefined);
-    setAddSectionCloneFromId(null);
-    setShowAddSection(true);
-  }, [canManageStructure, notifyPermissionDenied]);
+    const parent = selectedVersion ?? selectedProduct;
+    if (!parent) return;
+    openAddSectionDialogInternal({
+      parentId: parent.id,
+      preferredType: "tab",
+      title: `New tab in "${parent.name}"`,
+      hideTypePicker: true,
+      deniedActionLabel: "create tabs",
+    });
+  }, [canCreateTabInCurrentContext, openAddSectionDialogInternal, selectedProduct, selectedVersion, toast]);
+  const openAddSectionInContextDialog = useCallback(() => {
+    if (!canCreateSectionInCurrentContext) {
+      toast({
+        title: "Choose destination first",
+        description: "Select where this section should be created.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!isProductHierarchy && !createTargetParent) {
+      openAddSectionDialogInternal({
+        parentId: null,
+        preferredType: "section",
+        title: "New section",
+        hideTypePicker: true,
+        deniedActionLabel: "create sections",
+      });
+      return;
+    }
+    if (!createTargetParent) return;
+    openAddSectionDialogInternal({
+      parentId: createTargetParent.id,
+      preferredType: "section",
+      title: `New section in "${createTargetParent.name}"`,
+      hideTypePicker: true,
+      deniedActionLabel: "create sections",
+    });
+  }, [canCreateSectionInCurrentContext, createTargetParent, isProductHierarchy, openAddSectionDialogInternal, toast]);
+  const openAddSubSectionInContextDialog = useCallback(() => {
+    if (!selectedSectionForSubSection) {
+      toast({
+        title: "Choose a section first",
+        description: "Open a page inside a section, then create a sub-section.",
+        variant: "destructive",
+      });
+      return;
+    }
+    openAddSectionDialogInternal({
+      parentId: selectedSectionForSubSection.id,
+      preferredType: "section",
+      title: `New sub-section in "${selectedSectionForSubSection.name}"`,
+      hideTypePicker: true,
+      deniedActionLabel: "create sections",
+    });
+  }, [openAddSectionDialogInternal, selectedSectionForSubSection, toast]);
   const openAddPageDialog = useCallback((sectionId: number | null = defaultAddPageSectionId) => {
     if (!canCreateContent) {
       notifyPermissionDenied("create pages");
@@ -4179,23 +4471,28 @@ export default function Dashboard() {
     setAddSectionParentId(selectedProduct.id);
     setAddSectionPreferredType("version");
     setAddSectionCloneFromId(latestVersionCloneSourceId ?? selectedProduct.id);
+    setAddSectionDialogTitle(`New version for "${selectedProduct.name}"`);
+    setAddSectionHideTypePicker(true);
     setShowAddSection(true);
   }, [canCreateContent, canCreateVersionForSelectedProduct, latestVersionCloneSourceId, notifyPermissionDenied, selectedProduct, toast]);
 
-  const openImportDialogForTarget = useCallback((section: Section | null) => {
+  const openImportDialogForTarget = useCallback((targetInput: Section | DriveImportTarget | null) => {
     if (!canOpenImportDialog) {
       notifyPermissionDenied("import content");
       return;
     }
-    if (section) {
-      setScanTarget({
-        id: section.id,
-        name: section.name,
-        type: inferImportTargetType(section),
-      });
-    } else {
+    const resolvedTarget: DriveImportTarget | null =
+      targetInput == null
+        ? null
+        : "type" in targetInput
+          ? targetInput
+          : toDriveImportTarget(targetInput);
+    if (!resolvedTarget) {
       setScanTarget(null);
+      setShowScanDrive(true);
+      return;
     }
+    setScanTarget(resolvedTarget);
     setShowScanDrive(true);
   }, [canOpenImportDialog, notifyPermissionDenied]);
 
@@ -4954,16 +5251,51 @@ export default function Dashboard() {
               >
                 <Settings className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
-                onClick={openAddProductDialog}
-                disabled={!canManageStructure}
-                title="New product"
-              >
-                <FolderPlus className="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+                    disabled={!canManageStructure}
+                    title="Create content"
+                  >
+                    <FolderPlus className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start" className="w-64">
+                  <DropdownMenuItem onClick={openCreateItemDialog}>
+                    <Sparkles className="h-3.5 w-3.5 mr-2" />
+                    Create item (choose type)
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={openAddProductDialog}>
+                    <FolderPlus className="h-3.5 w-3.5 mr-2" />
+                    New product (root)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={openAddVersionDialog} disabled={!canCreateVersionForSelectedProduct}>
+                    <GitBranchPlus className="h-3.5 w-3.5 mr-2" />
+                    New version
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={openAddTabDialog} disabled={!canCreateTabInCurrentContext}>
+                    <LayoutGrid className="h-3.5 w-3.5 mr-2" />
+                    New tab
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={openAddSectionInContextDialog} disabled={!canCreateSectionInCurrentContext}>
+                    <PanelLeft className="h-3.5 w-3.5 mr-2" />
+                    New section
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={openAddSubSectionInContextDialog} disabled={!canCreateSubSectionInCurrentContext}>
+                    <PanelRight className="h-3.5 w-3.5 mr-2" />
+                    New sub-section
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => openAddPageDialog(defaultAddPageSectionId)} disabled={!canCreateContent}>
+                    <Plus className="h-3.5 w-3.5 mr-2" />
+                    New page
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="ghost"
                 size="icon"
@@ -5176,14 +5508,49 @@ export default function Dashboard() {
                   >
                     <Settings className="h-3.5 w-3.5" />
                   </button>
-                  <button
-                    onClick={openAddProductDialog}
-                    disabled={!canManageStructure}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
-                    title="New product"
-                  >
-                    <FolderPlus className="h-3.5 w-3.5" />
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        disabled={!canManageStructure}
+                        className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
+                        title="Create content"
+                      >
+                        <FolderPlus className="h-3.5 w-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                      <DropdownMenuItem onClick={openCreateItemDialog}>
+                        <Sparkles className="h-3.5 w-3.5 mr-2" />
+                        Create item (choose type)
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={openAddProductDialog}>
+                        <FolderPlus className="h-3.5 w-3.5 mr-2" />
+                        New product (root)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={openAddVersionDialog} disabled={!canCreateVersionForSelectedProduct}>
+                        <GitBranchPlus className="h-3.5 w-3.5 mr-2" />
+                        New version
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={openAddTabDialog} disabled={!canCreateTabInCurrentContext}>
+                        <LayoutGrid className="h-3.5 w-3.5 mr-2" />
+                        New tab
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={openAddSectionInContextDialog} disabled={!canCreateSectionInCurrentContext}>
+                        <PanelLeft className="h-3.5 w-3.5 mr-2" />
+                        New section
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={openAddSubSectionInContextDialog} disabled={!canCreateSubSectionInCurrentContext}>
+                        <PanelRight className="h-3.5 w-3.5 mr-2" />
+                        New sub-section
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => openAddPageDialog(defaultAddPageSectionId)} disabled={!canCreateContent}>
+                        <Plus className="h-3.5 w-3.5 mr-2" />
+                        New page
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
@@ -5194,16 +5561,46 @@ export default function Dashboard() {
                         <ArrowUpFromLine className="h-3.5 w-3.5" />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
-                      <DropdownMenuItem onClick={() => openImportDialogForTarget(null)}>
+                    <DropdownMenuContent align="end" className="w-80">
+                      <DropdownMenuLabel className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+                        Import destination
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => openImportDialogForTarget(null)} className="items-start gap-2 py-2">
                         <FolderOpen className="h-3 w-3 mr-2" />
-                        Import to workspace root
+                        <div className="leading-tight">
+                          <p className="text-sm">Choose destination in import dialog</p>
+                          <p className="text-[11px] text-muted-foreground">Product, version, tab, section, or workspace root</p>
+                        </div>
                       </DropdownMenuItem>
-                      {selectedImportTargetSection && (
-                        <DropdownMenuItem onClick={() => openImportDialogForTarget(selectedImportTargetSection)}>
-                          <ArrowUpFromLine className="h-3 w-3 mr-2" />
-                          Import into "{selectedImportTargetSection.name}"
-                        </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openImportDialogForTarget(null)} className="items-start gap-2 py-2">
+                        <FolderPlus className="h-3 w-3 mr-2" />
+                        <div className="leading-tight">
+                          <p className="text-sm">Import to workspace root</p>
+                          <p className="text-[11px] text-muted-foreground">Use this only to create a new top-level product</p>
+                        </div>
+                      </DropdownMenuItem>
+                      {importQuickTargets.length > 0 && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+                            Quick import
+                          </DropdownMenuLabel>
+                          {importQuickTargets.map(({ contextLabel, target }) => (
+                            <DropdownMenuItem
+                              key={`import-target-${target.id}`}
+                              onClick={() => openImportDialogForTarget(target)}
+                              className="items-start gap-2 py-2"
+                            >
+                              <ArrowUpFromLine className="h-3 w-3 mr-2" />
+                              <div className="leading-tight">
+                                <p className="text-sm capitalize">Import into {contextLabel}</p>
+                                <p className="text-[11px] text-muted-foreground truncate">
+                                  {target.name} ({importTargetTypeLabel(target.type)})
+                                </p>
+                              </div>
+                            </DropdownMenuItem>
+                          ))}
+                        </>
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -6134,11 +6531,18 @@ export default function Dashboard() {
           hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
           preferredType={addSectionPreferredType}
           cloneFromSectionId={addSectionCloneFromId}
+          titleOverride={addSectionDialogTitle}
+          hideTypePicker={addSectionHideTypePicker}
+          allowDestinationPicker={addSectionAllowDestinationPicker}
+          onCreated={handleSectionCreated}
           onClose={() => {
             setShowAddSection(false);
             setAddSectionParentId(null);
             setAddSectionPreferredType(undefined);
             setAddSectionCloneFromId(null);
+            setAddSectionDialogTitle(undefined);
+            setAddSectionHideTypePicker(false);
+            setAddSectionAllowDestinationPicker(false);
           }}
         />
       )}
