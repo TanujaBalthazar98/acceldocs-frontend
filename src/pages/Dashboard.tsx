@@ -30,6 +30,7 @@ import { signInWithGoogle as startGoogleOAuth } from "@/lib/auth-new";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { orgApi, sectionsApi, pagesApi, driveApi, buildSectionTree } from "@/api";
+import { driveErrorMessage } from "@/api/drive";
 import type { AIProvider, Org, Section, Page, ImportTargetType, EngagementOverview } from "@/api/types";
 
 import { Button } from "@/components/ui/button";
@@ -635,7 +636,7 @@ function ScanDriveDialog({
       onClose();
       onSuccess();
     },
-    onError: (err: Error) => toast({ title: "Import failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Import failed", description: driveErrorMessage(err), variant: "destructive" }),
   });
 
   const importLocal = useMutation({
@@ -4823,7 +4824,7 @@ export default function Dashboard() {
         variant: result.errors ? "destructive" : "default",
       });
     },
-    onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Sync failed", description: driveErrorMessage(err), variant: "destructive" }),
   });
 
   const syncPage = useMutation({

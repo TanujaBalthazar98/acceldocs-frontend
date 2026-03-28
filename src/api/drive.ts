@@ -1,4 +1,21 @@
 import { API_BASE_URL, fetchOrThrow, getAuthToken } from "./client";
+
+const DRIVE_ERROR_MESSAGES: Record<string, string> = {
+  google_token_expired: "Your Google account connection has expired. Please reconnect.",
+  drive_file_not_found: "This file could not be found in Google Drive. It may have been deleted or moved.",
+  drive_permission_denied: "You don't have permission to access this file in Google Drive.",
+  drive_quota_exceeded: "Google Drive API quota exceeded. Please try again later.",
+  drive_network_error: "Network error connecting to Google Drive. Check your connection.",
+};
+
+/** Map a structured Drive error code (from the backend detail field) to a user-friendly message. */
+export function driveErrorMessage(err: Error): string {
+  const msg = err.message ?? "";
+  if (msg.startsWith("drive_api_error:")) {
+    return "Google Drive is temporarily unavailable. Please try again.";
+  }
+  return DRIVE_ERROR_MESSAGES[msg] ?? msg;
+}
 import { ORG_ID_KEY } from "../lib/api/client";
 import type { DriveStatus, ImportTargetType, LocalImportResult, ScanResult, SyncResult } from "./types";
 
@@ -16,6 +33,12 @@ function getSelectedOrgId(): number | null {
   if (!raw) return null;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export interface LocalImportProgress {
+  phase: "uploading" | "processing";
+  loadedBytes: number;
+  totalBytes: number | null;
 }
 
 export const driveApi = {
@@ -42,6 +65,7 @@ export const driveApi = {
     mode: "files" | "folder";
     files: File[];
     relativePaths?: string[];
+    onProgress?: (progress: LocalImportProgress) => void;
   }): Promise<LocalImportResult> => {
     if (!params.files.length) {
       throw new Error("Select at least one file to import.");
@@ -70,16 +94,51 @@ export const driveApi = {
       headers["X-Org-Id"] = String(selectedOrgId);
     }
 
-    const response = await fetch(`${getUploadBaseUrl()}/api/drive/import/local`, {
-      method: "POST",
-      headers,
-      body,
+    return new Promise<LocalImportResult>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${getUploadBaseUrl()}/api/drive/import/local`);
+      for (const [key, value] of Object.entries(headers)) {
+        xhr.setRequestHeader(key, value);
+      }
+
+      xhr.upload.onprogress = (event) => {
+        if (!params.onProgress) return;
+        params.onProgress({
+          phase: "uploading",
+          loadedBytes: event.loaded,
+          totalBytes: event.lengthComputable ? event.total : null,
+        });
+      };
+
+      xhr.upload.onload = () => {
+        if (!params.onProgress) return;
+        params.onProgress({
+          phase: "processing",
+          loadedBytes: 0,
+          totalBytes: null,
+        });
+      };
+
+      xhr.onerror = () => reject(new Error("Network error while uploading import files."));
+      xhr.onabort = () => reject(new Error("Import upload was cancelled."));
+      xhr.ontimeout = () => reject(new Error("Import upload timed out."));
+
+      xhr.onload = () => {
+        let payload: any = {};
+        try {
+          payload = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+        } catch {
+          payload = {};
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(payload as LocalImportResult);
+          return;
+        }
+        reject(new Error(payload?.detail || payload?.message || `Import failed (${xhr.status})`));
+      };
+
+      xhr.send(body);
     });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload?.detail || payload?.message || `Import failed (${response.status})`);
-    }
-    return response.json() as Promise<LocalImportResult>;
   },
 
   syncAll: (): Promise<SyncResult> =>
