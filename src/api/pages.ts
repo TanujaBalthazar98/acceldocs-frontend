@@ -1,12 +1,46 @@
+import { z } from "zod";
 import { fetchOrThrow } from "./client";
 import { invokeFunction } from "@/lib/api/functions";
 import type { EngagementOverview, Page, PageEngagementDetail } from "./types";
 
+export const PageSchema = z.object({
+  id: z.number(),
+  organization_id: z.number(),
+  section_id: z.number().nullable(),
+  google_doc_id: z.string(),
+  title: z.string(),
+  slug: z.string(),
+  slug_locked: z.boolean().optional(),
+  visibility_override: z.enum(["public", "internal", "external"]).nullable().optional(),
+  is_published: z.boolean(),
+  status: z.enum(["draft", "review", "published", "rejected"]),
+  display_order: z.number(),
+  drive_modified_at: z.string().nullable(),
+  last_synced_at: z.string().nullable(),
+  owner_id: z.number().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  hide_toc: z.boolean(),
+  full_width: z.boolean(),
+  page_custom_css: z.string().nullable(),
+  featured_image_url: z.string().nullable(),
+  html_content: z.string().optional(),
+  published_html: z.string().optional(),
+});
+
+const PageListResponseSchema = z.object({ pages: z.array(PageSchema) });
+
 export const pagesApi = {
-  list: (sectionId?: number): Promise<{ pages: Page[] }> =>
-    fetchOrThrow<{ pages: Page[] }>(
+  list: async (sectionId?: number): Promise<{ pages: Page[] }> => {
+    const raw = await fetchOrThrow<{ pages: Page[] }>(
       "/api/pages" + (sectionId !== undefined ? "?section_id=" + sectionId : "")
-    ),
+    );
+    const result = PageListResponseSchema.safeParse(raw);
+    if (!result.success) {
+      console.warn("[pagesApi.list] schema validation issues:", result.error.issues);
+    }
+    return raw;
+  },
 
   create: (data: {
     google_doc_id: string;

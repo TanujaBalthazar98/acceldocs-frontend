@@ -1,9 +1,33 @@
+import { z } from "zod";
 import { fetchOrThrow } from "./client";
 import type { Section } from "./types";
 
+export const SectionSchema = z.object({
+  id: z.number(),
+  organization_id: z.number(),
+  parent_id: z.number().nullable(),
+  name: z.string(),
+  slug: z.string(),
+  section_type: z.enum(["section", "tab", "version"]).default("section"),
+  visibility: z.enum(["public", "internal", "external"]).optional(),
+  drive_folder_id: z.string().nullable(),
+  display_order: z.number().default(0),
+  is_published: z.boolean().default(false),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const SectionListResponseSchema = z.object({ sections: z.array(SectionSchema) });
+
 export const sectionsApi = {
-  list: (): Promise<{ sections: Section[] }> =>
-    fetchOrThrow<{ sections: Section[] }>("/api/sections"),
+  list: async (): Promise<{ sections: Section[] }> => {
+    const raw = await fetchOrThrow<{ sections: Section[] }>("/api/sections");
+    const result = SectionListResponseSchema.safeParse(raw);
+    if (!result.success) {
+      console.warn("[sectionsApi.list] schema validation issues:", result.error.issues);
+    }
+    return raw;
+  },
 
   create: (data: {
     name: string;
