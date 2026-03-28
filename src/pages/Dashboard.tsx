@@ -54,6 +54,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BookOpen,
@@ -186,6 +187,15 @@ function formatRelativeTimestamp(value: string | null | undefined): string {
   return `${Math.round(absMs / day)}d ago`;
 }
 
+function formatByteCount(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const unitIndex = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const scaled = bytes / Math.pow(1024, unitIndex);
+  const precision = scaled >= 100 || unitIndex === 0 ? 0 : scaled >= 10 ? 1 : 2;
+  return `${scaled.toFixed(precision)} ${units[unitIndex]}`;
+}
+
 function parseDashboardLocation(pathname: string, search: string): ParsedDashboardLocation {
   const query = new URLSearchParams(search);
   const segments = pathname.split("/").filter(Boolean);
@@ -267,8 +277,24 @@ const visibilityOptions: Array<{ value: VisibilityLevel; label: string }> = [
   { value: "external", label: "External" },
 ];
 
-const LOCAL_IMPORT_ACCEPT = ".md,.txt,.html,.htm,.doc,.docx,.pdf,.rtf";
-const LOCAL_IMPORT_LABEL = ".md, .txt, .html, .htm, .doc, .docx, .pdf, .rtf";
+const LOCAL_IMPORT_EXTENSIONS = [".md", ".txt", ".html", ".htm", ".doc", ".docx", ".pdf", ".rtf"] as const;
+const LOCAL_IMPORT_EXTENSION_SET = new Set<string>(LOCAL_IMPORT_EXTENSIONS);
+const LOCAL_IMPORT_ACCEPT = [...LOCAL_IMPORT_EXTENSIONS, ".json"].join(",");
+const LOCAL_IMPORT_LABEL = LOCAL_IMPORT_EXTENSIONS.join(", ");
+const LOCAL_IMPORT_SETTINGS_FILE = "settings.json";
+
+function localFileExtension(filename: string): string {
+  const lower = (filename || "").toLowerCase();
+  const dot = lower.lastIndexOf(".");
+  if (dot < 0 || dot === lower.length - 1) return "";
+  return lower.slice(dot);
+}
+
+function isSettingsManifestCandidate(file: File, mode: LocalImportMode): boolean {
+  if (mode !== "folder") return false;
+  const rel = ((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name || "").toLowerCase();
+  return rel.endsWith(`/${LOCAL_IMPORT_SETTINGS_FILE}`) || rel === LOCAL_IMPORT_SETTINGS_FILE;
+}
 
 const visibilityCompactBadgeClass: Record<VisibilityLevel, string> = {
   public: "bg-sky-500/10 text-sky-700 border-sky-200",
@@ -483,6 +509,11 @@ function ScanDriveDialog({
   const [localMode, setLocalMode] = useState<LocalImportMode>("files");
   const [localFiles, setLocalFiles] = useState<File[]>([]);
   const [relativePaths, setRelativePaths] = useState<string[]>([]);
+  const [localImportProgress, setLocalImportProgress] = useState<{
+    phase: "uploading" | "processing";
+    loadedBytes: number;
+    totalBytes: number | null;
+  } | null>(null);
   const ROOT_DESTINATION_VALUE = "__workspace_root__";
   const [driveTargetId, setDriveTargetId] = useState<string>(
     target ? String(target.id) : ROOT_DESTINATION_VALUE,
@@ -560,6 +591,7 @@ function ScanDriveDialog({
     }
     setLocalFiles([]);
     setRelativePaths([]);
+    setLocalImportProgress(null);
   }, [target, resolvedRootFolderId, defaultLocalTargetId, destinationOptions]);
 
   const rootFolderMissing = !resolvedRootFolderId;
@@ -617,37 +649,110 @@ function ScanDriveDialog({
         mode: localMode,
         files: localFiles,
         relativePaths: localMode === "folder" ? relativePaths : localFiles.map((file) => file.name),
+        onProgress: (progress) => setLocalImportProgress(progress),
+      });
+    },
+    onMutate: () => {
+      setLocalImportProgress({
+        phase: "uploading",
+        loadedBytes: 0,
+        totalBytes: null,
       });
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["sections"] });
       qc.invalidateQueries({ queryKey: ["pages"] });
+      const skippedSuffix =
+        typeof result.skipped_files === "number" && result.skipped_files > 0
+          ? `, skipped ${result.skipped_files} unsupported`
+          : "";
+      const failedSuffix =
+        typeof result.failed_files === "number" && result.failed_files > 0
+          ? `, failed ${result.failed_files}`
+          : "";
       toast({
         title: "Local import complete",
-        description: `${result.uploaded_files} file(s), ${result.sections_created} sections, ${result.pages_created} pages in ${localImportTarget?.name ?? "selected destination"}`,
+        description: `${result.uploaded_files} file(s), ${result.sections_created} sections, ${result.pages_created} pages in ${localImportTarget?.name ?? "selected destination"}${skippedSuffix}${failedSuffix}`,
       });
+      if ((result.failed_files ?? 0) > 0) {
+        toast({
+          title: "Some files could not be uploaded",
+          description:
+            result.failed_file_errors?.[0] ??
+            `${result.failed_files} file(s) failed to upload to Google Drive.`,
+          variant: "destructive",
+        });
+      }
+      if ((result.settings_manifest_warnings?.length ?? 0) > 0) {
+        toast({
+          title: "settings.json partially applied",
+          description: result.settings_manifest_warnings?.[0] ?? "Some hierarchy rules could not be applied.",
+          variant: "destructive",
+        });
+      }
       onClose();
       onSuccess();
     },
     onError: (err: Error) => toast({ title: "Import failed", description: err.message, variant: "destructive" }),
+    onSettled: () => setLocalImportProgress(null),
   });
 
   const handleFilesSelected = (event: ChangeEvent<HTMLInputElement>, mode: LocalImportMode) => {
     const selected = Array.from(event.target.files ?? []);
+    const supported: File[] = [];
+    const skipped: string[] = [];
+
+    for (const file of selected) {
+      const ext = localFileExtension(file.name);
+      if (LOCAL_IMPORT_EXTENSION_SET.has(ext) || isSettingsManifestCandidate(file, mode)) {
+        supported.push(file);
+      } else {
+        skipped.push(file.name);
+      }
+    }
+
     setLocalMode(mode);
-    setLocalFiles(selected);
+    setLocalFiles(supported);
     if (mode === "folder") {
-      const paths = selected.map((file) => {
+      const paths = supported.map((file) => {
         const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
         return (rel && rel.trim()) ? rel : file.name;
       });
       setRelativePaths(paths);
     } else {
-      setRelativePaths(selected.map((file) => file.name));
+      setRelativePaths(supported.map((file) => file.name));
     }
+
+    if (skipped.length > 0) {
+      toast({
+        title: "Skipped unsupported files",
+        description: `${skipped.length} file(s) were ignored (for example: ${skipped.slice(0, 2).join(", ")}).`,
+      });
+    }
+    if (supported.length === 0 && selected.length > 0) {
+      toast({
+        title: "No supported files selected",
+        description: `Allowed: ${LOCAL_IMPORT_LABEL}`,
+        variant: "destructive",
+      });
+    }
+
+    // Allow selecting the same files/folder again.
+    event.target.value = "";
   };
 
   const isPending = scanFromDrive.isPending || importLocal.isPending;
+  const localUploadPercent =
+    localImportProgress?.phase === "uploading" && localImportProgress.totalBytes && localImportProgress.totalBytes > 0
+      ? Math.max(
+          0,
+          Math.min(100, Math.round((localImportProgress.loadedBytes / localImportProgress.totalBytes) * 100)),
+        )
+      : null;
+  const estimatedImportedCount =
+    localUploadPercent !== null && localFiles.length > 0
+      ? Math.max(0, Math.min(localFiles.length, Math.floor((localUploadPercent / 100) * localFiles.length)))
+      : null;
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -706,7 +811,7 @@ function ScanDriveDialog({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Files import into a Section. Folder import supports Product, Tab, or Section destinations.
+                    Files import into a Section. Folder import supports Product, Tab, or Section destinations. Optional <code>settings.json</code> in the folder root can define tab/section hierarchy.
                   </p>
                 </>
               )}
@@ -740,7 +845,7 @@ function ScanDriveDialog({
             <p className="text-xs text-muted-foreground">
               {source === "drive"
                 ? "Google Drive import syncs Google Docs found in the selected folder tree."
-                : `From computer supports: ${LOCAL_IMPORT_LABEL}`}
+                : `From computer supports: ${LOCAL_IMPORT_LABEL} (+ optional settings.json for folder hierarchy)`}
             </p>
           </div>
 
@@ -876,6 +981,28 @@ function ScanDriveDialog({
             </div>
           )}
         </div>
+        {source === "local" && importLocal.isPending && (
+          <div className="rounded-md border bg-muted/30 px-3 py-2 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium text-foreground">
+                {localImportProgress?.phase === "processing"
+                  ? "Upload complete. Processing hierarchy..."
+                  : "Uploading files..."}
+              </span>
+              {localImportProgress?.phase === "uploading" && localUploadPercent !== null && (
+                <span className="text-muted-foreground">{localUploadPercent}%</span>
+              )}
+            </div>
+            <Progress value={localImportProgress?.phase === "processing" ? 100 : (localUploadPercent ?? 8)} className="h-1.5" />
+            <div className="text-[11px] text-muted-foreground">
+              {localImportProgress?.phase === "processing"
+                ? `Converting and creating pages for ${localFiles.length} file(s).`
+                : localImportProgress?.totalBytes
+                  ? `${formatByteCount(localImportProgress.loadedBytes)} / ${formatByteCount(localImportProgress.totalBytes)}${estimatedImportedCount !== null ? ` • ~${estimatedImportedCount}/${localFiles.length} files uploaded` : ""}`
+                  : `Uploading ${localFiles.length} file(s)...`}
+            </div>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button
@@ -3666,7 +3793,7 @@ export default function Dashboard() {
     }
   }, [org?.id, currentOrgId]);
 
-  const { data: sectionsData } = useQuery({ queryKey: ["sections", currentOrgId], queryFn: sectionsApi.list, enabled: !!org && currentOrgId !== undefined });
+  const { data: sectionsData } = useQuery({ queryKey: ["sections", currentOrgId], queryFn: sectionsApi.list, enabled: !!org && currentOrgId !== undefined, staleTime: 5_000 });
   const { data: pagesData } = useQuery({ queryKey: ["pages", currentOrgId], queryFn: () => pagesApi.list(), enabled: !!org && currentOrgId !== undefined });
   const { data: driveStatus } = useQuery({ queryKey: ["drive-status", currentOrgId], queryFn: driveApi.status, enabled: !!org && currentOrgId !== undefined });
   const { data: approvalsCountData } = useQuery({
@@ -3747,7 +3874,7 @@ export default function Dashboard() {
   const canEditContent = currentUserRole === "owner" || currentUserRole === "admin" || currentUserRole === "editor";
   const canCreateContent = canEditContent;
   const canDeleteContent = canEditContent;
-  const canDeleteSection = currentUserRole === "owner" || currentUserRole === "admin";
+  const canDeleteSection = canEditContent;
   const canMoveContent = canEditContent;
   const canPublishContent = canEditContent;
   const canReviewContent = currentUserRole === "owner" || currentUserRole === "admin" || currentUserRole === "reviewer";
@@ -3958,16 +4085,15 @@ export default function Dashboard() {
   }, [selectedImportTargetSection, selectedProduct, selectedTab, selectedVersion]);
 
   const productTabs = useMemo(() => {
-    const parent = selectedVersion ?? selectedProduct;
-    if (!parent) return [] as Section[];
+    if (!selectedProduct) return [] as Section[];
     return sections
       .filter(
         (s) =>
-          s.parent_id === parent.id &&
+          s.parent_id === selectedProduct.id &&
           (s.section_type ?? "section") === "tab",
       )
       .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name));
-  }, [sections, selectedProduct, selectedVersion]);
+  }, [sections, selectedProduct]);
   const filteredChildrenByParent = useMemo(() => {
     const map = new Map<number, Section[]>();
     const walk = (nodes: Section[]) => {
@@ -4005,7 +4131,7 @@ export default function Dashboard() {
     }
     return map;
   }, [treeVisiblePages]);
-  const activeHierarchyRoot = selectedTab ?? selectedVersion ?? selectedProduct;
+  const activeHierarchyRoot = selectedVersion ?? selectedProduct ?? selectedTab;
   const readerHierarchyTopPages = useMemo(() => {
     if (!activeHierarchyRoot) return [] as Page[];
     return treeVisiblePages
@@ -4014,9 +4140,6 @@ export default function Dashboard() {
   }, [activeHierarchyRoot, treeVisiblePages]);
   const readerHierarchySections = useMemo(() => {
     if (!activeHierarchyRoot) return [] as Section[];
-    if (selectedTab) {
-      return sortedVisibleChildren(selectedTab.id);
-    }
     const children = sortedVisibleChildren(activeHierarchyRoot.id);
     const base = children;
     // When viewing a version, also include product-level non-version siblings (e.g. FAQ)
@@ -4028,8 +4151,8 @@ export default function Dashboard() {
       return [...base, ...siblings];
     }
     return base;
-  }, [activeHierarchyRoot, selectedProduct, selectedTab, selectedVersion, sortedVisibleChildren]);
-  const readerHierarchyTitle = selectedTab?.name ?? selectedVersion?.name ?? selectedProduct?.name ?? "Documentation";
+  }, [activeHierarchyRoot, selectedProduct, selectedVersion, sortedVisibleChildren]);
+  const readerHierarchyTitle = selectedVersion?.name ?? selectedTab?.name ?? selectedProduct?.name ?? "Documentation";
 
   const getDescendantSectionIds = useCallback(
     (rootSectionId: number): Set<number> => {
@@ -4084,14 +4207,16 @@ export default function Dashboard() {
     }
     // Keep the version scope aligned with the currently selected page path.
     if (selectedSectionPath.length > 0 && selectedSectionPath[0]?.id === selectedProduct.id) {
-      const nextVersionId =
-        selectedPageVersionId && productVersions.some((section) => section.id === selectedPageVersionId)
-          ? selectedPageVersionId
-          : null;
-      if (selectedSidebarVersionId !== nextVersionId) {
-        setSelectedSidebarVersionId(nextVersionId);
+      // If selected page belongs to a specific version, follow it.
+      if (
+        selectedPageVersionId &&
+        productVersions.some((section) => section.id === selectedPageVersionId) &&
+        selectedSidebarVersionId !== selectedPageVersionId
+      ) {
+        setSelectedSidebarVersionId(selectedPageVersionId);
+        return; // only return after following a version
       }
-      return;
+      // Product-level page (not under any version) — fall through to clear stale version.
     }
 
     // No selected page: preserve a valid user-selected version, else stay on base scope.

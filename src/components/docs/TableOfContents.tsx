@@ -121,7 +121,7 @@ export function TableOfContents({
       if (extracted.length === 0) {
         const candidateNodes = Array.from(container.querySelectorAll("p, div"));
         candidateNodes.forEach((node, index) => {
-          if (extracted.length >= 30) return;
+          if (extracted.length >= 200) return;
           if (node.querySelector("p, div, h1, h2, h3, h4, h5, h6")) return;
           if (node.closest("li, table, blockquote, pre, code")) return;
 
