@@ -47,6 +47,9 @@ export function buildSectionTree(sections: Section[]): Section[] {
         parent.children = parent.children ?? [];
         parent.children.push(node);
       } else {
+        console.warn(
+          `[buildSectionTree] orphaned section id=${s.id} has parent_id=${s.parent_id} which is not in the section list — placing at root`,
+        );
         roots.push(node);
       }
     }
