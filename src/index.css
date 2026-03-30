@@ -1171,3 +1171,71 @@
     color: #111 !important;
   }
 }
+
+/* ── Admonition / Callout blocks ──────────────────────────────── */
+.admonition {
+  @apply my-4 rounded-md border-l-4 p-4 text-sm;
+  background-color: hsl(var(--muted));
+}
+.admonition-title {
+  @apply font-semibold mb-1 flex items-center gap-2;
+}
+.admonition-title::before {
+  content: '';
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+/* note / info */
+.admonition.note,
+.admonition.info {
+  @apply border-blue-400 bg-blue-50 dark:bg-blue-950/30;
+}
+.admonition.note .admonition-title,
+.admonition.info .admonition-title {
+  @apply text-blue-700 dark:text-blue-300;
+}
+
+/* tip / success */
+.admonition.tip,
+.admonition.success,
+.admonition.check {
+  @apply border-green-400 bg-green-50 dark:bg-green-950/30;
+}
+.admonition.tip .admonition-title,
+.admonition.success .admonition-title,
+.admonition.check .admonition-title {
+  @apply text-green-700 dark:text-green-300;
+}
+
+/* warning / caution / attention */
+.admonition.warning,
+.admonition.caution,
+.admonition.attention {
+  @apply border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30;
+}
+.admonition.warning .admonition-title,
+.admonition.caution .admonition-title,
+.admonition.attention .admonition-title {
+  @apply text-yellow-700 dark:text-yellow-300;
+}
+
+/* danger / error / important */
+.admonition.danger,
+.admonition.error,
+.admonition.important {
+  @apply border-red-400 bg-red-50 dark:bg-red-950/30;
+}
+.admonition.danger .admonition-title,
+.admonition.error .admonition-title,
+.admonition.important .admonition-title {
+  @apply text-red-700 dark:text-red-300;
+}
+
+/* prevent .prose p spacing from overriding admonition body paragraphs */
+.prose .admonition p {
+  @apply my-1;
+}
