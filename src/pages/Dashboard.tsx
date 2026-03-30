@@ -3318,8 +3318,8 @@ function ReaderHierarchy({
   );
 
   return (
-    <aside className="w-[240px] shrink-0 border-r bg-background/60 overflow-y-auto">
-      <div className="px-4 py-3 border-b bg-background/80">
+    <aside className="w-[240px] shrink-0 border-r bg-background/60 flex flex-col h-full">
+      <div className="px-4 py-3 border-b bg-background/80 shrink-0">
         <p className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Hierarchy</p>
         <p className="text-sm font-semibold truncate mt-1">{title}</p>
         <Select value={visibilityFilter} onValueChange={(value) => onVisibilityFilterChange(value as VisibilityFilter)}>
@@ -3352,7 +3352,7 @@ function ReaderHierarchy({
           )}
         </div>
       </div>
-      <div className="px-2 py-2 space-y-0.5">
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-0.5">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
