@@ -3173,7 +3173,7 @@ function SectionNode({
               />
             ))}
           </SortableContext>
-          {(section.children ?? []).map((child) => (
+          {(section.children ?? []).filter((child) => (child.section_type ?? "section") !== "version").map((child) => (
             <SectionNode
               key={child.id}
               section={child}
@@ -3227,7 +3227,6 @@ function ReaderHierarchy({
   onDragEnd,
   activeDragType,
   activeDragLabel,
-  hideVersionSections,
   visibilityFilter,
   onVisibilityFilterChange,
   pageSearchQuery,
@@ -3270,7 +3269,6 @@ function ReaderHierarchy({
   onDragEnd: (event: DragEndEvent) => void;
   activeDragType: "page" | "section" | null;
   activeDragLabel: string;
-  hideVersionSections?: boolean;
   visibilityFilter: VisibilityFilter;
   onVisibilityFilterChange: (value: VisibilityFilter) => void;
   pageSearchQuery: string;
@@ -3303,10 +3301,8 @@ function ReaderHierarchy({
 }) {
   const filterVisibleSections = useCallback(
     (sections: Section[]) =>
-      hideVersionSections
-        ? sections.filter((section) => (section.section_type ?? "section") !== "version")
-        : sections,
-    [hideVersionSections],
+      sections.filter((section) => (section.section_type ?? "section") !== "version"),
+    [],
   );
   const sortedTopPages = useMemo(
     () => [...topPages].sort((a, b) => a.display_order - b.display_order || a.title.localeCompare(b.title)),
@@ -6494,7 +6490,6 @@ export default function Dashboard() {
                   onDragEnd={handleDragEnd}
                   activeDragType={activeDragType}
                   activeDragLabel={activeDragLabel}
-                  hideVersionSections={Boolean(selectedProduct && !selectedVersion)}
                   visibilityFilter={visibilityFilter}
                   onVisibilityFilterChange={setVisibilityFilter}
                   pageSearchQuery={pageSearchQuery}
