@@ -27,7 +27,25 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { migrationApi, type DiscoverResponse, type MigrationNode, type StatusResponse, type MigrationHistoryItem } from "@/api/migration";
+import { sectionsApi } from "@/api/sections";
 import { formatDistanceToNow } from "date-fns";
+
+function extractProductName(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split("/").filter(Boolean);
+    const skipWords = ["docs", "documentation", "doc", "v1", "v2", "v3", "latest", "current", "user-guide", "installation-guide", "api", "reference", "guides"];
+    const productPart = pathParts.find(p => 
+      !skipWords.includes(p.toLowerCase()) && !p.match(/^pulse-\d+\.\d+/)
+    ) || pathParts[0] || "Documentation";
+    return productPart
+      .split(/[-_]/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  } catch {
+    return "Documentation";
+  }
+}
 
 interface Props {
   onClose?: () => void;
@@ -123,6 +141,51 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
   const [maxPages, setMaxPages] = useState(0);
   const [activeMigrationId, setActiveMigrationId] = useState<string | null>(null);
   const [pollInterval, setPollInterval] = useState<number | null>(null);
+
+  // Product auto-detection state
+  const [detectedProductName, setDetectedProductName] = useState<string>("Pulse");
+  const [productId, setProductId] = useState<number | null>(null);
+  const [productExists, setProductExists] = useState<boolean | null>(null);
+  const [isCreatingProduct, setIsCreatingProduct] = useState(false);
+
+  // Check if product exists in workspace
+  const checkProductExists = useCallback(async (name: string): Promise<{ exists: boolean; id: number | null }> => {
+    try {
+      const data = await sectionsApi.list();
+      const existingProduct = data.sections.find(
+        s => s.parent_id === null && s.name.toLowerCase() === name.toLowerCase()
+      );
+      if (existingProduct) {
+        return { exists: true, id: existingProduct.id };
+      }
+      return { exists: false, id: null };
+    } catch {
+      return { exists: false, id: null };
+    }
+  }, []);
+
+  // Create product section
+  const handleCreateProduct = async () => {
+    if (!detectedProductName) return;
+    setIsCreatingProduct(true);
+    try {
+      const newProduct = await sectionsApi.create({
+        name: detectedProductName,
+        parent_id: null,
+        section_type: "section",
+      });
+      setProductId(newProduct.id);
+      setProductExists(true);
+      // Also update localStorage for the migration API
+      localStorage.setItem("acceldocs_product_id", String(newProduct.id));
+      localStorage.setItem("acceldocs_current_product_id", String(newProduct.id));
+      toast({ title: "Product created", description: `"${detectedProductName}" has been created` });
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to create product", variant: "destructive" });
+    } finally {
+      setIsCreatingProduct(false);
+    }
+  };
 
   const [discoverResult, setDiscoverResult] = useState<DiscoverResponse | null>(null);
 
@@ -271,26 +334,54 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
             <Label htmlFor="source-url">Source URL</Label>
             <Input
               id="source-url"
-              placeholder="https://docs.acceldata.io/pulse/"
+              placeholder="https://docs.example.com/product/"
               value={sourceUrl}
-              onChange={(e) => setSourceUrl(e.target.value)}
+              onChange={(e) => {
+                setSourceUrl(e.target.value);
+                const name = extractProductName(e.target.value);
+                setDetectedProductName(name);
+                checkProductExists(name).then(result => {
+                  setProductExists(result.exists);
+                  setProductId(result.id);
+                  if (result.id) {
+                    localStorage.setItem("acceldocs_product_id", String(result.id));
+                    localStorage.setItem("acceldocs_current_product_id", String(result.id));
+                  }
+                });
+              }}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="product">Product</Label>
-              <select
-                id="product"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                value={product}
-                onChange={(e) => setProduct(e.target.value)}
-              >
-                <option value="auto">Auto-detect</option>
-                <option value="pulse">Pulse</option>
-                <option value="adoc">ADOC</option>
-                <option value="odp">ODP</option>
-              </select>
+              <Label htmlFor="product">Target Product</Label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 px-3 py-1.5 text-sm border rounded-md bg-muted">
+                  {detectedProductName || "Enter URL to detect"}
+                </div>
+                {!productExists && detectedProductName && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCreateProduct}
+                    disabled={isCreatingProduct}
+                  >
+                    {isCreatingProduct ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>Create "{detectedProductName}"</>
+                    )}
+                  </Button>
+                )}
+                {productExists && productId && (
+                  <span className="text-xs text-muted-foreground px-2">
+                    ID: {productId}
+                  </span>
+                )}
+              </div>
+              {productExists === false && detectedProductName && (
+                <p className="text-xs text-amber-600">Product not found. Click "Create" to add it.</p>
+              )}
             </div>
 
             <div className="space-y-2">
