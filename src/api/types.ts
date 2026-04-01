@@ -201,6 +201,15 @@ export interface LocalImportResult {
   target_type: ImportTargetType;
   mode: "files" | "folder";
   uploaded_files: number;
+  skipped_files?: number;
+  skipped_file_paths?: string[];
+  failed_files?: number;
+  failed_file_paths?: string[];
+  failed_file_errors?: string[];
+  settings_manifest_file?: string | null;
+  settings_manifest_rules?: number;
+  settings_manifest_applied?: number;
+  settings_manifest_warnings?: string[];
   sections_created: number;
   pages_created: number;
   pages_updated: number;

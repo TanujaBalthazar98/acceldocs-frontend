@@ -134,6 +134,7 @@ import { WorkspaceSwitcher, setStoredOrgId, getStoredOrgId } from "@/components/
 import { TableOfContents } from "@/components/docs/TableOfContents";
 import { ApprovalsPanel } from "@/components/dashboard/ApprovalsPanel";
 import { AgentChatPanel } from "@/components/dashboard/AgentChatPanel";
+import { MigrationPanel } from "@/components/dashboard/MigrationPanel";
 import InlineAssistDialog from "@/components/dashboard/InlineAssistDialog";
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { TemplatePickerDialog } from "@/components/dashboard/TemplatePickerDialog";
@@ -142,7 +143,7 @@ import { invokeFunction } from "@/lib/api/functions";
 type VisibilityLevel = "public" | "internal" | "external";
 type VisibilityFilter = "all" | VisibilityLevel;
 type LocalImportMode = "files" | "folder";
-type DashboardPaneMode = "content" | "analytics" | "approvals" | "agent";
+type DashboardPaneMode = "content" | "analytics" | "approvals" | "agent" | "migration";
 
 type DriveImportTarget = {
   id: number;
@@ -2903,6 +2904,7 @@ function SectionNode({
   canOpenImportDialog,
   activeDragType,
   hierarchyMode,
+  hideVersionSections,
 }: {
   section: Section;
   pages: Page[];
@@ -2934,6 +2936,7 @@ function SectionNode({
   canOpenImportDialog: boolean;
   activeDragType: "page" | "section" | null;
   hierarchyMode: "product" | "flat";
+  hideVersionSections?: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const sectionPages = pages.filter((p) => p.section_id === section.id);
@@ -2993,6 +2996,13 @@ function SectionNode({
   const showSectionVisibilityBadge = currentSectionVisibility !== "public";
   const canSetTab = sectionType === "tab" || isTabEligibleLevel;
   const canSetVersion = sectionType === "version" || isVersionEligibleLevel;
+  const childSections = useMemo(
+    () =>
+      hideVersionSections
+        ? (section.children ?? []).filter((child) => (child.section_type ?? "section") !== "version")
+        : (section.children ?? []),
+    [hideVersionSections, section.children],
+  );
 
   return (
     <div
@@ -3173,7 +3183,7 @@ function SectionNode({
               />
             ))}
           </SortableContext>
-          {(section.children ?? []).filter((child) => (child.section_type ?? "section") !== "version").map((child) => (
+          {childSections.map((child) => (
             <SectionNode
               key={child.id}
               section={child}
@@ -3206,6 +3216,7 @@ function SectionNode({
               canDeleteContent={canDeleteContent}
               canDeleteSection={canDeleteSection}
               canOpenImportDialog={canOpenImportDialog}
+              hideVersionSections={hideVersionSections}
             />
           ))}
         </div>
@@ -3314,7 +3325,7 @@ function ReaderHierarchy({
   );
 
   return (
-    <aside className="w-[240px] shrink-0 border-r bg-background/60 flex flex-col h-full">
+    <aside className="w-[240px] shrink-0 border-r bg-background/60 flex flex-col h-full min-h-0">
       <div className="px-4 py-3 border-b bg-background/80 shrink-0">
         <p className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Hierarchy</p>
         <p className="text-sm font-semibold truncate mt-1">{title}</p>
@@ -3417,11 +3428,12 @@ function ReaderHierarchy({
                 canMoveContent={canMoveContent}
                 canEditVisibilitySettings={canEditVisibilitySettings}
                 canPublishContent={canPublishContent}
-                canDeleteContent={canDeleteContent}
-                canDeleteSection={canDeleteSection}
-                canOpenImportDialog={canOpenImportDialog}
-              />
-            ))}
+              canDeleteContent={canDeleteContent}
+              canDeleteSection={canDeleteSection}
+              canOpenImportDialog={canOpenImportDialog}
+              hideVersionSections={hideVersionSections}
+            />
+          ))}
           </SortableContext>
           <DragOverlay>
             {activeDragType && (
@@ -4137,7 +4149,9 @@ export default function Dashboard() {
   }, [activeHierarchyRoot, treeVisiblePages]);
   const readerHierarchySections = useMemo(() => {
     if (!activeHierarchyRoot) return [] as Section[];
-    const children = sortedVisibleChildren(activeHierarchyRoot.id);
+    const children = sortedVisibleChildren(activeHierarchyRoot.id).filter(
+      (section) => (section.section_type ?? "section") !== "version",
+    );
     const base = children;
     // When viewing a version, also include product-level non-version siblings (e.g. FAQ)
     if (selectedVersion && selectedProduct && selectedVersion.id !== selectedProduct.id) {
@@ -4221,6 +4235,25 @@ export default function Dashboard() {
       setSelectedSidebarVersionId(null);
     }
   }, [productVersions, selectedPageVersionId, selectedProduct, selectedSectionPath, selectedSidebarVersionId]);
+  useEffect(() => {
+    if (!isProductHierarchy) return;
+    if (!selectedProduct) return;
+    if (selectedPage) return;
+    if (selectedSidebarVersionId !== null) return;
+    if (productVersions.length === 0) return;
+    const firstBasePage = findFirstPageInProductBase(selectedProduct.id);
+    if (firstBasePage) return;
+    const fallbackVersion = productVersions[0];
+    if (!fallbackVersion) return;
+    setSelectedSidebarVersionId(fallbackVersion.id);
+  }, [
+    findFirstPageInProductBase,
+    isProductHierarchy,
+    productVersions,
+    selectedPage,
+    selectedProduct,
+    selectedSidebarVersionId,
+  ]);
 
   const displayedSectionTree = useMemo(() => {
     if (!isProductHierarchy) return sectionTree;
@@ -4233,18 +4266,20 @@ export default function Dashboard() {
   }, [isProductHierarchy, sectionTree, selectedSidebarProductId, selectedVersion]);
   const adminTreeSections = useMemo(() => {
     if (!isProductHierarchy) return displayedSectionTree;
+    const stripVersionSections = (list: Section[]) =>
+      list.filter((section) => (section.section_type ?? "section") !== "version");
     const selectedRoot = displayedSectionTree[0];
     if (!selectedRoot) return [] as Section[];
     if (selectedVersion) {
-      const versionChildren = selectedRoot.children ?? [];
+      const versionChildren = stripVersionSections(selectedRoot.children ?? []);
       // Also include non-version siblings from the product level (e.g. FAQ imported directly under the product)
       const productNode = sectionTree.find((root) => root.id === selectedSidebarProductId);
       const productLevelSections = (productNode?.children ?? []).filter(
         (child) => (child.section_type ?? "section") !== "version" && !versionChildren.some((vc) => vc.id === child.id),
       );
-      return [...versionChildren, ...productLevelSections];
+      return stripVersionSections([...versionChildren, ...productLevelSections]);
     }
-    return selectedRoot.children ?? [];
+    return stripVersionSections(selectedRoot.children ?? []);
   }, [displayedSectionTree, isProductHierarchy, sectionTree, selectedSidebarProductId, selectedVersion]);
   const adminRootPages = useMemo(() => {
     if (!isProductHierarchy || selectedSidebarProductId === null) {
@@ -4343,11 +4378,24 @@ export default function Dashboard() {
       const productId = Number(value);
       if (!Number.isFinite(productId)) return;
       setSelectedSidebarProductId(productId);
-      setSelectedSidebarVersionId(null);
       const firstPage = findFirstPageInProductBase(productId);
-      handleSelectPage(firstPage?.id ?? null);
+      if (firstPage) {
+        setSelectedSidebarVersionId(null);
+        handleSelectPage(firstPage.id);
+        return;
+      }
+      const versions = productVersionsByProduct.get(productId) ?? [];
+      if (versions.length > 0) {
+        const fallbackVersion = versions[0];
+        setSelectedSidebarVersionId(fallbackVersion.id);
+        const firstVersionPage = findFirstPageInSection(fallbackVersion.id);
+        handleSelectPage(firstVersionPage?.id ?? null);
+        return;
+      }
+      setSelectedSidebarVersionId(null);
+      handleSelectPage(null);
     },
-    [findFirstPageInProductBase, handleSelectPage],
+    [findFirstPageInProductBase, findFirstPageInSection, handleSelectPage, productVersionsByProduct],
   );
   const handleSidebarVersionSwitch = useCallback(
     (value: string) => {
@@ -5366,6 +5414,20 @@ export default function Dashboard() {
               <Button
                 variant="ghost"
                 size="icon"
+                className={cn(
+                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+                  dashboardPaneMode === "migration"
+                    ? "text-primary bg-primary/10 hover:bg-primary/15"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setDashboardPaneMode("migration")}
+                title="Migration"
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
                 onClick={openConfigureHierarchyDialog}
                 disabled={!canConfigureHierarchy}
@@ -5614,6 +5676,19 @@ export default function Dashboard() {
                   >
                     <Sparkles className="h-3 w-3" />
                     Agent
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDashboardPaneMode("migration")}
+                    className={cn(
+                      "h-7 rounded-md text-[11px] font-semibold transition-colors inline-flex items-center justify-center gap-1",
+                      dashboardPaneMode === "migration"
+                        ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <ArrowRightLeft className="h-3 w-3" />
+                    Migration
                   </button>
                 </div>
               </div>
@@ -5925,6 +6000,7 @@ export default function Dashboard() {
                           canDeleteContent={canDeleteContent}
                           canDeleteSection={canDeleteSection}
                           canOpenImportDialog={canOpenImportDialog}
+                          hideVersionSections={isProductHierarchy}
                         />
                       ))}
                     </SortableContext>
@@ -6197,6 +6273,11 @@ export default function Dashboard() {
               />
             </div>
           </div>
+        ) : dashboardPaneMode === "migration" ? (
+          <MigrationPanel
+            isMobile={isMobile}
+            onOpenSidebar={() => setMobileSidebarOpen(true)}
+          />
         ) : selectedPage ? (
           <>
             {/* Toolbar */}
@@ -6469,6 +6550,7 @@ export default function Dashboard() {
                 </button>
               )}
               <div className={cn(
+                "h-full min-h-0",
                 // On mobile: absolute overlay panel
                 isMobile
                   ? cn(
