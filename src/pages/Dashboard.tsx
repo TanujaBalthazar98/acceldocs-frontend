@@ -3742,6 +3742,7 @@ export default function Dashboard() {
   const [mobileHierarchyOpen, setMobileHierarchyOpen] = useState(false);
   const [selectedSidebarProductId, setSelectedSidebarProductId] = useState<number | null>(null);
   const [selectedSidebarVersionId, setSelectedSidebarVersionId] = useState<number | null>(null);
+  const [selectedSidebarTabId, setSelectedSidebarTabId] = useState<number | null>(null);
   const [drivePanelOpen, setDrivePanelOpen] = useState(true);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [showExternalAccessPanel, setShowExternalAccessPanel] = useState(false);
@@ -4105,6 +4106,16 @@ export default function Dashboard() {
       )
       .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name));
   }, [sections, selectedProduct]);
+  const versionTabs = useMemo(() => {
+    if (!selectedVersion) return [] as Section[];
+    return sections
+      .filter(
+        (s) =>
+          s.parent_id === selectedVersion.id &&
+          (s.section_type ?? "section") === "tab",
+      )
+      .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name));
+  }, [sections, selectedVersion]);
   const filteredChildrenByParent = useMemo(() => {
     const map = new Map<number, Section[]>();
     const walk = (nodes: Section[]) => {
@@ -4272,6 +4283,17 @@ export default function Dashboard() {
       list.filter((section) => (section.section_type ?? "section") !== "version");
     const selectedRoot = displayedSectionTree[0];
     if (!selectedRoot) return [] as Section[];
+
+    // When a tab is selected, show sections under that tab
+    if (selectedSidebarTabId) {
+      const selectedTabNode = selectedRoot.children?.find((child) => child.id === selectedSidebarTabId);
+      if (selectedTabNode) {
+        return selectedTabNode.children ?? [];
+      }
+      return [];
+    }
+
+    // When a version is selected but no tab, show tabs as top-level items
     if (selectedVersion) {
       const versionChildren = stripVersionSections(selectedRoot.children ?? []);
       // Also include non-version siblings from the product level (e.g. FAQ imported directly under the product)
@@ -4281,15 +4303,17 @@ export default function Dashboard() {
       );
       return stripVersionSections([...versionChildren, ...productLevelSections]);
     }
+
     return stripVersionSections(selectedRoot.children ?? []);
-  }, [displayedSectionTree, isProductHierarchy, sectionTree, selectedSidebarProductId, selectedVersion]);
+  }, [displayedSectionTree, isProductHierarchy, sectionTree, selectedSidebarProductId, selectedVersion, selectedSidebarTabId]);
   const adminRootPages = useMemo(() => {
     if (!isProductHierarchy || selectedSidebarProductId === null) {
       return treeVisiblePages.filter((page) => !page.section_id);
     }
+    if (selectedSidebarTabId) return treeVisiblePages.filter((page) => page.section_id === selectedSidebarTabId);
     if (selectedVersion) return treeVisiblePages.filter((page) => page.section_id === selectedVersion.id);
     return treeVisiblePages.filter((page) => page.section_id === selectedSidebarProductId);
-  }, [isProductHierarchy, selectedSidebarProductId, selectedVersion, treeVisiblePages]);
+  }, [isProductHierarchy, selectedSidebarProductId, selectedVersion, selectedSidebarTabId, treeVisiblePages]);
   const adminSectionDepthBase = isProductHierarchy && selectedSidebarProductId !== null ? 1 : 0;
   const shouldShowAdminTree = !selectedPage;
   const analyticsSnapshot = useMemo<AnalyticsSnapshot>(() => {
@@ -4401,6 +4425,7 @@ export default function Dashboard() {
   );
   const handleSidebarVersionSwitch = useCallback(
     (value: string) => {
+      setSelectedSidebarTabId(null);
       if (value === "__base__") {
         setSelectedSidebarVersionId(null);
         if (selectedProduct) {
@@ -4416,6 +4441,16 @@ export default function Dashboard() {
       handleSelectPage(firstPage?.id ?? null);
     },
     [findFirstPageInProductBase, findFirstPageInSection, handleSelectPage, selectedProduct],
+  );
+  const handleSidebarTabSwitch = useCallback(
+    (tabId: number | null) => {
+      setSelectedSidebarTabId(tabId);
+      if (tabId !== null) {
+        const firstPage = findFirstPageInSection(tabId);
+        handleSelectPage(firstPage?.id ?? null);
+      }
+    },
+    [findFirstPageInSection, handleSelectPage],
   );
   const selectedSidebarProductValue =
     selectedSidebarProductId !== null
@@ -4955,8 +4990,11 @@ export default function Dashboard() {
     deleteSection.mutate(section.id);
     if ((section.section_type ?? "section") === "version" && selectedSidebarVersionId === section.id) {
       setSelectedSidebarVersionId(null);
+      setSelectedSidebarTabId(null);
+    } else if ((section.section_type ?? "section") === "tab" && selectedSidebarTabId === section.id) {
+      setSelectedSidebarTabId(null);
     }
-  }, [canDeleteSection, deleteSection, notifyPermissionDenied, selectedSidebarVersionId]);
+  }, [canDeleteSection, deleteSection, notifyPermissionDenied, selectedSidebarVersionId, selectedSidebarTabId]);
 
   const handleSectionTypeChange = useCallback((section: Section, nextType: "section" | "tab" | "version") => {
     if (!canManageStructure) {
@@ -5914,6 +5952,55 @@ export default function Dashboard() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
+                </div>
+              )}
+              {isProductHierarchy && selectedVersion && versionTabs.length > 0 && (
+                <div className="px-2 pb-2">
+                  <div className="flex flex-wrap gap-1 items-center">
+                    {versionTabs.map((tab) => (
+                      <div key={tab.id} className="relative group">
+                        <button
+                          onClick={() => handleSidebarTabSwitch(selectedSidebarTabId === tab.id ? null : tab.id)}
+                          className={cn(
+                            "pr-6 px-2 py-1 text-[11px] rounded-md transition-colors",
+                            selectedSidebarTabId === tab.id
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-accent hover:bg-accent/80 text-foreground",
+                          )}
+                        >
+                          {tab.name}
+                        </button>
+                        {canManageStructure && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                                title="Tab options"
+                              >
+                                <MoreHorizontal className="h-3 w-3" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem onClick={() => setRenamingSection(tab)}>
+                                <Pencil className="h-3.5 w-3.5 mr-2" />
+                                Rename tab
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                disabled={!canDeleteSection}
+                                onClick={() => handleDeleteSection(tab)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                Delete tab
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {shouldShowAdminTree && (
