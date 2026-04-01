@@ -3267,6 +3267,7 @@ function ReaderHierarchy({
   canDeleteContent,
   canDeleteSection,
   canOpenImportDialog,
+  hideVersionSections,
 }: {
   title: string;
   pages: Page[];
@@ -3280,6 +3281,7 @@ function ReaderHierarchy({
   onDragEnd: (event: DragEndEvent) => void;
   activeDragType: "page" | "section" | null;
   activeDragLabel: string;
+  hideVersionSections: boolean;
   visibilityFilter: VisibilityFilter;
   onVisibilityFilterChange: (value: VisibilityFilter) => void;
   pageSearchQuery: string;
@@ -6601,6 +6603,7 @@ export default function Dashboard() {
                   canDeleteContent={canDeleteContent}
                   canDeleteSection={canDeleteSection}
                   canOpenImportDialog={canOpenImportDialog}
+                  hideVersionSections={isProductHierarchy}
                 />
               </div>
               <div className="flex-1 min-w-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_16rem]">
