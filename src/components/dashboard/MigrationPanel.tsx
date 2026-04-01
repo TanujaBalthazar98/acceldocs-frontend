@@ -124,11 +124,10 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
   const [activeMigrationId, setActiveMigrationId] = useState<string | null>(null);
   const [pollInterval, setPollInterval] = useState<number | null>(null);
 
-  const discoverQuery = useQuery({
-    queryKey: ["migration", "discover", sourceUrl, product, usePlaywright],
-    queryFn: async ({ signal }) => {
-      const controller = new AbortController();
-      signal?.addEventListener("abort", () => controller.abort());
+  const [discoverResult, setDiscoverResult] = useState<DiscoverResponse | null>(null);
+
+  const discoverMutation = useMutation({
+    mutationFn: async () => {
       const resp = await fetch(`http://localhost:8000/api/migration/discover`, {
         method: "POST",
         headers: {
@@ -137,7 +136,7 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
           "X-Org-Id": localStorage.getItem("acceldocs_current_org_id") || "",
         },
         body: JSON.stringify({ source_url: sourceUrl, product, use_playwright: usePlaywright }),
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(600_000),
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: resp.statusText }));
@@ -145,8 +144,12 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
       }
       return resp.json() as Promise<DiscoverResponse>;
     },
-    enabled: false,
-    retry: false,
+    onSuccess: (data) => {
+      setDiscoverResult(data);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Discovery failed", description: err.message, variant: "destructive" });
+    },
   });
 
   const historyQuery = useQuery({
@@ -319,10 +322,10 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleDiscover}
-              disabled={!sourceUrl || discoverQuery.isFetching}
+              onClick={() => discoverMutation.mutate()}
+              disabled={!sourceUrl || discoverMutation.isPending}
             >
-              {discoverQuery.isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+              {discoverMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
               Discover
             </Button>
             <Button
@@ -338,36 +341,38 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
         </div>
 
         {/* Discovery results */}
-        {discoverQuery.data && (
+        {discoverResult && (
           <div className="rounded-xl border bg-background shadow-sm p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">Discovery Results</h3>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>{discoverQuery.data.total_pages} pages found</span>
+                <span>{discoverResult.total_pages} pages found</span>
                 <span>·</span>
-                <span>{discoverQuery.data.source_type}</span>
+                <span>{discoverResult.source_type}</span>
+                <span>·</span>
+                <span>{discoverResult.hierarchy.length} sections</span>
               </div>
             </div>
 
-            {discoverQuery.data.hierarchy.length > 0 && (
+            {discoverResult.hierarchy.length > 0 && (
               <div className="rounded-lg border bg-muted/30 max-h-80 overflow-y-auto">
-                {discoverQuery.data.hierarchy.map((node, i) => (
+                {discoverResult.hierarchy.map((node, i) => (
                   <TreeNode key={i} node={node} />
                 ))}
               </div>
             )}
 
-            {discoverQuery.data.hierarchy.length === 0 && (
+            {discoverResult.hierarchy.length === 0 && (
               <p className="text-sm text-muted-foreground">No hierarchy discovered. Try adjusting the source URL or enabling Playwright.</p>
             )}
           </div>
         )}
 
-        {discoverQuery.error && (
+        {discoverMutation.error && (
           <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
             <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
             <p className="text-xs text-red-800 dark:text-red-300">
-              Discovery failed: {discoverQuery.error.message}
+              Discovery failed: {discoverMutation.error.message}
             </p>
           </div>
         )}
