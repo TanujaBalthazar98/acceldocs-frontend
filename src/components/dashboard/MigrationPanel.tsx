@@ -126,8 +126,25 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
 
   const discoverQuery = useQuery({
     queryKey: ["migration", "discover", sourceUrl, product, usePlaywright],
-    queryFn: () =>
-      migrationApi.discover({ source_url: sourceUrl, product, use_playwright: usePlaywright }),
+    queryFn: async ({ signal }) => {
+      const controller = new AbortController();
+      signal?.addEventListener("abort", () => controller.abort());
+      const resp = await fetch(`http://localhost:8000/api/migration/discover`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("acceldocs_auth_token")}`,
+          "X-Org-Id": localStorage.getItem("acceldocs_current_org_id") || "",
+        },
+        body: JSON.stringify({ source_url: sourceUrl, product, use_playwright: usePlaywright }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || resp.statusText);
+      }
+      return resp.json() as Promise<DiscoverResponse>;
+    },
     enabled: false,
     retry: false,
   });
