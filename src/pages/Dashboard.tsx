@@ -4,8 +4,8 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef, type ChangeEvent } from "react";
 
-// Organizations allowed to access the Migration feature
-const MIGRATION_ENABLED_ORGS = ["acceldata"];
+// Organizations allowed to access the Migration feature (by ID)
+const MIGRATION_ENABLED_ORG_IDS = [1, 2, 3]; // Add Acceldata org IDs here
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DndContext,
@@ -5454,7 +5454,7 @@ export default function Dashboard() {
               >
                 <Sparkles className="h-4 w-4" />
               </Button>
-              {org?.slug && MIGRATION_ENABLED_ORGS.includes(org.slug) && (
+              {org && MIGRATION_ENABLED_ORG_IDS.includes(org.id) && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -5722,7 +5722,7 @@ export default function Dashboard() {
                     <Sparkles className="h-3 w-3" />
                     Agent
                   </button>
-                  {org?.slug && MIGRATION_ENABLED_ORGS.includes(org.slug) && (
+                  {org && MIGRATION_ENABLED_ORG_IDS.includes(org.id) && (
                     <button
                       type="button"
                       onClick={() => setDashboardPaneMode("migration")}
