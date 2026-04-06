@@ -3,6 +3,9 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef, type ChangeEvent } from "react";
+
+// Organizations allowed to access the Migration feature
+const MIGRATION_ENABLED_ORGS = ["acceldata"];
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DndContext,
@@ -5451,20 +5454,22 @@ export default function Dashboard() {
               >
                 <Sparkles className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
-                  dashboardPaneMode === "migration"
-                    ? "text-primary bg-primary/10 hover:bg-primary/15"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setDashboardPaneMode("migration")}
-                title="Migration"
-              >
-                <ArrowRightLeft className="h-4 w-4" />
-              </Button>
+              {org?.slug && MIGRATION_ENABLED_ORGS.includes(org.slug) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+                    dashboardPaneMode === "migration"
+                      ? "text-primary bg-primary/10 hover:bg-primary/15"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setDashboardPaneMode("migration")}
+                  title="Migration"
+                >
+                  <ArrowRightLeft className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -5717,19 +5722,21 @@ export default function Dashboard() {
                     <Sparkles className="h-3 w-3" />
                     Agent
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setDashboardPaneMode("migration")}
-                    className={cn(
-                      "h-7 rounded-md text-[11px] font-semibold transition-colors inline-flex items-center justify-center gap-1",
-                      dashboardPaneMode === "migration"
-                        ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <ArrowRightLeft className="h-3 w-3" />
-                    Migration
-                  </button>
+                  {org?.slug && MIGRATION_ENABLED_ORGS.includes(org.slug) && (
+                    <button
+                      type="button"
+                      onClick={() => setDashboardPaneMode("migration")}
+                      className={cn(
+                        "h-7 rounded-md text-[11px] font-semibold transition-colors inline-flex items-center justify-center gap-1",
+                        dashboardPaneMode === "migration"
+                          ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <ArrowRightLeft className="h-3 w-3" />
+                      Migration
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="flex items-center justify-between px-2 mb-1.5">
