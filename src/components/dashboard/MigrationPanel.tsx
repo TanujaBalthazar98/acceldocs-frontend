@@ -26,7 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { migrationApi, type DiscoverResponse, type MigrationNode, type StatusResponse, type MigrationHistoryItem } from "@/api/migration";
+import { migrationApi, getApiBaseUrl, type DiscoverResponse, type MigrationNode, type StatusResponse, type MigrationHistoryItem } from "@/api/migration";
 import { sectionsApi } from "@/api/sections";
 import { formatDistanceToNow } from "date-fns";
 
@@ -51,6 +51,7 @@ interface Props {
   onClose?: () => void;
   isMobile?: boolean;
   onOpenSidebar?: () => void;
+  orgId?: number;
 }
 
 function TreeNode({ node, depth = 0 }: { node: MigrationNode; depth?: number }) {
@@ -132,7 +133,7 @@ function PhaseIndicator({ progress }: { progress: StatusResponse["progress"] }) 
   );
 }
 
-export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
+export function MigrationPanel({ onClose, isMobile, onOpenSidebar, orgId: orgIdProp }: Props) {
   const { toast } = useToast();
 
   const [sourceUrl, setSourceUrl] = useState("https://docs.acceldata.io/pulse/");
@@ -266,7 +267,7 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
 
   const handleStartMigration = () => {
     const token = localStorage.getItem("acceldocs_auth_token");
-    const orgId = localStorage.getItem("acceldocs_current_org_id");
+    const orgIdFromStorage = localStorage.getItem("acceldocs_current_org_id");
     const productId = localStorage.getItem("acceldocs_product_id") || localStorage.getItem("acceldocs_current_product_id");
 
     if (!token) {
@@ -277,9 +278,9 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
     startMutation.mutate({
       source_url: sourceUrl,
       product,
-      backend_url: "http://localhost:8000",
+      backend_url: getApiBaseUrl(),
       api_token: token,
-      org_id: Number(orgId) || 1,
+      org_id: orgIdProp ?? (Number(orgIdFromStorage) || 1),
       product_id: Number(productId) || 1,
       use_playwright: usePlaywright,
       create_drive_docs: createDriveDocs,

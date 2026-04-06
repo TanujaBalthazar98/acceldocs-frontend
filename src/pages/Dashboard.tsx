@@ -6373,6 +6373,7 @@ export default function Dashboard() {
           <MigrationPanel
             isMobile={isMobile}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
+            orgId={currentOrgId}
           />
         ) : selectedPage ? (
           <>

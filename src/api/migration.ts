@@ -61,12 +61,14 @@ export interface MigrationHistoryItem {
   error?: string;
 }
 
-function getApiBaseUrl(): string {
-  if (typeof window === "undefined") return API_BASE_URL;
-  const isLocalHttps =
-    window.location.protocol === "https:" &&
-    /^(http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/.test(API_BASE_URL);
-  return isLocalHttps ? "" : API_BASE_URL;
+export function getApiBaseUrl(): string {
+  if (API_BASE_URL && !API_BASE_URL.includes("localhost")) {
+    return API_BASE_URL;
+  }
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return API_BASE_URL;
 }
 
 export const migrationApi = {
