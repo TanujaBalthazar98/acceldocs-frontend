@@ -139,6 +139,7 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
   const [product, setProduct] = useState("pulse");
   const [usePlaywright, setUsePlaywright] = useState(true);
   const [maxPages, setMaxPages] = useState(0);
+  const [createDriveDocs, setCreateDriveDocs] = useState(false);
   const [activeMigrationId, setActiveMigrationId] = useState<string | null>(null);
   const [pollInterval, setPollInterval] = useState<number | null>(null);
 
@@ -281,7 +282,7 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
       org_id: Number(orgId) || 1,
       product_id: Number(productId) || 1,
       use_playwright: usePlaywright,
-      create_drive_docs: false,
+      create_drive_docs: createDriveDocs,
       max_pages: maxPages,
     });
   };
@@ -406,6 +407,18 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
               id="playwright"
               checked={usePlaywright}
               onCheckedChange={setUsePlaywright}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="drive-docs" className="text-sm">Create Google Drive Docs</Label>
+              <p className="text-[11px] text-muted-foreground">Create editable docs in Google Drive for each page</p>
+            </div>
+            <Switch
+              id="drive-docs"
+              checked={createDriveDocs}
+              onCheckedChange={setCreateDriveDocs}
             />
           </div>
 
