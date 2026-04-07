@@ -61,7 +61,7 @@ export interface MigrationHistoryItem {
   error?: string;
 }
 
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   if (typeof window === "undefined") return API_BASE_URL;
   const isLocalHttps =
     window.location.protocol === "https:" &&

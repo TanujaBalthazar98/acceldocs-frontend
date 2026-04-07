@@ -26,7 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { migrationApi, type DiscoverResponse, type MigrationNode, type StatusResponse, type MigrationHistoryItem } from "@/api/migration";
+import { migrationApi, getApiBaseUrl, type DiscoverResponse, type MigrationNode, type StatusResponse, type MigrationHistoryItem } from "@/api/migration";
 import { sectionsApi } from "@/api/sections";
 import { formatDistanceToNow } from "date-fns";
 
@@ -137,7 +137,7 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
 
   const [sourceUrl, setSourceUrl] = useState("https://docs.acceldata.io/pulse/");
   const [product, setProduct] = useState("pulse");
-  const [usePlaywright, setUsePlaywright] = useState(true);
+  const [usePlaywright, setUsePlaywright] = useState(false);
   const [maxPages, setMaxPages] = useState(0);
   const [createDriveDocs, setCreateDriveDocs] = useState(false);
   const [activeMigrationId, setActiveMigrationId] = useState<string | null>(null);
@@ -191,23 +191,7 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
   const [discoverResult, setDiscoverResult] = useState<DiscoverResponse | null>(null);
 
   const discoverMutation = useMutation({
-    mutationFn: async () => {
-      const resp = await fetch(`http://localhost:8000/api/migration/discover`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem("acceldocs_auth_token")}`,
-          "X-Org-Id": localStorage.getItem("acceldocs_current_org_id") || "",
-        },
-        body: JSON.stringify({ source_url: sourceUrl, product, use_playwright: usePlaywright }),
-        signal: AbortSignal.timeout(600_000),
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(err.detail || resp.statusText);
-      }
-      return resp.json() as Promise<DiscoverResponse>;
-    },
+    mutationFn: () => migrationApi.discover({ source_url: sourceUrl, product, use_playwright: usePlaywright }),
     onSuccess: (data) => {
       setDiscoverResult(data);
     },
@@ -261,7 +245,7 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
   });
 
   const handleDiscover = () => {
-    discoverQuery.refetch();
+    discoverMutation.mutate();
   };
 
   const handleStartMigration = () => {
@@ -277,7 +261,7 @@ export function MigrationPanel({ onClose, isMobile, onOpenSidebar }: Props) {
     startMutation.mutate({
       source_url: sourceUrl,
       product,
-      backend_url: "http://localhost:8000",
+      backend_url: getApiBaseUrl() || window.location.origin,
       api_token: token,
       org_id: Number(orgId) || 1,
       product_id: Number(productId) || 1,
