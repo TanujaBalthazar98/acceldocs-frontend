@@ -2813,12 +2813,13 @@ function PageItem({
       <button
         {...dragListeners} {...dragAttributes}
         className={cn(
-          "shrink-0 p-0.5 ml-1 hover:!opacity-60 touch-none",
+          "shrink-0 p-0.5 ml-1 hover:!opacity-100 touch-none rounded hover:bg-accent",
           canMove
-            ? "opacity-0 group-hover:opacity-30 cursor-grab active:cursor-grabbing"
+            ? "opacity-40 group-hover:opacity-70 cursor-grab active:cursor-grabbing"
             : "opacity-0 pointer-events-none",
         )}
         tabIndex={-1}
+        title="Drag to reorder"
       >
         <GripVertical className="h-3 w-3 text-muted-foreground" />
       </button>
@@ -3025,12 +3026,13 @@ function SectionNode({
         <button
           {...sectionDragListeners} {...sectionDragAttributes}
           className={cn(
-            "shrink-0 p-0.5 hover:!opacity-60 touch-none",
+            "shrink-0 p-0.5 hover:!opacity-100 touch-none rounded hover:bg-accent",
             canMoveContent
-              ? "opacity-0 group-hover:opacity-30 cursor-grab active:cursor-grabbing"
+              ? "opacity-40 group-hover:opacity-70 cursor-grab active:cursor-grabbing"
               : "opacity-0 pointer-events-none",
           )}
           tabIndex={-1}
+          title="Drag to reorder"
         >
           <GripVertical className="h-3 w-3 text-muted-foreground" />
         </button>
@@ -5254,7 +5256,7 @@ export default function Dashboard() {
   const accountEmail = user?.email ?? "";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-stone-100 via-background to-amber-50/70 dark:from-background dark:via-background dark:to-background">
 
       {/* ── Mobile sidebar overlay backdrop ─────────────────────── */}
       {isMobile && mobileSidebarOpen && (
@@ -5267,7 +5269,7 @@ export default function Dashboard() {
       {/* ── Sidebar ───────────────────────────────────────────────── */}
       <aside
         className={cn(
-          "shrink-0 flex flex-col border-r bg-[#F9F8F6] dark:bg-muted/20 overflow-hidden transition-all duration-200",
+          "shrink-0 flex flex-col border-r border-border/60 bg-[linear-gradient(180deg,#fdfcf9_0%,#f6f4ee_100%)] dark:bg-muted/20 overflow-hidden transition-all duration-300 backdrop-blur-sm shadow-[inset_-1px_0_0_rgba(255,255,255,0.5)]",
           // Mobile: fixed overlay sidebar
           isMobile
             ? cn(
@@ -5282,7 +5284,7 @@ export default function Dashboard() {
       >
 
         {/* Org header */}
-        <div className={cn("px-3 py-3 border-b bg-background", sidebarCollapsed ? "space-y-3" : "space-y-2")}>
+        <div className={cn("px-3 py-3 border-b border-border/70 bg-white/75 dark:bg-background/50 backdrop-blur", sidebarCollapsed ? "space-y-3" : "space-y-2")}>
           <div className={cn("flex items-center", sidebarCollapsed ? "flex-col gap-2" : "gap-2.5")}>
             {org?.logo_url ? (
               <img src={org.logo_url} alt="" className="w-7 h-7 rounded-lg object-contain flex-shrink-0" />
@@ -5327,7 +5329,7 @@ export default function Dashboard() {
           </div>
 
           {(!sidebarCollapsed || isMobile) ? (
-            <div className="rounded-md border bg-muted/30 p-0.5 grid grid-cols-3 gap-0.5">
+            <div className="rounded-xl border border-border/70 bg-gradient-to-b from-white/85 to-white/65 dark:from-background/60 dark:to-background/40 p-0.5 grid grid-cols-3 gap-0.5 shadow-sm">
               <Button
                 variant="ghost"
                 size="sm"
@@ -5397,7 +5399,7 @@ export default function Dashboard() {
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+                  "h-8 w-8 shrink-0 rounded-lg disabled:opacity-40 disabled:pointer-events-none",
                   dashboardPaneMode === "content"
                     ? "text-primary bg-primary/10 hover:bg-primary/15"
                     : "text-muted-foreground hover:text-foreground",
@@ -5411,7 +5413,7 @@ export default function Dashboard() {
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+                  "h-8 w-8 shrink-0 rounded-lg disabled:opacity-40 disabled:pointer-events-none",
                   dashboardPaneMode === "analytics"
                     ? "text-primary bg-primary/10 hover:bg-primary/15"
                     : "text-muted-foreground hover:text-foreground",
@@ -5425,7 +5427,7 @@ export default function Dashboard() {
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none relative",
+                  "h-8 w-8 shrink-0 rounded-lg disabled:opacity-40 disabled:pointer-events-none relative",
                   dashboardPaneMode === "approvals"
                     ? "text-primary bg-primary/10 hover:bg-primary/15"
                     : "text-muted-foreground hover:text-foreground",
@@ -5444,7 +5446,7 @@ export default function Dashboard() {
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+                  "h-8 w-8 shrink-0 rounded-lg disabled:opacity-40 disabled:pointer-events-none",
                   dashboardPaneMode === "agent"
                     ? "text-primary bg-primary/10 hover:bg-primary/15"
                     : "text-muted-foreground hover:text-foreground",
@@ -5459,7 +5461,7 @@ export default function Dashboard() {
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    "h-8 w-8 shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+                    "h-8 w-8 shrink-0 rounded-lg disabled:opacity-40 disabled:pointer-events-none",
                     dashboardPaneMode === "migration"
                       ? "text-primary bg-primary/10 hover:bg-primary/15"
                       : "text-muted-foreground hover:text-foreground",
@@ -5473,7 +5475,7 @@ export default function Dashboard() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+                className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
                 onClick={openConfigureHierarchyDialog}
                 disabled={!canConfigureHierarchy}
                 title="Configure content hierarchy"
@@ -5563,7 +5565,7 @@ export default function Dashboard() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
                     title="Menu"
                   >
                     <MoreHorizontal className="h-4 w-4" />
@@ -5667,7 +5669,7 @@ export default function Dashboard() {
             <div className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
               <div className="px-2 mb-2">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-1.5">View</p>
-                <div className="grid grid-cols-2 rounded-lg border bg-background/90 p-1 gap-1">
+                <div className="grid grid-cols-2 rounded-xl border border-border/70 bg-gradient-to-b from-white/80 to-white/60 dark:from-background/60 dark:to-background/40 p-1 gap-1 shadow-sm">
                   <button
                     type="button"
                     onClick={() => setDashboardPaneMode("content")}
@@ -6297,7 +6299,7 @@ export default function Dashboard() {
       </aside>
 
       {/* ── Main ──────────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-hidden flex flex-col min-w-0 bg-background">
+      <main className="flex-1 overflow-hidden flex flex-col min-w-0 bg-gradient-to-b from-background to-background/90">
         {dashboardPaneMode === "agent" ? (
           <AgentChatPanel
             onPageCreated={(pageId) => {
@@ -6324,7 +6326,7 @@ export default function Dashboard() {
         ) : dashboardPaneMode === "analytics" ? (
           <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-6 sm:py-8">
             <div className="max-w-5xl mx-auto space-y-4">
-              <div className="rounded-xl border bg-background/85 shadow-sm px-4 sm:px-5 py-4">
+              <div className="rounded-2xl border border-border/70 bg-white/70 dark:bg-background/70 shadow-sm px-4 sm:px-5 py-4 backdrop-blur">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <div className="flex items-center gap-2">
@@ -6377,7 +6379,7 @@ export default function Dashboard() {
         ) : selectedPage ? (
           <>
             {/* Toolbar */}
-            <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 border-b shrink-0 bg-background/80 backdrop-blur-sm">
+            <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 border-b border-border/70 shrink-0 bg-white/70 dark:bg-background/70 backdrop-blur">
               {isMobile && (
                 <Button
                   variant="ghost"
