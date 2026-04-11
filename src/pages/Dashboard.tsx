@@ -2773,7 +2773,6 @@ function PageItem({
   onSelect,
   onEditTitle,
   onEditSlug,
-  onMove,
   onRearrange,
   onSetVisibilityOverride,
   onDuplicate,
@@ -2792,7 +2791,6 @@ function PageItem({
   onSelect: (id: number) => void;
   onEditTitle: (page: Page) => void;
   onEditSlug: (page: Page) => void;
-  onMove: (page: Page, direction: "up" | "down") => void;
   onRearrange: (page: Page) => void;
   onSetVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
   onDuplicate: (page: Page) => void;
@@ -3181,7 +3179,6 @@ function SectionNode({
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
-                onMove={handleMovePageUpDown}
                 onRearrange={onRearrangePage}
                 onSetVisibilityOverride={onSetPageVisibilityOverride}
                 onDuplicate={onDuplicatePage}
@@ -3394,7 +3391,6 @@ function ReaderHierarchy({
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
-                onMove={handleMovePageUpDown}
                 onRearrange={onRearrangePage}
                 onSetVisibilityOverride={onSetPageVisibilityOverride}
                 onDuplicate={onDuplicatePage}
