@@ -2862,25 +2862,6 @@ function PageItem({
           </span>
         )}
       </button>
-      {/* Move up/down buttons - always visible for easy reordering */}
-      {canMove && (
-        <div className="absolute right-8 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-            onClick={(e) => { e.stopPropagation(); onMove?.(page, "up"); }}
-            title="Move up"
-          >
-            <ChevronUp className="h-3 w-3" />
-          </button>
-          <button
-            className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-            onClick={(e) => { e.stopPropagation(); onMove?.(page, "down"); }}
-            title="Move down"
-          >
-            <ChevronDown className="h-3 w-3" />
-          </button>
-        </div>
-      )}
       {(canManageActions || canMove || canManageVisibility || canDelete || canPublish) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
