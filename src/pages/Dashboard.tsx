@@ -119,6 +119,8 @@ import {
   MessageSquare,
   ThumbsUp,
   Clock3,
+ChevronUp,
+ChevronDown,
 } from "lucide-react";
 import {
   Select,
