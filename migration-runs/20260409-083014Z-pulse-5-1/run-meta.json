@@ -1,0 +1,14 @@
+{
+  "started_at": "2026-04-09T08:30:14.294Z",
+  "backend_url": "https://acceldocs-backend.vercel.app",
+  "source_url": "https://docs.acceldata.io/pulse/",
+  "product": "pulse",
+  "version": "5.1",
+  "tab": null,
+  "org_id": 1,
+  "product_id": 1,
+  "use_playwright": false,
+  "create_drive_docs": false,
+  "max_pages": 0,
+  "dry_run": true
+}

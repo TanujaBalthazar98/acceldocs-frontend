@@ -1,0 +1,1764 @@
+{
+  "tree": [
+    {
+      "title": "Pulse 4.1.x",
+      "url": null,
+      "depth": 0,
+      "_section_type": "version",
+      "children": [
+        {
+          "title": "User Guide",
+          "url": null,
+          "depth": 1,
+          "children": [
+            {
+              "title": "Alerts and Notifications",
+              "url": null,
+              "depth": 0,
+              "children": [
+                {
+                  "title": "Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Alerts Overview",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/alerts-overview",
+                  "depth": 1,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "title": "Pipelines",
+              "url": null,
+              "depth": 0,
+              "children": [
+                {
+                  "title": "Airflow",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/airflow",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Airflow Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/airflow-dashboard",
+                  "depth": 1,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "title": "Integrations",
+              "url": null,
+              "depth": 0,
+              "children": [
+                {
+                  "title": "Hive File Analytics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hive-file-analytics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Thrift Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Thrift Chargeback Reports",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-chargeback-reports",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Thrift Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Thrift Query Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-query-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Thrift Table Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-table-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Thrift Tables",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-tables",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hive On Spark Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hive-on-spark-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hive On Spark Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hive-on-spark-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hive On Spark Query Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hive-on-spark-query-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hive On Spark Tables",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hive-on-spark-tables",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hive On Spark Table Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hive-on-spark-table-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Batch Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-batch-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Jobs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-jobs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Job Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-job-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Stage Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-stage-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark Streams",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-streams",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Broker Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-broker-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Brokers",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-brokers",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Consumers",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-consumers",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Topic Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-topic-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Topics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-topics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Offline Partitions",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-offline-partitions",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Mirrormaker",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-mirrormaker",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Connect",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-connect",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kafka Custom Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kafka-custom-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Trino",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/trino",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Trino Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/trino-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Trino Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/trino-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Trino Queries Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/trino-queries-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Clickhouse",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/clickhouse",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Spark On Openshift  Pulse Observability",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/spark-on-openshift--pulse-observability",
+                  "depth": 1,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "title": "Advanced",
+              "url": null,
+              "depth": 0,
+              "children": [
+                {
+                  "title": "Manage Predefined Dashboards",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/manage-predefined-dashboards",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Manage And Monitor Clusters",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/manage-and-monitor-clusters",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Manage Alerts And Actions",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/manage-alerts-and-actions",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Search Acceldata Documentation",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/search-acceldata-documentation",
+                  "depth": 1,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "title": "Other",
+              "url": null,
+              "depth": 0,
+              "children": [
+                {
+                  "title": "Dashboards And Charts In Pulse",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/dashboards-and-charts-in-pulse",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Overview",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/overview",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Incidents",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/incidents",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Stock Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/stock-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Creating An Alert",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/creating-an-alert",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Create Forecasting Alert",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/create-forecasting-alert",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Maintenance Mode For Pulse Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/maintenance-mode-for-pulse-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Actions",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/actions",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Executions",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/executions",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Custom Playbook",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/custom-playbook",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Chargeback Reports",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/chargeback-reports",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Yarn Reports",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/yarn-reports",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Node Label Reports",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/node-label-reports",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hdfs Chargeback Report",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hdfs-chargeback-report",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Ozone Reports",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/ozone-reports",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "User Management",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/user-management",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Debugging Failures",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/debugging-failures",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Slow Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/slow-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Rogue Users   Processes",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/rogue-users---processes",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Job Query Recommendation",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/job-query-recommendation",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Databases",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/databases",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Databases Table Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/databases-table-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Dashplot",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/dashplot",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Dashboards",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/dashboards",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Using Variables",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/using-variables",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualization",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualization",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Reports",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/reports",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Canary Test Performance Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-canary-test-performance-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Hdfs Performance Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-hdfs-performance-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Hive Performance Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-hive-performance-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Impala Performance Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-impala-performance-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Nats Queue",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/nats-queue",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Fsanalytics Data Snapshot Report",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/fsanalytics-data-snapshot-report",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Mongo Sharded Cluster",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/mongo-sharded-cluster",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Actions Service",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/actions-service",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Set Up And Manage Canary Tests In Pulse",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/set-up-and-manage-canary-tests-in-pulse",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Enable Canary Test Actions On Pulse",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/enable-canary-test-actions-on-pulse",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Perform Hdfs Canary Operations",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/perform-hdfs-canary-operations",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Perform Hive Canary Operations",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/perform-hive-canary-operations",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Perform Impala Canary Operations",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/perform-impala-canary-operations",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Finalize And Execute The Action Plan",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/finalize-and-execute-the-action-plan",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Deploy The Actions Service",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/deploy-the-actions-service",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Create An Action Plan",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/create-an-action-plan",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Hosts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-hosts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Notifications",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-notifications",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Schedule And Save An Action Plan",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/schedule-and-save-an-action-plan",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Timeout",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-timeout",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pulse Auditing",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pulse-auditing",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Agent Statistics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-agent-statistics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Track Pulse Statistics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/track-pulse-statistics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Generating Pulse Report",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/generating-pulse-report",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Resource Optimization For Yarn Static Queues",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/resource-optimization-for-yarn-static-queues",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Architecture  How Pulse Works",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/architecture--how-pulse-works",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pulse Components",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pulse-components",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pulse On Docker Podman",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pulse-on-docker-podman",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pulse Add On Services",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pulse-add-on-services",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pulse Databases1Qj",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pulse-databases1qj",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pulse Core Services  Docker Podman ",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pulse-core-services--docker-podman-",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pulse Agents",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pulse-agents",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pulse Hooks",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pulse-hooks",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Services",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-services",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Memsql",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/memsql",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Memsql Workloads",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/memsql-workloads",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Memsql Tables",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/memsql-tables",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Explain Plan",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/explain-plan",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Memsql Pipelines",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/memsql-pipelines",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Nifi",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/nifi",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Nifi Process Groups",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/nifi-process-groups",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Nifi Process Groups Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/nifi-process-groups-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Nifi Flow Files",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/nifi-flow-files",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Nifi Registry",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/nifi-registry",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Nifi Jvm",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/nifi-jvm",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hdfs Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hdfs-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hdfs Analytics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hdfs-analytics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hdfs File Explorer",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hdfs-file-explorer",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Real Time Data Support Without Compromising System Stability",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/real-time-data-support-without-compromising-system-stability",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Enable Real Time Monitoring Of Hdfs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/enable-real-time-monitoring-of-hdfs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Hdfs Small File Threshold",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-hdfs-small-file-threshold",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "View Hdfs Snapshots",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/view-hdfs-snapshots",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Troubleshooting Hdfs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/troubleshooting-hdfs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Fsimage Loading Takes More Time",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/fsimage-loading-takes-more-time",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Retain Custom Changes In Fs Scripts After Reconfig Cluster",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/retain-custom-changes-in-fs-scripts-after-reconfig-cluster",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Ds And Ns Quota Paths For Creating An Alert",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-ds-and-ns-quota-paths-for-creating-an-alert",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Create Alerts For Small Files",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/create-alerts-for-small-files",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Yarn",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/YARN",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Services",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/services",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Yarn Capacity",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/yarn-capacity",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Yarn Application Explorer",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/yarn-application-explorer",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Mrdashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/mrdashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Mapreduce Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/mapreduce-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Mapreduce Query Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/mapreduce-query-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Mapreduce Tables",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/mapreduce-tables",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Mapreduce Table Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/mapreduce-table-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Mapreduce Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/mapreduce-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Llap Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/llap-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Llap Chargeback Reports",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/llap-chargeback-reports",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Llap Daemons",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/llap-daemons",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Llap Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/llap-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Llap Query Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/llap-query-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Llap Table",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/llap-table",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Llap Table Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/llap-table-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Tez Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/tez-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Tez Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/tez-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Tez Query Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/tez-query-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Tez Tables",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/tez-tables",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Tez Table Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/tez-table-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hbase Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hbase-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hbase Proctor",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hbase-proctor",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hbase Regions",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hbase-regions",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hbase Services",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hbase-services",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hbase Snapshot",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hbase-snapshot",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hbase Tables",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hbase-tables",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hbase Region Server Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hbase-region-server-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Hbase Table Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/hbase-table-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Cruise Control",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/cruise-control",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Impala Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/impala-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Impala Daemons",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/impala-daemons",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Impala Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/impala-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Impala Query Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/impala-query-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Impala Tables",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/impala-tables",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Oozie Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/Oozie-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Bundle Jobs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/bundle-jobs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Coordinator Jobs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/coordinator-jobs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Workflow Jobs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/workflow-jobs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Ozone",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/ozone",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Ozone Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/ozone-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Ozone Volumes",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/ozone-volumes",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Druid",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/druid",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Dagruns",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/dagruns",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor The Airflow Logs And Service Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-the-airflow-logs-and-service-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor The Airflow With Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-the-airflow-with-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Schema Registry",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/schema-registry",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kudu",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kudu",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Kudu With Pulse Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-kudu-with-pulse-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kudu Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kudu-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pinot",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pinot",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Broker Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/broker-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Controller Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/controller-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Server Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/server-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Pinot With Pulse Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-pinot-with-pulse-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Trino With Pulse Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-trino-with-pulse-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Ranger",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/ranger",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Ranger Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/ranger-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Ranger Kms Dashboard",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/ranger-kms-dashboard",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Ranger With Pulse Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-ranger-with-pulse-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Clickhouse Health And Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-clickhouse-health-and-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Clickhouse With Pulse Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-clickhouse-with-pulse-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Clickhouse Operational Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-clickhouse-operational-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Clickhouse Query Performance Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-clickhouse-query-performance-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Clickhouse Performance Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-clickhouse-performance-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Clickhouse Network Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-clickhouse-network-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Clickhouse Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-clickhouse-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Analyze Clickhouse Query Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/analyze-clickhouse-query-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Create Clickhouse Custom Visualization",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/create-clickhouse-custom-visualization",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Flink",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/flink",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Flink Health And Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-flink-health-and-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Flink With Pulse Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-flink-with-pulse-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Flink Jobs And Resources",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-flink-jobs-and-resources",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Flink Applications",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-flink-applications",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Flink Application Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-flink-application-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Analyze Flink Job Details",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/analyze-flink-job-details",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Mlflow",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/mlflow",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Mlflow Health And Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-mlflow-health-and-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Mlflow With Pulse Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-mlflow-with-pulse-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Jupyterhub",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/jupyterhub",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Jupyterhub Health And Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-jupyterhub-health-and-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Jupyterhub With Pulse Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-jupyterhub-with-pulse-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Jupyterhub Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-jupyterhub-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Analyze Cluster Health In Detail",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/analyze-cluster-health-in-detail",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Analyze Node Health And Performance",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/analyze-node-health-and-performance",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor And Analyze Nodes",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-and-analyze-nodes",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Node Performance",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-node-performance",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Check Hadoop Service Status",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/check-hadoop-service-status",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Compare Node Resource Usage",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/compare-node-resource-usage",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Search Records On The Nodes Page",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/search-records-on-the-nodes-page",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Node Dashboard Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-node-dashboard-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Troubleshoot Using Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/troubleshoot-using-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Troubleshoot Using Hdfs Audit Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/troubleshoot-using-hdfs-audit-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Troubleshoot Using Application Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/troubleshoot-using-application-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Troubleshoot Using Ranger Audit Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/troubleshoot-using-ranger-audit-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Sample Elasticsearch Queries For Searching Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/sample-elasticsearch-queries-for-searching-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Analyze Yarn Workloads",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/analyze-yarn-workloads",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Analyze Workload Application Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/analyze-workload-application-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Search And Filter Yarn Applications",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/search-and-filter-yarn-applications",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Save And Reuse Search Queries",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/save-and-reuse-search-queries",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Apply Performance Recommendations",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/apply-performance-recommendations",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Track Application Incidents And Alerts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/track-application-incidents-and-alerts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Analyze Concurrency And Troubleshoot Logs",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/analyze-concurrency-and-troubleshoot-logs",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Application Resources",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-application-resources",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Cluster Health And Resources",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-cluster-health-and-resources",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Search And Analyze Records And In Pulse",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/search-and-analyze-records-and-in-pulse",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Sample Queries For Filtering Records",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/sample-queries-for-filtering-records",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor And Analyze",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-and-analyze",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Optimize Resources",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/optimize-resources",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Anomaly Detection And Forecasting",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/anomaly-detection-and-forecasting",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Deploy Anomaly Detection Add On Service",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/deploy-anomaly-detection-add-on-service",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Anomaly Detection In Pulse Charts",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/anomaly-detection-in-pulse-charts",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Anomaly Detection Model Training",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-anomaly-detection-model-training",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Collect Service Profiling Data",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/collect-service-profiling-data",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Create A Service Profile",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/create-a-service-profile",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Jfr Profiles File Retention Policy",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/jfr-profiles-file-retention-policy",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Deploy The Service Profiler Service Add On Service",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/deploy-the-service-profiler-service-add-on-service",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Find And Understand Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/find-and-understand-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Deploy Metric Search Add On Service",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/deploy-metric-search-add-on-service",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Jobs Failing Due To Jmx Port Conflict",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/jobs-failing-due-to-jmx-port-conflict",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Yarn Optimizier",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/yarn-optimizier",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Deploy Yarn Optimizer",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/deploy-yarn-optimizer",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Yarn Optimizer Architecture",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/yarn-optimizer-architecture",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Visualize Optimized Yarn Resource Metrics",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/visualize-optimized-yarn-resource-metrics",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Optimizer Components",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-optimizer-components",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Fingerprinting Of Applications",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-fingerprinting-of-applications",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Yarn Metrics Agent",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-yarn-metrics-agent",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure Yarn Optimizer Service",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-yarn-optimizer-service",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Node Quota Enforcement",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/node-quota-enforcement",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Monitor Kubernetes Clusters",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/monitor-kubernetes-clusters",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kubernetes Cluster Overview",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kubernetes-cluster-overview",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Namespace",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/namespace",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Search Docs In Chatgpt Using Mcp Server",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/search-docs-in-chatgpt-using-mcp-server",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Search Docs In Cursor Using Mcp Server",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/search-docs-in-cursor-using-mcp-server",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Wcag 2 1 Aa Accessibility Compliance",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/wcag-2-1-aa-accessibility-compliance",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Kubernetes Optimizer",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/kubernetes-optimizer",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Overview About K8S Optimizer",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/overview-about-k8s-optimizer",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Optimization Dashboard  Kubernetes ",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/optimization-dashboard--kubernetes-",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Saving Potential  K8S ",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/saving-potential--k8s-",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure The Kubernetes Optimizer Calculator",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-the-kubernetes-optimizer-calculator",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Configure A Webhook",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/configure-a-webhook",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Pulse Sense",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/pulse-sense",
+                  "depth": 1,
+                  "children": []
+                },
+                {
+                  "title": "Download Records",
+                  "url": "https://docs.acceldata.io/pulse/user-guide/download-records",
+                  "depth": 1,
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "_section_type": "tab"
+        }
+      ]
+    }
+  ],
+  "source": "https://docs.acceldata.io/pulse/",
+  "products": [
+    "pulse"
+  ],
+  "discovered_at": "2026-04-09T08:53:51.309943+00:00",
+  "page_data": {
+    "https://docs.acceldata.io/pulse/user-guide/alerts": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/alerts",
+      "title": "Alerts",
+      "markdown": "\n",
+      "raw_html": ""
+    },
+    "https://docs.acceldata.io/pulse/user-guide/alerts-overview": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/alerts-overview",
+      "title": "Alerts Overview",
+      "markdown": "\n",
+      "raw_html": ""
+    },
+    "https://docs.acceldata.io/pulse/user-guide/airflow": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/airflow",
+      "title": "Airflow",
+      "markdown": "\n",
+      "raw_html": ""
+    },
+    "https://docs.acceldata.io/pulse/user-guide/airflow-dashboard": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/airflow-dashboard",
+      "title": "Airflow Dashboard",
+      "markdown": "\n",
+      "raw_html": ""
+    },
+    "https://docs.acceldata.io/pulse/user-guide/hive-file-analytics": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/hive-file-analytics",
+      "title": "Hive File Analytics",
+      "markdown": "\n",
+      "raw_html": ""
+    },
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-dashboard": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-dashboard",
+      "title": "Spark Thrift Dashboard",
+      "markdown": "\n",
+      "raw_html": ""
+    },
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-chargeback-reports": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-chargeback-reports",
+      "title": "Spark Thrift Chargeback Reports",
+      "markdown": "\n",
+      "raw_html": ""
+    },
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-queries": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-queries",
+      "title": "Spark Thrift Queries",
+      "markdown": "\n",
+      "raw_html": ""
+    },
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-query-details": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-query-details",
+      "title": "Spark Thrift Query Details",
+      "markdown": "\n",
+      "raw_html": ""
+    },
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-table-details": {
+      "url": "https://docs.acceldata.io/pulse/user-guide/spark-thrift-table-details",
+      "title": "Spark Thrift Table Details",
+      "markdown": "\n",
+      "raw_html": ""
+    }
+  },
+  "section_map": {
+    "/pulse-41x": 343,
+    "/pulse-41x/user-guide": 344,
+    "/pulse-41x/user-guide/alerts-and-notifications": 345,
+    "/pulse-41x/user-guide/pipelines": 346,
+    "/pulse-41x/user-guide/integrations": 347,
+    "/pulse-41x/user-guide/advanced": 348,
+    "/pulse-41x/user-guide/other": 349
+  },
+  "page_id_map": {
+    "https://docs.acceldata.io/pulse/user-guide/alerts": 2827,
+    "https://docs.acceldata.io/pulse/user-guide/alerts-overview": 2828,
+    "https://docs.acceldata.io/pulse/user-guide/airflow": 2829,
+    "https://docs.acceldata.io/pulse/user-guide/airflow-dashboard": 2830,
+    "https://docs.acceldata.io/pulse/user-guide/hive-file-analytics": 2831,
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-dashboard": 2832,
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-chargeback-reports": 2833,
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-queries": 2834,
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-query-details": 2835,
+    "https://docs.acceldata.io/pulse/user-guide/spark-thrift-table-details": 2836
+  },
+  "completed_at": "2026-04-09T08:54:17.127882+00:00"
+}
