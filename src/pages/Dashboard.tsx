@@ -4425,6 +4425,31 @@ export default function Dashboard() {
     }
   }, [isMobile]);
 
+  // Move page up/down handlers - simple reordering
+  const handleMovePageUpDown = useCallback((page: Page, direction: "up" | "down") => {
+    if (!canMoveContent) return;
+    const pages = pagesData?.pages ?? [];
+    const sectionPages = pages.filter(p => p.section_id === page.section_id).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+    const currentIndex = sectionPages.findIndex(p => p.id === page.id);
+    if (currentIndex === -1) return;
+    
+    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= sectionPages.length) return;
+    
+    const targetPage = sectionPages[newIndex];
+    // Swap display_order values
+    dragPage.mutate({ 
+      id: page.id, 
+      section_id: page.section_id, 
+      display_order: targetPage.display_order ?? newIndex 
+    });
+    dragPage.mutate({ 
+      id: targetPage.id, 
+      section_id: targetPage.section_id, 
+      display_order: page.display_order ?? currentIndex 
+    });
+  }, [canMoveContent, pagesData, dragPage]);
+
   const handleSidebarProductSwitch = useCallback(
     (value: string) => {
       const productId = Number(value);
@@ -5105,31 +5130,6 @@ export default function Dashboard() {
       description: `Drag "${page.title}" using the grip handle to reorder.`,
     });
   }, [canMoveContent, notifyPermissionDenied, toast]);
-
-  // Move page up/down handlers - simple reordering
-  const handleMovePageUpDown = useCallback((page: Page, direction: "up" | "down") => {
-    if (!canMoveContent) return;
-    const pages = pagesData?.pages ?? [];
-    const sectionPages = pages.filter(p => p.section_id === page.section_id).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
-    const currentIndex = sectionPages.findIndex(p => p.id === page.id);
-    if (currentIndex === -1) return;
-    
-    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= sectionPages.length) return;
-    
-    const targetPage = sectionPages[newIndex];
-    // Swap display_order values
-    dragPage.mutate({ 
-      id: page.id, 
-      section_id: page.section_id, 
-      display_order: targetPage.display_order ?? newIndex 
-    });
-    dragPage.mutate({ 
-      id: targetPage.id, 
-      section_id: targetPage.section_id, 
-      display_order: page.display_order ?? currentIndex 
-    });
-  }, [canMoveContent, pagesData, dragPage]);
 
   const handleDeletePage = useCallback((page: Page) => {
     if (!canDeleteContent) {
