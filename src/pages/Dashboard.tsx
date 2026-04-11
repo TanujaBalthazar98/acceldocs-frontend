@@ -2682,7 +2682,7 @@ function PageActionsMenu({
   canDelete: boolean;
   onEditTitle: (page: Page) => void;
   onEditSlug: (page: Page) => void;
-  onMove: (page: Page) => void;
+  onMove: (page: Page, direction: "up" | "down") => void;
   onRearrange: (page: Page) => void;
   onSetVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
   onDuplicate: (page: Page) => void;
@@ -2790,7 +2790,7 @@ function PageItem({
   onSelect: (id: number) => void;
   onEditTitle: (page: Page) => void;
   onEditSlug: (page: Page) => void;
-  onMove: (page: Page) => void;
+  onMove: (page: Page, direction: "up" | "down") => void;
   onRearrange: (page: Page) => void;
   onSetVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
   onDuplicate: (page: Page) => void;
@@ -2860,6 +2860,25 @@ function PageItem({
           </span>
         )}
       </button>
+      {/* Move up/down buttons - always visible for easy reordering */}
+      {canMove && (
+        <div className="absolute right-8 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+            onClick={(e) => { e.stopPropagation(); onMovePage?.(page, "up"); }}
+            title="Move up"
+          >
+            <ChevronUp className="h-3 w-3" />
+          </button>
+          <button
+            className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+            onClick={(e) => { e.stopPropagation(); onMovePage?.(page, "down"); }}
+            title="Move down"
+          >
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        </div>
+      )}
       {(canManageActions || canMove || canManageVisibility || canDelete || canPublish) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -3179,7 +3198,7 @@ function SectionNode({
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
-                onMove={onMovePage}
+                onMove={handleMovePageUpDown}
                 onRearrange={onRearrangePage}
                 onSetVisibilityOverride={onSetPageVisibilityOverride}
                 onDuplicate={onDuplicatePage}
@@ -3392,7 +3411,7 @@ function ReaderHierarchy({
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
-                onMove={onMovePage}
+                onMove={handleMovePageUpDown}
                 onRearrange={onRearrangePage}
                 onSetVisibilityOverride={onSetPageVisibilityOverride}
                 onDuplicate={onDuplicatePage}
@@ -5084,6 +5103,31 @@ export default function Dashboard() {
       description: `Drag "${page.title}" using the grip handle to reorder.`,
     });
   }, [canMoveContent, notifyPermissionDenied, toast]);
+
+  // Move page up/down handlers - simple reordering
+  const handleMovePageUpDown = useCallback((page: Page, direction: "up" | "down") => {
+    if (!canMoveContent) return;
+    const pages = pagesData?.pages ?? [];
+    const sectionPages = pages.filter(p => p.section_id === page.section_id).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+    const currentIndex = sectionPages.findIndex(p => p.id === page.id);
+    if (currentIndex === -1) return;
+    
+    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= sectionPages.length) return;
+    
+    const targetPage = sectionPages[newIndex];
+    // Swap display_order values
+    dragPage.mutate({ 
+      id: page.id, 
+      section_id: page.section_id, 
+      display_order: targetPage.display_order ?? newIndex 
+    });
+    dragPage.mutate({ 
+      id: targetPage.id, 
+      section_id: targetPage.section_id, 
+      display_order: page.display_order ?? currentIndex 
+    });
+  }, [canMoveContent, pagesData, dragPage]);
 
   const handleDeletePage = useCallback((page: Page) => {
     if (!canDeleteContent) {
