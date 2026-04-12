@@ -74,8 +74,10 @@ const scoreText = (text: string, phrase: string, tokens: string[]): number => {
   if (!text) return 0;
   const normalized = normalizeSearchText(text);
   if (!normalized) return 0;
+  const words = normalized.split(" ").filter(Boolean);
 
   let score = 0;
+  let tokenMatches = 0;
 
   if (normalized === phrase) score += 120;
   else if (normalized.startsWith(phrase)) score += 80;
@@ -83,9 +85,52 @@ const scoreText = (text: string, phrase: string, tokens: string[]): number => {
 
   for (const token of tokens) {
     if (!token) continue;
-    if (normalized === token) score += 24;
-    else if (normalized.startsWith(token)) score += 14;
-    else if (normalized.includes(token)) score += 8;
+    if (normalized === token) {
+      score += 24;
+      tokenMatches += 1;
+      continue;
+    }
+
+    if (normalized.startsWith(token)) {
+      score += 14;
+      tokenMatches += 1;
+      continue;
+    }
+
+    if (normalized.includes(token)) {
+      score += 8;
+      tokenMatches += 1;
+      continue;
+    }
+
+    // Soft fuzzy matching for near-prefix tokens in compound words.
+    if (token.length >= 3 && words.some((word) => word.startsWith(token.slice(0, token.length - 1)))) {
+      score += 4;
+      tokenMatches += 1;
+    }
+  }
+
+  if (tokens.length > 0) {
+    if (tokenMatches === tokens.length) {
+      score += 18;
+    } else if (tokenMatches > 0) {
+      score += tokenMatches * 4;
+    }
+
+    // Reward phrases where tokens appear in-order within the text.
+    if (tokens.length > 1) {
+      let cursor = -1;
+      let inOrder = true;
+      for (const token of tokens) {
+        const index = normalized.indexOf(token, cursor + 1);
+        if (index < 0) {
+          inOrder = false;
+          break;
+        }
+        cursor = index;
+      }
+      if (inOrder) score += 16;
+    }
   }
 
   return score;
@@ -105,7 +150,7 @@ export function searchDocs({
   limit?: number;
 }): SearchResult[] {
   const sanitized = sanitizeQuery(query);
-  if (!sanitized) return [];
+  if (!sanitized || sanitized.length < 2) return [];
 
   const phrase = normalizeSearchText(sanitized);
   const tokens = phrase.split(" ").filter((token) => token.length > 1);

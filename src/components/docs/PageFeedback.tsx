@@ -56,12 +56,15 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
   const [issueType, setIssueType] = useState<string>("question");
   const [rating, setRating] = useState<number>(0);
   const [expanded, setExpanded] = useState(false);
+  const [showComments, setShowComments] = useState(false);
 
   useEffect(() => {
     fetchFeedback();
     setNewComment("");
     setRating(0);
     setIssueType("question");
+    setExpanded(false);
+    setShowComments(false);
   }, [documentId]);
 
   useEffect(() => {
@@ -90,19 +93,22 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
     const isPublicFeedback = !!isPublic;
 
     if (isPublicFeedback) {
-      if (!newComment.trim() || rating === 0) return;
+      if (rating === 0) return;
     } else if (!newComment.trim() || !user) {
       return;
     }
 
     setSubmitting(true);
     const effectiveFeedbackType = isPublicFeedback ? "rating" : feedbackType;
+    const publicContent =
+      newComment.trim() ||
+      (rating >= 4 ? "Marked as helpful." : "Marked as not helpful.");
     const { error } = await create("page_feedback", {
       document_id: documentId,
       user_id: user?.id ?? null,
       user_name: user?.name || user?.email?.split("@")[0] || null,
       user_email: user?.email ?? null,
-      content: newComment.trim(),
+      content: isPublicFeedback ? publicContent : newComment.trim(),
       feedback_type: effectiveFeedbackType,
       issue_type: isPublicFeedback ? null : feedbackType === "issue" ? issueType : null,
       rating: isPublicFeedback ? rating : null,
@@ -151,9 +157,10 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
   };
 
   const unresolvedCount = feedback.filter(f => !f.is_resolved).length;
+  const commentCount = feedback.filter((f) => f.feedback_type !== "rating").length;
   const isPublicFeedback = !!isPublic;
   const canSubmit = isPublicFeedback
-    ? rating > 0 && !!newComment.trim()
+    ? rating > 0
     : !!user && !!newComment.trim();
 
   return (
@@ -176,35 +183,50 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
         <div className="space-y-4">
           {/* Submit form */}
           {isPublicFeedback ? (
-            <div className="bg-muted/30 rounded-lg p-4 space-y-4">
+            <div className="bg-muted/30 rounded-lg p-3 space-y-3">
               <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Rate this page</p>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setRating(value)}
-                      className="rounded-full p-1 hover:bg-muted transition-colors"
-                      aria-label={`Rate ${value} star${value > 1 ? "s" : ""}`}
-                    >
-                      <Star
-                        className={cn(
-                          "h-5 w-5",
-                          rating >= value ? "text-amber-500 fill-amber-400" : "text-muted-foreground"
-                        )}
-                      />
-                    </button>
-                  ))}
+                <p className="text-xs font-medium text-muted-foreground">Was this page helpful?</p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={rating >= 4 ? "default" : "outline"}
+                    onClick={() => setRating(5)}
+                    className="h-8"
+                  >
+                    Yes
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={rating > 0 && rating < 4 ? "default" : "outline"}
+                    onClick={() => setRating(1)}
+                    className="h-8"
+                  >
+                    No
+                  </Button>
                 </div>
               </div>
               <Textarea
-                placeholder="Tell us what worked (or what didn't)."
+                placeholder="Optional feedback"
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
-                className="min-h-[80px] resize-none"
+                className="min-h-[64px] resize-none"
               />
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between gap-2">
+                {commentCount > 0 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => setShowComments((prev) => !prev)}
+                  >
+                    {showComments ? "Hide comments" : `Show comments (${commentCount})`}
+                  </Button>
+                ) : (
+                  <div />
+                )}
                 <Button
                   size="sm"
                   onClick={handleSubmit}
@@ -220,7 +242,7 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
               </div>
             </div>
           ) : user ? (
-            <div className="bg-muted/30 rounded-lg p-4 space-y-3">
+            <div className="bg-muted/30 rounded-lg p-3 space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Select value={feedbackType} onValueChange={setFeedbackType}>
                   <SelectTrigger className="w-[140px] h-8 text-xs">
@@ -256,9 +278,22 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
                 placeholder="Share your thoughts, suggestions, or report issues..."
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
-                className="min-h-[80px] resize-none"
+                className="min-h-[72px] resize-none"
               />
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between gap-2">
+                {commentCount > 0 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => setShowComments((prev) => !prev)}
+                  >
+                    {showComments ? "Hide comments" : `Show comments (${commentCount})`}
+                  </Button>
+                ) : (
+                  <div />
+                )}
                 <Button
                   size="sm"
                   onClick={handleSubmit}
@@ -280,7 +315,7 @@ export function PageFeedback({ documentId, isOrgUser, isPublic, className }: Pag
           )}
 
           {/* Feedback list */}
-          {loading ? (
+          {!showComments ? null : loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>

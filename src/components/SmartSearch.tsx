@@ -62,6 +62,21 @@ export function SmartSearch({
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const mergeSearchResults = useCallback((primary: SearchResult[], secondary: SearchResult[]): SearchResult[] => {
+    const merged: SearchResult[] = [];
+    const seen = new Set<string>();
+    const keyOf = (result: SearchResult) => `${result.type}:${String(result.id)}`;
+
+    for (const result of [...primary, ...secondary]) {
+      const key = keyOf(result);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(result);
+    }
+
+    return merged;
+  }, []);
+
   // Keyboard shortcut to open search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -81,51 +96,54 @@ export function SmartSearch({
 
   // Search logic — backend (when orgSlug provided) or client-side fallback
   const performSearch = useCallback(async (searchQuery: string) => {
-    if (!searchQuery.trim()) {
+    const cleanQuery = searchQuery.trim();
+    if (!cleanQuery || cleanQuery.length < 2) {
       setResults([]);
       return;
     }
 
+    const localResults = searchDocs({
+      query: cleanQuery,
+      documents,
+      topics,
+      projects,
+    });
+
     try {
-      let found = false;
       if (orgSlug) {
-        // Backend full-text search — fall back to client-side on failure
+        // Backend full-text search + local hierarchical search merged for better relevance.
         try {
           const { results: apiResults } = await searchApi.search({
-            q: searchQuery,
+            q: cleanQuery,
             org_slug: orgSlug,
             audience: audience || "public",
             limit: 15,
           });
-          setResults(
-            apiResults.map((r) => ({
+
+          const apiPageResults: SearchResult[] = apiResults.map((r) => ({
               id: String(r.page_id),
               title: r.title,
               type: "page" as const,
               projectName: r.section_name || undefined,
               snippet: r.snippet || undefined,
-            })),
-          );
-          found = true;
-        } catch {
-          // API unavailable — fall through to client-side search
+            }));
+
+          const mergedResults = mergeSearchResults(apiPageResults, localResults).slice(0, 20);
+          setResults(mergedResults);
+          setSelectedIndex(0);
+          return;
+        } catch (error) {
+          console.warn("Backend search unavailable, using local search:", error);
         }
       }
-      if (!found) {
-        const searchResults = searchDocs({
-          query: searchQuery,
-          documents,
-          topics,
-          projects,
-        });
-        setResults(searchResults);
-      }
+
+      setResults(localResults);
       setSelectedIndex(0);
     } catch (error) {
       console.error("Search error:", error);
       setResults([]);
     }
-  }, [orgSlug, audience, documents, topics, projects]);
+  }, [orgSlug, audience, documents, topics, projects, mergeSearchResults]);
 
   // Debounced search to improve performance
   useEffect(() => {
@@ -153,7 +171,7 @@ export function SmartSearch({
       } finally {
         setIsSearching(false);
       }
-    }, orgSlug ? 400 : 300); // slightly longer debounce for API calls
+    }, orgSlug ? 320 : 240); // keep search responsive while still reducing call volume
 
     return () => {
       if (debounceTimeoutRef.current) {

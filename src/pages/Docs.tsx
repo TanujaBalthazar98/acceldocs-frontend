@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { applySeo } from "@/lib/seo";
 import {
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   FolderTree,
@@ -93,6 +94,7 @@ const normalizeHostname = (value?: string | null) =>
 const orgCacheById = new Map<string, Organization>();
 const orgCacheBySlug = new Map<string, Organization>();
 const orgCacheByDomain = new Map<string, Organization>();
+const SIDEBAR_COLLAPSE_KEY = "acceldocs_docs_sidebar_collapsed";
 
 const cacheOrganization = (org: Organization) => {
   if (!org?.id) return;
@@ -545,7 +547,10 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
+  });
   const [documentHtml, setDocumentHtml] = useState<string | null>(null);
   const resolvedDocumentHtml = useMemo(() => {
     if (!documentHtml || !selectedDocument?.title) return null;
@@ -613,6 +618,15 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       window.removeEventListener("offline", updateOnlineStatus);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SIDEBAR_COLLAPSE_KEY, sidebarCollapsed ? "1" : "0");
+  }, [sidebarCollapsed]);
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => !prev);
+  };
 
   const activeProduct = useMemo(() => {
     if (!selectedProject) return null;
@@ -1736,6 +1750,127 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     [selectedProject, documents, visibleVersion, visibleVersionIdentity, versionIdentityById]
   );
 
+  const orderedProjectDocuments = useMemo(() => {
+    if (!selectedProject) return [];
+
+    const projectTopics = topics
+      .filter(
+        (topic) =>
+          topic.project_id === selectedProject.id &&
+          matchesVisibleVersion(topic.project_version_id)
+      )
+      .slice();
+
+    const docsInProject = documents
+      .filter(
+        (doc) =>
+          doc.project_id === selectedProject.id &&
+          matchesVisibleVersion(doc.project_version_id)
+      )
+      .slice();
+
+    const sortByDisplayOrder = <T extends { display_order?: number | null; name?: string; title?: string }>(
+      a: T,
+      b: T
+    ) => {
+      const orderA = a.display_order ?? Number.MAX_SAFE_INTEGER;
+      const orderB = b.display_order ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.title || a.name || "").localeCompare(b.title || b.name || "");
+    };
+
+    const childrenByParent = new Map<string | null, Topic[]>();
+    for (const topic of projectTopics) {
+      const parent = topic.parent_id ?? null;
+      const list = childrenByParent.get(parent) ?? [];
+      list.push(topic);
+      childrenByParent.set(parent, list);
+    }
+    for (const list of childrenByParent.values()) {
+      list.sort(sortByDisplayOrder);
+    }
+
+    const docsByTopic = new Map<string, Document[]>();
+    const projectLevelDocs: Document[] = [];
+    for (const doc of docsInProject) {
+      if (!doc.topic_id) {
+        projectLevelDocs.push(doc);
+        continue;
+      }
+      const list = docsByTopic.get(doc.topic_id) ?? [];
+      list.push(doc);
+      docsByTopic.set(doc.topic_id, list);
+    }
+    for (const list of docsByTopic.values()) {
+      list.sort(sortByDisplayOrder);
+    }
+
+    const isRootWrapperTopic = (topic: Topic) =>
+      !topic.parent_id &&
+      topic.name.toLowerCase().trim() === selectedProject.name.toLowerCase().trim();
+
+    const rootWrapperTopicIds = new Set(projectTopics.filter(isRootWrapperTopic).map((topic) => topic.id));
+    const ordered: Document[] = [];
+    const seen = new Set<string>();
+    const pushDoc = (doc: Document) => {
+      const key = String(doc.id);
+      if (seen.has(key)) return;
+      seen.add(key);
+      ordered.push(doc);
+    };
+
+    const walkTopic = (topic: Topic) => {
+      for (const doc of docsByTopic.get(topic.id) || []) {
+        pushDoc(doc);
+      }
+      for (const child of childrenByParent.get(topic.id) || []) {
+        walkTopic(child);
+      }
+    };
+
+    for (const rootTopic of childrenByParent.get(null) || []) {
+      if (rootWrapperTopicIds.has(rootTopic.id)) {
+        for (const child of childrenByParent.get(rootTopic.id) || []) {
+          walkTopic(child);
+        }
+        continue;
+      }
+      walkTopic(rootTopic);
+    }
+
+    const wrapperDocs = docsInProject
+      .filter((doc) => !!doc.topic_id && rootWrapperTopicIds.has(doc.topic_id))
+      .sort(sortByDisplayOrder);
+    wrapperDocs.forEach(pushDoc);
+    projectLevelDocs.sort(sortByDisplayOrder).forEach(pushDoc);
+
+    return ordered;
+  }, [
+    selectedProject,
+    topics,
+    documents,
+    visibleVersion,
+    visibleVersionIdentity,
+    versionIdentityById,
+  ]);
+
+  const { previousDocument, nextDocument } = useMemo(() => {
+    if (!selectedDocument) {
+      return { previousDocument: null as Document | null, nextDocument: null as Document | null };
+    }
+    const index = orderedProjectDocuments.findIndex(
+      (doc) => String(doc.id) === String(selectedDocument.id)
+    );
+    if (index < 0) {
+      return { previousDocument: null as Document | null, nextDocument: null as Document | null };
+    }
+    return {
+      previousDocument: index > 0 ? orderedProjectDocuments[index - 1] : null,
+      nextDocument:
+        index < orderedProjectDocuments.length - 1 ? orderedProjectDocuments[index + 1] : null,
+    };
+  }, [orderedProjectDocuments, selectedDocument]);
+
   const effectiveDocVisibility: VisibilityLevel =
     selectedDocument?.visibility || selectedProject?.visibility || "public";
   const showMinimalPublicMeta =
@@ -2069,7 +2204,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           onSearchChange={setSearchQuery}
           onProjectSelect={selectProject}
           onDocumentSelect={(docId) => {
-            const doc = documents.find(d => d.id === docId);
+            const doc = documents.find((d) => String(d.id) === String(docId));
             if (doc) selectDocument(doc);
           }}
           onTopicSelect={(topicId) => {
@@ -2102,6 +2237,19 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         <div className="docs-main-header-inner flex items-center justify-between px-3 sm:px-4 lg:px-6 h-14 gap-2">
           {/* Left: Organization Logo/Name + Root Project */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden lg:inline-flex h-8 w-8"
+              onClick={toggleSidebarCollapsed}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {sidebarCollapsed ? (
+                <Menu className="h-4 w-4" />
+              ) : (
+                <PanelRightClose className="h-4 w-4" />
+              )}
+            </Button>
             <Link
               to={currentOrg ? getOrgPathPrefix(currentOrg) : "/"}
               onClick={(e) => {
@@ -2168,13 +2316,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   const project = projects.find(p => p.id === result.id);
                   if (project) selectProject(project);
                 } else if (result.type === "topic") {
-                  const topic = topics.find(t => t.id === result.id);
+                  const topic = topics.find((t) => String(t.id) === String(result.id));
                   if (topic) {
                     const project = projects.find(p => p.id === topic.project_id);
                     if (project) selectProject(project);
                   }
                 } else if (result.type === "page") {
-                  const doc = documents.find(d => d.id === result.id);
+                  const doc = documents.find((d) => String(d.id) === String(result.id));
                   if (doc) selectDocument(doc);
                 }
               }}
@@ -2424,20 +2572,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           </aside>
         )}
 
-        {/* Collapsed sidebar trigger */}
-        {sidebarCollapsed && (
-          <div className={cn("hidden lg:flex items-start pt-4", sidebarOnRight ? "pr-2" : "pl-2")}>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-8 w-8"
-              onClick={() => setSidebarCollapsed(false)}
-            >
-              <Menu className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-
         {/* Main Content */}
         <main className="docs-main-content flex-1 min-w-0">
           {loading ? (
@@ -2575,6 +2709,48 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                     />
                   ) : null;
                 })()}
+
+                {(previousDocument || nextDocument) && (
+                  <nav className="docs-page-nav mt-8 border-t border-border pt-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {previousDocument ? (
+                        <Button
+                          variant="outline"
+                          className="justify-start h-auto py-3 px-4"
+                          onClick={() => selectDocument(previousDocument)}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <ChevronLeft className="h-4 w-4 shrink-0" />
+                            <div className="text-left min-w-0">
+                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Previous</div>
+                              <div className="text-sm truncate">{previousDocument.title}</div>
+                            </div>
+                          </div>
+                        </Button>
+                      ) : (
+                        <div />
+                      )}
+
+                      {nextDocument ? (
+                        <Button
+                          variant="outline"
+                          className="justify-end h-auto py-3 px-4"
+                          onClick={() => selectDocument(nextDocument)}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="text-right min-w-0">
+                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Next</div>
+                              <div className="text-sm truncate">{nextDocument.title}</div>
+                            </div>
+                            <ChevronRight className="h-4 w-4 shrink-0" />
+                          </div>
+                        </Button>
+                      ) : (
+                        <div />
+                      )}
+                    </div>
+                  </nav>
+                )}
               </article>
 
               {/* Right sidebar - Table of Contents */}
