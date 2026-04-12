@@ -2348,6 +2348,24 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
           {/* Right: Theme toggle + Auth buttons */}
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {selectedDocument && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleExpandedContent}
+                className="hidden lg:inline-flex gap-1.5 px-2 sm:px-3 text-xs sm:text-sm"
+                aria-label={isFullWidth ? "Restore layout" : "Expand content"}
+              >
+                {isFullWidth ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+                <span className="hidden xl:inline">
+                  {isFullWidth ? "Restore layout" : "Expand content"}
+                </span>
+              </Button>
+            )}
             {isOffline && (
               <Badge variant="outline" className="hidden sm:inline-flex gap-1 text-xs text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-300">
                 <WifiOff className="h-3 w-3" />
@@ -2621,26 +2639,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                       return null;
                     })()}
                   </nav>
-                  
-                  {/* Expand/Collapse button */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleExpandedContent}
-                    className="docs-density-toggle hidden lg:flex gap-2 text-muted-foreground hover:text-foreground"
-                  >
-                    {isFullWidth ? (
-                      <>
-                        <Minimize2 className="h-4 w-4" />
-                        <span className="text-xs">Restore layout</span>
-                      </>
-                    ) : (
-                      <>
-                        <Maximize2 className="h-4 w-4" />
-                        <span className="text-xs">Expand content</span>
-                      </>
-                    )}
-                  </Button>
                 </div>
 
                 {/* Title */}
