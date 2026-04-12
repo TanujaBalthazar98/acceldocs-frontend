@@ -157,6 +157,8 @@ type DriveImportTarget = {
 };
 
 type DropPosition = "before" | "inside" | "after";
+type PageOrderUpdate = { id: number; section_id: number | null; display_order: number };
+type SectionOrderUpdate = { id: number; parent_id: number | null; display_order: number };
 
 type ParsedDashboardLocation = {
   mode: DashboardPaneMode;
@@ -4762,16 +4764,24 @@ export default function Dashboard() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const dragPage = useMutation({
-    mutationFn: ({ id, section_id, display_order }: { id: number; section_id: number | null; display_order?: number }) =>
-      pagesApi.update(id, { section_id, display_order }),
+  const reorderPages = useMutation({
+    mutationFn: async (updates: PageOrderUpdate[]) => {
+      for (const update of updates) {
+        const { id, ...payload } = update;
+        await pagesApi.update(id, payload);
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pages"] }),
     onError: (err: Error) => toast({ title: "Move failed", description: err.message, variant: "destructive" }),
   });
 
-  const dragSection = useMutation({
-    mutationFn: ({ id, parent_id, display_order }: { id: number; parent_id?: number | null; display_order?: number }) =>
-      sectionsApi.update(id, { parent_id, display_order }),
+  const reorderSections = useMutation({
+    mutationFn: async (updates: SectionOrderUpdate[]) => {
+      for (const update of updates) {
+        const { id, ...payload } = update;
+        await sectionsApi.update(id, payload);
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sections"] }),
     onError: (err: Error) => toast({ title: "Move failed", description: err.message, variant: "destructive" }),
   });
@@ -4790,6 +4800,26 @@ export default function Dashboard() {
       return sortSectionsByDisplayOrder(siblings);
     },
     [sectionsData?.sections],
+  );
+
+  const buildPageOrderUpdates = useCallback(
+    (ordered: Page[], sectionId: number | null): PageOrderUpdate[] =>
+      ordered.flatMap((item, index) => {
+        const nextSectionId = sectionId;
+        if (item.section_id === nextSectionId && item.display_order === index) return [];
+        return [{ id: item.id, section_id: nextSectionId, display_order: index }];
+      }),
+    [],
+  );
+
+  const buildSectionOrderUpdates = useCallback(
+    (ordered: Section[], parentId: number | null): SectionOrderUpdate[] =>
+      ordered.flatMap((item, index) => {
+        const nextParentId = parentId;
+        if (item.parent_id === nextParentId && item.display_order === index) return [];
+        return [{ id: item.id, parent_id: nextParentId, display_order: index }];
+      }),
+    [],
   );
 
   const handleDragStart = useCallback(({ active }: DragStartEvent) => {
@@ -4844,7 +4874,11 @@ export default function Dashboard() {
           const insertIndex =
             targetIndexInWithoutSource + (dropPosition === "after" ? 1 : 0);
           if (sourceIndex === insertIndex || sourceIndex === insertIndex - 1) return;
-          dragPage.mutate({ id: page.id, section_id: sourceSectionId, display_order: insertIndex });
+          const reordered = [...withoutSource];
+          reordered.splice(Math.min(reordered.length, Math.max(0, insertIndex)), 0, page);
+          const updates = buildPageOrderUpdates(reordered, sourceSectionId);
+          if (updates.length === 0) return;
+          reorderPages.mutate(updates);
           return;
         }
 
@@ -4852,22 +4886,45 @@ export default function Dashboard() {
         const targetIndex = targetPages.findIndex((p) => p.id === overPage.id);
         const targetInsertIndex =
           (targetIndex === -1 ? targetPages.length : targetIndex) + (dropPosition === "after" ? 1 : 0);
-        dragPage.mutate({
-          id: page.id,
-          section_id: targetSectionId,
-          display_order: Math.min(targetPages.length, Math.max(0, targetInsertIndex)),
-        });
+        const sourceWithout = orderedPagesForSection(sourceSectionId).filter((p) => p.id !== page.id);
+        const targetWith = [...targetPages];
+        const insertAt = Math.min(targetWith.length, Math.max(0, targetInsertIndex));
+        targetWith.splice(insertAt, 0, page);
+        const updates = [
+          ...buildPageOrderUpdates(sourceWithout, sourceSectionId),
+          ...buildPageOrderUpdates(targetWith, targetSectionId),
+        ];
+        if (updates.length === 0) return;
+        reorderPages.mutate(updates);
 
       } else if (overStr.startsWith("nest-") || overStr.startsWith("sect-")) {
         const targetSectionId = parseInt(overStr.slice(5), 10);
         const dropPosition = resolveDropPosition(active, over);
         const targetPages = orderedPagesForSection(targetSectionId);
         const targetIndex = dropPosition === "before" ? 0 : targetPages.length;
-        if (page.section_id === targetSectionId) {
-          const sourceIndex = targetPages.findIndex((p) => p.id === page.id);
-          if (sourceIndex === -1 || sourceIndex === targetIndex) return;
+        const sourceSectionId = page.section_id ?? null;
+
+        if (sourceSectionId === targetSectionId) {
+          const withoutSource = targetPages.filter((p) => p.id !== page.id);
+          const insertAt = Math.min(withoutSource.length, Math.max(0, targetIndex));
+          const reordered = [...withoutSource];
+          reordered.splice(insertAt, 0, page);
+          const updates = buildPageOrderUpdates(reordered, sourceSectionId);
+          if (updates.length === 0) return;
+          reorderPages.mutate(updates);
+          return;
         }
-        dragPage.mutate({ id: page.id, section_id: targetSectionId, display_order: targetIndex });
+
+        const sourceWithout = orderedPagesForSection(sourceSectionId).filter((p) => p.id !== page.id);
+        const targetWith = [...targetPages];
+        const insertAt = Math.min(targetWith.length, Math.max(0, targetIndex));
+        targetWith.splice(insertAt, 0, page);
+        const updates = [
+          ...buildPageOrderUpdates(sourceWithout, sourceSectionId),
+          ...buildPageOrderUpdates(targetWith, targetSectionId),
+        ];
+        if (updates.length === 0) return;
+        reorderPages.mutate(updates);
       }
 
     } else if (activeStr.startsWith("sect-")) {
@@ -4887,14 +4944,21 @@ export default function Dashboard() {
         const dropPosition = resolveDropPosition(active, over);
 
         if (dropPosition === "inside") {
+          const sourceParentId = section.parent_id ?? null;
           const targetChildren = orderedSectionsForParent(targetId).filter((s) => s.id !== sectionId);
-          const targetIndex = targetChildren.length;
-          if (section.parent_id === targetId) {
-            const currentSiblings = orderedSectionsForParent(targetId);
-            const sourceIndex = currentSiblings.findIndex((s) => s.id === sectionId);
-            if (sourceIndex === -1 || sourceIndex === targetIndex) return;
-          }
-          dragSection.mutate({ id: sectionId, parent_id: targetId, display_order: targetIndex });
+          const targetWith = [...targetChildren, section];
+          const updates =
+            sourceParentId === targetId
+              ? buildSectionOrderUpdates(targetWith, targetId)
+              : [
+                ...buildSectionOrderUpdates(
+                  orderedSectionsForParent(sourceParentId).filter((s) => s.id !== sectionId),
+                  sourceParentId,
+                ),
+                ...buildSectionOrderUpdates(targetWith, targetId),
+              ];
+          if (updates.length === 0) return;
+          reorderSections.mutate(updates);
           return;
         }
 
@@ -4905,13 +4969,22 @@ export default function Dashboard() {
         const targetIndex = siblingSections.findIndex((s) => s.id === targetId);
         if (targetIndex === -1) return;
         const insertIndex = targetIndex + (dropPosition === "after" ? 1 : 0);
-
-        if (section.parent_id === targetParentId) {
-          const currentSiblings = orderedSectionsForParent(targetParentId);
-          const sourceIndex = currentSiblings.findIndex((s) => s.id === sectionId);
-          if (sourceIndex === -1 || sourceIndex === insertIndex || sourceIndex === insertIndex - 1) return;
-        }
-        dragSection.mutate({ id: sectionId, parent_id: targetParentId, display_order: insertIndex });
+        const sourceParentId = section.parent_id ?? null;
+        const targetWith = [...siblingSections];
+        const insertAt = Math.min(targetWith.length, Math.max(0, insertIndex));
+        targetWith.splice(insertAt, 0, section);
+        const updates =
+          sourceParentId === targetParentId
+            ? buildSectionOrderUpdates(targetWith, targetParentId)
+            : [
+              ...buildSectionOrderUpdates(
+                orderedSectionsForParent(sourceParentId).filter((s) => s.id !== sectionId),
+                sourceParentId,
+              ),
+              ...buildSectionOrderUpdates(targetWith, targetParentId),
+            ];
+        if (updates.length === 0) return;
+        reorderSections.mutate(updates);
 
       } else if (overStr.startsWith("sect-")) {
         const overSectionId = parseInt(overStr.slice(5), 10);
@@ -4927,10 +5000,24 @@ export default function Dashboard() {
         if (targetIndexInWithoutSource === -1) return;
         const insertIndex = targetIndexInWithoutSource + (dropPosition === "after" ? 1 : 0);
         if (sourceIndex === insertIndex || sourceIndex === insertIndex - 1) return;
-        dragSection.mutate({ id: sectionId, parent_id: section.parent_id ?? null, display_order: insertIndex });
+        const reordered = [...withoutSource];
+        reordered.splice(Math.min(reordered.length, Math.max(0, insertIndex)), 0, section);
+        const updates = buildSectionOrderUpdates(reordered, section.parent_id ?? null);
+        if (updates.length === 0) return;
+        reorderSections.mutate(updates);
       }
     }
-  }, [canMoveContent, pagesData, sectionsData, dragPage, dragSection, orderedPagesForSection, orderedSectionsForParent]);
+  }, [
+    canMoveContent,
+    pagesData,
+    sectionsData,
+    orderedPagesForSection,
+    orderedSectionsForParent,
+    buildPageOrderUpdates,
+    buildSectionOrderUpdates,
+    reorderPages,
+    reorderSections,
+  ]);
   // ──────────────────────────────────────────────────────────────────────────
 
   const createSection = useMutation({
