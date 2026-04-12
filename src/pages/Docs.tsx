@@ -602,6 +602,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [hasFetched, setHasFetched] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
   const [isFullWidth, setIsFullWidth] = useState(false);
+  const sidebarStateBeforeExpandRef = useRef<boolean | null>(null);
   const [internalAccessDenied, setInternalAccessDenied] = useState(false);
   const [internalAccessReason, setInternalAccessReason] = useState<"signed_out" | "not_member" | null>(null);
   const [useClientSideFilters, setUseClientSideFilters] = useState(false);
@@ -626,6 +627,21 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
   const toggleSidebarCollapsed = () => {
     setSidebarCollapsed((prev) => !prev);
+  };
+
+  const toggleExpandedContent = () => {
+    if (!isFullWidth) {
+      sidebarStateBeforeExpandRef.current = sidebarCollapsed;
+      setIsFullWidth(true);
+      setSidebarCollapsed(true);
+      return;
+    }
+
+    setIsFullWidth(false);
+    if (sidebarStateBeforeExpandRef.current !== null) {
+      setSidebarCollapsed(sidebarStateBeforeExpandRef.current);
+    }
+    sidebarStateBeforeExpandRef.current = null;
   };
 
   const activeProduct = useMemo(() => {
@@ -2610,18 +2626,18 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setIsFullWidth(!isFullWidth)}
+                    onClick={toggleExpandedContent}
                     className="docs-density-toggle hidden lg:flex gap-2 text-muted-foreground hover:text-foreground"
                   >
                     {isFullWidth ? (
                       <>
                         <Minimize2 className="h-4 w-4" />
-                        <span className="text-xs">Compact</span>
+                        <span className="text-xs">Restore layout</span>
                       </>
                     ) : (
                       <>
                         <Maximize2 className="h-4 w-4" />
-                        <span className="text-xs">Expand</span>
+                        <span className="text-xs">Expand content</span>
                       </>
                     )}
                   </Button>
