@@ -3,9 +3,6 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef, type ChangeEvent } from "react";
-
-// Organizations allowed to access the Migration feature (by ID)
-const MIGRATION_ENABLED_ORG_IDS = [1, 2, 3]; // Add Acceldata org IDs here
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DndContext,
@@ -139,7 +136,6 @@ import { WorkspaceSwitcher, setStoredOrgId, getStoredOrgId } from "@/components/
 import { TableOfContents } from "@/components/docs/TableOfContents";
 import { ApprovalsPanel } from "@/components/dashboard/ApprovalsPanel";
 import { AgentChatPanel } from "@/components/dashboard/AgentChatPanel";
-import { MigrationPanel } from "@/components/dashboard/MigrationPanel";
 import InlineAssistDialog from "@/components/dashboard/InlineAssistDialog";
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { TemplatePickerDialog } from "@/components/dashboard/TemplatePickerDialog";
@@ -148,7 +144,7 @@ import { invokeFunction } from "@/lib/api/functions";
 type VisibilityLevel = "public" | "internal" | "external";
 type VisibilityFilter = "all" | VisibilityLevel;
 type LocalImportMode = "files" | "folder";
-type DashboardPaneMode = "content" | "analytics" | "approvals" | "agent" | "migration";
+type DashboardPaneMode = "content" | "analytics" | "approvals" | "agent";
 
 type DriveImportTarget = {
   id: number;
@@ -5673,22 +5669,6 @@ export default function Dashboard() {
               >
                 <Sparkles className="h-4 w-4" />
               </Button>
-              {org && MIGRATION_ENABLED_ORG_IDS.includes(org.id) && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-8 w-8 shrink-0 rounded-lg disabled:opacity-40 disabled:pointer-events-none",
-                    dashboardPaneMode === "migration"
-                      ? "text-primary bg-primary/10 hover:bg-primary/15"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() => setDashboardPaneMode("migration")}
-                  title="Migration"
-                >
-                  <ArrowRightLeft className="h-4 w-4" />
-                </Button>
-              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -5941,21 +5921,6 @@ export default function Dashboard() {
                     <Sparkles className="h-3 w-3" />
                     Agent
                   </button>
-                  {org && MIGRATION_ENABLED_ORG_IDS.includes(org.id) && (
-                    <button
-                      type="button"
-                      onClick={() => setDashboardPaneMode("migration")}
-                      className={cn(
-                        "h-7 rounded-md text-[11px] font-semibold transition-colors inline-flex items-center justify-center gap-1",
-                        dashboardPaneMode === "migration"
-                          ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      <ArrowRightLeft className="h-3 w-3" />
-                      Migration
-                    </button>
-                  )}
                 </div>
               </div>
               <div className="flex items-center justify-between px-2 mb-1.5">
@@ -6588,11 +6553,6 @@ export default function Dashboard() {
               />
             </div>
           </div>
-        ) : dashboardPaneMode === "migration" ? (
-          <MigrationPanel
-            isMobile={isMobile}
-            onOpenSidebar={() => setMobileSidebarOpen(true)}
-          />
         ) : selectedPage ? (
           <>
             {/* Toolbar */}
