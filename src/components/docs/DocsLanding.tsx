@@ -91,9 +91,9 @@ export const DocsLanding = ({
     `Explore our comprehensive documentation to learn how to get the most out of ${organization.name}.`;
 
   return (
-    <div className="min-h-[80vh] flex flex-col">
+    <div className="docs-landing-shell min-h-[80vh] flex flex-col">
       {/* Hero Section */}
-      <section className="flex-1 flex flex-col items-center justify-center px-4 py-16 lg:py-24 text-center">
+      <section className="docs-landing-hero flex-1 flex flex-col items-center justify-center px-4 py-16 lg:py-24 text-center">
         {/* Logo */}
         {organization.logo_url && (
           <img 
@@ -104,12 +104,12 @@ export const DocsLanding = ({
         )}
 
         {/* Title */}
-        <h1 className="text-4xl lg:text-5xl xl:text-6xl font-bold text-foreground mb-4 brand-heading">
+        <h1 className="docs-landing-title text-4xl lg:text-5xl xl:text-6xl font-bold text-foreground mb-4 brand-heading">
           {heroTitle}
         </h1>
 
         {/* Description */}
-        <p className="text-lg lg:text-xl text-muted-foreground max-w-2xl mb-8 brand-body">
+        <p className="docs-landing-description text-lg lg:text-xl text-muted-foreground max-w-2xl mb-8 brand-body">
           {heroDescription}
         </p>
 
@@ -205,7 +205,7 @@ export const DocsLanding = ({
                 <button
                   key={project.id}
                   onClick={() => onProjectSelect(project)}
-                  className="group p-6 rounded-xl border border-border bg-card hover:shadow-lg transition-all text-left"
+                  className="docs-landing-card group p-6 rounded-xl border border-border bg-card hover:shadow-lg transition-all text-left"
                   style={{
                     "--hover-border": organization.primary_color,
                   } as React.CSSProperties}
@@ -251,7 +251,7 @@ export const DocsLanding = ({
               {(organization.openapi_spec_json || organization.openapi_spec_url) && (
                 <Link
                   to={`/api/${orgIdentifier}`}
-                  className="group p-6 rounded-xl border border-border bg-card hover:shadow-lg transition-all text-left"
+                  className="docs-landing-card group p-6 rounded-xl border border-border bg-card hover:shadow-lg transition-all text-left"
                   style={{
                     "--hover-border": organization.primary_color,
                   } as React.CSSProperties}
@@ -295,7 +295,7 @@ export const DocsLanding = ({
               {organization.mcp_enabled && (
                 <Link
                   to={`/mcp/${orgIdentifier}`}
-                  className="group p-6 rounded-xl border border-border bg-card hover:shadow-lg transition-all text-left"
+                  className="docs-landing-card group p-6 rounded-xl border border-border bg-card hover:shadow-lg transition-all text-left"
                   style={{
                     "--hover-border": organization.primary_color,
                   } as React.CSSProperties}

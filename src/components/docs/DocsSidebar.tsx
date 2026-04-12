@@ -243,7 +243,7 @@ export function DocsSidebar({
         <button
           onClick={() => hasChildren && toggleTopic(topic.id)}
           className={cn(
-            "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+            "docs-sidebar-item flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
             "hover:bg-accent/50 hover:text-accent-foreground",
             isTopicExpanded && "sidebar-item-selected"
           )}
@@ -268,7 +268,7 @@ export function DocsSidebar({
                 <button
                   onClick={() => onSelectDocument(doc)}
                   className={cn(
-                    "flex min-w-0 items-start gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
+                    "docs-sidebar-item flex min-w-0 items-start gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
                     "hover:bg-accent hover:text-accent-foreground",
                     selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                   )}
@@ -303,10 +303,10 @@ export function DocsSidebar({
   const projectLevelDocs = getProjectLevelDocuments();
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-3 border-b border-border flex items-center justify-between">
+    <div className="docs-sidebar-shell flex flex-col h-full">
+      <div className="docs-sidebar-header p-3 border-b border-border flex items-center justify-between">
         <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-sm font-medium text-muted-foreground truncate">
+          <span className="docs-sidebar-title text-sm font-medium text-muted-foreground truncate">
             {selectedProject?.name || "Documentation"}
           </span>
         </div>
@@ -327,14 +327,14 @@ export function DocsSidebar({
         ) : rootTopics.length === 0 && projectLevelDocs.length === 0 && wrapperTopicDocs.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground text-sm">No pages found</div>
         ) : (
-          <nav className="py-2 pr-3">
+          <nav className="docs-sidebar-nav py-2 pr-3">
             {rootTopics.map((topic) => renderTopic(topic, 0))}
             {wrapperTopicDocs.map((doc) => (
               <button
                 key={doc.id}
                 onClick={() => onSelectDocument(doc)}
                 className={cn(
-                  "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                  "docs-sidebar-item flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                 )}
@@ -349,7 +349,7 @@ export function DocsSidebar({
                 key={doc.id}
                 onClick={() => onSelectDocument(doc)}
                 className={cn(
-                  "flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                  "docs-sidebar-item flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                 )}

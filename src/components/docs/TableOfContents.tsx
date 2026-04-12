@@ -260,8 +260,8 @@ export function TableOfContents({
 
   if (headings.length === 0) {
     return (
-      <nav className={cn("space-y-2", className)}>
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
+      <nav className={cn("docs-toc-nav space-y-2", className)}>
+        <div className="docs-toc-title flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
           <List className="h-4 w-4" />
           On this page
         </div>
@@ -274,12 +274,12 @@ export function TableOfContents({
   const minLevel = Math.min(...headings.map(h => h.level));
 
   return (
-    <nav className={cn("space-y-2", className)}>
-      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
+    <nav className={cn("docs-toc-nav space-y-2", className)}>
+      <div className="docs-toc-title flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
         <List className="h-4 w-4" />
         On this page
       </div>
-      <ul className="space-y-1 text-sm">
+      <ul className="docs-toc-list space-y-1 text-sm">
         {headings.map((heading) => (
           <li
             key={heading.id}
@@ -288,9 +288,9 @@ export function TableOfContents({
             <button
               onClick={() => scrollToHeading(heading.id)}
               className={cn(
-                "text-left w-full hover:text-foreground transition-colors py-1 truncate leading-snug",
+                "docs-toc-link text-left w-full hover:text-foreground transition-colors py-1 truncate leading-snug",
                 activeId === heading.id
-                  ? "text-primary font-medium"
+                  ? "docs-toc-link-active text-primary font-medium"
                   : "text-muted-foreground"
               )}
               title={heading.text}

@@ -1930,7 +1930,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
   if (showLandingPage) {
     return (
-      <div className="min-h-screen bg-background flex flex-col docs-branded">
+      <div className="min-h-screen bg-background flex flex-col docs-branded docs-app-shell">
         {/* Minimal Header */}
         <header className="border-b border-border bg-card">
           <div className="flex items-center justify-between px-4 lg:px-6 h-14">
@@ -2094,7 +2094,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-background flex flex-col docs-branded">
+      <div className="min-h-screen bg-background flex flex-col docs-branded docs-app-shell">
       {/* Sticky Navigation Container */}
       <div className="sticky top-0 z-50">
         {/* Top Header */}
@@ -2447,15 +2447,16 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
               <Skeleton className="h-96 w-full" />
             </div>
           ) : selectedDocument ? (
-            <div className={cn("min-w-0", showTocRail && "grid md:grid-cols-[minmax(0,1fr)_16rem]")}>
+            <div className={cn("min-w-0", showTocRail && "grid md:grid-cols-[minmax(0,1fr)_18rem]")}>
               {/* Article content */}
               <article className={cn(
-                "flex-1 px-4 py-6 sm:px-6 lg:p-8 transition-all duration-300 min-w-0 overflow-x-hidden",
+                "docs-article-shell flex-1 px-4 py-6 sm:px-6 lg:p-8 transition-all duration-300 min-w-0 overflow-x-hidden",
                 contentWidthClass
               )}>
+                <div className="docs-article-header">
                 {/* Breadcrumb and controls */}
-                <div className="flex items-center justify-between mb-6">
-                  <nav className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="docs-article-toolbar flex items-center justify-between mb-6">
+                  <nav className="docs-breadcrumbs flex items-center gap-2 text-sm text-muted-foreground">
                     <span>{selectedProject?.name}</span>
                     {selectedDocument.topic_id && (() => {
                       const topic = topics.find(t => t.id === selectedDocument.topic_id);
@@ -2494,7 +2495,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
                 {/* Title */}
                 <div className="flex items-start gap-3 mb-4">
-                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground brand-heading break-words">
+                  <h1 className="docs-page-title text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground brand-heading break-words">
                     {selectedDocument.title || "Untitled Page"}
                   </h1>
                 </div>
@@ -2502,13 +2503,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 {/* Meta - show different info based on project visibility */}
                 {showMinimalPublicMeta ? (
                   /* Public docs: minimal metadata, no internal info */
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
+                  <div className="docs-page-meta flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
                     {readingTimeMin > 0 && <span>{readingTimeMin} min read</span>}
                     <CopyLinkButton className="ml-auto" />
                   </div>
                 ) : (
                   /* Internal/External docs: full metadata */
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
+                  <div className="docs-page-meta flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
                     <span>Last updated: {format(new Date(selectedDocument.updated_at), "MMM d, yyyy")}</span>
                     {readingTimeMin > 0 && <span>{readingTimeMin} min read</span>}
                     <Badge variant="outline" className="text-xs">
@@ -2522,6 +2523,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                     <CopyLinkButton className="ml-auto" />
                   </div>
                 )}
+                </div>
 
                 {selectedDocument.video_url && (
                   <div className="mb-6">
@@ -2577,11 +2579,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
               {/* Right sidebar - Table of Contents */}
               {showTocRail ? (
-                <aside className="hidden md:block w-64 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4 border-l border-border/60 bg-background/30">
+                <aside className="docs-toc-rail hidden md:block w-72 shrink-0 sticky top-28 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto p-4 border-l border-border/60 bg-background/30">
                   <TableOfContents
                     key={selectedDocument.id}
                     html={displayHtml}
                     contentContainerSelector=".docs-content"
+                    className="docs-toc"
                   />
                 </aside>
               ) : null}
