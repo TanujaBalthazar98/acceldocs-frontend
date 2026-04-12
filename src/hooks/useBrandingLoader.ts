@@ -100,8 +100,8 @@ export function useBrandingStyles(branding: {
         --brand-secondary-hsl: ${secondaryHsl};
         --brand-accent: ${branding.accent_color};
         --brand-accent-hsl: ${accentHsl};
-        --brand-font-heading: "${branding.font_heading}", system-ui, sans-serif;
-        --brand-font-body: "${branding.font_body}", system-ui, sans-serif;
+        --brand-font-heading: "${branding.font_heading}", "Newsreader", Georgia, serif;
+        --brand-font-body: "${branding.font_body}", "Plus Jakarta Sans", Inter, system-ui, sans-serif;
       }
       
       /* Override primary and accent colors for docs pages */

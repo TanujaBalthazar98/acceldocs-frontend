@@ -94,6 +94,9 @@ export const DocsLanding = ({
     <div className="docs-landing-shell min-h-[80vh] flex flex-col">
       {/* Hero Section */}
       <section className="docs-landing-hero flex-1 flex flex-col items-center justify-center px-4 py-16 lg:py-24 text-center">
+        <div className="docs-landing-kicker mb-3 text-xs font-semibold tracking-[0.18em] uppercase text-primary/80">
+          Documentation
+        </div>
         {/* Logo */}
         {organization.logo_url && (
           <img 
@@ -115,7 +118,7 @@ export const DocsLanding = ({
 
         {/* Search */}
         {organization.show_search_on_landing && (
-          <div className="w-full max-w-xl mb-12">
+          <div className="docs-landing-search w-full max-w-xl mb-12">
             <SmartSearch
               placeholder="Search documentation..."
               documents={documents}
@@ -144,7 +147,7 @@ export const DocsLanding = ({
 
         {/* Quick Links */}
         {!organization.show_featured_projects && featured.length > 0 && (
-          <div className="flex flex-wrap gap-3 justify-center">
+          <div className="docs-landing-quick-links flex flex-wrap gap-3 justify-center">
             {featured.slice(0, 3).map(project => (
               <Button
                 key={project.id}
@@ -194,9 +197,9 @@ export const DocsLanding = ({
       )}
 
       {organization.show_featured_projects && featured.length > 0 && (
-        <section className="px-4 pb-16 lg:pb-24">
+        <section className="docs-landing-featured px-4 pb-16 lg:pb-24">
           <div className="max-w-5xl mx-auto">
-            <h2 className="text-2xl font-semibold text-foreground mb-6 text-center brand-heading">
+            <h2 className="docs-landing-featured-title text-2xl font-semibold text-foreground mb-6 text-center brand-heading">
               Browse Documentation
             </h2>
             

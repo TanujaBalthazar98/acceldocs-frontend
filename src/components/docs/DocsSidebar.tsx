@@ -243,7 +243,7 @@ export function DocsSidebar({
         <button
           onClick={() => hasChildren && toggleTopic(topic.id)}
           className={cn(
-            "docs-sidebar-item flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+            "docs-sidebar-item docs-sidebar-topic flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
             "hover:bg-accent/50 hover:text-accent-foreground",
             isTopicExpanded && "sidebar-item-selected"
           )}
@@ -268,7 +268,7 @@ export function DocsSidebar({
                 <button
                   onClick={() => onSelectDocument(doc)}
                   className={cn(
-                    "docs-sidebar-item flex min-w-0 items-start gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
+                    "docs-sidebar-item docs-sidebar-doc flex min-w-0 items-start gap-2 w-full px-3 py-1.5 text-sm rounded-md transition-colors",
                     "hover:bg-accent hover:text-accent-foreground",
                     selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                   )}
@@ -315,7 +315,7 @@ export function DocsSidebar({
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="docs-sidebar-scroll flex-1">
         {loading ? (
           <div className="space-y-2 p-2">
             {[1, 2, 3].map((i) => (
@@ -327,14 +327,14 @@ export function DocsSidebar({
         ) : rootTopics.length === 0 && projectLevelDocs.length === 0 && wrapperTopicDocs.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground text-sm">No pages found</div>
         ) : (
-          <nav className="docs-sidebar-nav py-2 pr-3">
+          <nav className="docs-sidebar-nav py-3 px-2 pr-3">
             {rootTopics.map((topic) => renderTopic(topic, 0))}
             {wrapperTopicDocs.map((doc) => (
               <button
                 key={doc.id}
                 onClick={() => onSelectDocument(doc)}
                 className={cn(
-                  "docs-sidebar-item flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                  "docs-sidebar-item docs-sidebar-doc flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                 )}
@@ -349,7 +349,7 @@ export function DocsSidebar({
                 key={doc.id}
                 onClick={() => onSelectDocument(doc)}
                 className={cn(
-                  "docs-sidebar-item flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
+                  "docs-sidebar-item docs-sidebar-doc flex min-w-0 items-start gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   selectedDocument?.id === doc.id && "sidebar-item-selected font-medium"
                 )}

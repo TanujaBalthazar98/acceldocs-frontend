@@ -1932,8 +1932,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     return (
       <div className="min-h-screen bg-background flex flex-col docs-branded docs-app-shell">
         {/* Minimal Header */}
-        <header className="border-b border-border bg-card">
-          <div className="flex items-center justify-between px-4 lg:px-6 h-14">
+        <header className="docs-main-header border-b border-border bg-card">
+          <div className="docs-main-header-inner flex items-center justify-between px-4 lg:px-6 h-14">
             <Link
               to={getOrgPathPrefix(currentOrg)}
               onClick={(e) => {
@@ -2098,8 +2098,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       {/* Sticky Navigation Container */}
       <div className="sticky top-0 z-50">
         {/* Top Header */}
-        <header className="border-b border-border bg-card">
-        <div className="flex items-center justify-between px-3 sm:px-4 lg:px-6 h-14 gap-2">
+        <header className="docs-main-header border-b border-border bg-card">
+        <div className="docs-main-header-inner flex items-center justify-between px-3 sm:px-4 lg:px-6 h-14 gap-2">
           {/* Left: Organization Logo/Name + Root Project */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link
@@ -2139,7 +2139,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
           </div>
 
           {/* Center: Search + Ask AI */}
-          <div className="hidden sm:flex items-center gap-2 flex-1 max-w-xs md:max-w-md mx-2 md:mx-4">
+          <div className="docs-top-search hidden sm:flex items-center gap-2 flex-1 max-w-xs md:max-w-md mx-2 md:mx-4">
             <SmartSearch
               placeholder="Search..."
               documents={documents.map(d => ({
@@ -2281,7 +2281,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
         {/* Product row + optional sub-project tabs */}
         {activeProduct ? (
-          <div className="border-b border-border bg-card">
+          <div className="docs-product-strip border-b border-border bg-card">
             <div className="flex items-center justify-between">
               {/* Left: Product label + optional sub-project tabs */}
               <div className="flex items-center gap-0 overflow-x-auto pl-3">
@@ -2293,7 +2293,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   </div>
                 ) : (
                   <>
-                    <span className="px-3 py-3 text-sm font-semibold whitespace-nowrap text-foreground">
+                    <span className="docs-product-label px-3 py-3 text-sm font-semibold whitespace-nowrap text-foreground">
                       {activeProduct.name}
                     </span>
                     {hasSubProjects &&
@@ -2302,7 +2302,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                           key={project.id}
                           onClick={() => selectProject(project)}
                           className={cn(
-                            "px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
+                            "docs-product-tab px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
                             selectedProject?.id === project.id
                               ? "text-foreground"
                               : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
@@ -2410,12 +2410,12 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       ) : null}
 
       {/* Main Layout */}
-      <div className={cn("flex flex-1 min-h-0", sidebarOnRight && "lg:flex-row-reverse")}>
+      <div className={cn("docs-layout-shell flex flex-1 min-h-0", sidebarOnRight && "lg:flex-row-reverse")}>
         {/* Desktop Sidebar - Sticky */}
         {!sidebarCollapsed && (
           <aside
             className={cn(
-              "hidden lg:flex w-64 flex-col bg-card sticky overflow-hidden",
+              "docs-sidebar-rail hidden lg:flex w-64 flex-col bg-card sticky overflow-hidden",
               sidebarOnRight ? "border-l border-border" : "border-r border-border",
               hasSubProjects ? "top-[104px] h-[calc(100vh-104px)]" : "top-[56px] h-[calc(100vh-56px)]"
             )}
@@ -2439,7 +2439,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         )}
 
         {/* Main Content */}
-        <main className="flex-1 min-w-0">
+        <main className="docs-main-content flex-1 min-w-0">
           {loading ? (
             <div className="max-w-4xl mx-auto p-8 space-y-4">
               <Skeleton className="h-10 w-3/4" />
@@ -2477,7 +2477,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                     variant="ghost"
                     size="sm"
                     onClick={() => setIsFullWidth(!isFullWidth)}
-                    className="hidden lg:flex gap-2 text-muted-foreground hover:text-foreground"
+                    className="docs-density-toggle hidden lg:flex gap-2 text-muted-foreground hover:text-foreground"
                   >
                     {isFullWidth ? (
                       <>
