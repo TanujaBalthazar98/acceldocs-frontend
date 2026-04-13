@@ -4211,7 +4211,7 @@ export default function Dashboard() {
     }
     return map;
   }, [treeVisiblePages]);
-  const activeHierarchyRoot = selectedVersion ?? selectedProduct ?? selectedTab;
+  const activeHierarchyRoot = selectedTab ?? selectedVersion ?? selectedProduct;
   const readerHierarchyTopPages = useMemo(() => {
     if (!activeHierarchyRoot) return [] as Page[];
     return treeVisiblePages
@@ -4225,7 +4225,12 @@ export default function Dashboard() {
     );
     const base = children;
     // When viewing a version, also include product-level non-version siblings (e.g. FAQ)
-    if (selectedVersion && selectedProduct && selectedVersion.id !== selectedProduct.id) {
+    if (
+      selectedVersion &&
+      selectedProduct &&
+      activeHierarchyRoot?.id === selectedVersion.id &&
+      selectedVersion.id !== selectedProduct.id
+    ) {
       const productChildren = sortedVisibleChildren(selectedProduct.id);
       const siblings = productChildren.filter(
         (s) => (s.section_type ?? "section") !== "version" && !base.some((b) => b.id === s.id),
@@ -4234,7 +4239,7 @@ export default function Dashboard() {
     }
     return base;
   }, [activeHierarchyRoot, selectedProduct, selectedVersion, sortedVisibleChildren]);
-  const readerHierarchyTitle = selectedVersion?.name ?? selectedTab?.name ?? selectedProduct?.name ?? "Documentation";
+  const readerHierarchyTitle = activeHierarchyRoot?.name ?? "Documentation";
 
   const getDescendantSectionIds = useCallback(
     (rootSectionId: number): Set<number> => {
@@ -4509,6 +4514,27 @@ export default function Dashboard() {
       }
     },
     [findFirstPageInSection, handleSelectPage],
+  );
+  const handleMoveVersionTab = useCallback(
+    (tabId: number, direction: "left" | "right") => {
+      if (!selectedVersion) return;
+      const orderedTabs = [...versionTabs].sort(
+        (a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name),
+      );
+      const currentIndex = orderedTabs.findIndex((tab) => tab.id === tabId);
+      if (currentIndex === -1) return;
+      const targetIndex = direction === "left" ? currentIndex - 1 : currentIndex + 1;
+      if (targetIndex < 0 || targetIndex >= orderedTabs.length) return;
+
+      const reordered = [...orderedTabs];
+      const [movedTab] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, movedTab);
+
+      const updates = buildSectionOrderUpdates(reordered, selectedVersion.id);
+      if (updates.length === 0) return;
+      reorderSections.mutate(updates);
+    },
+    [buildSectionOrderUpdates, reorderSections, selectedVersion, versionTabs],
   );
   const selectedSidebarProductValue =
     selectedSidebarProductId !== null
@@ -6162,7 +6188,7 @@ export default function Dashboard() {
               {isProductHierarchy && selectedVersion && versionTabs.length > 0 && (
                 <div className="px-2 pb-2">
                   <div className="flex flex-wrap gap-1 items-center">
-                    {versionTabs.map((tab) => (
+                    {versionTabs.map((tab, tabIndex) => (
                       <div key={tab.id} className="relative group">
                         <button
                           onClick={() => handleSidebarTabSwitch(selectedSidebarTabId === tab.id ? null : tab.id)}
@@ -6190,6 +6216,20 @@ export default function Dashboard() {
                               <DropdownMenuItem onClick={() => setRenamingSection(tab)}>
                                 <Pencil className="h-3.5 w-3.5 mr-2" />
                                 Rename tab
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={!canMoveContent || tabIndex === 0}
+                                onClick={() => handleMoveVersionTab(tab.id, "left")}
+                              >
+                                <ChevronLeft className="h-3.5 w-3.5 mr-2" />
+                                Move left
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={!canMoveContent || tabIndex === versionTabs.length - 1}
+                                onClick={() => handleMoveVersionTab(tab.id, "right")}
+                              >
+                                <ChevronRight className="h-3.5 w-3.5 mr-2" />
+                                Move right
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
