@@ -4515,27 +4515,6 @@ export default function Dashboard() {
     },
     [findFirstPageInSection, handleSelectPage],
   );
-  const handleMoveVersionTab = useCallback(
-    (tabId: number, direction: "left" | "right") => {
-      if (!selectedVersion) return;
-      const orderedTabs = [...versionTabs].sort(
-        (a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name),
-      );
-      const currentIndex = orderedTabs.findIndex((tab) => tab.id === tabId);
-      if (currentIndex === -1) return;
-      const targetIndex = direction === "left" ? currentIndex - 1 : currentIndex + 1;
-      if (targetIndex < 0 || targetIndex >= orderedTabs.length) return;
-
-      const reordered = [...orderedTabs];
-      const [movedTab] = reordered.splice(currentIndex, 1);
-      reordered.splice(targetIndex, 0, movedTab);
-
-      const updates = buildSectionOrderUpdates(reordered, selectedVersion.id);
-      if (updates.length === 0) return;
-      reorderSections.mutate(updates);
-    },
-    [buildSectionOrderUpdates, reorderSections, selectedVersion, versionTabs],
-  );
   const selectedSidebarProductValue =
     selectedSidebarProductId !== null
       ? String(selectedSidebarProductId)
@@ -4849,6 +4828,27 @@ export default function Dashboard() {
         return [{ id: item.id, parent_id: nextParentId, display_order: index }];
       }),
     [],
+  );
+  const handleMoveVersionTab = useCallback(
+    (tabId: number, direction: "left" | "right") => {
+      if (!selectedVersion) return;
+      const orderedTabs = [...versionTabs].sort(
+        (a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name),
+      );
+      const currentIndex = orderedTabs.findIndex((tab) => tab.id === tabId);
+      if (currentIndex === -1) return;
+      const targetIndex = direction === "left" ? currentIndex - 1 : currentIndex + 1;
+      if (targetIndex < 0 || targetIndex >= orderedTabs.length) return;
+
+      const reordered = [...orderedTabs];
+      const [movedTab] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, movedTab);
+
+      const updates = buildSectionOrderUpdates(reordered, selectedVersion.id);
+      if (updates.length === 0) return;
+      reorderSections.mutate(updates);
+    },
+    [buildSectionOrderUpdates, reorderSections, selectedVersion, versionTabs],
   );
 
   const handleDragStart = useCallback(({ active }: DragStartEvent) => {
