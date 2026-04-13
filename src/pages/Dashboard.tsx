@@ -73,7 +73,6 @@ import {
   FolderOpen,
   FolderPlus,
   GripVertical,
-  ListOrdered,
   Loader2,
   LogOut,
   MoreHorizontal,
@@ -156,7 +155,12 @@ type DriveImportTarget = {
 };
 
 type DropPosition = "before" | "inside" | "after";
-type PageOrderUpdate = { id: number; section_id: number | null; display_order: number };
+type PageOrderUpdate = {
+  id: number;
+  section_id: number | null;
+  display_order: number;
+  parent_page_id?: number | null;
+};
 type SectionOrderUpdate = { id: number; parent_id: number | null; display_order: number };
 
 type ParsedDashboardLocation = {
@@ -213,6 +217,63 @@ function sortPagesByDisplayOrder(pages: Page[]): Page[] {
       a.title.localeCompare(b.title) ||
       (a.id - b.id),
   );
+}
+
+type PageHierarchyEntry = {
+  page: Page;
+  depth: number;
+};
+
+function buildPageHierarchy(pages: Page[]): PageHierarchyEntry[] {
+  if (pages.length === 0) return [];
+
+  const pagesById = new Map<number, Page>();
+  for (const page of pages) {
+    pagesById.set(page.id, page);
+  }
+
+  const roots: Page[] = [];
+  const childrenByParent = new Map<number, Page[]>();
+
+  for (const page of pages) {
+    const parentId = page.parent_page_id;
+    if (parentId !== null && pagesById.has(parentId)) {
+      const children = childrenByParent.get(parentId) ?? [];
+      children.push(page);
+      childrenByParent.set(parentId, children);
+      continue;
+    }
+    roots.push(page);
+  }
+
+  for (const [parentId, children] of childrenByParent.entries()) {
+    childrenByParent.set(parentId, sortPagesByDisplayOrder(children));
+  }
+
+  const ordered: PageHierarchyEntry[] = [];
+  const visited = new Set<number>();
+
+  const walk = (page: Page, depth: number) => {
+    if (visited.has(page.id)) return;
+    visited.add(page.id);
+    ordered.push({ page, depth });
+    const children = childrenByParent.get(page.id) ?? [];
+    for (const child of children) {
+      walk(child, depth + 1);
+    }
+  };
+
+  for (const root of sortPagesByDisplayOrder(roots)) {
+    walk(root, 0);
+  }
+
+  for (const page of sortPagesByDisplayOrder(pages)) {
+    if (!visited.has(page.id)) {
+      walk(page, 0);
+    }
+  }
+
+  return ordered;
 }
 
 function sortSectionsByDisplayOrder(sections: Section[]): Section[] {
@@ -1386,6 +1447,56 @@ function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages:
   const [customCss, setCustomCss] = useState(page.page_custom_css ?? "");
   const [featuredImage, setFeaturedImage] = useState(page.featured_image_url ?? "");
   const [parentPageId, setParentPageId] = useState<number | null>(page.parent_page_id ?? null);
+  const pageSectionId = page.section_id ?? null;
+  const sectionPages = useMemo(
+    () => allPages.filter((candidate) => (candidate.section_id ?? null) === pageSectionId),
+    [allPages, pageSectionId],
+  );
+  const descendantPageIds = useMemo(() => {
+    const childrenByParent = new Map<number, number[]>();
+    for (const candidate of sectionPages) {
+      const parentId = candidate.parent_page_id;
+      if (parentId === null) continue;
+      const list = childrenByParent.get(parentId) ?? [];
+      list.push(candidate.id);
+      childrenByParent.set(parentId, list);
+    }
+
+    const descendants = new Set<number>();
+    const stack = [page.id];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      const children = childrenByParent.get(current) ?? [];
+      for (const childId of children) {
+        if (descendants.has(childId)) continue;
+        descendants.add(childId);
+        stack.push(childId);
+      }
+    }
+    return descendants;
+  }, [page.id, sectionPages]);
+  const sectionHierarchy = useMemo(
+    () => buildPageHierarchy(sectionPages),
+    [sectionPages],
+  );
+  const currentParentPage = useMemo(
+    () => (parentPageId ? allPages.find((candidate) => candidate.id === parentPageId) ?? null : null),
+    [allPages, parentPageId],
+  );
+  const parentCandidates = useMemo(() => {
+    const baseCandidates = sectionHierarchy.filter(({ page: candidate }) => {
+      if (candidate.id === page.id) return false;
+      if (descendantPageIds.has(candidate.id)) return false;
+      return true;
+    });
+    if (
+      currentParentPage &&
+      !baseCandidates.some((candidate) => candidate.page.id === currentParentPage.id)
+    ) {
+      return [{ page: currentParentPage, depth: 0 }, ...baseCandidates];
+    }
+    return baseCandidates;
+  }, [currentParentPage, descendantPageIds, page.id, sectionHierarchy]);
 
   const saveSettings = useMutation({
     mutationFn: () =>
@@ -1468,7 +1579,9 @@ function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages:
           {/* Parent Page */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Parent Page</Label>
-            <p className="text-[11px] text-muted-foreground -mt-0.5">Make this page a sub-page of another page.</p>
+            <p className="text-[11px] text-muted-foreground -mt-0.5">
+              Make this page a sub-page. You can nest multiple levels in the same section.
+            </p>
             <Select
               value={parentPageId?.toString() ?? "none"}
               onValueChange={(val) => setParentPageId(val === "none" ? null : parseInt(val, 10))}
@@ -1478,13 +1591,19 @@ function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages:
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">None (root level)</SelectItem>
-                {allPages
-                  .filter((p) => p.id !== page.id && p.parent_page_id === null)
-                  .map((p) => (
-                    <SelectItem key={p.id} value={p.id.toString()}>
-                      {p.title}
+                {parentCandidates.map(({ page: candidate, depth }) => {
+                  const isCurrentButOutOfScope =
+                    !!currentParentPage &&
+                    currentParentPage.id === candidate.id &&
+                    (candidate.section_id ?? null) !== pageSectionId;
+                  const labelPrefix = depth > 0 ? `${"  ".repeat(Math.min(depth, 8))}- ` : "";
+                  return (
+                    <SelectItem key={candidate.id} value={candidate.id.toString()}>
+                      {`${labelPrefix}${candidate.title}`}
+                      {isCurrentButOutOfScope ? " (different section)" : ""}
                     </SelectItem>
-                  ))}
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -2680,7 +2799,12 @@ function MovePageDialog({ page, allSections, allPages, onClose }: {
       const nextSectionId = sectionId === "none" ? null : parseInt(sectionId, 10);
       const targetOrder =
         allPages.filter((p) => p.id !== page.id && p.section_id === nextSectionId).length;
-      return pagesApi.update(page.id, { section_id: nextSectionId, display_order: targetOrder });
+      const nextParentPageId = nextSectionId === page.section_id ? page.parent_page_id : null;
+      return pagesApi.update(page.id, {
+        section_id: nextSectionId,
+        display_order: targetOrder,
+        parent_page_id: nextParentPageId,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pages"] });
@@ -2746,7 +2870,7 @@ function PageActionsMenu({
   canDelete: boolean;
   onEditTitle: (page: Page) => void;
   onEditSlug: (page: Page) => void;
-  onMove: (page: Page, direction: "up" | "down") => void;
+  onMove: (page: Page, direction?: "up" | "down") => void;
   onRearrange: (page: Page) => void;
   onSetVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
   onDuplicate: (page: Page) => void;
@@ -2764,15 +2888,21 @@ function PageActionsMenu({
           <DropdownMenuItem onClick={() => onEditSlug(page)}>
             <Pencil className="h-3 w-3 mr-2" /> Edit URL slug
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onRearrange(page)}>
+            <Settings className="h-3 w-3 mr-2" /> Page settings
+          </DropdownMenuItem>
         </>
       )}
       {canMove && (
         <>
           <DropdownMenuItem onClick={() => onMove(page)}>
-            <ArrowRightLeft className="h-3 w-3 mr-2" /> Move
+            <ArrowRightLeft className="h-3 w-3 mr-2" /> Move to section
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onRearrange(page)}>
-            <ListOrdered className="h-3 w-3 mr-2" /> Re-arrange
+          <DropdownMenuItem onClick={() => onMove(page, "up")}>
+            <ChevronUp className="h-3 w-3 mr-2" /> Move up
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onMove(page, "down")}>
+            <ChevronDown className="h-3 w-3 mr-2" /> Move down
           </DropdownMenuItem>
         </>
       )}
@@ -2824,6 +2954,7 @@ function PageActionsMenu({
 
 function PageItem({
   page,
+  hierarchyDepth = 0,
   visibility,
   showVisibilityBadge,
   selectedPageId,
@@ -2843,6 +2974,7 @@ function PageItem({
   onDelete,
 }: {
   page: Page;
+  hierarchyDepth?: number;
   visibility: VisibilityLevel;
   showVisibilityBadge: boolean;
   selectedPageId: number | null;
@@ -2854,7 +2986,7 @@ function PageItem({
   onSelect: (id: number) => void;
   onEditTitle: (page: Page) => void;
   onEditSlug: (page: Page) => void;
-  onMove: (page: Page, direction: "up" | "down") => void;
+  onMove: (page: Page, direction?: "up" | "down") => void;
   onRearrange: (page: Page) => void;
   onSetVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
   onDuplicate: (page: Page) => void;
@@ -2867,6 +2999,7 @@ function PageItem({
   });
   const dragListeners = canMove ? listeners : undefined;
   const dragAttributes = canMove ? attributes : undefined;
+  const indentPx = 4 + Math.min(hierarchyDepth, 8) * 14;
 
   return (
     <div
@@ -2889,8 +3022,9 @@ function PageItem({
       </button>
       <button
         onClick={() => onSelect(page.id)}
+        style={{ paddingLeft: `${indentPx}px` }}
         className={cn(
-          "flex items-center flex-1 min-w-0 gap-2 py-1.5 pl-1 pr-7 rounded-md text-sm transition-all",
+          "flex items-center flex-1 min-w-0 gap-2 py-1.5 pr-7 rounded-md text-sm transition-all",
           selectedPageId === page.id
             ? "bg-primary/10 text-primary font-medium"
             : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
@@ -2989,7 +3123,7 @@ function SectionNode({
   onSetSectionVisibility: (section: Section, visibility: VisibilityLevel) => void;
   onRenamePage: (page: Page) => void;
   onEditPageSlug: (page: Page) => void;
-  onMovePage: (page: Page) => void;
+  onMovePage: (page: Page, direction?: "up" | "down") => void;
   onSetPageVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
   onDuplicatePage: (page: Page) => void;
   onUnpublishPage: (page: Page) => void;
@@ -3011,9 +3145,13 @@ function SectionNode({
     () => sortPagesByDisplayOrder(pages.filter((p) => p.section_id === section.id)),
     [pages, section.id],
   );
-  const pageIds = useMemo(
-    () => sectionPages.map((p) => `page-${p.id}`),
+  const sectionPageHierarchy = useMemo(
+    () => buildPageHierarchy(sectionPages),
     [sectionPages],
+  );
+  const pageIds = useMemo(
+    () => sectionPageHierarchy.map(({ page }) => `page-${page.id}`),
+    [sectionPageHierarchy],
   );
 
   // Sortable: for reordering sections among siblings
@@ -3234,10 +3372,11 @@ function SectionNode({
       {open && (
         <div className="pl-3">
           <SortableContext items={pageIds} strategy={verticalListSortingStrategy}>
-            {sectionPages.map((page) => (
+            {sectionPageHierarchy.map(({ page, depth: pageDepth }) => (
               <PageItem
                 key={page.id}
                 page={page}
+                hierarchyDepth={pageDepth}
                 visibility={((page.visibility_override as VisibilityLevel | null) ?? currentSectionVisibility)}
                 showVisibilityBadge={page.visibility_override !== null || currentSectionVisibility !== "public"}
                 selectedPageId={selectedPageId}
@@ -3249,7 +3388,7 @@ function SectionNode({
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
-                onMove={() => {}}
+                onMove={onMovePage}
                 onRearrange={onRearrangePage}
                 onSetVisibilityOverride={onSetPageVisibilityOverride}
                 onDuplicate={onDuplicatePage}
@@ -3378,7 +3517,7 @@ function ReaderHierarchy({
   onSetSectionVisibility: (section: Section, visibility: VisibilityLevel) => void;
   onRenamePage: (page: Page) => void;
   onEditPageSlug: (page: Page) => void;
-  onMovePage: (page: Page) => void;
+  onMovePage: (page: Page, direction?: "up" | "down") => void;
   onSetPageVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
   onDuplicatePage: (page: Page) => void;
   onUnpublishPage: (page: Page) => void;
@@ -3397,9 +3536,13 @@ function ReaderHierarchy({
       sections.filter((section) => (section.section_type ?? "section") !== "version"),
     [],
   );
-  const sortedTopPages = useMemo(
-    () => [...topPages].sort((a, b) => a.display_order - b.display_order || a.title.localeCompare(b.title)),
+  const topPageHierarchy = useMemo(
+    () => buildPageHierarchy(topPages),
     [topPages],
+  );
+  const topPageIds = useMemo(
+    () => topPageHierarchy.map(({ page }) => `page-${page.id}`),
+    [topPageHierarchy],
   );
   const sortedRootSections = useMemo(
     () => [...filterVisibleSections(rootSections)].sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name)),
@@ -3449,13 +3592,14 @@ function ReaderHierarchy({
           onDragEnd={onDragEnd}
         >
           <SortableContext
-            items={sortedTopPages.map((p) => `page-${p.id}`)}
+            items={topPageIds}
             strategy={verticalListSortingStrategy}
           >
-            {sortedTopPages.map((page) => (
+            {topPageHierarchy.map(({ page, depth: pageDepth }) => (
               <PageItem
                 key={page.id}
                 page={page}
+                hierarchyDepth={pageDepth}
                 visibility={resolveEffectivePageVisibility(page, sectionsById)}
                 showVisibilityBadge={page.visibility_override !== null || resolveEffectivePageVisibility(page, sectionsById) !== "public"}
                 selectedPageId={selectedPageId}
@@ -3467,7 +3611,7 @@ function ReaderHierarchy({
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
-                onMove={() => {}}
+                onMove={onMovePage}
                 onRearrange={onRearrangePage}
                 onSetVisibilityOverride={onSetPageVisibilityOverride}
                 onDuplicate={onDuplicatePage}
@@ -3528,7 +3672,7 @@ function ReaderHierarchy({
             )}
           </DragOverlay>
         </DndContext>
-        {sortedTopPages.length === 0 && sortedRootSections.length === 0 && (
+        {topPageHierarchy.length === 0 && sortedRootSections.length === 0 && (
           <p className="px-2 py-2 text-xs text-muted-foreground">No sections/pages in this scope.</p>
         )}
       </div>
@@ -4403,6 +4547,10 @@ export default function Dashboard() {
     if (selectedVersion) return treeVisiblePages.filter((page) => page.section_id === selectedVersion.id);
     return treeVisiblePages.filter((page) => page.section_id === selectedSidebarProductId);
   }, [isProductHierarchy, selectedSidebarProductId, selectedVersion, selectedSidebarTabId, treeVisiblePages]);
+  const adminRootPageHierarchy = useMemo(
+    () => buildPageHierarchy(adminRootPages),
+    [adminRootPages],
+  );
   const adminSectionDepthBase = isProductHierarchy && selectedSidebarProductId !== null ? 1 : 0;
   const shouldShowAdminTree = !selectedPage;
   const analyticsSnapshot = useMemo<AnalyticsSnapshot>(() => {
@@ -4949,6 +5097,14 @@ export default function Dashboard() {
           ...buildPageOrderUpdates(sourceWithout, sourceSectionId),
           ...buildPageOrderUpdates(targetWith, targetSectionId),
         ];
+        if (page.parent_page_id !== null) {
+          updates.push({
+            id: page.id,
+            section_id: targetSectionId,
+            parent_page_id: null,
+            display_order: insertAt,
+          });
+        }
         if (updates.length === 0) return;
         reorderPages.mutate(updates);
 
@@ -4978,6 +5134,14 @@ export default function Dashboard() {
           ...buildPageOrderUpdates(sourceWithout, sourceSectionId),
           ...buildPageOrderUpdates(targetWith, targetSectionId),
         ];
+        if (page.parent_page_id !== null) {
+          updates.push({
+            id: page.id,
+            section_id: targetSectionId,
+            parent_page_id: null,
+            display_order: insertAt,
+          });
+        }
         if (updates.length === 0) return;
         reorderPages.mutate(updates);
       }
@@ -5347,15 +5511,56 @@ export default function Dashboard() {
   }, [canReviewContent, notifyPermissionDenied, rejectPage]);
 
   const handleRearrangePage = useCallback((page: Page) => {
-    if (!canMoveContent) {
-      notifyPermissionDenied("rearrange pages");
+    if (!canEditContent) {
+      notifyPermissionDenied("edit page settings");
       return;
     }
-    toast({
-      title: "Re-arrange page",
-      description: `Drag "${page.title}" using the grip handle to reorder.`,
+    setPageSettingsPage(page);
+  }, [canEditContent, notifyPermissionDenied]);
+
+  const handleMovePageAction = useCallback((page: Page, direction?: "up" | "down") => {
+    if (!canMoveContent) {
+      notifyPermissionDenied("move pages");
+      return;
+    }
+
+    if (!direction) {
+      setMovingPage(page);
+      return;
+    }
+
+    const siblingPages = sortPagesByDisplayOrder(
+      pages.filter(
+        (candidate) =>
+          candidate.section_id === page.section_id &&
+          (candidate.parent_page_id ?? null) === (page.parent_page_id ?? null),
+      ),
+    );
+    const currentIndex = siblingPages.findIndex((candidate) => candidate.id === page.id);
+    if (currentIndex === -1) return;
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= siblingPages.length) return;
+
+    const reordered = [...siblingPages];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+
+    const sectionId = page.section_id ?? null;
+    const parentPageId = page.parent_page_id ?? null;
+    const updates: PageOrderUpdate[] = reordered.flatMap((item, index) => {
+      if (
+        item.section_id === sectionId &&
+        (item.parent_page_id ?? null) === parentPageId &&
+        item.display_order === index
+      ) {
+        return [];
+      }
+      return [{ id: item.id, section_id: sectionId, parent_page_id: parentPageId, display_order: index }];
     });
-  }, [canMoveContent, notifyPermissionDenied, toast]);
+
+    if (updates.length === 0) return;
+    reorderPages.mutate(updates);
+  }, [canMoveContent, notifyPermissionDenied, pages, reorderPages]);
 
   const handleDeletePage = useCallback((page: Page) => {
     if (!canDeleteContent) {
@@ -6294,13 +6499,14 @@ export default function Dashboard() {
                   >
                     {/* Unsectioned pages */}
                     <SortableContext
-                      items={adminRootPages.map((p) => `page-${p.id}`)}
+                      items={adminRootPageHierarchy.map(({ page }) => `page-${page.id}`)}
                       strategy={verticalListSortingStrategy}
                     >
-                      {adminRootPages.map((page) => (
+                      {adminRootPageHierarchy.map(({ page, depth: pageDepth }) => (
                         <PageItem
                           key={page.id}
                           page={page}
+                          hierarchyDepth={pageDepth}
                           visibility={resolveEffectivePageVisibility(page, sectionsById)}
                           showVisibilityBadge={page.visibility_override !== null || resolveEffectivePageVisibility(page, sectionsById) !== "public"}
                           selectedPageId={selectedPageId}
@@ -6312,7 +6518,7 @@ export default function Dashboard() {
                           onSelect={handleSelectPage}
                           onEditTitle={setRenamingPage}
                           onEditSlug={setEditingPageSlug}
-                          onMove={setMovingPage}
+                          onMove={handleMovePageAction}
                           onRearrange={handleRearrangePage}
                           onSetVisibilityOverride={handlePageVisibilityOverride}
                           onDuplicate={handleDuplicatePage}
@@ -6347,7 +6553,7 @@ export default function Dashboard() {
                           onSetSectionVisibility={handleSectionVisibilityChange}
                           onRenamePage={setRenamingPage}
                           onEditPageSlug={setEditingPageSlug}
-                          onMovePage={setMovingPage}
+                          onMovePage={handleMovePageAction}
                           onSetPageVisibilityOverride={handlePageVisibilityOverride}
                           onDuplicatePage={handleDuplicatePage}
                           onUnpublishPage={handleUnpublishPage}
@@ -6831,11 +7037,8 @@ export default function Dashboard() {
                     <DropdownMenuItem onClick={() => setInlineAssistOpen(true)}>
                       <Wand2 className="h-3.5 w-3.5 mr-2" /> AI Assist
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setMovingPage(selectedPage)} disabled={!canMoveContent}>
+                    <DropdownMenuItem onClick={() => handleMovePageAction(selectedPage)} disabled={!canMoveContent}>
                       <ArrowRightLeft className="h-3.5 w-3.5 mr-2" /> Move
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleRearrangePage(selectedPage)} disabled={!canMoveContent}>
-                      <ListOrdered className="h-3.5 w-3.5 mr-2" /> Re-arrange
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -6970,7 +7173,7 @@ export default function Dashboard() {
                   onSetSectionVisibility={handleSectionVisibilityChange}
                   onRenamePage={setRenamingPage}
                   onEditPageSlug={setEditingPageSlug}
-                  onMovePage={setMovingPage}
+                  onMovePage={handleMovePageAction}
                   onSetPageVisibilityOverride={handlePageVisibilityOverride}
                   onDuplicatePage={handleDuplicatePage}
                   onUnpublishPage={handleUnpublishPage}
