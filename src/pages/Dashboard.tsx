@@ -824,7 +824,7 @@ function ScanDriveDialog({
                 Import into Product, Version, Tab, or Section. Use workspace root only to add a brand-new top-level product.
               </p>
               {!driveImportTarget && hasExistingTopLevelContent && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-500/15 dark:border-amber-500/35 px-2.5 py-2 text-xs text-amber-800 dark:text-amber-200">
                   Root import creates another top-level product. Pick a destination above to avoid orphaned content.
                 </div>
               )}
@@ -833,7 +833,7 @@ function ScanDriveDialog({
             <div className="space-y-1.5 rounded-md border bg-muted/30 px-3 py-2">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destination</Label>
               {destinationOptions.length === 0 ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-500/15 dark:border-amber-500/35 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
                   Create a Product, Tab, or Section first. Then import local content into it.
                 </div>
               ) : (
@@ -919,7 +919,7 @@ function ScanDriveDialog({
                       : "This folder will be saved as the workspace root and imported."}
                   </p>
                   {rootFolderMissing && !canManageDrive && (
-                    <p className="text-xs text-amber-700">
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
                       Root folder can only be configured by workspace owner/admin.
                     </p>
                   )}
@@ -956,11 +956,11 @@ function ScanDriveDialog({
               </div>
 
               {localImportNeedsTarget ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-500/15 dark:border-amber-500/35 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
                   Choose a destination above to import local content.
                 </div>
               ) : localFilesRequireSectionTarget ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-500/15 dark:border-amber-500/35 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
                   File import requires a <span className="font-semibold">Section</span> destination. Choose Folder mode for Product/Tab imports.
                 </div>
               ) : (
@@ -5476,7 +5476,7 @@ export default function Dashboard() {
   const accountEmail = user?.email ?? "";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-stone-100 via-background to-amber-50/70 dark:from-background dark:via-background dark:to-background">
+    <div className="flex h-screen overflow-hidden bg-background">
 
       {/* ── Mobile sidebar overlay backdrop ─────────────────────── */}
       {isMobile && mobileSidebarOpen && (
@@ -5489,7 +5489,7 @@ export default function Dashboard() {
       {/* ── Sidebar ───────────────────────────────────────────────── */}
       <aside
         className={cn(
-          "shrink-0 flex flex-col border-r border-border/60 bg-[linear-gradient(180deg,#fdfcf9_0%,#f6f4ee_100%)] dark:bg-muted/20 overflow-hidden transition-all duration-300 backdrop-blur-sm shadow-[inset_-1px_0_0_rgba(255,255,255,0.5)]",
+          "shrink-0 flex flex-col border-r border-border/70 bg-background/95 overflow-hidden transition-all duration-300 backdrop-blur-sm",
           // Mobile: fixed overlay sidebar
           isMobile
             ? cn(
@@ -5504,7 +5504,7 @@ export default function Dashboard() {
       >
 
         {/* Org header */}
-        <div className={cn("px-3 py-3 border-b border-border/70 bg-white/75 dark:bg-background/50 backdrop-blur", sidebarCollapsed ? "space-y-3" : "space-y-2")}>
+        <div className={cn("px-3 py-3 border-b border-border/70 bg-background/80 backdrop-blur", sidebarCollapsed ? "space-y-3" : "space-y-2")}>
           <div className={cn("flex items-center", sidebarCollapsed ? "flex-col gap-2" : "gap-2.5")}>
             {org?.logo_url ? (
               <img src={org.logo_url} alt="" className="w-7 h-7 rounded-lg object-contain flex-shrink-0" />
@@ -5549,7 +5549,7 @@ export default function Dashboard() {
           </div>
 
           {(!sidebarCollapsed || isMobile) ? (
-            <div className="rounded-xl border border-border/70 bg-gradient-to-b from-white/85 to-white/65 dark:from-background/60 dark:to-background/40 p-0.5 grid grid-cols-3 gap-0.5 shadow-sm">
+            <div className="rounded-xl border border-border/70 bg-muted/35 p-0.5 grid grid-cols-3 gap-0.5 shadow-sm">
               <Button
                 variant="ghost"
                 size="sm"
@@ -5657,7 +5657,7 @@ export default function Dashboard() {
               >
                 <ClipboardCheck className="h-4 w-4" />
                 {pendingReviewCount > 0 && (
-                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-[9px] font-semibold">
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40 text-[9px] font-semibold">
                     {pendingReviewCount > 99 ? "99+" : pendingReviewCount}
                   </span>
                 )}
@@ -5880,7 +5880,7 @@ export default function Dashboard() {
             <div className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
               <div className="px-2 mb-2">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-1.5">View</p>
-                <div className="grid grid-cols-2 rounded-xl border border-border/70 bg-gradient-to-b from-white/80 to-white/60 dark:from-background/60 dark:to-background/40 p-1 gap-1 shadow-sm">
+                <div className="grid grid-cols-2 rounded-xl border border-border/70 bg-muted/35 p-1 gap-1 shadow-sm">
                   <button
                     type="button"
                     onClick={() => setDashboardPaneMode("content")}
@@ -5917,7 +5917,7 @@ export default function Dashboard() {
                   >
                     Approvals
                     {pendingReviewCount > 0 && (
-                      <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-[9px] font-semibold">
+                      <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40 text-[9px] font-semibold">
                         {pendingReviewCount > 99 ? "99+" : pendingReviewCount}
                       </span>
                     )}
@@ -6529,7 +6529,7 @@ export default function Dashboard() {
         ) : dashboardPaneMode === "analytics" ? (
           <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-6 sm:py-8">
             <div className="max-w-5xl mx-auto space-y-4">
-              <div className="rounded-2xl border border-border/70 bg-white/70 dark:bg-background/70 shadow-sm px-4 sm:px-5 py-4 backdrop-blur">
+              <div className="rounded-2xl border border-border/70 bg-card/80 shadow-sm px-4 sm:px-5 py-4 backdrop-blur">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <div className="flex items-center gap-2">
@@ -6548,15 +6548,26 @@ export default function Dashboard() {
                     <h2 className="text-lg font-semibold mt-1">Documentation impact for {org?.name ?? "your workspace"}</h2>
                     <p className="text-sm text-muted-foreground mt-1">Track coverage, freshness, and publishing momentum in one place.</p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs gap-1.5"
-                    onClick={() => setDashboardPaneMode("content")}
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    Back to content
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      onClick={toggleTheme}
+                      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                    >
+                      {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5"
+                      onClick={() => setDashboardPaneMode("content")}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      Back to content
+                    </Button>
+                  </div>
                 </div>
               </div>
               <DocumentationImpactPanel
@@ -6577,7 +6588,7 @@ export default function Dashboard() {
         ) : selectedPage ? (
           <>
             {/* Toolbar */}
-            <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 border-b border-border/70 shrink-0 bg-white/70 dark:bg-background/70 backdrop-blur">
+            <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 border-b border-border/70 shrink-0 bg-card/80 backdrop-blur">
               {isMobile && (
                 <Button
                   variant="ghost"
@@ -6660,6 +6671,15 @@ export default function Dashboard() {
                   }
                   <span className="hidden sm:inline">Sync</span>
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={toggleTheme}
+                  title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                </Button>
 
                 {selectedPage.is_published && (
                   <Button
@@ -6710,7 +6730,7 @@ export default function Dashboard() {
                   </Button>
                 )}
                 {selectedPage.status === "draft" && !selectedPage.section_id && (
-                  <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 hidden sm:inline">
+                  <span className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/20 border border-amber-200 dark:border-amber-500/40 rounded px-2 py-1 hidden sm:inline">
                     Move page into a section to submit for review
                   </span>
                 )}
