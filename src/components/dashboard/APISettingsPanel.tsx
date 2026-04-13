@@ -16,9 +16,9 @@ import {
   Send,
   RefreshCw,
 } from "lucide-react";
-import yaml from "js-yaml";
 import { useToast } from "@/hooks/use-toast";
 import { getById, update } from "@/lib/api/queries";
+import { parseOpenApiSpec, readOpenApiMeta, type OpenApiSpecMeta } from "@/lib/openapi";
 
 // Recursively sanitize object to remove unsupported Unicode escape sequences
 const sanitizeForJson = (obj: unknown): unknown => {
@@ -57,19 +57,24 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
   const [validating, setValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isPublished, setIsPublished] = useState(false);
+  const [specMeta, setSpecMeta] = useState<OpenApiSpecMeta | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   // Fetch existing settings on mount
   useEffect(() => {
     const fetchSettings = async () => {
       const { data, error } = await getById<any>("organizations", organizationId, {
-        select: "openapi_spec_url,openapi_spec_json",
+        select: "openapi_spec_url,openapi_spec_json,updated_at,updatedAt",
       });
       if (data && !error) {
         setOpenApiUrl((data as any).openapi_spec_url ?? "");
         if ((data as any).openapi_spec_json) {
-          setOpenApiSpec((data as any).openapi_spec_json as object);
+          const savedSpec = (data as any).openapi_spec_json as object;
+          setOpenApiSpec(savedSpec);
+          setSpecMeta(readOpenApiMeta(savedSpec));
           setIsPublished(true);
         }
+        setLastSyncedAt((data as any).updated_at ?? (data as any).updatedAt ?? null);
       }
       setLoading(false);
     };
@@ -85,22 +90,15 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
 
     try {
       const text = await file.text();
-      let parsed;
-
-      if (file.name.endsWith(".yaml") || file.name.endsWith(".yml")) {
-        parsed = yaml.load(text) as object;
-      } else {
-        parsed = JSON.parse(text);
-      }
-
-      if (!parsed.openapi && !parsed.swagger) {
-        throw new Error("Invalid OpenAPI specification");
-      }
-
-      setOpenApiSpec(parsed);
+      const parsed = parseOpenApiSpec(text);
+      setOpenApiSpec(parsed.spec);
+      setSpecMeta(parsed.meta);
       setSpecFileName(file.name);
       setOpenApiUrl("");
-      toast({ title: "Spec loaded", description: `${file.name} is ready to publish.` });
+      toast({
+        title: "Spec loaded",
+        description: `${file.name} is ready to publish (${parsed.meta.operationCount} operations).`,
+      });
     } catch (err) {
       setValidationError(err instanceof Error ? err.message : "Invalid file");
     } finally {
@@ -118,15 +116,15 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
       const response = await fetch(openApiUrl);
       if (!response.ok) throw new Error("Failed to fetch spec");
 
-      const parsed = await response.json();
-
-      if (!parsed.openapi && !parsed.swagger) {
-        throw new Error("Invalid OpenAPI specification");
-      }
-
-      setOpenApiSpec(parsed);
+      const text = await response.text();
+      const parsed = parseOpenApiSpec(text);
+      setOpenApiSpec(parsed.spec);
+      setSpecMeta(parsed.meta);
       setSpecFileName(null);
-      toast({ title: "Spec loaded", description: "OpenAPI spec is ready to publish." });
+      toast({
+        title: "Spec loaded",
+        description: `OpenAPI spec is ready to publish (${parsed.meta.operationCount} operations).`,
+      });
     } catch (err) {
       setValidationError(err instanceof Error ? err.message : "Failed to load spec");
     } finally {
@@ -171,6 +169,7 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
       });
     } else {
       setIsPublished(true);
+      setLastSyncedAt(new Date().toISOString());
       toast({ title: "Published", description: "API Reference is now live." });
     }
   };
@@ -194,8 +193,10 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
     } else {
       setIsPublished(false);
       setOpenApiSpec(null);
+      setSpecMeta(null);
       setOpenApiUrl("");
       setSpecFileName(null);
+      setLastSyncedAt(null);
       toast({ title: "Unpublished", description: "API Reference is no longer live." });
     }
   };
@@ -205,6 +206,7 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
     setSpecFileName(null);
     setOpenApiUrl("");
     setValidationError(null);
+    setSpecMeta(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -272,9 +274,12 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
                   <h3 className="text-sm font-medium text-foreground">
                     {(openApiSpec as any).info?.title || "API Documentation"}
                   </h3>
-                  <p className="text-xs text-muted-foreground">
-                    v{(openApiSpec as any).info?.version} • Live at /api/{previewSlug}
-                  </p>
+                  <div className="text-xs text-muted-foreground">
+                    <p>v{(openApiSpec as any).info?.version} • Live at /api/{previewSlug}</p>
+                    {lastSyncedAt && (
+                      <p>Last synced {new Date(lastSyncedAt).toLocaleString()}</p>
+                    )}
+                  </div>
                 </div>
                 <Button
                   variant="outline"
@@ -387,12 +392,22 @@ export const APISettingsPanel = ({ organizationId, orgSlug, onBack }: APISetting
                   <span className="text-xs text-muted-foreground">
                     v{(openApiSpec as any).info?.version}
                   </span>
+                  {specMeta && (
+                    <span className="text-xs text-muted-foreground">
+                      • {specMeta.pathCount} paths / {specMeta.operationCount} operations ({specMeta.format.toUpperCase()})
+                    </span>
+                  )}
                 </div>
                 <Button variant="ghost" size="sm" onClick={clearSpec}>
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             )}
+            {specMeta?.warnings.length ? (
+              <div className="text-xs text-amber-600">
+                {specMeta.warnings[0]}
+              </div>
+            ) : null}
           </div>
 
           {/* Actions */}
