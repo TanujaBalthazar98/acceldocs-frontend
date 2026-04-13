@@ -95,6 +95,8 @@ import {
   X,
   PanelLeftOpen,
   Sparkles,
+  Sun,
+  Moon,
   Lock,
   Globe,
   Share2,
@@ -141,6 +143,7 @@ import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { TemplatePickerDialog } from "@/components/dashboard/TemplatePickerDialog";
 import { APISettingsPanel } from "@/components/dashboard/APISettingsPanel";
 import { invokeFunction } from "@/lib/api/functions";
+import { useTheme } from "@/contexts/ThemeContext";
 
 type VisibilityLevel = "public" | "internal" | "external";
 type VisibilityFilter = "all" | VisibilityLevel;
@@ -4008,6 +4011,7 @@ export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
+  const { theme, setTheme } = useTheme();
   const { toast } = useToast();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
@@ -4065,6 +4069,9 @@ export default function Dashboard() {
     routeState.workspaceId ?? getStoredOrgId() ?? undefined,
   );
   const routeWorkspaceIdRef = useRef<number | null>(routeState.workspaceId);
+  const toggleTheme = useCallback(() => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  }, [setTheme, theme]);
 
   // Only react when the URL workspace id actually changes (e.g. browser back/forward or deep-link),
   // so a local workspace switch isn't immediately overwritten by stale query params.
@@ -6182,6 +6189,13 @@ export default function Dashboard() {
                       <Users className="h-3.5 w-3.5" />
                       External access
                     </button>
+                    <button
+                      onClick={toggleTheme}
+                      className="flex items-center w-full gap-2 px-2 py-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    >
+                      {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                      {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                    </button>
                   </div>
 
                   {/* Log out */}
@@ -6819,6 +6833,13 @@ export default function Dashboard() {
                     >
                       <Users className="h-3.5 w-3.5 opacity-60" />
                       External access
+                    </button>
+                    <button
+                      onClick={toggleTheme}
+                      className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+                    >
+                      {theme === "dark" ? <Sun className="h-3.5 w-3.5 opacity-60" /> : <Moon className="h-3.5 w-3.5 opacity-60" />}
+                      {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
                     </button>
                     <button
                       onClick={handleSignOut}
