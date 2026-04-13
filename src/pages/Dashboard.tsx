@@ -1378,13 +1378,14 @@ function ConfigureTabsDialog({
   );
 }
 
-function PageSettingsDialog({ page, onClose }: { page: Page; onClose: () => void }) {
+function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages: Page[]; onClose: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [hideToc, setHideToc] = useState(page.hide_toc ?? false);
   const [fullWidth, setFullWidth] = useState(page.full_width ?? false);
   const [customCss, setCustomCss] = useState(page.page_custom_css ?? "");
   const [featuredImage, setFeaturedImage] = useState(page.featured_image_url ?? "");
+  const [parentPageId, setParentPageId] = useState<number | null>(page.parent_page_id ?? null);
 
   const saveSettings = useMutation({
     mutationFn: () =>
@@ -1393,6 +1394,7 @@ function PageSettingsDialog({ page, onClose }: { page: Page; onClose: () => void
         full_width: fullWidth,
         page_custom_css: customCss.trim() || null,
         featured_image_url: featuredImage.trim() || null,
+        parent_page_id: parentPageId,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["page", page.id] });
@@ -1461,6 +1463,30 @@ function PageSettingsDialog({ page, onClose }: { page: Page; onClose: () => void
               placeholder=".doc-content { font-size: 15px; }"
               className="font-mono text-xs"
             />
+          </div>
+
+          {/* Parent Page */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Parent Page</Label>
+            <p className="text-[11px] text-muted-foreground -mt-0.5">Make this page a sub-page of another page.</p>
+            <Select
+              value={parentPageId?.toString() ?? "none"}
+              onValueChange={(val) => setParentPageId(val === "none" ? null : parseInt(val, 10))}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="No parent (root level)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None (root level)</SelectItem>
+                {allPages
+                  .filter((p) => p.id !== page.id && p.parent_page_id === null)
+                  .map((p) => (
+                    <SelectItem key={p.id} value={p.id.toString()}>
+                      {p.title}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>
@@ -7195,6 +7221,7 @@ export default function Dashboard() {
       {pageSettingsPage && canEditContent && (
         <PageSettingsDialog
           page={pageSettingsPage}
+          allPages={pages}
           onClose={() => setPageSettingsPage(null)}
         />
       )}
