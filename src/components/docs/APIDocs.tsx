@@ -29,6 +29,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { parseOpenApiSpec } from "@/lib/openapi";
 
 interface OpenAPISpec {
   openapi: string;
@@ -114,9 +115,6 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
   const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const isValidSpec = (data: any): data is OpenAPISpec =>
-    !!data && (!!data.openapi || !!data.swagger) && !!data.info?.title && !!data.paths;
-
   useEffect(() => {
     if (specUrl && !spec) {
       loadSpec(specUrl);
@@ -125,13 +123,14 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
 
   useEffect(() => {
     if (!spec) return;
-    if (!isValidSpec(spec)) {
+    try {
+      const parsed = parseOpenApiSpec(JSON.stringify(spec));
+      setLoadedSpec(parsed.spec as OpenAPISpec);
+      setError(null);
+    } catch {
       setLoadedSpec(null);
       setError("Invalid OpenAPI specification");
-      return;
     }
-    setLoadedSpec(spec);
-    setError(null);
   }, [spec]);
 
   const loadSpec = async (url: string) => {
@@ -140,9 +139,9 @@ export const APIDocs = ({ spec, specUrl }: APIDocsProps) => {
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error("Failed to load OpenAPI spec");
-      const data = await response.json();
-      if (!isValidSpec(data)) throw new Error("Invalid OpenAPI specification");
-      setLoadedSpec(data);
+      const text = await response.text();
+      const parsed = parseOpenApiSpec(text);
+      setLoadedSpec(parsed.spec as OpenAPISpec);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load spec");
     } finally {

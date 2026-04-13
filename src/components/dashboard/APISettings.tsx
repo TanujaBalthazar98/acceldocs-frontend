@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { Upload, Link as LinkIcon, FileJson, Check, X, Loader2 } from "lucide-react";
-import yaml from "js-yaml";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { parseOpenApiSpec, type OpenApiSpecMeta } from "@/lib/openapi";
 
 // Recursively sanitize object to remove unsupported Unicode escape sequences
 const sanitizeForJson = (obj: unknown): unknown => {
@@ -43,6 +43,7 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
   const [specFileName, setSpecFileName] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [specMeta, setSpecMeta] = useState<OpenApiSpecMeta | null>(null);
 
   // Fetch existing settings on mount
   useEffect(() => {
@@ -61,24 +62,15 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
 
     try {
       const text = await file.text();
-      let parsed;
-
-      if (file.name.endsWith(".yaml") || file.name.endsWith(".yml")) {
-        parsed = yaml.load(text) as object;
-      } else {
-        // Default to JSON
-        parsed = JSON.parse(text);
-      }
-
-      // Basic OpenAPI validation
-      if (!parsed.openapi && !parsed.swagger) {
-        throw new Error("Invalid OpenAPI specification");
-      }
-
-      setOpenApiSpec(parsed);
+      const parsed = parseOpenApiSpec(text);
+      setOpenApiSpec(parsed.spec);
+      setSpecMeta(parsed.meta);
       setSpecFileName(file.name);
       setOpenApiUrl("");
-      toast({ title: "Spec loaded", description: `${file.name} is ready to save.` });
+      toast({
+        title: "Spec loaded",
+        description: `${file.name} is ready to save (${parsed.meta.operationCount} operations).`,
+      });
     } catch (err) {
       setValidationError(err instanceof Error ? err.message : "Invalid file");
     } finally {
@@ -96,15 +88,15 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
       const response = await fetch(openApiUrl);
       if (!response.ok) throw new Error("Failed to fetch spec");
 
-      const parsed = await response.json();
-
-      if (!parsed.openapi && !parsed.swagger) {
-        throw new Error("Invalid OpenAPI specification");
-      }
-
-      setOpenApiSpec(parsed);
+      const text = await response.text();
+      const parsed = parseOpenApiSpec(text);
+      setOpenApiSpec(parsed.spec);
+      setSpecMeta(parsed.meta);
       setSpecFileName(null);
-      toast({ title: "Spec loaded", description: "OpenAPI spec is ready to save." });
+      toast({
+        title: "Spec loaded",
+        description: `OpenAPI spec is ready to save (${parsed.meta.operationCount} operations).`,
+      });
     } catch (err) {
       setValidationError(err instanceof Error ? err.message : "Failed to load spec");
     } finally {
@@ -151,6 +143,7 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
     setSpecFileName(null);
     setOpenApiUrl("");
     setValidationError(null);
+    setSpecMeta(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -276,6 +269,11 @@ export const APISettings = ({ projectId }: APISettingsProps) => {
               <span className="text-xs text-muted-foreground">
                 v{(openApiSpec as any).info?.version}
               </span>
+              {specMeta && (
+                <span className="text-xs text-muted-foreground">
+                  • {specMeta.pathCount} paths / {specMeta.operationCount} operations ({specMeta.format.toUpperCase()})
+                </span>
+              )}
             </div>
             <Button variant="ghost" size="sm" onClick={clearSpec}>
               <X className="h-4 w-4" />
