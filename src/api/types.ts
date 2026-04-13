@@ -114,6 +114,8 @@ export interface Page {
   /** Only present when fetched individually */
   html_content?: string;
   published_html?: string;
+  /** Parent page for sub-page hierarchy */
+  parent_page_id: number | null;
   /** Present for review workflow metadata */
   review_submitted_by_id?: number | null;
   review_submitted_by_name?: string | null;

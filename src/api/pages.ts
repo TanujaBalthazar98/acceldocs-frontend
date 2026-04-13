@@ -26,6 +26,7 @@ export const PageSchema = z.object({
   featured_image_url: z.string().nullable(),
   html_content: z.string().optional(),
   published_html: z.string().optional(),
+  parent_page_id: z.number().nullable(),
   review_submitted_by_id: z.number().nullable().optional(),
   review_submitted_by_name: z.string().nullable().optional(),
   review_submitted_at: z.string().nullable().optional(),
@@ -59,7 +60,7 @@ export const pagesApi = {
   get: (id: number): Promise<Page> =>
     fetchOrThrow<Page>("/api/pages/" + id),
 
-  update: (id: number, data: Partial<Pick<Page, "section_id" | "title" | "slug" | "visibility_override" | "display_order" | "hide_toc" | "full_width" | "page_custom_css" | "featured_image_url">>): Promise<Page> =>
+  update: (id: number, data: Partial<Pick<Page, "section_id" | "title" | "slug" | "visibility_override" | "display_order" | "hide_toc" | "full_width" | "page_custom_css" | "featured_image_url" | "parent_page_id">>): Promise<Page> =>
     fetchOrThrow<Page>("/api/pages/" + id, {
       method: "PATCH",
       body: JSON.stringify(data),
