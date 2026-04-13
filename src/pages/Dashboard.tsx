@@ -477,18 +477,40 @@ function importTargetTypeLabel(type: ImportTargetType): string {
   return "Section";
 }
 
-function AddPageDialog({ sectionId, onClose }: { sectionId: number | null; onClose: () => void }) {
+function AddPageDialog({
+  sectionId,
+  parentPage,
+  onClose,
+}: {
+  sectionId: number | null;
+  parentPage: Pick<Page, "id" | "title" | "section_id"> | null;
+  onClose: () => void;
+}) {
   const [docId, setDocId] = useState("");
   const [title, setTitle] = useState("");
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const { toast } = useToast();
   const qc = useQueryClient();
+  const targetSectionId = parentPage?.section_id ?? sectionId;
+  const parentPageId = parentPage?.id ?? null;
 
   const resolvedId = parseGoogleDocId(docId);
 
   const create = useMutation({
-    mutationFn: () =>
-      pagesApi.create({ google_doc_id: resolvedId, section_id: sectionId, title: title.trim() || undefined }),
+    mutationFn: async () => {
+      const createdPage = await pagesApi.create({
+        google_doc_id: resolvedId,
+        section_id: targetSectionId,
+        title: title.trim() || undefined,
+      });
+      if (parentPageId !== null) {
+        await pagesApi.update(createdPage.id, {
+          section_id: targetSectionId,
+          parent_page_id: parentPageId,
+        });
+      }
+      return createdPage;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pages"] });
       toast({ title: "Page added" });
@@ -498,8 +520,20 @@ function AddPageDialog({ sectionId, onClose }: { sectionId: number | null; onClo
   });
 
   const createFromTemplate = useMutation({
-    mutationFn: (vars: { title: string; content: string }) =>
-      pagesApi.createFromTemplate({ title: vars.title, content: vars.content, section_id: sectionId }),
+    mutationFn: async (vars: { title: string; content: string }) => {
+      const created = await pagesApi.createFromTemplate({
+        title: vars.title,
+        content: vars.content,
+        section_id: targetSectionId,
+      });
+      if (parentPageId !== null) {
+        await pagesApi.update(created.page_id, {
+          section_id: targetSectionId,
+          parent_page_id: parentPageId,
+        });
+      }
+      return created;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pages"] });
       toast({ title: "Page created from template" });
@@ -522,6 +556,11 @@ function AddPageDialog({ sectionId, onClose }: { sectionId: number | null; onClo
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Title <span className="normal-case font-normal text-muted-foreground/60">(required when creating a new doc)</span>
               </Label>
+              {parentPage && (
+                <p className="text-[11px] text-muted-foreground">
+                  Creating as sub-page under <span className="font-medium text-foreground">{parentPage.title}</span>
+                </p>
+              )}
               <Input
                 placeholder="Page title"
                 value={title}
@@ -1444,7 +1483,17 @@ function ConfigureTabsDialog({
   );
 }
 
-function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages: Page[]; onClose: () => void }) {
+function PageSettingsDialog({
+  page,
+  allPages,
+  allSections,
+  onClose,
+}: {
+  page: Page;
+  allPages: Page[];
+  allSections: Section[];
+  onClose: () => void;
+}) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [hideToc, setHideToc] = useState(page.hide_toc ?? false);
@@ -1453,13 +1502,13 @@ function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages:
   const [featuredImage, setFeaturedImage] = useState(page.featured_image_url ?? "");
   const [parentPageId, setParentPageId] = useState<number | null>(page.parent_page_id ?? null);
   const pageSectionId = page.section_id ?? null;
-  const sectionPages = useMemo(
-    () => allPages.filter((candidate) => (candidate.section_id ?? null) === pageSectionId),
-    [allPages, pageSectionId],
+  const sectionNameById = useMemo(
+    () => new Map(allSections.map((section) => [section.id, section.name])),
+    [allSections],
   );
   const descendantPageIds = useMemo(() => {
     const childrenByParent = new Map<number, number[]>();
-    for (const candidate of sectionPages) {
+    for (const candidate of allPages) {
       const parentId = candidate.parent_page_id;
       if (parentId === null) continue;
       const list = childrenByParent.get(parentId) ?? [];
@@ -1479,10 +1528,10 @@ function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages:
       }
     }
     return descendants;
-  }, [page.id, sectionPages]);
+  }, [allPages, page.id]);
   const sectionHierarchy = useMemo(
-    () => buildPageHierarchy(sectionPages),
-    [sectionPages],
+    () => buildPageHierarchy(sortPagesByDisplayOrder(allPages)),
+    [allPages],
   );
   const currentParentPage = useMemo(
     () => (parentPageId ? allPages.find((candidate) => candidate.id === parentPageId) ?? null : null),
@@ -1511,6 +1560,7 @@ function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages:
         page_custom_css: customCss.trim() || null,
         featured_image_url: featuredImage.trim() || null,
         parent_page_id: parentPageId,
+        section_id: currentParentPage ? (currentParentPage.section_id ?? null) : pageSectionId,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["page", page.id] });
@@ -1585,7 +1635,7 @@ function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages:
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Parent Page</Label>
             <p className="text-[11px] text-muted-foreground -mt-0.5">
-              Make this page a sub-page. You can nest multiple levels in the same section.
+              Make this page a sub-page. You can nest across sections and this page will move to the parent's section.
             </p>
             <Select
               value={parentPageId?.toString() ?? "none"}
@@ -1597,15 +1647,15 @@ function PageSettingsDialog({ page, allPages, onClose }: { page: Page; allPages:
               <SelectContent>
                 <SelectItem value="none">None (root level)</SelectItem>
                 {parentCandidates.map(({ page: candidate, depth }) => {
-                  const isCurrentButOutOfScope =
-                    !!currentParentPage &&
-                    currentParentPage.id === candidate.id &&
-                    (candidate.section_id ?? null) !== pageSectionId;
                   const labelPrefix = depth > 0 ? `${"  ".repeat(Math.min(depth, 8))}- ` : "";
+                  const candidateSectionName =
+                    candidate.section_id === null
+                      ? "Top level"
+                      : sectionNameById.get(candidate.section_id) ?? `Section ${candidate.section_id}`;
+                  const isDifferentSection = (candidate.section_id ?? null) !== pageSectionId;
                   return (
                     <SelectItem key={candidate.id} value={candidate.id.toString()}>
-                      {`${labelPrefix}${candidate.title}`}
-                      {isCurrentButOutOfScope ? " (different section)" : ""}
+                      {`${labelPrefix}${candidate.title}${isDifferentSection ? ` (${candidateSectionName})` : ""}`}
                     </SelectItem>
                   );
                 })}
@@ -2854,12 +2904,14 @@ function MovePageDialog({ page, allSections, allPages, onClose }: {
 function PageActionsMenu({
   page,
   canManage,
+  canCreateSubPage,
   canMove,
   canManageVisibility,
   canPublish,
   canDelete,
   onEditTitle,
   onEditSlug,
+  onCreateSubPage,
   onMove,
   onRearrange,
   onSetVisibilityOverride,
@@ -2869,12 +2921,14 @@ function PageActionsMenu({
 }: {
   page: Page;
   canManage: boolean;
+  canCreateSubPage: boolean;
   canMove: boolean;
   canManageVisibility: boolean;
   canPublish: boolean;
   canDelete: boolean;
   onEditTitle: (page: Page) => void;
   onEditSlug: (page: Page) => void;
+  onCreateSubPage: (page: Page) => void;
   onMove: (page: Page, direction?: "up" | "down") => void;
   onRearrange: (page: Page) => void;
   onSetVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
@@ -2893,6 +2947,11 @@ function PageActionsMenu({
           <DropdownMenuItem onClick={() => onEditSlug(page)}>
             <Pencil className="h-3 w-3 mr-2" /> Edit URL slug
           </DropdownMenuItem>
+          {canCreateSubPage && (
+            <DropdownMenuItem onClick={() => onCreateSubPage(page)}>
+              <Plus className="h-3 w-3 mr-2" /> Create sub-page
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => onRearrange(page)}>
             <Settings className="h-3 w-3 mr-2" /> Page settings
           </DropdownMenuItem>
@@ -2964,6 +3023,7 @@ function PageItem({
   showVisibilityBadge,
   selectedPageId,
   canManageActions,
+  canCreateSubPage,
   canMove,
   canManageVisibility,
   canPublish,
@@ -2971,6 +3031,7 @@ function PageItem({
   onSelect,
   onEditTitle,
   onEditSlug,
+  onCreateSubPage,
   onMove,
   onRearrange,
   onSetVisibilityOverride,
@@ -2984,6 +3045,7 @@ function PageItem({
   showVisibilityBadge: boolean;
   selectedPageId: number | null;
   canManageActions: boolean;
+  canCreateSubPage: boolean;
   canMove: boolean;
   canManageVisibility: boolean;
   canPublish: boolean;
@@ -2991,6 +3053,7 @@ function PageItem({
   onSelect: (id: number) => void;
   onEditTitle: (page: Page) => void;
   onEditSlug: (page: Page) => void;
+  onCreateSubPage: (page: Page) => void;
   onMove: (page: Page, direction?: "up" | "down") => void;
   onRearrange: (page: Page) => void;
   onSetVisibilityOverride: (page: Page, visibility: VisibilityLevel | null) => void;
@@ -3063,7 +3126,7 @@ function PageItem({
           </span>
         )}
       </button>
-      {(canManageActions || canMove || canManageVisibility || canDelete || canPublish) && (
+      {(canManageActions || canCreateSubPage || canMove || canManageVisibility || canDelete || canPublish) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -3076,12 +3139,14 @@ function PageItem({
           <PageActionsMenu
             page={page}
             canManage={canManageActions}
+            canCreateSubPage={canCreateSubPage}
             canMove={canMove}
             canManageVisibility={canManageVisibility}
             canPublish={canPublish}
             canDelete={canDelete}
             onEditTitle={onEditTitle}
             onEditSlug={onEditSlug}
+            onCreateSubPage={onCreateSubPage}
             onMove={onMove}
             onRearrange={onRearrange}
             onSetVisibilityOverride={onSetVisibilityOverride}
@@ -3101,7 +3166,7 @@ function PageItem({
 
 function SectionNode({
   section, pages, selectedPageId, onSelectPage, depth,
-  onAddPage, onAddSubSection, onImportHere, onRenameSection, onMoveSection, onDeleteSection, onChangeSectionType, onSetSectionVisibility, onRenamePage, onEditPageSlug, onMovePage, onSetPageVisibilityOverride, onDuplicatePage, onUnpublishPage, onRearrangePage, onDeletePage,
+  onAddPage, onAddSubPage, onAddSubSection, onImportHere, onRenameSection, onMoveSection, onDeleteSection, onChangeSectionType, onSetSectionVisibility, onRenamePage, onEditPageSlug, onMovePage, onSetPageVisibilityOverride, onDuplicatePage, onUnpublishPage, onRearrangePage, onDeletePage,
   canEditContent,
   canMoveContent,
   canEditVisibilitySettings,
@@ -3119,6 +3184,7 @@ function SectionNode({
   onSelectPage: (id: number) => void;
   depth: number;
   onAddPage: (sectionId: number) => void;
+  onAddSubPage: (page: Page) => void;
   onAddSubSection: (parentId: number) => void;
   onImportHere: (section: Section) => void;
   onRenameSection: (section: Section) => void;
@@ -3386,6 +3452,7 @@ function SectionNode({
                 showVisibilityBadge={page.visibility_override !== null || currentSectionVisibility !== "public"}
                 selectedPageId={selectedPageId}
                 canManageActions={canEditContent}
+                canCreateSubPage={canEditContent}
                 canMove={canMoveContent}
                 canManageVisibility={canEditVisibilitySettings}
                 canPublish={canPublishContent}
@@ -3393,6 +3460,7 @@ function SectionNode({
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
+                onCreateSubPage={onAddSubPage}
                 onMove={onMovePage}
                 onRearrange={onRearrangePage}
                 onSetVisibilityOverride={onSetPageVisibilityOverride}
@@ -3417,6 +3485,7 @@ function SectionNode({
                 activeDragType={activeDragType}
                 hierarchyMode={hierarchyMode}
                 onAddPage={onAddPage}
+                onAddSubPage={onAddSubPage}
                 onAddSubSection={onAddSubSection}
                 onImportHere={onImportHere}
                 onRenameSection={onRenameSection}
@@ -3469,6 +3538,7 @@ function ReaderHierarchy({
   selectedPageId,
   onSelectPage,
   onAddPage,
+  onAddSubPage,
   onAddSubSection,
   onImportHere,
   onRenameSection,
@@ -3513,6 +3583,7 @@ function ReaderHierarchy({
   selectedPageId: number | null;
   onSelectPage: (id: number) => void;
   onAddPage: (sectionId: number) => void;
+  onAddSubPage: (page: Page) => void;
   onAddSubSection: (parentId: number) => void;
   onImportHere: (section: Section) => void;
   onRenameSection: (section: Section) => void;
@@ -3609,6 +3680,7 @@ function ReaderHierarchy({
                 showVisibilityBadge={page.visibility_override !== null || resolveEffectivePageVisibility(page, sectionsById) !== "public"}
                 selectedPageId={selectedPageId}
                 canManageActions={canEditContent}
+                canCreateSubPage={canEditContent}
                 canMove={canMoveContent}
                 canManageVisibility={canEditVisibilitySettings}
                 canPublish={canPublishContent}
@@ -3616,6 +3688,7 @@ function ReaderHierarchy({
                 onSelect={onSelectPage}
                 onEditTitle={onRenamePage}
                 onEditSlug={onEditPageSlug}
+                onCreateSubPage={onAddSubPage}
                 onMove={onMovePage}
                 onRearrange={onRearrangePage}
                 onSetVisibilityOverride={onSetPageVisibilityOverride}
@@ -3640,6 +3713,7 @@ function ReaderHierarchy({
                 activeDragType={activeDragType}
                 hierarchyMode={hierarchyMode}
                 onAddPage={onAddPage}
+                onAddSubPage={onAddSubPage}
                 onAddSubSection={onAddSubSection}
                 onImportHere={onImportHere}
                 onRenameSection={onRenameSection}
@@ -3945,6 +4019,7 @@ export default function Dashboard() {
   const [selectedPageId, setSelectedPageId] = useState<number | null>(routeState.pageId);
   const [showAddPage, setShowAddPage] = useState(false);
   const [addPageSectionId, setAddPageSectionId] = useState<number | null>(null);
+  const [addPageParent, setAddPageParent] = useState<Pick<Page, "id" | "title" | "section_id"> | null>(null);
   const [showAddSection, setShowAddSection] = useState(false);
   const [addSectionParentId, setAddSectionParentId] = useState<number | null>(null);
   const [addSectionPreferredType, setAddSectionPreferredType] = useState<"section" | "tab" | "version" | undefined>(undefined);
@@ -4893,12 +4968,16 @@ export default function Dashboard() {
       deniedActionLabel: "create sections",
     });
   }, [openAddSectionDialogInternal, selectedSectionForSubSection, toast]);
-  const openAddPageDialog = useCallback((sectionId: number | null = defaultAddPageSectionId) => {
+  const openAddPageDialog = useCallback((
+    sectionId: number | null = defaultAddPageSectionId,
+    parentPage: Pick<Page, "id" | "title" | "section_id"> | null = null,
+  ) => {
     if (!canCreateContent) {
       notifyPermissionDenied("create pages");
       return;
     }
-    setAddPageSectionId(sectionId);
+    setAddPageSectionId(parentPage?.section_id ?? sectionId);
+    setAddPageParent(parentPage);
     setShowAddPage(true);
   }, [canCreateContent, defaultAddPageSectionId, notifyPermissionDenied]);
   const openAddVersionDialog = useCallback(() => {
@@ -6507,6 +6586,7 @@ export default function Dashboard() {
                           onSelect={handleSelectPage}
                           onEditTitle={setRenamingPage}
                           onEditSlug={setEditingPageSlug}
+                          onCreateSubPage={(page) => openAddPageDialog(page.section_id ?? defaultAddPageSectionId, page)}
                           onMove={handleMovePageAction}
                           onRearrange={handleRearrangePage}
                           onSetVisibilityOverride={handlePageVisibilityOverride}
@@ -6533,6 +6613,7 @@ export default function Dashboard() {
                           activeDragType={activeDragType}
                           hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
                           onAddPage={(sectionId) => openAddPageDialog(sectionId)}
+                          onAddSubPage={(page) => openAddPageDialog(page.section_id ?? defaultAddPageSectionId, page)}
                           onAddSubSection={openAddSectionDialog}
                           onImportHere={(section) => openImportDialogForTarget(section)}
                           onRenameSection={setRenamingSection}
@@ -7143,6 +7224,7 @@ export default function Dashboard() {
                   selectedPageId={selectedPageId}
                   onSelectPage={handleSelectPage}
                   onAddPage={(sectionId) => openAddPageDialog(sectionId)}
+                  onAddSubPage={(page) => openAddPageDialog(page.section_id ?? defaultAddPageSectionId, page)}
                   onAddSubSection={openAddSectionDialog}
                   onImportHere={(section) => openImportDialogForTarget(section)}
                   onRenameSection={setRenamingSection}
@@ -7291,7 +7373,16 @@ export default function Dashboard() {
         )}
       </main>
 
-      {showAddPage && canCreateContent && <AddPageDialog sectionId={addPageSectionId} onClose={() => setShowAddPage(false)} />}
+      {showAddPage && canCreateContent && (
+        <AddPageDialog
+          sectionId={addPageSectionId}
+          parentPage={addPageParent}
+          onClose={() => {
+            setShowAddPage(false);
+            setAddPageParent(null);
+          }}
+        />
+      )}
       {showAddSection && canManageStructure && (
         <AddSectionDialog
           parentId={addSectionParentId}
@@ -7404,6 +7495,7 @@ export default function Dashboard() {
         <PageSettingsDialog
           page={pageSettingsPage}
           allPages={pages}
+          allSections={sections}
           onClose={() => setPageSettingsPage(null)}
         />
       )}
