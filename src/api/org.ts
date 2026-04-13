@@ -11,6 +11,8 @@ export const orgApi = {
   update: (data: Partial<Pick<
     Org,
     | "name"
+    | "slug"
+    | "domain"
     | "logo_url"
     | "primary_color"
     | "secondary_color"

@@ -55,6 +55,16 @@ function inferWorkspaceDomain(email?: string | null): string {
   return domain;
 }
 
+function normalizeOrgSlug(raw: string): string {
+  const seed = raw.trim().toLowerCase();
+  if (!seed) return "";
+  return seed
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -183,10 +193,21 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
 
   const handleSave = async () => {
     if (!organizationId) return;
+    const normalizedSlug = normalizeOrgSlug(slug);
+    if (!normalizedSlug) {
+      toast({
+        title: "Invalid slug",
+        description: "Workspace slug must include letters or numbers.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
-      await orgApi.update({
+      const updatedOrg = await orgApi.update({
         name: name.trim(),
+        slug: normalizedSlug,
+        domain: domain.trim().toLowerCase() || null,
         logo_url: logoUrl.trim() || null,
         primary_color: primaryColor.trim() || null,
         secondary_color: secondaryColor.trim() || null,
@@ -211,6 +232,8 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
         footer_html: footerHtml.trim() || null,
         landing_blocks: landingBlocks.trim() || null,
       });
+      setSlug(updatedOrg.slug || normalizedSlug);
+      setDomain((updatedOrg.domain || "").trim().toLowerCase());
       toast({ title: "Saved", description: "Organization settings updated." });
     } catch (error: any) {
       toast({
@@ -276,7 +299,15 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="org-slug">Slug</Label>
-                <Input id="org-slug" value={slug} onChange={(e) => setSlug(e.target.value)} />
+                <Input
+                  id="org-slug"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  onBlur={() => setSlug(normalizeOrgSlug(slug))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Public docs URL path: <span className="font-mono">/docs/{normalizeOrgSlug(slug) || "workspace-slug"}</span>
+                </p>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="org-domain">Domain</Label>

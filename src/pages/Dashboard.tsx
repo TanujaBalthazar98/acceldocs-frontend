@@ -1890,6 +1890,7 @@ function WorkspaceSettingsDialog({
 
   // General
   const [workspaceName, setWorkspaceName] = useState(org.name ?? "");
+  const [workspaceSlug, setWorkspaceSlug] = useState(org.slug ?? "");
   const [customDomain, setCustomDomain] = useState(org.custom_docs_domain ?? "");
 
   // Layout
@@ -1949,10 +1950,14 @@ function WorkspaceSettingsDialog({
       toast({ title: "Brand extraction failed", description: err.message, variant: "destructive" }),
   });
 
+  const normalizedWorkspaceSlug = normalizeSlugSegment(workspaceSlug) || normalizeSlugSegment(org.slug) || "";
+  const publicWorkspaceUrl = normalizedWorkspaceSlug ? `${API_BASE_URL}/docs/${normalizedWorkspaceSlug}` : "";
+
   const save = useMutation({
     mutationFn: async () =>
       orgApi.update({
         name: workspaceName.trim(),
+        slug: normalizedWorkspaceSlug,
         custom_docs_domain: customDomain.trim() || null,
         sidebar_position: sidebarPosition,
         show_toc: showToc,
@@ -1976,7 +1981,8 @@ function WorkspaceSettingsDialog({
         copyright: copyright.trim() || null,
         custom_css: customCss.trim() || null,
       }),
-    onSuccess: () => {
+    onSuccess: (updatedOrg) => {
+      setWorkspaceSlug(updatedOrg.slug ?? normalizedWorkspaceSlug);
       qc.invalidateQueries({ queryKey: ["org"] });
       qc.invalidateQueries({ queryKey: ["org", org.id] });
       qc.invalidateQueries({ queryKey: ["org-list"] });
@@ -1987,7 +1993,7 @@ function WorkspaceSettingsDialog({
       toast({ title: "Update failed", description: err.message, variant: "destructive" }),
   });
 
-  const canSave = workspaceName.trim().length > 0 && !save.isPending;
+  const canSave = workspaceName.trim().length > 0 && normalizedWorkspaceSlug.length > 0 && !save.isPending;
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -2181,6 +2187,23 @@ function WorkspaceSettingsDialog({
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Workspace name</Label>
                 <Input value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} placeholder="My Workspace" autoFocus />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Public URL slug</Label>
+                <Input
+                  value={workspaceSlug}
+                  onChange={(e) => setWorkspaceSlug(e.target.value)}
+                  onBlur={() => setWorkspaceSlug(normalizeSlugSegment(workspaceSlug))}
+                  placeholder="my-workspace"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Published docs URL:{" "}
+                  {publicWorkspaceUrl ? (
+                    <span className="font-mono text-foreground">{publicWorkspaceUrl}</span>
+                  ) : (
+                    <span className="text-destructive">Slug cannot be empty</span>
+                  )}
+                </p>
               </div>
 
               {/* Sidebar position — visual toggle */}
