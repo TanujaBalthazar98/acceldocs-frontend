@@ -111,6 +111,7 @@ import {
   Image,
   Wand2,
   Bot,
+  Code2,
   Eye,
   EyeOff,
   CheckCircle,
@@ -140,13 +141,14 @@ import { AgentChatPanel } from "@/components/dashboard/AgentChatPanel";
 import InlineAssistDialog from "@/components/dashboard/InlineAssistDialog";
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { TemplatePickerDialog } from "@/components/dashboard/TemplatePickerDialog";
+import { APISettingsPanel } from "@/components/dashboard/APISettingsPanel";
 import { invokeFunction } from "@/lib/api/functions";
 import { useTheme } from "@/contexts/ThemeContext";
 
 type VisibilityLevel = "public" | "internal" | "external";
 type VisibilityFilter = "all" | VisibilityLevel;
 type LocalImportMode = "files" | "folder";
-type DashboardPaneMode = "content" | "analytics" | "approvals" | "agent";
+type DashboardPaneMode = "content" | "analytics" | "approvals" | "agent" | "developer";
 
 type DriveImportTarget = {
   id: number;
@@ -318,6 +320,8 @@ function parseDashboardLocation(pathname: string, search: string): ParsedDashboa
     approvalId = approvalId || (afterDashboard[1] || "").trim() || null;
   } else if (first === "agent") {
     mode = "agent";
+  } else if (first === "developer") {
+    mode = "developer";
   } else if (first === "content") {
     mode = "content";
     if ((afterDashboard[1] || "").trim().toLowerCase() === "p") {
@@ -334,6 +338,8 @@ function parseDashboardLocation(pathname: string, search: string): ParsedDashboa
     mode = "approvals";
   } else if (tabParam === "agent") {
     mode = "agent";
+  } else if (tabParam === "developer") {
+    mode = "developer";
   } else if (tabParam === "content") {
     mode = "content";
   }
@@ -358,6 +364,8 @@ function buildDashboardUrl(params: {
       : "/dashboard/approvals";
   } else if (params.mode === "agent") {
     path = "/dashboard/agent";
+  } else if (params.mode === "developer") {
+    path = "/dashboard/developer";
   } else if (params.pageId !== null) {
     const slugPart = normalizeSlugSegment(params.pageSlug);
     path = slugPart
@@ -6038,6 +6046,21 @@ export default function Dashboard() {
               <Button
                 variant="ghost"
                 size="icon"
+                className={cn(
+                  "h-8 w-8 shrink-0 rounded-lg disabled:opacity-40 disabled:pointer-events-none",
+                  dashboardPaneMode === "developer"
+                    ? "text-primary bg-primary/10 hover:bg-primary/15"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setDashboardPaneMode("developer")}
+                disabled={!canManageWorkspace}
+                title="Developer tools"
+              >
+                <Code2 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
                 onClick={openConfigureHierarchyDialog}
                 disabled={!canConfigureHierarchy}
@@ -6293,6 +6316,20 @@ export default function Dashboard() {
                   >
                     <Sparkles className="h-3 w-3" />
                     Agent
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDashboardPaneMode("developer")}
+                    disabled={!canManageWorkspace}
+                    className={cn(
+                      "h-7 rounded-md text-[11px] font-semibold transition-colors inline-flex items-center justify-center gap-1 disabled:opacity-40 disabled:pointer-events-none",
+                      dashboardPaneMode === "developer"
+                        ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Code2 className="h-3 w-3" />
+                    Dev
                   </button>
                 </div>
               </div>
@@ -6888,6 +6925,18 @@ export default function Dashboard() {
             isMobile={isMobile}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
           />
+        ) : dashboardPaneMode === "developer" ? (
+          org ? (
+            <APISettingsPanel
+              organizationId={String(org.id)}
+              orgSlug={org.slug || org.domain || null}
+              onBack={() => setDashboardPaneMode("content")}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )
         ) : dashboardPaneMode === "approvals" ? (
           <ApprovalsPanel
             userRole={currentUserRole}
