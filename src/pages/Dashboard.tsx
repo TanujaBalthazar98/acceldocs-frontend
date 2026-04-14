@@ -3907,6 +3907,12 @@ export default function Dashboard() {
     }
   }, [approvalsCountData]);
   const selectedPage = selectedPageFull ?? (pages.find((p) => p.id === selectedPageId) ?? null);
+  const selectedPageReviewSubmitterId =
+    selectedPageFull?.review_submitted_by_id ?? selectedPage?.review_submitted_by_id ?? null;
+  const isSelectedPageOwnSubmission =
+    selectedPage?.status === "review" &&
+    typeof selectedPageReviewSubmitterId === "number" &&
+    user?.id === selectedPageReviewSubmitterId;
 
   useEffect(() => {
     const desiredUrl = buildDashboardUrl({
@@ -6700,7 +6706,7 @@ export default function Dashboard() {
                     Unpublish
                   </Button>
                 )}
-                {selectedPage.status === "review" && canReviewContent && (
+                {selectedPage.status === "review" && canReviewContent && !isSelectedPageOwnSubmission && (
                   <>
                     <Button
                       variant="outline"
@@ -6722,6 +6728,11 @@ export default function Dashboard() {
                       <span className="hidden sm:inline">Approve</span>
                     </Button>
                   </>
+                )}
+                {selectedPage.status === "review" && canReviewContent && isSelectedPageOwnSubmission && (
+                  <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                    You cannot review your own submission
+                  </span>
                 )}
                 {selectedPage.status === "draft" && (
                   <Button

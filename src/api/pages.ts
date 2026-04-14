@@ -26,6 +26,9 @@ export const PageSchema = z.object({
   featured_image_url: z.string().nullable(),
   html_content: z.string().optional(),
   published_html: z.string().optional(),
+  review_submitted_by_id: z.number().nullable().optional(),
+  review_submitted_by_name: z.string().nullable().optional(),
+  review_submitted_at: z.string().nullable().optional(),
 });
 
 const PageListResponseSchema = z.object({ pages: z.array(PageSchema) });

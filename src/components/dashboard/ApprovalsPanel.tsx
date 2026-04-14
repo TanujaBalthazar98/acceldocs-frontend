@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { invokeFunction } from "@/lib/api/functions";
 import { useToast } from "@/hooks/use-toast";
 import { useDriveAuth } from "@/hooks/useDriveAuth";
+import { useAuth } from "@/hooks/useAuthNew";
 import { parseApiDate } from "@/lib/datetime";
 
 const GOOGLE_TOKEN_KEY = "google_access_token";
@@ -30,6 +31,8 @@ interface PendingDoc {
   id: string;
   entity_type?: "document" | "page";
   can_review?: boolean;
+  review_submitted_by_id?: number | null;
+  review_submitted_by_name?: string | null;
   title: string;
   project: string;
   project_id: string | null;
@@ -108,6 +111,7 @@ function TimeAgo({ dateStr }: { dateStr: string | null }) {
 export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChange, isMobile, onOpenSidebar }: ApprovalsPanelProps) {
   const { toast } = useToast();
   const { googleAccessToken } = useDriveAuth();
+  const { user } = useAuth();
   const getGoogleToken = () => googleAccessToken || localStorage.getItem(GOOGLE_TOKEN_KEY);
   const canReview = userRole === "owner" || userRole === "admin" || userRole === "reviewer";
 
@@ -268,7 +272,10 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
               ) : (
                 <div className="space-y-3">
                   {pending.map((doc) => {
-                    const canReviewThisDoc = canReview && (doc.can_review ?? true);
+                    const isOwnSubmission =
+                      typeof doc.review_submitted_by_id === "number" &&
+                      user?.id === doc.review_submitted_by_id;
+                    const canReviewThisDoc = canReview && (doc.can_review ?? true) && !isOwnSubmission;
                     return (
                     <div key={doc.id} className="rounded-xl border border-border bg-card p-4 hover:border-primary/30 transition-colors">
                       <div className="flex items-start justify-between gap-3">
@@ -369,7 +376,9 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
                       {/* Non-reviewers can still view */}
                       {!canReviewThisDoc && (
                         <div className="flex items-center mt-3 pt-3 border-t border-border">
-                          <p className="text-xs text-muted-foreground">View-only in this workspace.</p>
+                          <p className="text-xs text-muted-foreground">
+                            {isOwnSubmission ? "You cannot review your own submission." : "View-only in this workspace."}
+                          </p>
                           <Button
                             size="sm"
                             variant="ghost"
