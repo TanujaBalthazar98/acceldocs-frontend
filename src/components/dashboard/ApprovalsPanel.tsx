@@ -166,8 +166,13 @@ export function ApprovalsPanel({ userRole, onClose, onOpenDocument, onCountChang
     try {
       const token = getGoogleToken();
       const { data, error } = await invokeFunction("approvals-action", {
-        body: { document_id: Number(docId), action, comment: comment || null, entity_type: entityType },
-        ...(token ? { headers: { "x-google-token": token } } : {}),
+        body: {
+          document_id: Number(docId),
+          action,
+          comment: comment || null,
+          entity_type: entityType,
+          ...(token ? { _google_access_token: token } : {}),
+        },
       });
       if (error || !data?.ok) throw new Error(data?.error || error || "Action failed");
       toast({
