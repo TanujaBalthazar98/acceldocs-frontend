@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
-import { applySeo } from "@/lib/seo";
+import { applySeo, sanitizeCanonicalUrl } from "@/lib/seo";
 import {
   ChevronLeft,
   ChevronRight,
@@ -1973,34 +1973,106 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   // SEO: set document title and meta description based on current page
   useEffect(() => {
     const orgName = currentOrg?.name ?? "Documentation";
+    const canonicalUrl = sanitizeCanonicalUrl(window.location.href);
+    const hasAuthTokenParam = (() => {
+      try {
+        return new URL(window.location.href).searchParams.has("auth_token");
+      } catch {
+        return false;
+      }
+    })();
+    const orgPrefix = currentOrg ? getOrgPathPrefix(currentOrg) : docsBasePath;
+    const docsHomeUrl = sanitizeCanonicalUrl(`${window.location.origin}${orgPrefix}`);
+    const noindex = isInternalView || hasAuthTokenParam;
+
     if (selectedDocument) {
       // Strip HTML from the first ~160 chars of content for meta description
       const rawText = (selectedDocument as any).text_content
         || selectedDocument.title || "";
       const description = rawText.replace(/<[^>]+>/g, "").trim().slice(0, 160);
+      const projectUrl = selectedProject
+        ? sanitizeCanonicalUrl(`${window.location.origin}${buildProjectUrl(selectedProject, visibleVersion)}`)
+        : docsHomeUrl;
+      const topic = selectedDocument.topic_id ? topics.find((t) => t.id === selectedDocument.topic_id) : null;
+      const topicPath = topic && selectedProject
+        ? `${buildProjectUrl(selectedProject, visibleVersion)}/${topic.slug}`
+        : null;
+      const topicUrl = topicPath
+        ? sanitizeCanonicalUrl(`${window.location.origin}${topicPath}`)
+        : null;
+      const breadcrumbItems: Array<{ name: string; item: string }> = [
+        { name: orgName, item: docsHomeUrl },
+      ];
+      if (selectedProject?.name) breadcrumbItems.push({ name: selectedProject.name, item: projectUrl });
+      if (topic?.name && topicUrl) breadcrumbItems.push({ name: topic.name, item: topicUrl });
+      breadcrumbItems.push({ name: selectedDocument.title || "Untitled Page", item: canonicalUrl });
+
+      const structuredData = [
+        {
+          "@type": "BreadcrumbList",
+          itemListElement: breadcrumbItems.map((entry, index) => ({
+            "@type": "ListItem",
+            position: index + 1,
+            name: entry.name,
+            item: entry.item,
+          })),
+        },
+        {
+          "@type": "TechArticle",
+          headline: selectedDocument.title || "Untitled Page",
+          description: description || `Read ${selectedDocument.title} in the ${orgName} documentation.`,
+          dateModified: selectedDocument.updated_at || undefined,
+          datePublished: selectedDocument.created_at || undefined,
+          author: { "@type": "Organization", name: orgName },
+          publisher: { "@type": "Organization", name: orgName },
+          mainEntityOfPage: { "@type": "WebPage", "@id": canonicalUrl },
+          url: canonicalUrl,
+        },
+      ];
+
       applySeo({
         title: `${selectedDocument.title} | ${orgName}`,
         description: description || `Read ${selectedDocument.title} in the ${orgName} documentation.`,
-        canonicalUrl: window.location.href,
+        canonicalUrl,
+        structuredData,
         // Internal docs should not be indexed by search engines
-        noindex: isInternalView,
+        noindex,
       });
     } else if (selectedProject) {
+      const projectUrl = sanitizeCanonicalUrl(`${window.location.origin}${buildProjectUrl(selectedProject, visibleVersion)}`);
       applySeo({
         title: `${selectedProject.name} | ${orgName}`,
         description: `${selectedProject.name} documentation for ${orgName}.`,
-        canonicalUrl: window.location.href,
-        noindex: isInternalView,
+        canonicalUrl,
+        structuredData: {
+          "@context": "https://schema.org",
+          "@type": "CollectionPage",
+          name: `${selectedProject.name} Documentation`,
+          url: projectUrl,
+          isPartOf: { "@type": "WebSite", name: `${orgName} Documentation`, url: docsHomeUrl },
+        },
+        noindex,
       });
     } else if (currentOrg) {
       applySeo({
         title: `${orgName} Documentation`,
         description: `Documentation hub for ${orgName}.`,
-        canonicalUrl: window.location.href,
-        noindex: isInternalView,
+        canonicalUrl,
+        structuredData: {
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: `${orgName} Documentation`,
+          url: docsHomeUrl,
+          potentialAction: {
+            "@type": "SearchAction",
+            target: `${docsHomeUrl}?q={search_term_string}`,
+            "query-input": "required name=search_term_string",
+          },
+        },
+        noindex,
       });
     }
-  }, [selectedDocument, selectedProject, currentOrg, isInternalView]);
+  }, [selectedDocument, selectedProject, currentOrg, isInternalView, docsBasePath, visibleVersion, topics]);
 
   // If showing landing page
   if (internalAccessDenied && isInternalView) {
