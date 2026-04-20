@@ -28,10 +28,18 @@ function resolveAuthApiUrl(): string {
 const API_URL = resolveAuthApiUrl();
 
 function getAuthApiUrl(): string {
-  if (typeof window === 'undefined') return API_URL;
-  const isLocalHttps = window.location.protocol === 'https:' && /^(http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/.test(API_URL);
-  // In HTTPS local dev, use Vite same-origin proxy to avoid mixed-content requests.
-  return isLocalHttps ? '' : API_URL;
+  if (typeof window === "undefined") return API_URL;
+
+  const isLocalPage = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+  const isLocalHttpApi = /^(http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/.test(API_URL);
+
+  // In local dev, prefer same-origin so Vite proxy can route to backend and
+  // avoid CORS/mixed-content/port mismatch issues.
+  if (isLocalPage && isLocalHttpApi) {
+    return "";
+  }
+
+  return API_URL;
 }
 
 function getAuthCallbackApiUrl(): string {
@@ -46,17 +54,30 @@ const TOKEN_KEY = 'acceldocs_auth_token';
 const USER_KEY = 'acceldocs_user';
 const OAUTH_REDIRECT_URI_KEY = 'acceldocs_oauth_redirect_uri';
 
+function normalizeAuthErrorMessage(message: string, status?: number): string {
+  const text = (message || "").toLowerCase();
+
+  if (
+    text.includes("no workspace membership") ||
+    text.includes("not a member of the selected workspace") ||
+    text.includes("not part of this workspace")
+  ) {
+    return "You are not part of this workspace yet. Request access first, then sign in after owner/admin approval.";
+  }
+
+  if (text.includes("join request") && text.includes("pending")) {
+    return "Your access request is pending owner/admin approval.";
+  }
+
+  if ((status === 401 || status === 403) && !message) {
+    return "Authentication failed. You may not have access to this workspace.";
+  }
+
+  return message || "Authentication failed. Please try again.";
+}
+
 function getOAuthRedirectUri(): string {
-  const isPreviewHost = window.location.host.startsWith("id-preview--");
-  let base = AUTH_REDIRECT_BASE || "";
-
-  if (!base && isPreviewHost) {
-    base = "https://docspeare.com";
-  }
-  if (!base) {
-    base = window.location.origin;
-  }
-
+  const base = AUTH_REDIRECT_BASE || window.location.origin;
   const normalized = base.endsWith("/") ? base.slice(0, -1) : base;
   return `${normalized}/auth/callback`;
 }
@@ -136,17 +157,28 @@ export async function signInWithGoogle(orgId?: number): Promise<void> {
   const orgQuery = Number.isFinite(orgId) && (orgId as number) > 0
     ? `&org_id=${encodeURIComponent(String(orgId))}`
     : "";
-  const response = await fetch(
-    `${getAuthApiUrl()}/auth/login?redirect_uri=${encodeURIComponent(redirectUri)}${orgQuery}`,
-    { method: "GET" }
-  );
-  if (!response.ok) {
-    throw new Error("Failed to start Google OAuth");
+  const authApiUrl = getAuthApiUrl();
+  const loginUrl = `${authApiUrl}/auth/login?redirect_uri=${encodeURIComponent(redirectUri)}${orgQuery}`;
+
+  let response: Response;
+  try {
+    response = await fetch(loginUrl, { method: "GET" });
+  } catch {
+    const target = authApiUrl || window.location.origin;
+    throw new Error(
+      `Unable to reach auth service (${target}). If running locally, start backend on http://localhost:8000.`,
+    );
   }
+
+  if (!response.ok) {
+    throw new Error(`Failed to start Google OAuth (HTTP ${response.status})`);
+  }
+
   const payload = await response.json();
   if (!payload?.url) {
     throw new Error("OAuth URL missing from backend response");
   }
+
   const redirectFromBackend = typeof payload?.redirect_uri === "string" ? payload.redirect_uri : null;
   if (redirectFromBackend) {
     localStorage.setItem(OAUTH_REDIRECT_URI_KEY, redirectFromBackend);
@@ -161,6 +193,7 @@ export async function signInWithGoogle(orgId?: number): Promise<void> {
       // Ignore parse errors; fallback will use computed redirect URI.
     }
   }
+
   window.location.href = payload.url;
 }
 
@@ -179,14 +212,14 @@ export async function handleGoogleCallback(code: string): Promise<User & { strap
 
   if (!response.ok) {
     localStorage.removeItem(OAUTH_REDIRECT_URI_KEY);
-    let errorMsg = 'Authentication failed';
+    let errorMsg = "";
     try {
       const error = await response.json();
-      errorMsg = error.detail || error.error || error.message || errorMsg;
+      errorMsg = error.detail || error.error || error.message || "";
     } catch {
       // keep default message
     }
-    throw new Error(errorMsg);
+    throw new Error(normalizeAuthErrorMessage(errorMsg, response.status));
   }
 
   let data: AuthResponse & { strapi_jwt?: string; error?: string; redirect?: string };

@@ -3,7 +3,7 @@
  * Handles the redirect from Google OAuth
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { setToken, getCurrentUser, handleGoogleCallback } from '@/lib/auth-new';
 import { apiFetch, ORG_ID_KEY } from '@/lib/api/client';
@@ -100,6 +100,8 @@ function completeAuth(docsNextUrl?: string | null) {
 
 export default function AuthCallbackPage() {
   const [searchParams] = useSearchParams();
+  const searchKey = searchParams.toString();
+  const oauthExchangeInFlightRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [inviteResult, setInviteResult] = useState<{
     status: string;
@@ -171,10 +173,26 @@ export default function AuthCallbackPage() {
 
       // If we have an authorization code from Google, exchange it for a token
       if (code) {
+        if (oauthExchangeInFlightRef.current) {
+          return;
+        }
+
+        const codeMarkerKey = `acceldocs_oauth_code_${code}`;
+        const markerValue = sessionStorage.getItem(codeMarkerKey);
+        if (markerValue === 'done') {
+          // Callback can re-run in local dev or due re-renders. Avoid reusing an auth code.
+          await handlePostAuth();
+          return;
+        }
+
+        oauthExchangeInFlightRef.current = true;
+        sessionStorage.setItem(codeMarkerKey, 'processing');
         try {
           await handleGoogleCallback(code);
+          sessionStorage.setItem(codeMarkerKey, 'done');
           await handlePostAuth();
         } catch (err) {
+          sessionStorage.removeItem(codeMarkerKey);
           // If user was redirected to signup (no account), preserve invite token
           if (err instanceof Error && (err.message === 'NO_ACCOUNT_REDIRECT' || err.message === 'JOIN_REQUEST_PENDING_REDIRECT')) {
             // Re-stash the invite token so it survives through the signup flow
@@ -186,6 +204,8 @@ export default function AuthCallbackPage() {
           console.error('OAuth code exchange failed:', err);
           setError(err instanceof Error ? err.message : 'Authentication failed');
           setTimeout(() => window.location.assign('/login'), 3000);
+        } finally {
+          oauthExchangeInFlightRef.current = false;
         }
         return;
       }
@@ -225,7 +245,7 @@ export default function AuthCallbackPage() {
     }
 
     processCallback();
-  }, [searchParams]);
+  }, [searchKey]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

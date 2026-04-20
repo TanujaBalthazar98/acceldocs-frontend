@@ -63,7 +63,7 @@ describe("Authentication", () => {
     it("renders login page", async () => {
       renderWithRouter(<LoginPage />, ["/login"]);
 
-      expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
+      expect(screen.getByText(/acceldocs/i)).toBeInTheDocument();
       expect(screen.getByText(/continue with google/i)).toBeInTheDocument();
     });
 

@@ -36,19 +36,7 @@ function isEmbedded(): boolean {
 }
 
 function getAuthRedirectOrigin(): string {
-  const base = getRedirectBase();
-  const host = window.location.host;
-  const isPreviewHost = host.startsWith("id-preview--");
-
-  if (AUTH_REDIRECT_BASE?.trim()) {
-    return base;
-  }
-
-  if (isEmbedded() && isPreviewHost) {
-    return "https://docspeare.com";
-  }
-
-  return base;
+  return getRedirectBase();
 }
 
 function navigateToOAuth(url: string, existingWindow?: Window | null): void {
