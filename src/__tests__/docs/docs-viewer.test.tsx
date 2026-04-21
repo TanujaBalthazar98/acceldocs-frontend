@@ -133,7 +133,7 @@ describe('Documentation Viewer', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+        expect(screen.getAllByText(/Test Project/i).length).toBeGreaterThan(0);
       });
     });
 

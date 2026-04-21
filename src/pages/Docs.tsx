@@ -2156,7 +2156,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       <div className="min-h-screen bg-background flex flex-col docs-branded docs-app-shell">
         {/* Minimal Header */}
         <header className="docs-main-header border-b border-border bg-card">
-          <div className="docs-main-header-inner flex items-center justify-between px-4 lg:px-6 h-14">
+          <div className="docs-main-header-inner flex items-center justify-between px-4 lg:px-6 h-14 gap-3">
             <Link
               to={getOrgPathPrefix(currentOrg)}
               onClick={(e) => {
@@ -2172,7 +2172,62 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
               )}
               <span className="font-bold text-lg text-foreground brand-heading">{currentOrg.name}</span>
             </Link>
-            <div className="flex items-center gap-2">
+
+            <div className="docs-top-search hidden md:flex items-center gap-2 flex-1 max-w-md mx-3">
+              <SmartSearch
+                placeholder="Search..."
+                documents={documents.map(d => ({
+                  id: d.id,
+                  title: d.title,
+                  project_id: d.project_id,
+                  topic_id: d.topic_id,
+                  content_html: getDocumentHtml(d) ?? undefined,
+                }))}
+                topics={landingTopics.map(t => ({
+                  id: t.id,
+                  name: t.name,
+                  project_id: t.project_id,
+                }))}
+                projects={projects.map(p => ({
+                  id: p.id,
+                  name: p.name,
+                }))}
+                orgSlug={currentOrg?.slug || orgSlug}
+                audience={user ? "all" : "public"}
+                primaryColor={currentOrg?.primary_color}
+                showAIButton={false}
+                onAskAI={() => setAskAIOpen(true)}
+                onSelect={(result) => {
+                  if (result.type === "project") {
+                    const project = projects.find(p => p.id === result.id);
+                    if (project) selectProject(project);
+                  } else if (result.type === "topic") {
+                    const topic = topics.find((t) => String(t.id) === String(result.id));
+                    if (topic) {
+                      const project = projects.find(p => p.id === topic.project_id);
+                      if (project) selectProject(project);
+                    }
+                  } else if (result.type === "page") {
+                    const doc = documents.find((d) => String(d.id) === String(result.id));
+                    if (doc) selectDocument(doc);
+                  }
+                }}
+                onSearch={setSearchQuery}
+              />
+            </div>
+
+            <div className="flex items-center gap-1">
+              {landingProjects.slice(0, 4).map((project) => (
+                <Button
+                  key={project.id}
+                  variant="ghost"
+                  size="sm"
+                  className="hidden xl:inline-flex text-sm text-muted-foreground hover:text-foreground"
+                  onClick={() => selectProject(project)}
+                >
+                  {project.name}
+                </Button>
+              ))}
               <ThemeToggle />
               {/* Hide Dashboard on landing when all visible projects are public */}
               {isInternalView && currentOrg ? (
