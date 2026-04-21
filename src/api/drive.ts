@@ -149,4 +149,18 @@ export const driveApi = {
       method: "POST",
       body: JSON.stringify({ doc_id: docId }),
     }),
+
+  updateRootFolder: (
+    folderId: string,
+  ): Promise<{
+    ok: boolean;
+    drive_folder_id: string;
+    previous_drive_folder_id: string | null;
+    folder_name: string | null;
+    acl_sync: { ok: boolean; status?: string; synced?: number; failed?: number };
+  }> =>
+    fetchOrThrow("/api/drive/root-folder", {
+      method: "PATCH",
+      body: JSON.stringify({ folder_id: folderId }),
+    }),
 };

@@ -639,7 +639,6 @@ function ScanDriveDialog({
   onSuccess,
   rootFolderId,
   driveConnected,
-  canManageDrive,
   target,
   allSections,
 }: {
@@ -647,7 +646,6 @@ function ScanDriveDialog({
   onSuccess: () => void;
   rootFolderId: string | null;
   driveConnected: boolean;
-  canManageDrive: boolean;
   target: DriveImportTarget | null;
   allSections: Section[];
 }) {
@@ -746,10 +744,9 @@ function ScanDriveDialog({
 
   const rootFolderMissing = !resolvedRootFolderId;
   const parsedDriveFolderId = parseDriveFolderId(driveFolderInput);
-  const canConfigureRootFolder = !rootFolderMissing || canManageDrive;
   const canImportDriveFolder = driveImportTarget
     ? !!parsedDriveFolderId
-    : (rootFolderMissing ? !!parsedDriveFolderId && canConfigureRootFolder : !!resolvedRootFolderId);
+    : !!resolvedRootFolderId;
   const localImportNeedsTarget = source === "local" && localImportTarget === null;
   const localFilesRequireSectionTarget =
     source === "local" && localMode === "files" && localImportTarget !== null && localImportTarget.type !== "section";
@@ -765,13 +762,10 @@ function ScanDriveDialog({
         }
         return driveApi.scan(parsedDriveFolderId, driveImportTarget.id, driveImportTarget.type);
       }
-      if (!canConfigureRootFolder) {
-        throw new Error("Only workspace owner/admin can configure the Drive root folder.");
+      if (!resolvedRootFolderId) {
+        throw new Error("Workspace root folder is not configured. Ask the workspace owner to set it in Workspace settings.");
       }
-      if (!resolvedRootFolderId && !parsedDriveFolderId) {
-        throw new Error("Paste a Google Drive folder URL or ID to configure the workspace root.");
-      }
-      return driveApi.scan(resolvedRootFolderId || parsedDriveFolderId);
+      return driveApi.scan(resolvedRootFolderId);
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["sections"] });
@@ -906,11 +900,11 @@ function ScanDriveDialog({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="w-[min(42rem,calc(100vw-1.5rem))] max-w-none max-h-[88vh] overflow-hidden p-0">
         <DialogHeader>
-          <DialogTitle className="text-base">Import content</DialogTitle>
+          <DialogTitle className="text-base px-6 pt-6">Import content</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-1">
+        <div className="space-y-4 px-6 py-2 overflow-y-auto">
           {source === "drive" ? (
             <div className="space-y-1.5 rounded-md border bg-muted/30 px-3 py-2">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destination</Label>
@@ -918,11 +912,13 @@ function ScanDriveDialog({
                 <SelectTrigger className="h-9 text-sm bg-background">
                   <SelectValue placeholder="Choose destination" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ROOT_DESTINATION_VALUE}>Workspace root (new product)</SelectItem>
+                <SelectContent className="max-w-[min(90vw,38rem)]">
+                  <SelectItem value={ROOT_DESTINATION_VALUE} disabled={rootFolderMissing}>
+                    Workspace root (new product)
+                  </SelectItem>
                   {destinationOptions.map((option) => (
                     <SelectItem key={option.id} value={String(option.id)}>
-                      <span className="truncate">{option.path} ({importTargetTypeLabel(option.type)})</span>
+                      <span className="block max-w-[min(86vw,34rem)] truncate">{option.path} ({importTargetTypeLabel(option.type)})</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -933,6 +929,11 @@ function ScanDriveDialog({
               {!driveImportTarget && hasExistingTopLevelContent && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-500/15 dark:border-amber-500/35 px-2.5 py-2 text-xs text-amber-800 dark:text-amber-200">
                   Root import creates another top-level product. Pick a destination above to avoid orphaned content.
+                </div>
+              )}
+              {rootFolderMissing && !driveImportTarget && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-500/15 dark:border-amber-500/35 px-2.5 py-2 text-xs text-amber-800 dark:text-amber-200">
+                  Workspace root folder is not configured. Owner can set it in Workspace settings before root import.
                 </div>
               )}
             </div>
@@ -952,10 +953,10 @@ function ScanDriveDialog({
                     <SelectTrigger className="h-9 text-sm bg-background">
                       <SelectValue placeholder="Choose destination" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-w-[min(90vw,38rem)]">
                       {destinationOptions.map((option) => (
                         <SelectItem key={option.id} value={String(option.id)}>
-                          <span className="truncate">{option.path} ({importTargetTypeLabel(option.type)})</span>
+                          <span className="block max-w-[min(86vw,34rem)] truncate">{option.path} ({importTargetTypeLabel(option.type)})</span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1004,37 +1005,34 @@ function ScanDriveDialog({
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {driveImportTarget
                   ? "Drive folder URL or ID"
-                  : rootFolderMissing
-                    ? "Root folder URL or ID"
-                    : "Connected root folder"}
+                  : "Connected root folder"}
               </Label>
-              {driveImportTarget || rootFolderMissing ? (
+              {driveImportTarget ? (
                 <>
                   <Input
                     value={driveFolderInput}
                     onChange={(e) => setDriveFolderInput(e.target.value)}
                     placeholder="https://drive.google.com/drive/folders/..."
                     className="text-sm"
-                    disabled={rootFolderMissing && !canManageDrive}
                   />
                   {parsedDriveFolderId && parsedDriveFolderId !== driveFolderInput.trim() && (
                     <p className="text-xs text-emerald-600">Folder ID: {parsedDriveFolderId}</p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    {driveImportTarget
-                      ? "The selected Drive folder will be moved under this destination before syncing."
-                      : "This folder will be saved as the workspace root and imported."}
+                    The selected Drive folder will be moved under this destination before syncing.
                   </p>
-                  {rootFolderMissing && !canManageDrive && (
+                </>
+              ) : (
+                <>
+                  <div className="rounded-md border bg-background px-3 py-2 font-mono text-xs text-muted-foreground break-all">
+                    {resolvedRootFolderId || "No root folder configured"}
+                  </div>
+                  {rootFolderMissing && (
                     <p className="text-xs text-amber-700 dark:text-amber-300">
-                      Root folder can only be configured by workspace owner/admin.
+                      Configure root folder in Workspace settings first.
                     </p>
                   )}
                 </>
-              ) : (
-                <div className="rounded-md border bg-background px-3 py-2 font-mono text-xs text-muted-foreground break-all">
-                  {resolvedRootFolderId || "No root folder configured"}
-                </div>
               )}
             </div>
           ) : (
@@ -1072,12 +1070,12 @@ function ScanDriveDialog({
                 </div>
               ) : (
                 <>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-8 text-xs"
+                      className="h-8 text-xs sm:w-auto"
                       onClick={() => filesInputRef.current?.click()}
                     >
                       <ArrowUpFromLine className="h-3.5 w-3.5 mr-1.5" />
@@ -1087,7 +1085,7 @@ function ScanDriveDialog({
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-8 text-xs"
+                      className="h-8 text-xs sm:w-auto"
                       onClick={() => folderInputRef.current?.click()}
                     >
                       <FolderOpen className="h-3.5 w-3.5 mr-1.5" />
@@ -1110,7 +1108,7 @@ function ScanDriveDialog({
                     accept={LOCAL_IMPORT_ACCEPT}
                     onChange={(event) => handleFilesSelected(event, "folder")}
                   />
-                  <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground max-h-36 overflow-auto">
+                  <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground max-h-36 overflow-auto min-w-0">
                     {localFiles.length === 0 ? (
                       <span>No files selected.</span>
                     ) : (
@@ -1118,7 +1116,7 @@ function ScanDriveDialog({
                         {(localMode === "folder" ? relativePaths : localFiles.map((file) => file.name))
                           .slice(0, 12)
                           .map((name, idx) => (
-                            <li key={`${name}-${idx}`} className="truncate">{name}</li>
+                            <li key={`${name}-${idx}`} className="break-all">{name}</li>
                           ))}
                         {localFiles.length > 12 && (
                           <li className="text-[11px] text-muted-foreground/70">+{localFiles.length - 12} more</li>
@@ -1153,7 +1151,7 @@ function ScanDriveDialog({
             </div>
           </div>
         )}
-        <DialogFooter>
+        <DialogFooter className="px-6 pb-6 pt-2 border-t">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button
             size="sm"
@@ -1894,10 +1892,13 @@ function WorkspaceSettingsDialog({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const isWorkspaceOwner = org.user_role === "owner";
 
   // General
   const [workspaceName, setWorkspaceName] = useState(org.name ?? "");
   const [customDomain, setCustomDomain] = useState(org.custom_docs_domain ?? "");
+  const [driveRootFolderInput, setDriveRootFolderInput] = useState(org.drive_folder_id ?? "");
+  const [currentDriveRootId, setCurrentDriveRootId] = useState(org.drive_folder_id ?? "");
 
   // Layout
   const [sidebarPosition, setSidebarPosition] = useState<"left" | "right">(org.sidebar_position ?? "left");
@@ -1992,6 +1993,36 @@ function WorkspaceSettingsDialog({
     },
     onError: (err: Error) =>
       toast({ title: "Update failed", description: err.message, variant: "destructive" }),
+  });
+
+  const parsedDriveRootFolderId = parseDriveFolderId(driveRootFolderInput);
+  const canSubmitRootFolderChange =
+    isWorkspaceOwner &&
+    parsedDriveRootFolderId.length > 0 &&
+    parsedDriveRootFolderId !== currentDriveRootId;
+
+  const updateRootFolder = useMutation({
+    mutationFn: async () => driveApi.updateRootFolder(parsedDriveRootFolderId),
+    onSuccess: (result) => {
+      setDriveRootFolderInput(result.drive_folder_id ?? "");
+      setCurrentDriveRootId(result.drive_folder_id ?? "");
+      qc.invalidateQueries({ queryKey: ["org"] });
+      qc.invalidateQueries({ queryKey: ["org", org.id] });
+      qc.invalidateQueries({ queryKey: ["drive-status"] });
+      toast({
+        title: "Drive root folder updated",
+        description: result.folder_name
+          ? `Workspace root is now “${result.folder_name}”.`
+          : "Workspace Drive root folder has been updated.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Unable to update Drive root folder",
+        description: driveErrorMessage(err),
+        variant: "destructive",
+      });
+    },
   });
 
   const canSave = workspaceName.trim().length > 0 && !save.isPending;
@@ -2280,6 +2311,60 @@ function WorkspaceSettingsDialog({
                 <p className="text-[11px] text-muted-foreground">Point your CNAME to us, then enter it here. Leave empty for default URL.</p>
               </div>
 
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <div>
+                  <Label className="text-xs font-medium">Workspace Drive root folder</Label>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    This controls where imports/sync run from. Only the workspace owner can change it.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    value={driveRootFolderInput}
+                    onChange={(e) => setDriveRootFolderInput(e.target.value)}
+                    placeholder="https://drive.google.com/drive/folders/..."
+                    disabled={!isWorkspaceOwner || updateRootFolder.isPending}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => updateRootFolder.mutate()}
+                    disabled={!canSubmitRootFolderChange || updateRootFolder.isPending}
+                    className="sm:w-auto"
+                  >
+                    {updateRootFolder.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                    ) : null}
+                    Update root
+                  </Button>
+                </div>
+                {parsedDriveRootFolderId && parsedDriveRootFolderId !== driveRootFolderInput.trim() ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Using parsed folder ID: <span className="font-mono">{parsedDriveRootFolderId}</span>
+                  </p>
+                ) : null}
+                {currentDriveRootId ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Current root:
+                    {" "}
+                    <button
+                      type="button"
+                      className="underline-offset-2 hover:underline"
+                      onClick={() => window.open(`https://drive.google.com/drive/folders/${currentDriveRootId}`, "_blank")}
+                    >
+                      {currentDriveRootId}
+                    </button>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">No root folder configured yet.</p>
+                )}
+                {!isWorkspaceOwner ? (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    Ask the workspace owner to update this setting.
+                  </p>
+                ) : null}
+              </div>
+
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Header HTML</Label>
                 <p className="text-[11px] text-muted-foreground -mt-0.5">Rendered above the page content. Useful for announcement banners.</p>
@@ -2493,6 +2578,7 @@ function AddSectionDialog({
   parentId,
   allSections,
   hierarchyMode,
+  rootFolderConfigured,
   preferredType,
   cloneFromSectionId,
   titleOverride,
@@ -2504,6 +2590,7 @@ function AddSectionDialog({
   parentId?: number | null;
   allSections: Section[];
   hierarchyMode: "product" | "flat";
+  rootFolderConfigured: boolean;
   preferredType?: "section" | "tab" | "version";
   cloneFromSectionId?: number | null;
   titleOverride?: string;
@@ -2569,6 +2656,7 @@ function AddSectionDialog({
   const isRootCreate = destinationParentId == null;
   const parentDepth = getDepth(destinationParentId);
   const isProductMode = hierarchyMode === "product";
+  const rootCreateBlocked = isRootCreate && isProductMode && !rootFolderConfigured;
   const parentSection = destinationParentId != null ? allSections.find((section) => section.id === destinationParentId) ?? null : null;
   const parentType = parentSection?.section_type ?? "section";
   const canCreateTab = isProductMode
@@ -2595,14 +2683,18 @@ function AddSectionDialog({
   }, [canCreateTab, canCreateVersion, sectionType]);
 
   const create = useMutation({
-    mutationFn: () =>
-      sectionsApi.create({
+    mutationFn: () => {
+      if (rootCreateBlocked) {
+        throw new Error("Configure workspace root folder in Workspace settings before creating a product.");
+      }
+      return sectionsApi.create({
         name: name.trim(),
         parent_id: destinationParentId,
         section_type: isRootCreate ? (isProductMode ? "section" : sectionType) : sectionType,
         visibility,
         clone_from_section_id: !isRootCreate && sectionType === "version" ? (cloneFromSectionId ?? destinationParentId ?? null) : undefined,
-      }),
+      });
+    },
     onSuccess: (createdSection) => {
       qc.invalidateQueries({ queryKey: ["sections"] });
       const createdLabel = isRootCreate
@@ -2647,7 +2739,7 @@ function AddSectionDialog({
                     <SelectValue placeholder="Choose destination" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={ROOT_DESTINATION_VALUE}>
+                    <SelectItem value={ROOT_DESTINATION_VALUE} disabled={isProductMode && !rootFolderConfigured}>
                       {isProductMode ? "Workspace root (new product)" : "Workspace root"}
                     </SelectItem>
                     {destinationOptions.map((option) => (
@@ -2660,6 +2752,11 @@ function AddSectionDialog({
                 <p className="text-[11px] text-muted-foreground">
                   Choose destination first, then pick type (tab/section/sub-section/version).
                 </p>
+                {isProductMode && !rootFolderConfigured && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                    Workspace root folder is required before creating a top-level product.
+                  </p>
+                )}
               </div>
             )}
             <Input
@@ -2708,6 +2805,11 @@ function AddSectionDialog({
                 Creating a {sectionType === "version" ? "version" : sectionType} in the selected destination.
               </p>
             )}
+            {rootCreateBlocked && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-200">
+                Configure workspace root folder first, then create the product.
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Visibility</Label>
               <Select value={visibility} onValueChange={(v) => setVisibility(v as VisibilityLevel)}>
@@ -2727,7 +2829,7 @@ function AddSectionDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>
+          <Button size="sm" disabled={!name.trim() || create.isPending || rootCreateBlocked} onClick={() => create.mutate()}>
             {create.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
             Create
           </Button>
@@ -4216,6 +4318,7 @@ export default function Dashboard() {
   const canConfigureHierarchy = canManageWorkspace;
   const canOpenImportDialog = canEditContent;
   const driveConnected = !!driveStatus?.connected;
+  const workspaceRootConfigured = !!((driveStatus?.drive_folder_id ?? org?.drive_folder_id ?? "").trim());
 
   const sectionsById = useMemo(() => new Map(sections.map((s) => [s.id, s])), [sections]);
   const sectionDepthById = useMemo(() => {
@@ -4892,12 +4995,20 @@ export default function Dashboard() {
     setShowAddSection(true);
   }, [canManageStructure, notifyPermissionDenied]);
   const openAddProductDialog = useCallback(() => {
+    if (!workspaceRootConfigured) {
+      toast({
+        title: "Root folder required",
+        description: "Configure workspace root folder in Workspace settings before creating a product.",
+        variant: "destructive",
+      });
+      return;
+    }
     openAddSectionDialogInternal({
       parentId: null,
       title: "New product",
       deniedActionLabel: "create products",
     });
-  }, [openAddSectionDialogInternal]);
+  }, [openAddSectionDialogInternal, toast, workspaceRootConfigured]);
   const openCreateItemDialog = useCallback(() => {
     openAddSectionDialogInternal({
       parentId: selectedImportTargetSection?.id ?? selectedVersion?.id ?? selectedProduct?.id ?? null,
@@ -6069,7 +6180,7 @@ export default function Dashboard() {
                     Create item (choose type)
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={openAddProductDialog}>
+                  <DropdownMenuItem onClick={openAddProductDialog} disabled={!workspaceRootConfigured}>
                     <FolderPlus className="h-3.5 w-3.5 mr-2" />
                     New product (root)
                   </DropdownMenuItem>
@@ -6345,7 +6456,7 @@ export default function Dashboard() {
                         Create item (choose type)
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={openAddProductDialog}>
+                      <DropdownMenuItem onClick={openAddProductDialog} disabled={!workspaceRootConfigured}>
                         <FolderPlus className="h-3.5 w-3.5 mr-2" />
                         New product (root)
                       </DropdownMenuItem>
@@ -6393,7 +6504,11 @@ export default function Dashboard() {
                           <p className="text-[11px] text-muted-foreground">Product, version, tab, section, or workspace root</p>
                         </div>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => openImportDialogForTarget(null)} className="items-start gap-2 py-2">
+                      <DropdownMenuItem
+                        onClick={() => openImportDialogForTarget(null)}
+                        disabled={!workspaceRootConfigured}
+                        className="items-start gap-2 py-2"
+                      >
                         <FolderPlus className="h-3 w-3 mr-2" />
                         <div className="leading-tight">
                           <p className="text-sm">Import to workspace root</p>
@@ -6774,11 +6889,11 @@ export default function Dashboard() {
                     )}
                     {driveConnected && !driveStatus?.drive_folder_id && canManageDrive && (
                       <button
-                        onClick={() => openImportDialogForTarget(null)}
+                        onClick={() => setShowWorkspaceSettings(true)}
                         className="flex items-center w-full gap-2 px-2 py-2 rounded-md text-xs text-primary hover:bg-primary/10 transition-colors"
                       >
                         <FolderOpen className="h-3.5 w-3.5" />
-                        Set root folder
+                        Configure root folder
                       </button>
                     )}
                     {driveConnected && !driveStatus?.drive_folder_id && !canManageDrive && (
@@ -7469,6 +7584,7 @@ export default function Dashboard() {
           parentId={addSectionParentId}
           allSections={sections}
           hierarchyMode={org?.hierarchy_mode === "flat" ? "flat" : "product"}
+          rootFolderConfigured={workspaceRootConfigured}
           preferredType={addSectionPreferredType}
           cloneFromSectionId={addSectionCloneFromId}
           titleOverride={addSectionDialogTitle}
@@ -7494,7 +7610,6 @@ export default function Dashboard() {
           }}
           rootFolderId={org?.drive_folder_id ?? driveStatus?.drive_folder_id ?? null}
           driveConnected={driveConnected}
-          canManageDrive={canManageDrive}
           target={scanTarget}
           allSections={sections}
         />
