@@ -19,7 +19,7 @@ vi.mock('@/lib/api/client', async () => {
     ...actual,
     strapiFetch: vi.fn(),
     STRAPI_URL: 'http://localhost:1337',
-    API_BASE_URL: 'http://localhost:8000',
+    API_BASE_URL: 'http://localhost:8001',
   };
 });
 
@@ -38,10 +38,6 @@ vi.mock('@/contexts/ThemeContext', () => ({
 vi.mock('@/hooks/useBrandingLoader', () => ({
   useBrandingLoader: vi.fn(),
   useBrandingStyles: vi.fn(),
-}));
-
-vi.mock('@/lib/analytics/posthog', () => ({
-  captureDocView: vi.fn(),
 }));
 
 describe('Documentation Viewer', () => {

@@ -15,7 +15,7 @@ export default function HomeSimple() {
       {/* Header */}
       <header className="border-b bg-white/50 dark:bg-gray-900/50 backdrop-blur">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <h1 className="text-xl font-bold">AccelDocs</h1>
+          <h1 className="text-xl font-bold">docspeare</h1>
           <UserMenu />
         </div>
       </header>
@@ -24,7 +24,7 @@ export default function HomeSimple() {
       <main className="container mx-auto px-4 py-10 md:py-20">
         <div className="max-w-3xl mx-auto text-center space-y-8">
           <h1 className="text-3xl md:text-5xl font-bold">
-            Knowledge Workspace
+            docspeare
           </h1>
 
           <p className="text-xl text-gray-600 dark:text-gray-400">

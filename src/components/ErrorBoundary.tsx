@@ -50,8 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
       this.props.onError(error, errorInfo);
     }
 
-    // Log to error tracking service (e.g., Sentry, PostHog)
-    // You can add your error tracking here
+    // Log to error tracking service if you add one later.
   }
 
   handleReset = () => {

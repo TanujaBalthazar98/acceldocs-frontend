@@ -11,9 +11,9 @@ const Footer = () => {
           <div className="md:col-span-1">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl overflow-hidden">
-                <img src={docspeareIcon} alt="Knowledge Workspace" className="w-full h-full object-cover" />
+                <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
               </div>
-              <span className="text-xl font-semibold text-foreground">Knowledge Workspace</span>
+              <span className="text-xl font-semibold text-foreground">docspeare</span>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Turn your Google Docs into trusted, organized knowledge. No migrations required.
@@ -100,7 +100,7 @@ const Footer = () => {
         {/* Bottom */}
         <div className="pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Knowledge Workspace. All rights reserved.
+            © {new Date().getFullYear()} Docspeare. All rights reserved.
           </p>
           <p className="text-sm text-muted-foreground">
             Built for Google Workspace

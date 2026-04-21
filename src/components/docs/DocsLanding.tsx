@@ -86,6 +86,15 @@ export const DocsLanding = ({
   const featured = featuredProjects ?? projects;
   const searchList = searchProjects ?? projects;
 
+  // When the org hasn't picked a brand color we want pure monochrome —
+  // route everything through CSS vars so it adopts foreground/muted instead
+  // of rendering empty/invalid inline colors like `#15` or "".
+  const hasBrandColor = !!organization.primary_color?.trim();
+  const accentColor = hasBrandColor ? organization.primary_color : "hsl(var(--foreground))";
+  const accentTint = hasBrandColor
+    ? `${organization.primary_color}15`
+    : "hsl(var(--muted) / 0.6)";
+
   const heroTitle = organization.hero_title || `${organization.name} Documentation`;
   const heroDescription = organization.hero_description || 
     `Explore our comprehensive documentation to learn how to get the most out of ${organization.name}.`;
@@ -94,7 +103,7 @@ export const DocsLanding = ({
     <div className="docs-landing-shell min-h-[80vh] flex flex-col">
       {/* Hero Section */}
       <section className="docs-landing-hero flex-1 flex flex-col items-center justify-center px-4 py-16 lg:py-24 text-center">
-        <div className="docs-landing-kicker mb-3 text-xs font-semibold tracking-[0.18em] uppercase text-primary/80">
+        <div className="docs-landing-kicker mb-3 text-xs font-semibold tracking-[0.18em] uppercase text-muted-foreground">
           Documentation
         </div>
         {/* Logo */}
@@ -155,16 +164,16 @@ export const DocsLanding = ({
                 className="gap-2 hover:text-white transition-colors"
                 onClick={() => onProjectSelect(project)}
                 style={{
-                  borderColor: organization.primary_color,
-                  color: organization.primary_color,
+                  borderColor: accentColor,
+                  color: accentColor,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = organization.primary_color;
-                  e.currentTarget.style.color = "white";
+                  e.currentTarget.style.backgroundColor = accentColor;
+                  e.currentTarget.style.color = hasBrandColor ? "white" : "hsl(var(--background))";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = "transparent";
-                  e.currentTarget.style.color = organization.primary_color;
+                  e.currentTarget.style.color = accentColor;
                 }}
               >
                 <FileText className="h-4 w-4" />
@@ -213,7 +222,7 @@ export const DocsLanding = ({
                     "--hover-border": organization.primary_color,
                   } as React.CSSProperties}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = organization.primary_color;
+                    e.currentTarget.style.borderColor = accentColor;
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = "";
@@ -222,11 +231,11 @@ export const DocsLanding = ({
                   <div className="flex items-start gap-4">
                     <div 
                       className="p-3 rounded-lg"
-                      style={{ backgroundColor: `${organization.primary_color}15` }}
+                      style={{ backgroundColor: accentTint }}
                     >
                       <FolderOpen 
                         className="h-6 w-6"
-                        style={{ color: organization.primary_color }}
+                        style={{ color: accentColor }}
                       />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -244,7 +253,7 @@ export const DocsLanding = ({
                     </div>
                     <ArrowRight 
                       className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-all"
-                      style={{ color: organization.primary_color }}
+                      style={{ color: accentColor }}
                     />
                   </div>
                 </button>
@@ -259,7 +268,7 @@ export const DocsLanding = ({
                     "--hover-border": organization.primary_color,
                   } as React.CSSProperties}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = organization.primary_color;
+                    e.currentTarget.style.borderColor = accentColor;
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = "";
@@ -268,11 +277,11 @@ export const DocsLanding = ({
                   <div className="flex items-start gap-4">
                     <div 
                       className="p-3 rounded-lg"
-                      style={{ backgroundColor: `${organization.primary_color}15` }}
+                      style={{ backgroundColor: accentTint }}
                     >
                       <FileJson 
                         className="h-6 w-6"
-                        style={{ color: organization.primary_color }}
+                        style={{ color: accentColor }}
                       />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -288,7 +297,7 @@ export const DocsLanding = ({
                     </div>
                     <ArrowRight 
                       className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-all"
-                      style={{ color: organization.primary_color }}
+                      style={{ color: accentColor }}
                     />
                   </div>
                 </Link>
@@ -303,7 +312,7 @@ export const DocsLanding = ({
                     "--hover-border": organization.primary_color,
                   } as React.CSSProperties}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = organization.primary_color;
+                    e.currentTarget.style.borderColor = accentColor;
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = "";
@@ -312,11 +321,11 @@ export const DocsLanding = ({
                   <div className="flex items-start gap-4">
                     <div 
                       className="p-3 rounded-lg"
-                      style={{ backgroundColor: `${organization.primary_color}15` }}
+                      style={{ backgroundColor: accentTint }}
                     >
                       <Code 
                         className="h-6 w-6"
-                        style={{ color: organization.primary_color }}
+                        style={{ color: accentColor }}
                       />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -332,7 +341,7 @@ export const DocsLanding = ({
                     </div>
                     <ArrowRight 
                       className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-all"
-                      style={{ color: organization.primary_color }}
+                      style={{ color: accentColor }}
                     />
                   </div>
                 </Link>

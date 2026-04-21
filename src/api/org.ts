@@ -11,6 +11,7 @@ export const orgApi = {
   update: (data: Partial<Pick<
     Org,
     | "name"
+    | "drive_folder_id"
     | "logo_url"
     | "primary_color"
     | "secondary_color"

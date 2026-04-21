@@ -62,6 +62,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [organizationId, setOrganizationId] = useState<number | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [domain, setDomain] = useState("");
@@ -104,6 +105,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
       try {
         const org = await orgApi.get();
         setOrganizationId(org.id);
+        setUserRole(org.user_role || null);
         setName(org.name || "");
         setSlug(org.slug || "");
         const resolvedDomain = (org.domain || "").trim().toLowerCase() || inferredDomain;
@@ -187,6 +189,11 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
     try {
       await orgApi.update({
         name: name.trim(),
+        // drive_folder_id is owner-only on the backend — omit entirely for
+        // non-owners so saving other fields doesn't 403.
+        ...(userRole === "owner"
+          ? { drive_folder_id: driveFolderId.trim() || null }
+          : {}),
         logo_url: logoUrl.trim() || null,
         primary_color: primaryColor.trim() || null,
         secondary_color: secondaryColor.trim() || null,
@@ -254,13 +261,12 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
           <div className="text-sm text-muted-foreground">Loading...</div>
         ) : (
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-8">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-7">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="brand">Branding</TabsTrigger>
               <TabsTrigger value="landing">Landing</TabsTrigger>
               <TabsTrigger value="docs">Docs Site</TabsTrigger>
               <TabsTrigger value="drive">Drive</TabsTrigger>
-              <TabsTrigger value="github">GitHub</TabsTrigger>
               <TabsTrigger value="ai">AI</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
             </TabsList>
@@ -541,6 +547,7 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                     type={showDriveId ? "text" : "password"}
                     value={driveFolderId}
                     onChange={(e) => setDriveFolderId(e.target.value)}
+                    disabled={userRole !== "owner"}
                   />
                   <Button
                     type="button"
@@ -550,11 +557,12 @@ export const GeneralSettings = ({ onBack }: GeneralSettingsProps) => {
                     {showDriveId ? "Hide" : "Show"}
                   </Button>
                 </div>
+                <div className="text-xs text-muted-foreground">
+                  {userRole === "owner"
+                    ? "Only the workspace owner can change this. Pointing to a different folder does not delete already-synced content — reconnect Drive after saving."
+                    : "Only the workspace owner can change the Drive root folder."}
+                </div>
               </div>
-            </TabsContent>
-
-            <TabsContent value="github" className="mt-6 space-y-5">
-              <GitHubSettingsTab organizationId={organizationId} />
             </TabsContent>
 
             <TabsContent value="ai" className="mt-6">
@@ -1311,10 +1319,15 @@ function AISettingsTab() {
           <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted">
             <Bot className="w-5 h-5 text-muted-foreground" />
           </div>
-          <div>
-            <h4 className="text-sm font-semibold text-foreground">AI Agent Configuration</h4>
-            <p className="text-xs text-muted-foreground">
-              Configure your LLM provider API key to enable AI-powered features (chat agent, inline assistant, template generation).
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-semibold text-foreground">AI Configuration</h4>
+              <span className="inline-flex items-center rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                Beta
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Bring your own API key. Today this powers <strong>Ask AI about a page</strong> and the <strong>docs assistant chat</strong>. A full drafting &amp; restructuring agent is coming soon.
             </p>
           </div>
         </div>

@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Search, Building2, Plus, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { API_BASE_URL } from "@/lib/api/client";
+import docspeareIcon from "@/assets/docspeare-icon.png";
 
 interface Organization {
   id: number;
@@ -295,8 +296,15 @@ export default function SignUp() {
       <div className="relative z-10 mx-auto w-full max-w-4xl">
         {/* Header */}
         <div className="mb-6 text-center sm:mb-8">
+          <div className="mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl shadow-lg ring-1 ring-border/60 sm:h-16 sm:w-16">
+            <img
+              src={docspeareIcon}
+              alt="Docspeare"
+              className="h-full w-full object-cover"
+            />
+          </div>
           <h1 className="mb-2 text-3xl font-bold tracking-tight text-gradient sm:text-4xl">
-            Knowledge Workspace
+            docspeare
           </h1>
           <p className="text-base text-muted-foreground sm:text-lg">
             Create or join your documentation workspace

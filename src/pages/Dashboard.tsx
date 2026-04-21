@@ -118,8 +118,7 @@ import {
   MessageSquare,
   ThumbsUp,
   Clock3,
-ChevronUp,
-ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   Select,
@@ -1899,6 +1898,8 @@ function WorkspaceSettingsDialog({
   // General
   const [workspaceName, setWorkspaceName] = useState(org.name ?? "");
   const [customDomain, setCustomDomain] = useState(org.custom_docs_domain ?? "");
+  const [driveFolderId, setDriveFolderId] = useState(org.drive_folder_id ?? "");
+  const isOwner = org.user_role === "owner";
 
   // Layout
   const [sidebarPosition, setSidebarPosition] = useState<"left" | "right">(org.sidebar_position ?? "left");
@@ -1920,7 +1921,9 @@ function WorkspaceSettingsDialog({
   });
 
   // Branding
-  const [primaryColor, setPrimaryColor] = useState(org.primary_color ?? "#6366f1");
+  // Default brand colors to empty so a fresh workspace renders in
+  // monochrome until the owner explicitly picks a brand color.
+  const [primaryColor, setPrimaryColor] = useState(org.primary_color ?? "");
   const [secondaryColor, setSecondaryColor] = useState(org.secondary_color ?? "");
   const [accentColor, setAccentColor] = useState(org.accent_color ?? "");
   const [fontHeading, setFontHeading] = useState(org.font_heading ?? "");
@@ -1962,6 +1965,11 @@ function WorkspaceSettingsDialog({
       orgApi.update({
         name: workspaceName.trim(),
         custom_docs_domain: customDomain.trim() || null,
+        // Drive root is owner-only on the backend — omit the field entirely
+        // for non-owners so unrelated saves don't 403.
+        ...(isOwner
+          ? { drive_folder_id: driveFolderId.trim() || null }
+          : {}),
         sidebar_position: sidebarPosition,
         show_toc: showToc,
         code_theme: codeTheme.trim() || null,
@@ -2279,6 +2287,21 @@ function WorkspaceSettingsDialog({
                 <Label className="text-xs font-medium">Custom docs domain</Label>
                 <Input value={customDomain} onChange={(e) => setCustomDomain(e.target.value.toLowerCase())} placeholder="docs.example.com" />
                 <p className="text-[11px] text-muted-foreground">Point your CNAME to us, then enter it here. Leave empty for default URL.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Drive root folder ID</Label>
+                <Input
+                  value={driveFolderId}
+                  onChange={(e) => setDriveFolderId(e.target.value)}
+                  placeholder="1AbC...xyz"
+                  disabled={!isOwner}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {isOwner
+                    ? "Only the workspace owner can change this. Changing it does not delete already-synced content — reconnect Drive after saving."
+                    : "Only the workspace owner can change the Drive root folder."}
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -5462,6 +5485,21 @@ export default function Dashboard() {
     onError: (err: Error) => toast({ title: "Submit failed", description: err.message, variant: "destructive" }),
   });
 
+  // Solo-workspace publish: if the caller is the only member, there's nobody
+  // to review — chain submit→approve and show a single "Published" toast.
+  const publishPageDirectly = useMutation({
+    mutationFn: async (id: number) => {
+      await pagesApi.submitReview(id);
+      return pagesApi.approve(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      qc.invalidateQueries({ queryKey: ["page", selectedPageId] });
+      toast({ title: "Published" });
+    },
+    onError: (err: Error) => toast({ title: "Publish failed", description: err.message, variant: "destructive" }),
+  });
+
   const approvePage = useMutation({
     mutationFn: (id: number) => pagesApi.approve(id),
     onSuccess: () => {
@@ -5580,13 +5618,21 @@ export default function Dashboard() {
     syncPage.mutate(pageId);
   }, [canSyncContent, notifyPermissionDenied, syncPage]);
 
+  // True when the current user is the only member of this workspace —
+  // review is impossible, so Submit-for-review becomes direct Publish.
+  const isSoloWorkspace = (org?.member_count ?? 0) <= 1;
+
   const handleSubmitCurrentPageForReview = useCallback((page: Page) => {
     if (!canPublishContent) {
-      notifyPermissionDenied("submit pages for review");
+      notifyPermissionDenied(isSoloWorkspace ? "publish pages" : "submit pages for review");
       return;
     }
-    submitPageForReview.mutate(page.id);
-  }, [canPublishContent, notifyPermissionDenied, submitPageForReview]);
+    if (isSoloWorkspace) {
+      publishPageDirectly.mutate(page.id);
+    } else {
+      submitPageForReview.mutate(page.id);
+    }
+  }, [canPublishContent, isSoloWorkspace, notifyPermissionDenied, publishPageDirectly, submitPageForReview]);
 
   const handleApproveCurrentPage = useCallback((page: Page) => {
     if (!canReviewContent) {
@@ -7101,7 +7147,7 @@ export default function Dashboard() {
                     Unpublish
                   </Button>
                 )}
-                {selectedPage.status === "review" && canReviewContent && !isSelectedPageOwnSubmission && (
+                {selectedPage.status === "review" && canReviewContent && (!isSelectedPageOwnSubmission || isSoloWorkspace) && (
                   <>
                     <Button
                       variant="outline"
@@ -7124,7 +7170,7 @@ export default function Dashboard() {
                     </Button>
                   </>
                 )}
-                {selectedPage.status === "review" && canReviewContent && isSelectedPageOwnSubmission && (
+                {selectedPage.status === "review" && canReviewContent && isSelectedPageOwnSubmission && !isSoloWorkspace && (
                   <span className="text-[11px] text-muted-foreground hidden sm:inline">
                     You cannot review your own submission
                   </span>
@@ -7133,19 +7179,23 @@ export default function Dashboard() {
                   <Button
                     size="sm"
                     className="h-7 text-xs gap-1.5"
-                    disabled={!canPublishContent || submitPageForReview.isPending || !selectedPage.html_content || !selectedPage.section_id}
+                    disabled={!canPublishContent || submitPageForReview.isPending || publishPageDirectly.isPending || !selectedPage.html_content || !selectedPage.section_id}
                     onClick={() => handleSubmitCurrentPageForReview(selectedPage)}
                   >
-                    {submitPageForReview.isPending
+                    {(submitPageForReview.isPending || publishPageDirectly.isPending)
                       ? <Loader2 className="h-3 w-3 animate-spin" />
                       : <ArrowUpFromLine className="h-3 w-3" />
                     }
-                    <span className="hidden sm:inline">Submit for review</span>
+                    <span className="hidden sm:inline">
+                      {isSoloWorkspace ? "Publish" : "Submit for review"}
+                    </span>
                   </Button>
                 )}
                 {selectedPage.status === "draft" && !selectedPage.section_id && (
                   <span className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/20 border border-amber-200 dark:border-amber-500/40 rounded px-2 py-1 hidden sm:inline">
-                    Move page into a section to submit for review
+                    {isSoloWorkspace
+                      ? "Move page into a section to publish"
+                      : "Move page into a section to submit for review"}
                   </span>
                 )}
 

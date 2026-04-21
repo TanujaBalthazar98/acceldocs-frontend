@@ -22,7 +22,7 @@ const Navbar = () => {
             <div className="w-9 h-9 rounded-xl overflow-hidden">
               <img src={docspeareIcon} alt="Docspeare" className="w-full h-full object-cover" />
             </div>
-            <span className="text-lg font-semibold text-foreground">Knowledge Workspace</span>
+            <span className="text-lg font-semibold text-foreground">docspeare</span>
           </div>
 
           {/* Desktop Navigation */}

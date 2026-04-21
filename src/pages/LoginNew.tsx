@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { signInWithGoogle } from '@/lib/auth-new';
 import { useAuth } from '@/hooks/useAuthNew';
+import docspeareIcon from '@/assets/docspeare-icon.png';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -72,16 +73,18 @@ export default function LoginPage() {
         <div className={`w-full max-w-md transition-all duration-1000 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
           {/* Logo & Branding */}
           <div className="mb-8 text-center space-y-2">
-            <div className="inline-flex items-center justify-center w-12 h-12 md:w-16 md:h-16 mb-4 rounded-2xl bg-primary shadow-lg">
-              <svg className="w-9 h-9 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
+            <div className="inline-flex items-center justify-center w-14 h-14 md:w-16 md:h-16 mb-4 overflow-hidden rounded-2xl shadow-lg ring-1 ring-border/60">
+              <img
+                src={docspeareIcon}
+                alt="Docspeare"
+                className="w-full h-full object-cover"
+              />
             </div>
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-gradient">
-              Knowledge Workspace
+              docspeare
             </h1>
             <p className="text-muted-foreground font-medium">
-              Google Docs to Production Docs
+              Ship docs as fast as you ship product
             </p>
           </div>
 
@@ -163,13 +166,13 @@ export default function LoginPage() {
               {/* Help Text */}
               <div className="text-center space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Need access?{' '}
-                  <a
-                    href="mailto:hello@docspeare.io"
+                  New here?{' '}
+                  <button
+                    onClick={() => navigate('/signup')}
                     className="font-semibold text-primary hover:opacity-90 transition-colors underline-offset-2 hover:underline"
                   >
-                    Contact admin
-                  </a>
+                    Create an account
+                  </button>
                 </p>
               </div>
             </div>

@@ -12,9 +12,9 @@ export interface SeoProps {
   structuredData?: Record<string, unknown> | Array<Record<string, unknown>> | null;
 }
 
-const DEFAULT_TITLE = "Knowledge Workspace — Google Docs to Production Docs";
+const DEFAULT_TITLE = "Docspeare — Ship docs as fast as you ship product";
 const DEFAULT_DESCRIPTION =
-  "Turn your Google Drive into a production documentation system with structured approvals, version control, and AI-powered drafting.";
+  "Docspeare turns your Google Drive into a production-grade documentation platform with structured approvals, role-based publishing, and AI-powered drafting.";
 const DEFAULT_OG_IMAGE = "https://acceldocs.vercel.app/og-image.png";
 const JSON_LD_SCRIPT_ID = "acceldocs-jsonld-primary";
 const CANONICAL_DROP_PARAMS = new Set([
@@ -97,7 +97,7 @@ export function applySeo({
   structuredData = null,
 }: SeoProps = {}) {
   const fullTitle = title
-    ? `${title} — Knowledge Workspace`
+    ? `${title} — Docspeare`
     : DEFAULT_TITLE;
 
   document.title = fullTitle;

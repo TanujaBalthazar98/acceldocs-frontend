@@ -233,10 +233,8 @@
     --docs-border-soft: hsl(var(--border) / 0.74);
     --docs-border-strong: hsl(var(--border) / 0.9);
     --docs-shadow-soft: 0 12px 34px hsl(var(--background) / 0.14);
-    font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
-    background:
-      radial-gradient(120% 60% at 50% -10%, hsl(var(--primary) / 0.07) 0%, transparent 55%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--muted) / 0.13) 100%);
+    font-family: var(--brand-font-body, Inter, system-ui, sans-serif);
+    background: hsl(var(--background));
   }
 
   .docs-app-shell .docs-main-header {
@@ -284,18 +282,19 @@
   }
 
   .docs-app-shell .docs-sidebar-shell {
-    border: 1px solid var(--docs-border-soft);
-    border-radius: 1rem;
+    border: none;
+    border-right: 1px solid var(--docs-border-soft);
+    border-radius: 0;
     overflow: hidden;
-    background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.22) 100%);
-    box-shadow: var(--docs-shadow-soft);
+    background: transparent;
+    box-shadow: none;
   }
 
   .docs-app-shell .docs-sidebar-header {
-    background: hsl(var(--muted) / 0.22);
-    backdrop-filter: blur(8px);
-    border-bottom-color: var(--docs-border-soft);
-    padding: 0.85rem 0.9rem;
+    background: transparent;
+    backdrop-filter: none;
+    border-bottom: none;
+    padding: 0.85rem 0.9rem 0.5rem;
   }
 
   .docs-app-shell .docs-sidebar-title {
@@ -326,10 +325,11 @@
   }
 
   .docs-app-shell .sidebar-item-selected {
-    background: hsl(var(--primary) / 0.12);
-    color: hsl(var(--primary));
-    border-color: hsl(var(--primary) / 0.34);
-    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.1), inset 2px 0 0 hsl(var(--primary));
+    background: hsl(var(--muted) / 0.6);
+    color: hsl(var(--foreground));
+    border-color: transparent;
+    box-shadow: inset 2px 0 0 hsl(var(--primary));
+    font-weight: 600;
   }
 
   .docs-app-shell .docs-main-content {
@@ -365,10 +365,11 @@
 
   .docs-app-shell .docs-page-title {
     margin: 0;
-    font-family: "Newsreader", var(--brand-font-heading), Georgia, serif;
-    font-size: clamp(2.25rem, 3.35vw, 3.85rem);
-    letter-spacing: -0.035em;
-    line-height: 0.98;
+    font-family: var(--brand-font-heading, Inter, system-ui, sans-serif);
+    font-size: clamp(1.85rem, 2.6vw, 2.65rem);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
     text-wrap: balance;
   }
 
@@ -389,8 +390,8 @@
   .docs-app-shell .docs-content :where(h1, h2, h3, h4, h5, h6) {
     scroll-margin-top: 7.2rem;
     text-wrap: pretty;
-    font-family: "Newsreader", var(--brand-font-heading), Georgia, serif;
-    letter-spacing: -0.02em;
+    font-family: var(--brand-font-heading, Inter, system-ui, sans-serif);
+    letter-spacing: -0.015em;
     font-weight: 600;
   }
 
@@ -431,12 +432,12 @@
   .docs-app-shell .docs-toc-rail {
     margin-block: 1.2rem;
     margin-right: 0.95rem;
-    border: 1px solid var(--docs-border-soft);
+    border: none;
     border-left: 1px solid var(--docs-border-soft);
-    border-radius: 1rem;
+    border-radius: 0;
     padding: 1rem 0.9rem;
-    background: linear-gradient(180deg, hsl(var(--card) / 0.92) 0%, hsl(var(--muted) / 0.22) 100%);
-    box-shadow: var(--docs-shadow-soft);
+    background: transparent;
+    box-shadow: none;
   }
 
   .docs-app-shell .docs-toc-title {
@@ -467,9 +468,7 @@
   }
 
   .docs-app-shell .docs-landing-shell {
-    background:
-      radial-gradient(80% 70% at 50% -10%, hsl(var(--primary) / 0.1) 0%, transparent 62%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--muted) / 0.14) 100%);
+    background: hsl(var(--background));
   }
 
   .docs-app-shell .docs-landing-hero {
@@ -481,11 +480,12 @@
   }
 
   .docs-app-shell .docs-landing-title {
-    font-family: "Newsreader", var(--brand-font-heading), Georgia, serif;
-    letter-spacing: -0.04em;
-    line-height: 0.95;
+    font-family: var(--brand-font-heading, Inter, system-ui, sans-serif);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
     text-wrap: balance;
-    max-width: 18ch;
+    max-width: 24ch;
   }
 
   .docs-app-shell .docs-landing-description {
@@ -495,22 +495,22 @@
   }
 
   .docs-app-shell .docs-landing-featured-title {
-    font-family: "Newsreader", var(--brand-font-heading), Georgia, serif;
-    letter-spacing: -0.025em;
+    font-family: var(--brand-font-heading, Inter, system-ui, sans-serif);
+    font-weight: 600;
+    letter-spacing: -0.015em;
   }
 
   .docs-app-shell .docs-landing-card {
-    border-radius: 1rem;
+    border-radius: 0.75rem;
     border: 1px solid var(--docs-border-soft);
-    background: linear-gradient(180deg, hsl(var(--card) / 0.94), hsl(var(--muted) / 0.18));
-    box-shadow: var(--docs-shadow-soft);
-    backdrop-filter: blur(6px);
+    background: hsl(var(--card));
+    box-shadow: none;
+    transition: border-color 140ms ease, background 140ms ease;
   }
 
   .docs-app-shell .docs-landing-card:hover {
-    transform: translateY(-3px);
-    border-color: hsl(var(--primary) / 0.56);
-    box-shadow: 0 22px 40px hsl(var(--background) / 0.2);
+    border-color: hsl(var(--foreground) / 0.22);
+    background: hsl(var(--muted) / 0.35);
   }
 
   @media (max-width: 1023px) {

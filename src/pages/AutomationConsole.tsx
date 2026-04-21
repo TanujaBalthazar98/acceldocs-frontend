@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const AutomationConsole = () => {
   const backendUrl = useMemo(
-    () => (import.meta.env.VITE_AUTOMATION_BACKEND_URL as string) || "http://localhost:8000",
+    () => (import.meta.env.VITE_AUTOMATION_BACKEND_URL as string) || "http://localhost:8001",
     [],
   );
   const docsUrl = useMemo(

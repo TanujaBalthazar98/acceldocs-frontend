@@ -51,7 +51,6 @@ import { normalizeHtml } from "@/lib/htmlNormalizer";
 import { highlightCodeBlocks } from "@/lib/syntaxHighlight";
 import { attachCopyButtons } from "@/lib/codeBlockEnhancements";
 import { isLikelyMarkdown, renderMarkdownToHtml, stripFirstMarkdownHeading, stripFrontmatter } from "@/lib/markdown";
-import { captureDocView } from "@/lib/analytics/posthog";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { DocsSidebar } from "@/components/docs/DocsSidebar";
 import type { Document, Project, ProjectVersion, Topic, VisibilityLevel } from "@/components/docs/types";
@@ -450,38 +449,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const [isCustomDomain, setIsCustomDomain] = useState(false);
   const [isImplicitOrgPath, setIsImplicitOrgPath] = useState(false);
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
-  const [githubPagesUrl, setGithubPagesUrl] = useState<string | null>(null);
-  const [githubSettingsChecked, setGithubSettingsChecked] = useState(false);
-
-  // /docs/:org routing:
-  //   - unauthenticated          → redirect to GitHub Pages (Zensical public site)
-  //   - authenticated org member → redirect to /internal/:org (their full view)
-  //   - authenticated external   → stay on /docs/:org (shows only invited projects)
-  useEffect(() => {
-    const checkDocsAccess = async () => {
-      if (!currentOrg?.id || isInternalView || isCustomDomain || authLoading) return;
-      try {
-        const { apiFetch } = await import("@/lib/api/client");
-        const { data } = await apiFetch<{ ok: boolean; connected: boolean; pagesUrl?: string }>(
-          `/api/github/settings/${currentOrg.id}`
-        );
-        if (data?.ok && data.connected && data.pagesUrl) {
-          setGithubPagesUrl(data.pagesUrl);
-          // Unauthenticated → always go to the public Zensical site
-          if (!user) {
-            window.location.href = data.pagesUrl;
-            return;
-          }
-        }
-      } catch {
-        // Silently fail
-      } finally {
-        setGithubSettingsChecked(true);
-      }
-    };
-
-    checkDocsAccess();
-  }, [currentOrg?.id, isCustomDomain, user, authLoading, isInternalView]);
   
   // On custom domains, URL structure shifts: org is implicit from domain
   // Standard: /docs/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug
@@ -789,33 +756,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const setDocumentContent = async (doc: Document) => {
     setDocumentHtml(getDocumentHtml(doc) ?? null);
   };
-
-  useEffect(() => {
-    if (!selectedDocument || !selectedProject) return;
-
-    captureDocView({
-      documentId: selectedDocument.id,
-      documentTitle: selectedDocument.title,
-      documentSlug: selectedDocument.slug,
-      projectId: selectedProject.id,
-      projectSlug: selectedProject.slug,
-      organizationId: currentOrg?.id ?? null,
-      organizationSlug: currentOrg?.slug ?? currentOrg?.domain ?? null,
-      visibility: selectedProject.visibility,
-      isInternalView,
-    });
-  }, [
-    selectedDocument?.id,
-    selectedDocument?.slug,
-    selectedDocument?.title,
-    selectedProject?.id,
-    selectedProject?.slug,
-    selectedProject?.visibility,
-    currentOrg?.id,
-    currentOrg?.slug,
-    currentOrg?.domain,
-    isInternalView,
-  ]);
 
   const getOrgPathPrefixForBase = (basePath: string, org?: Organization | null) => {
     if (isCustomDomain || isImplicitOrgPath || !org) return basePath;
@@ -2179,41 +2119,22 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 <Button
                   variant="ghost"
                   size="sm"
+                  onClick={() => navigate(getOrgPathPrefixForBase("/docs", currentOrg))}
+                >
+                  Public Docs
+                </Button>
+              ) : !isInternalView && user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
-                    if (githubPagesUrl) {
-                      window.open(githubPagesUrl, "_blank");
-                    } else {
-                      navigate(getOrgPathPrefixForBase("/docs", currentOrg));
+                    if (currentOrg) {
+                      navigate(getOrgPathPrefixForBase("/internal", currentOrg));
                     }
                   }}
                 >
-                  {githubPagesUrl ? "External Site" : "Public Docs"}
+                  Internal Docs
                 </Button>
-              ) : !isInternalView && user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      if (currentOrg) {
-                        navigate(getOrgPathPrefixForBase("/internal", currentOrg));
-                      }
-                    }}
-                  >
-                    Internal Docs
-                  </Button>
-                  {githubPagesUrl && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5"
-                      onClick={() => window.open(githubPagesUrl, "_blank")}
-                    >
-                      External Site
-                      <ExternalLink className="h-3 w-3 opacity-60" />
-                    </Button>
-                  )}
-                </>
               ) : null}
               {user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
                 <Link to="/dashboard">
@@ -2249,24 +2170,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
             <div className="max-w-5xl mx-auto px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
               <WifiOff className="h-3.5 w-3.5" />
               You’re offline. Showing the most recent content available.
-            </div>
-          </div>
-        )}
-
-        {/* Nudge org members to set up GitHub Pages when not yet configured */}
-        {!isInternalView && user && isOrgUser && githubSettingsChecked && !githubPagesUrl && (
-          <div className="border-b border-border bg-blue-50/60 dark:bg-blue-950/30">
-            <div className="max-w-5xl mx-auto px-4 py-2 text-sm text-blue-800 dark:text-blue-200 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Globe className="h-4 w-4 shrink-0" />
-                <span>
-                  External visitors can’t reach this page yet.{" "}
-                  <Link to="/dashboard" className="font-medium underline underline-offset-2 hover:no-underline">
-                    Connect GitHub in Settings
-                  </Link>{" "}
-                  to publish your docs to a public site.
-                </span>
-              </div>
             </div>
           </div>
         )}
@@ -2464,7 +2367,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   </Button>
                 </Link>
                 <Link to="/auth">
-                  <Button size="sm" className="hidden md:inline-flex" style={{ backgroundColor: currentOrg?.primary_color }}>
+                  <Button size="sm" className="hidden md:inline-flex" style={{ backgroundColor: currentOrg?.primary_color || undefined }}>
                     Create account
                   </Button>
                 </Link>
@@ -2476,17 +2379,10 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 variant="ghost"
                 size="sm"
                 className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
-                onClick={() => {
-                  if (githubPagesUrl) {
-                    window.open(githubPagesUrl, "_blank");
-                  } else {
-                    navigate(getOrgPathPrefixForBase("/docs", currentOrg));
-                  }
-                }}
+                onClick={() => navigate(getOrgPathPrefixForBase("/docs", currentOrg))}
               >
                 <Globe className="h-4 w-4" />
-                <span className="hidden sm:inline">{githubPagesUrl ? "External Site" : "Public Docs"}</span>
-                {githubPagesUrl && <ExternalLink className="h-3 w-3 opacity-60" />}
+                <span className="hidden sm:inline">Public Docs</span>
               </Button>
             ) : !isInternalView && user && isOrgUser && projects.some(p => p.visibility !== "public") ? (
               <>
@@ -2503,18 +2399,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                   <Lock className="h-4 w-4" />
                   <span className="hidden sm:inline">Internal Docs</span>
                 </Button>
-                {githubPagesUrl && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
-                    onClick={() => window.open(githubPagesUrl, "_blank")}
-                  >
-                    <Globe className="h-4 w-4" />
-                    <span className="hidden sm:inline">External Site</span>
-                    <ExternalLink className="h-3 w-3 opacity-60" />
-                  </Button>
-                )}
               </>
             ) : null}
 
@@ -2640,22 +2524,6 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
         </div>
       )}
 
-      {/* Nudge org members to set up GitHub Pages when not yet configured */}
-      {!isInternalView && user && isOrgUser && githubSettingsChecked && !githubPagesUrl && (
-        <div className="border-b border-border bg-blue-50/60 dark:bg-blue-950/30">
-          <div className="max-w-5xl mx-auto px-4 py-2 text-sm text-blue-800 dark:text-blue-200 flex items-center gap-2">
-            <Globe className="h-4 w-4 shrink-0" />
-            <span>
-              External visitors can’t reach this page yet.{" "}
-              <Link to="/dashboard" className="font-medium underline underline-offset-2 hover:no-underline">
-                Connect GitHub in Settings
-              </Link>{" "}
-              to publish your docs to a public site.
-            </span>
-          </div>
-        </div>
-      )}
-
       {currentOrg?.header_html ? (
         <div
           className="border-b border-border/50 bg-muted/20 px-4 py-3 text-sm"
@@ -2697,18 +2565,24 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
                 {/* Breadcrumb and controls */}
                 <div className="docs-article-toolbar flex items-center justify-between mb-6">
                   <nav className="docs-breadcrumbs flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>{selectedProject?.name}</span>
-                    {selectedDocument.topic_id && (() => {
-                      const topic = topics.find(t => t.id === selectedDocument.topic_id);
-                      if (topic) {
-                        return (
-                          <>
-                            <ChevronRight className="h-3 w-3" />
-                            <span>{topic.name}</span>
-                          </>
-                        );
+                    {(() => {
+                      // Dedup: collapse segments that repeat the same label.
+                      // e.g. project "Privacy" + topic "Privacy" + page "Privacy"
+                      // → single "Privacy" crumb instead of "Privacy › Privacy".
+                      const crumbs: string[] = [];
+                      if (selectedProject?.name) crumbs.push(selectedProject.name);
+                      if (selectedDocument.topic_id) {
+                        const topic = topics.find(t => t.id === selectedDocument.topic_id);
+                        if (topic?.name && topic.name !== crumbs[crumbs.length - 1]) {
+                          crumbs.push(topic.name);
+                        }
                       }
-                      return null;
+                      return crumbs.map((label, i) => (
+                        <span key={`${label}-${i}`} className="flex items-center gap-2">
+                          {i > 0 && <ChevronRight className="h-3 w-3" />}
+                          <span>{label}</span>
+                        </span>
+                      ));
                     })()}
                   </nav>
                 </div>

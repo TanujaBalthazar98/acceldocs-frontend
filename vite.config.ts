@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       host: "::",
-      port: 8081,
+      port: 5173,
       allowedHosts: true,
       watch: {
         ignored: ["**/acceldocs-backend/**"],
@@ -22,78 +22,68 @@ export default defineConfig(({ mode }) => {
         // IMPORTANT: do not proxy /auth/callback in dev.
         // Google redirects the browser here and React router must handle the callback page.
         "/auth/google": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/auth/login": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/auth/callback-api": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
           rewrite: (path) => path.replace(/^\/auth\/callback-api/, "/auth/callback"),
         },
         "/auth/me": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/auth/logout": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/auth/register": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/auth/refresh": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/auth/search-organizations": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/auth/prepare-signup": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/api": {
-          target: "http://localhost:8000",
-          changeOrigin: true,
-          secure: false,
-        },
-        "/github": {
-          target: "http://localhost:8000",
-          changeOrigin: true,
-          secure: false,
-        },
-        "/publish": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/sync": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/convert": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },
         "/health": {
-          target: "http://localhost:8000",
+          target: "http://localhost:8001",
           changeOrigin: true,
           secure: false,
         },

@@ -85,23 +85,47 @@ export function useBrandingStyles(branding: {
       return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
     };
 
-    const primaryHsl = hexToHsl(branding.primary_color);
-    const secondaryHsl = hexToHsl(branding.secondary_color);
-    const accentHsl = hexToHsl(branding.accent_color);
+    // Treat empty strings as "not set" — falls back to monochrome below so
+    // we never render stale indigo/teal defaults on a fresh workspace.
+    const hasPrimary = !!branding.primary_color?.trim();
+    const hasSecondary = !!branding.secondary_color?.trim();
+    const hasAccent = !!branding.accent_color?.trim();
+
+    // Monochrome defaults (near-black in light mode; near-white foreground).
+    // These are used when the org hasn't explicitly picked brand colors.
+    const MONO_PRIMARY_HSL = "0 0% 9%";    // near-black
+    const MONO_ACCENT_HSL = "0 0% 9%";
+    const MONO_SECONDARY_HSL = "0 0% 96%"; // near-white surface
+
+    const primaryHsl = hasPrimary ? hexToHsl(branding.primary_color) : MONO_PRIMARY_HSL;
+    const secondaryHsl = hasSecondary ? hexToHsl(branding.secondary_color) : MONO_SECONDARY_HSL;
+    const accentHsl = hasAccent ? hexToHsl(branding.accent_color) : MONO_ACCENT_HSL;
+    const effectivePrimary = hasPrimary ? branding.primary_color : "#171717";
+    const effectiveSecondary = hasSecondary ? branding.secondary_color : "#f5f5f5";
+    const effectiveAccent = hasAccent ? branding.accent_color : "#171717";
     const primaryL = Number.parseFloat(primaryHsl.split(/\s+/)[2]?.replace("%", "") || "0");
     const isPrimaryLight = Number.isFinite(primaryL) && primaryL >= 80;
 
-    // Generate CSS with branding variables - override Tailwind's primary color
+    // Generate CSS with branding variables - override Tailwind's primary color.
+    // When the org hasn't picked brand fonts, default heading + body to the
+    // same clean sans (Inter) — Mintlify-style, not a serif display face.
+    const fontHeading = branding.font_heading?.trim()
+      ? `"${branding.font_heading}", Inter, system-ui, sans-serif`
+      : `Inter, system-ui, sans-serif`;
+    const fontBody = branding.font_body?.trim()
+      ? `"${branding.font_body}", Inter, system-ui, sans-serif`
+      : `Inter, system-ui, sans-serif`;
+
     styleEl.textContent = `
       :root {
-        --brand-primary: ${branding.primary_color};
+        --brand-primary: ${effectivePrimary};
         --brand-primary-hsl: ${primaryHsl};
-        --brand-secondary: ${branding.secondary_color};
+        --brand-secondary: ${effectiveSecondary};
         --brand-secondary-hsl: ${secondaryHsl};
-        --brand-accent: ${branding.accent_color};
+        --brand-accent: ${effectiveAccent};
         --brand-accent-hsl: ${accentHsl};
-        --brand-font-heading: "${branding.font_heading}", "Newsreader", Georgia, serif;
-        --brand-font-body: "${branding.font_body}", "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+        --brand-font-heading: ${fontHeading};
+        --brand-font-body: ${fontBody};
       }
       
       /* Override primary and accent colors for docs pages */

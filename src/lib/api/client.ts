@@ -19,7 +19,7 @@ function resolveApiBaseUrl(): string {
     return sameOrigin;
   }
 
-  return "http://localhost:8000";
+  return "http://localhost:8001";
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();

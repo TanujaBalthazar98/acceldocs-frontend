@@ -22,7 +22,7 @@ function resolveAuthApiUrl(): string {
     return sameOrigin;
   }
 
-  return "http://localhost:8000";
+  return "http://localhost:8001";
 }
 
 const API_URL = resolveAuthApiUrl();
