@@ -5874,6 +5874,30 @@ export default function Dashboard() {
     },
     [bootstrapDocsSession],
   );
+  const buildPublishedHierarchyPath = useCallback(
+    (sectionId: number | null | undefined): string[] => {
+      if (!sectionId) return [];
+      const segments: string[] = [];
+      const visited = new Set<number>();
+      let cursor = sectionsById.get(sectionId);
+
+      while (cursor && !visited.has(cursor.id)) {
+        visited.add(cursor.id);
+        const sectionType = (cursor.section_type ?? "section").toLowerCase();
+        const isHierarchyNode =
+          sectionType === "product" ||
+          sectionType === "tab" ||
+          sectionType === "version";
+        if (isHierarchyNode && cursor.slug) {
+          segments.unshift(cursor.slug);
+        }
+        cursor = cursor.parent_id ? sectionsById.get(cursor.parent_id) : undefined;
+      }
+
+      return segments;
+    },
+    [sectionsById],
+  );
   const getPagePublishedUrl = useCallback(
     (page: Page | null | undefined): string | null => {
       if (!page || !orgSlug) return null;
@@ -5884,14 +5908,17 @@ export default function Dashboard() {
           : effectiveVisibility === "external"
             ? externalDocsUrl
             : publicDocsUrl;
+      const sectionPath = buildPublishedHierarchyPath(page.section_id);
+      const hierarchyPrefix = sectionPath.length > 0 ? `/${sectionPath.join("/")}` : "";
       const collisionKey = `${effectiveVisibility}:${page.slug}`;
       const hasSlugCollision = (publishedSlugCountsByVisibility.get(collisionKey) ?? 0) > 1;
-      if (hasSlugCollision) {
+      if (hasSlugCollision && sectionPath.length === 0) {
         return `${baseUrl}/p/${page.id}/${page.slug}`;
       }
-      return `${baseUrl}/${page.slug}`;
+      return `${baseUrl}${hierarchyPrefix}/${page.slug}`;
     },
     [
+      buildPublishedHierarchyPath,
       externalDocsUrl,
       internalDocsUrl,
       orgSlug,

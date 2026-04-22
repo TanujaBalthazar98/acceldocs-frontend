@@ -32,17 +32,17 @@ describe("DocsRedirect", () => {
         hash: "#intro",
         apiBaseUrl: "https://docs-backend.example.com",
       }),
-    ).toBe("https://docs-backend.example.com/docs/acme/3-version-4-9-0?q=v4.9#intro");
+    ).toBe("https://docs-backend.example.com/docs/acme/release-notes/version-4-9/3-version-4-9-0?q=v4.9#intro");
   });
 
-  it("normalizes legacy deep docs routes to backend page routes", () => {
+  it("preserves deep docs routes for backend routing", () => {
     expect(normalizePublicDocsPathForBackend("/docs/acme", "acme")).toBe("/docs/acme");
     expect(normalizePublicDocsPathForBackend("/docs/acme/release-notes", "acme")).toBe(
       "/docs/acme/release-notes",
     );
     expect(
       normalizePublicDocsPathForBackend("/docs/acme/adoc/release-notes/3-version-4-9-0", "acme"),
-    ).toBe("/docs/acme/3-version-4-9-0");
+    ).toBe("/docs/acme/adoc/release-notes/3-version-4-9-0");
     expect(normalizePublicDocsPathForBackend("/docs/acme/search", "acme")).toBe(
       "/docs/acme/search",
     );
@@ -68,7 +68,7 @@ describe("DocsRedirect", () => {
 
     expect(screen.getByText(/Redirecting to published docs/i)).toBeInTheDocument();
     expect(
-      screen.getByText("https://docs-backend.example.com/docs/acme/3-version-4-9-0"),
+      screen.getByText("https://docs-backend.example.com/docs/acme/adoc/release-notes/3-version-4-9-0"),
     ).toBeInTheDocument();
   });
 

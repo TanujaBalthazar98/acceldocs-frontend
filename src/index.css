@@ -230,8 +230,8 @@
   .docs-app-shell {
     --docs-bg: hsl(var(--background));
     --docs-surface: hsl(var(--card));
-    --docs-surface-soft: hsl(var(--muted) / 0.22);
-    --docs-hero-bg: hsl(var(--secondary) / 0.3);
+    --docs-surface-soft: hsl(var(--muted) / 0.18);
+    --docs-hero-bg: hsl(30 38% 94%);
     --docs-border-soft: hsl(var(--border));
     --docs-border-subtle: hsl(var(--border) / 0.65);
     --docs-text: hsl(var(--foreground));
@@ -242,8 +242,10 @@
   }
 
   .light .docs-app-shell {
-    --docs-surface-soft: hsl(220 18% 96%);
-    --docs-hero-bg: hsl(30 35% 95%);
+    --docs-surface-soft: hsl(220 24% 97%);
+    --docs-hero-bg: hsl(30 45% 94%);
+    --docs-border-soft: hsl(216 20% 89%);
+    --docs-border-subtle: hsl(216 18% 82%);
   }
 
   .dark .docs-app-shell {
@@ -266,6 +268,7 @@
 
   .docs-app-shell .docs-main-header-inner {
     max-width: 100%;
+    height: 4rem;
   }
 
   .docs-app-shell .docs-top-search {
@@ -273,9 +276,10 @@
   }
 
   .docs-app-shell .docs-top-search input {
-    border-radius: 0.35rem;
+    border-radius: 0.45rem;
     border-color: var(--docs-border-soft);
-    background: var(--docs-surface-soft);
+    background: hsl(var(--muted) / 0.45);
+    font-size: 1.03rem;
   }
 
   .docs-app-shell .docs-product-strip {
@@ -285,7 +289,7 @@
 
   .docs-app-shell .docs-product-label {
     color: var(--docs-text);
-    font-size: 1rem;
+    font-size: 1.03rem;
     font-weight: 700;
     letter-spacing: -0.01em;
   }
@@ -293,7 +297,8 @@
   .docs-app-shell .docs-product-tab {
     border-radius: 0;
     border-bottom-width: 2px;
-    margin-right: 0.22rem;
+    margin-right: 0.28rem;
+    font-weight: 600;
   }
 
   .docs-app-shell .docs-layout-shell {
@@ -318,7 +323,7 @@
   .docs-app-shell .docs-sidebar-header {
     background: transparent;
     border-bottom: 1px solid var(--docs-border-soft);
-    padding: 0.9rem 0.95rem 0.75rem;
+    padding: 0.9rem 1rem 0.75rem;
   }
 
   .docs-app-shell .docs-sidebar-title {
@@ -330,23 +335,23 @@
   }
 
   .docs-app-shell .docs-sidebar-nav {
-    padding: 0.5rem 0;
+    padding: 0.4rem 0;
   }
 
   .docs-app-shell .docs-sidebar-item {
     border: none;
-    border-radius: 0;
-    line-height: 1.35;
+    border-radius: 0.45rem;
+    line-height: 1.4;
     margin: 0;
-    padding-inline: 1rem;
+    padding-inline: 0.78rem;
   }
 
   .docs-app-shell .docs-sidebar-topic {
     color: var(--docs-text);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-    font-size: 0.76rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: -0.005em;
+    font-size: 0.98rem;
     margin-top: 0.44rem;
     padding-top: 0.65rem;
     border-top: 1px solid var(--docs-border-subtle);
@@ -358,7 +363,7 @@
   }
 
   .docs-app-shell .docs-sidebar-doc {
-    font-size: 0.895rem;
+    font-size: 1.02rem;
     color: hsl(var(--foreground) / 0.9);
   }
 
@@ -368,10 +373,10 @@
   }
 
   .docs-app-shell .sidebar-item-selected {
-    background: hsl(var(--primary) / 0.16);
+    background: hsl(var(--primary) / 0.12);
     color: hsl(var(--primary));
     border: none;
-    box-shadow: inset 3px 0 0 hsl(var(--primary));
+    box-shadow: inset 2px 0 0 hsl(var(--primary));
   }
 
   .docs-app-shell .docs-main-content {
@@ -380,7 +385,7 @@
   }
 
   .docs-app-shell .docs-article-shell {
-    padding-top: 1.6rem;
+    padding-top: 1.8rem;
   }
 
   .docs-app-shell .docs-article-header {
@@ -394,17 +399,17 @@
   }
 
   .docs-app-shell .docs-breadcrumbs {
-    font-size: 0.8rem;
-    letter-spacing: 0.01em;
+    font-size: 0.95rem;
+    letter-spacing: 0;
     color: var(--docs-text-muted);
   }
 
   .docs-app-shell .docs-page-title {
     margin: 0;
-    font-family: var(--brand-font-heading), Inter, system-ui, sans-serif;
-    font-size: clamp(2.2rem, 3.15vw, 3.45rem);
-    letter-spacing: -0.022em;
-    line-height: 1.08;
+    font-family: var(--brand-font-body), Inter, system-ui, sans-serif;
+    font-size: clamp(2.35rem, 3.4vw, 3.8rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
     text-wrap: balance;
     color: var(--docs-text);
   }
@@ -414,12 +419,12 @@
     background: transparent;
     border-radius: 0;
     padding: 0;
-    margin-bottom: 1.55rem;
+    margin-bottom: 1.35rem;
   }
 
   .docs-app-shell .docs-content {
-    font-size: 1.015rem;
-    line-height: 1.72;
+    font-size: 1.08rem;
+    line-height: 1.68;
     color: hsl(var(--foreground) / 0.92);
   }
 
@@ -433,15 +438,17 @@
   }
 
   .docs-app-shell .docs-content h2 {
-    margin-top: 2.15em;
+    margin-top: 1.95em;
     margin-bottom: 0.74em;
-    padding-bottom: 0.42em;
+    padding-bottom: 0.38em;
     border-bottom: 1px solid var(--docs-border-subtle);
+    font-size: clamp(1.75rem, 2.25vw, 2.3rem);
   }
 
   .docs-app-shell .docs-content h3 {
     margin-top: 1.7em;
     margin-bottom: 0.52em;
+    font-size: clamp(1.35rem, 1.75vw, 1.75rem);
   }
 
   .docs-app-shell .docs-content p {
@@ -466,7 +473,7 @@
     border: none;
     border-left: 1px solid var(--docs-border-soft);
     border-radius: 0;
-    padding: 0.95rem 1rem;
+    padding: 1rem 1rem 1.2rem;
     background: var(--docs-surface);
     box-shadow: none;
   }
@@ -485,7 +492,7 @@
 
   .docs-app-shell .docs-toc-link {
     border-left: 2px solid transparent;
-    padding: 0.26rem 0.5rem;
+    padding: 0.3rem 0.52rem;
     border-radius: 0;
     transition: color 140ms ease;
   }
@@ -510,12 +517,12 @@
   }
 
   .docs-app-shell .docs-landing-hero-inner {
-    max-width: 1360px;
+    max-width: 1320px;
     margin: 0 auto;
-    padding: 3.35rem 1rem 3.1rem;
+    padding: 2.75rem 1rem 2.85rem;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 220px;
-    gap: 2.8rem;
+    grid-template-columns: minmax(0, 1fr) 210px;
+    gap: 2.35rem;
     align-items: center;
   }
 
@@ -534,20 +541,20 @@
 
   .docs-app-shell .docs-landing-title {
     margin: 0;
-    font-family: var(--brand-font-heading), Inter, system-ui, sans-serif;
-    font-size: clamp(2.35rem, 4.35vw, 4.2rem);
-    line-height: 1.06;
-    letter-spacing: -0.03em;
+    font-family: var(--brand-font-body), Inter, system-ui, sans-serif;
+    font-size: clamp(2.2rem, 3.8vw, 3.65rem);
+    line-height: 1.08;
+    letter-spacing: -0.024em;
     color: var(--docs-text);
     text-wrap: balance;
   }
 
   .docs-app-shell .docs-landing-description {
     margin-top: 0.95rem;
-    font-size: clamp(1.12rem, 1.5vw, 1.85rem);
-    line-height: 1.42;
+    font-size: clamp(1.05rem, 1.38vw, 1.38rem);
+    line-height: 1.5;
     color: hsl(var(--foreground) / 0.78);
-    max-width: 36ch;
+    max-width: 46ch;
   }
 
   .docs-app-shell .docs-landing-hero-actions {
@@ -629,7 +636,7 @@
   }
 
   .docs-app-shell .docs-landing-featured {
-    background: var(--docs-surface-soft);
+    background: hsl(var(--muted) / 0.3);
     border-top: 1px solid var(--docs-border-soft);
     padding: 2.2rem 0 2.8rem;
   }
@@ -648,7 +655,7 @@
 
   .docs-app-shell .docs-landing-card {
     border: 1px solid var(--docs-border-soft);
-    border-radius: 0.55rem;
+    border-radius: 0.6rem;
     overflow: hidden;
     background: var(--docs-surface);
     transition: border-color 140ms ease, transform 140ms ease;
@@ -660,7 +667,7 @@
   }
 
   .docs-app-shell .docs-landing-card-media {
-    height: 170px;
+    height: 152px;
     border-bottom: 1px solid var(--docs-border-soft);
     display: flex;
     align-items: center;
@@ -686,16 +693,16 @@
   }
 
   .docs-app-shell .docs-landing-card-title {
-    font-size: 2rem;
-    line-height: 1.2;
-    letter-spacing: -0.02em;
+    font-size: 2.05rem;
+    line-height: 1.15;
+    letter-spacing: -0.022em;
     color: var(--docs-text);
   }
 
   .docs-app-shell .docs-landing-card-description {
     margin-top: 0.55rem;
-    font-size: 0.98rem;
-    line-height: 1.5;
+    font-size: 1rem;
+    line-height: 1.55;
     color: var(--docs-text-muted);
   }
 
@@ -760,7 +767,7 @@
 
   @media (max-width: 767px) {
     .docs-app-shell .docs-page-title {
-      font-size: clamp(1.82rem, 8vw, 2.35rem);
+      font-size: clamp(2rem, 8vw, 2.7rem);
       line-height: 1.08;
     }
 
@@ -769,12 +776,12 @@
     }
 
     .docs-app-shell .docs-content {
-      font-size: 0.97rem;
-      line-height: 1.68;
+      font-size: 1rem;
+      line-height: 1.64;
     }
 
     .docs-app-shell .docs-landing-title {
-      font-size: clamp(2rem, 9vw, 2.6rem);
+      font-size: clamp(2.1rem, 9vw, 2.9rem);
     }
 
     .docs-app-shell .docs-landing-card-title {

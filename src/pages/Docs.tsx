@@ -483,10 +483,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     checkDocsAccess();
   }, [currentOrg?.id, isCustomDomain, user, authLoading, isInternalView]);
   
-  // On custom domains, URL structure shifts: org is implicit from domain
-  // Standard: /docs/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug
-  // Internal: /internal/:orgSlug/:projectSlug/:versionSlug/:topicSlug/:pageSlug
-  // Custom domain: /docs/:projectSlug/:versionSlug/:topicSlug/:pageSlug (or /internal for internal view)
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
+
+  // On custom domains, URL structure shifts: org is implicit from domain.
+  // Standard: /docs/:orgSlug/:rootProject/:subProject/:version?/:topic?/:pageSlug
+  // Internal: /internal/:orgSlug/:rootProject/:subProject/:version?/:topic?/:pageSlug
+  // Custom domain: /docs/:rootProject/:subProject/:version?/:topic?/:pageSlug
   const pathSegments = useMemo(() => {
     const normalized = location.pathname.replace(/\/+$/, "");
     const base = docsBasePath === "/" ? "" : docsBasePath;
@@ -505,15 +508,69 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   );
   const orgPathOffset = isCustomDomain ? 0 : (isImplicitOrgPath && !orgSegmentMatchesCurrent ? 0 : 1);
   const orgSlug = orgPathOffset === 1 ? pathSegments[0] : undefined;
-  const projectSlug = pathSegments[orgPathOffset];
-  const remainingSegments = pathSegments.slice(orgPathOffset + 1);
+  const pathAfterOrg = useMemo(
+    () => pathSegments.slice(orgPathOffset),
+    [pathSegments, orgPathOffset]
+  );
+  const routeProjectHintSlug = pathAfterOrg[0];
 
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
+  const resolvedProjectRoute = useMemo(() => {
+    if (!routeProjectHintSlug || projects.length === 0) {
+      return {
+        project: null as Project | null,
+        projectPathSlugs: [] as string[],
+        consumedPathSegments: 0,
+      };
+    }
+
+    const childrenByParent = new Map<string | null, Project[]>();
+    for (const project of projects) {
+      if (!project.slug) continue;
+      const key = project.parent_id ?? null;
+      const list = childrenByParent.get(key) ?? [];
+      list.push(project);
+      childrenByParent.set(key, list);
+    }
+
+    const matchBySlug = (candidates: Project[], slug: string) =>
+      candidates.find((p) => p.slug?.toLowerCase() === slug.toLowerCase()) ?? null;
+
+    let active = matchBySlug(childrenByParent.get(null) ?? [], routeProjectHintSlug);
+    if (!active) {
+      active = projects.find((p) => p.slug?.toLowerCase() === routeProjectHintSlug.toLowerCase()) ?? null;
+    }
+    if (!active || !active.slug) {
+      return {
+        project: null as Project | null,
+        projectPathSlugs: [] as string[],
+        consumedPathSegments: 0,
+      };
+    }
+
+    const projectPathSlugs = [active.slug];
+    let consumedPathSegments = 1;
+
+    while (consumedPathSegments < pathAfterOrg.length) {
+      const nextSlug = pathAfterOrg[consumedPathSegments];
+      const next = matchBySlug(childrenByParent.get(active.id) ?? [], nextSlug);
+      if (!next?.slug) break;
+      active = next;
+      projectPathSlugs.push(next.slug);
+      consumedPathSegments += 1;
+    }
+
+    return { project: active, projectPathSlugs, consumedPathSegments };
+  }, [projects, pathAfterOrg, routeProjectHintSlug]);
+
+  const projectSlug = resolvedProjectRoute.project?.slug ?? routeProjectHintSlug;
+  const consumedProjectPathSegments = resolvedProjectRoute.consumedPathSegments || (routeProjectHintSlug ? 1 : 0);
+  const remainingSegments = pathAfterOrg.slice(consumedProjectPathSegments);
 
   const versionSlug = useMemo(() => {
     if (!projectSlug || remainingSegments.length === 0) return undefined;
-    const project = projects.find(p => p.slug === projectSlug);
+    const project =
+      resolvedProjectRoute.project ??
+      projects.find((p) => p.slug === projectSlug);
     if (!project) return undefined;
     const candidate = remainingSegments[0];
     
@@ -826,6 +883,22 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const getOrgPathPrefix = (org?: Organization | null) =>
     getOrgPathPrefixForBase(docsBasePath, org);
 
+  const getProjectSlugPath = (project: Project): string[] => {
+    const slugs: string[] = [];
+    const visited = new Set<string>();
+    let cursor: Project | undefined = project;
+
+    while (cursor && !visited.has(cursor.id)) {
+      visited.add(cursor.id);
+      if (cursor.slug) {
+        slugs.unshift(cursor.slug);
+      }
+      cursor = cursor.parent_id ? projects.find((p) => p.id === cursor.parent_id) : undefined;
+    }
+
+    return slugs;
+  };
+
   const buildDocUrl = (doc: Document, project: Project, org: Organization) => {
     const orgPrefix = getOrgPathPrefix(org);
     const topic = doc.topic_id ? topics.find(t => t.id === doc.topic_id) : null;
@@ -834,19 +907,13 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
     // otherwise it causes unnecessary version filtering that can hide documents.
     const publishedVersions = getProjectVersions(project.id);
     const versionSegment = version?.slug && publishedVersions.length > 1 ? `/${version.slug}` : "";
-    
-    // For custom domains, use simplified URLs without org prefix
-    if (isCustomDomain || isImplicitOrgPath) {
-      if (topic?.slug) {
-        return `${orgPrefix}/${project.slug}${versionSegment}/${topic.slug}/${doc.slug}`;
-      }
-      return `${orgPrefix}/${project.slug}${versionSegment}/${doc.slug}`;
-    }
-    
+    const projectPath = getProjectSlugPath(project).join("/");
+    const basePath = `${orgPrefix}${projectPath ? `/${projectPath}` : ""}${versionSegment}`;
+
     if (topic?.slug) {
-      return `${orgPrefix}/${project.slug}${versionSegment}/${topic.slug}/${doc.slug}`;
+      return `${basePath}/${topic.slug}/${doc.slug}`;
     }
-    return `${orgPrefix}/${project.slug}${versionSegment}/${doc.slug}`;
+    return `${basePath}/${doc.slug}`;
   };
 
   // Handle URL-based project and document selection
@@ -855,7 +922,9 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
 
     // Select project from URL - only if projectSlug is provided
     if (projectSlug) {
-      const project = projects.find(p => p.slug === projectSlug);
+      const project =
+        resolvedProjectRoute.project ??
+        projects.find((p) => p.slug === projectSlug);
       if (project && project.id !== selectedProject?.id) {
         setSelectedProject(project);
       }
@@ -865,7 +934,7 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
       setSelectedDocument(null);
       setDocumentHtml(null);
     }
-  }, [projectSlug, projects, isCustomDomain]);
+  }, [projectSlug, projects, isCustomDomain, resolvedProjectRoute.project, selectedProject?.id]);
 
   useEffect(() => {
     if (!selectedProject) {
@@ -1609,7 +1678,8 @@ export default function Docs({ mode }: { mode?: "public" | "internal" }) {
   const buildProjectUrl = (project: Project, version?: ProjectVersion | null) => {
     const versionSegment = version?.slug ? `/${version.slug}` : "";
     const base = getOrgPathPrefix(currentOrg);
-    return `${base}/${project.slug}${versionSegment}`;
+    const projectPath = getProjectSlugPath(project).join("/");
+    return `${base}${projectPath ? `/${projectPath}` : ""}${versionSegment}`;
   };
 
   const getChildProjects = (projectId: string) =>

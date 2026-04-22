@@ -23,11 +23,12 @@ export function shouldRedirectToBackend(targetUrl: string, currentUrl: string): 
 }
 
 /**
- * Backend clean-arch public site currently resolves:
+ * Keep full docs path structure while proxying through backend.
+ * Supports:
  *   /docs/:orgSlug
- *   /docs/:orgSlug/:pageSlug
- * Legacy frontend links can be deeper (/docs/:org/:project/:version/:topic/:page).
- * We collapse deep paths to the final page slug to avoid public 404s.
+ *   /docs/:orgSlug/:projectSlug/.../:pageSlug
+ *   /docs/:orgSlug/search
+ *   /docs/:orgSlug/p/:id/:slug
  */
 export function normalizePublicDocsPathForBackend(pathname: string, orgSlug: string): string {
   const segments = pathname.split("/").filter(Boolean);
@@ -36,18 +37,7 @@ export function normalizePublicDocsPathForBackend(pathname: string, orgSlug: str
   if (segments.length <= 2) return docsPrefix;
 
   const tail = segments.slice(2);
-  if (tail.length === 1) return `${docsPrefix}/${tail[0]}`;
-
-  // Keep known explicit backend route patterns untouched.
-  if (tail[0] === "search") {
-    return `${docsPrefix}/${tail.join("/")}`;
-  }
-  if (tail[0] === "p" && tail.length >= 3) {
-    return `${docsPrefix}/${tail.join("/")}`;
-  }
-
-  const pageSlug = tail[tail.length - 1];
-  return `${docsPrefix}/${pageSlug}`;
+  return `${docsPrefix}/${tail.join("/")}`;
 }
 
 export default function DocsRedirect() {
